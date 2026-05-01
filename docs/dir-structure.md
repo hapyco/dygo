@@ -23,7 +23,7 @@ dygo/                                      # Root repository for the dygo framew
       installer/                          # App install, sync, update, and uninstall workflows.
       manifest/                           # App manifest parsing, validation, and compatibility checks.
 
-    config/                               # Non-secret configuration loading and validation.
+    config/                               # Non-secret configuration loading and validation code.
     credentials/                          # Encrypted secrets and credential management.
     db/                                   # Database connectivity and persistence primitives.
     schema/                               # Metadata schema engine for DocType-style business objects.
@@ -90,7 +90,7 @@ dygo/                                      # Root repository for the dygo framew
   views/                                  # Framework-level view definitions outside a specific app when needed.
     system/                               # System views for framework-owned schemas.
 
-  config/                                 # Safe, commit-friendly configuration files.
+  configs/                                # Safe, commit-friendly configuration files.
     dygo.yaml                             # Base dygo configuration.
     environments/                         # Environment-specific non-secret configuration.
       development.yaml                    # Development config.
