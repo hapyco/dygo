@@ -1,0 +1,21 @@
+# GitHub workspace metadata for maintainers and agents.
+#
+# This file intentionally stores only public/non-secret identifiers.
+
+repository:
+  owner: dygo-dev
+  name: dygo
+  full_name: dygo-dev/dygo
+  url: https://github.com/dygo-dev/dygo
+
+projects:
+  roadmap:
+    title: Roadmap
+    owner: dygo-dev
+    owner_type: organization
+    number: 1
+    id: PVT_kwDOEL_VIc4BWVuP
+    url: https://github.com/orgs/dygo-dev/projects/1
+    cli:
+      list_items: gh project item-list 1 --owner dygo-dev --format json --limit 50
+      add_issue: gh project item-add 1 --owner dygo-dev --url ISSUE_URL
