@@ -1,628 +1,170 @@
 # AGENT.md
 
-## Product North Star
+This file gives coding agents the product and engineering context needed to work on dygo.
 
-Build an open-source enterprise application platform for metadata-driven business software.
+## Product Philosophy
 
-The platform should let developers define business objects, fields, relationships, permissions, forms, lists, reports, jobs, notifications, and module navigation as versioned app metadata. The runtime should turn that metadata into a usable operational workbench, document APIs, background work, audit trails, and installable business modules.
+dygo is an opinionated Go framework for building serious business software.
 
-Do not treat the project as a clone of any existing framework. Use the concepts, but keep the implementation idiomatic to this repository.
+It is designed for business processes, internal operating systems, enterprise apps, workflow-heavy products, and analytics-ready operational systems.
 
-## Core Principles
+dygo embraces agentic development, but it must protect business software from the mess that agentic coding can create.
 
-- Metadata is the platform kernel. It should define application shape, generated UI, permissions, reports, workflows, jobs, and installable module behavior.
-- Code owns complex behavior. Metadata may configure shape and simple rules, but trusted code should own advanced business logic, integrations, and side effects.
-- Permissions are a first-class runtime primitive. Every UI, API, export, report, file, realtime event, job, and background action must use the same permission model.
-- App installation is a lifecycle, not a file copy. Validate, diff, migrate, load metadata, load fixtures, register jobs/hooks/assets, audit the change, and record installed versions.
-- Extension order must be deterministic and inspectable. Prefer additive extensions over replacement. Ambiguous overrides should fail early.
-- Schema changes should be controlled. Generate or apply explicit migration plans; do not let ordinary request handlers mutate the database schema.
-- Uninstall should be conservative. Disable or archive modules by default and preserve data unless a destructive path is explicitly requested and backed up.
-- The workbench is product UI, not a temporary admin screen. It should be useful, permission-aware, responsive, and optimized for repeated operational workflows.
-- Enterprise operations matter from the beginning: audit, backups, health checks, migration ledgers, observability, upgrade safety, and supply-chain trust.
+The goal is speed with structure.
 
-## Architecture Shape
+## Core Belief
 
-Think of the platform as five connected products:
+Builders should focus on business logic.
 
-- Runtime server: HTTP, APIs, auth, permissions, metadata, jobs, realtime events, files, rendering, and storage adapters.
-- Developer platform: CLI, app generator, metadata validator, migration planner, fixtures, packaging, SDK, and documentation.
-- Operational workbench: generated forms, lists, reports, dashboards, navigation, notifications, comments, assignments, files, and system screens.
-- Operations platform: app installs, upgrades, backups, restore, health checks, logs, job monitors, audit trails, and diagnostics.
-- Extension ecosystem: metadata-only apps, trusted compiled extensions, isolated service extensions, and eventually sandboxed logic for limited hooks.
+dygo should handle the foundation:
 
-Keep the core implementation private until an API is deliberately stabilized. Anything exported for app authors becomes a long-term compatibility promise.
-
-## Repository Guidance
-
-- Keep the early repository as one coherent module unless a real versioning boundary appears.
-- Put platform internals behind internal packages or equivalent private boundaries.
-- Expose only a small app-author SDK: app registration, hooks, document service interfaces, job registration, storage interfaces, permission context, and event types.
-- Do not expose raw database handles, internal metadata structs, internal transaction helpers, UI internals, or permission engine internals as public API.
-- Prefer explicit registration over magic discovery.
-- Keep app assets, metadata, migrations, fixtures, and hooks scoped to the owning app.
-
-## App Model
-
-Separate app availability from app installation.
-
-Availability means an app bundle is present in the workspace, registry, or deployment artifact. Installation means a site has accepted that app, applied its migrations, loaded its metadata and fixtures, registered its hooks and jobs, and recorded its installed version.
-
-An app bundle should be able to contain:
-
-- app manifest
-- document type metadata
-- field definitions
-- form/list/mobile/workspace views
-- roles and permission rules
-- reports and print formats
-- workflow definitions
-- migrations
-- fixtures and reference records
-- scheduled jobs
-- notification rules
-- assets
-- trusted hooks or extension endpoints
-- package digest, signature, provenance, and compatibility data when packaged
-
-Required install flow:
-
-1. Load the bundle.
-2. Verify manifest, digest, signature, and compatibility where available.
-3. Resolve dependencies.
-4. Compare current and target metadata/schema.
-5. Produce a migration and metadata plan.
-6. Require backup or restore point for risky changes.
-7. Acquire a site/app lock.
-8. Apply migrations.
-9. Load metadata.
-10. Load fixtures.
-11. Register hooks, jobs, routes, and assets.
-12. Refresh caches.
-13. Run smoke checks.
-14. Write an immutable install ledger entry.
-15. Emit audit events.
-
-Disable/archive should stop jobs and hide navigation while preserving data. Destructive uninstall must require explicit confirmation, dependency checks, backup, dry run, and audit.
-
-## Metadata And Documents
-
-Document type metadata should define:
-
-- table/storage name
-- fields and field types
-- required/default/read-only rules
-- indexes
-- child tables
-- link fields
-- naming strategy
+- app/module structure
+- schemas and documents
 - permissions
-- form layout
-- list layout
-- mobile layout hints
-- workflow states
-- validation hooks
-- lifecycle hooks
-- export/import rules
-- audit settings
-- timeline settings
-- notification triggers
-
-Start with these field concepts:
-
-- short text
-- long text
-- rich text
-- integer
-- decimal
-- currency
-- percent
-- date
-- datetime
-- time
-- checkbox
-- select
-- multi-select
-- link
-- dynamic link
-- child table
-- attachment
-- image
-- user
-- role
-- JSON
-- virtual/computed field
-
-Every document table should have standard platform fields for identity, owner, creator/updater, timestamps, version, status, soft deletion, and custom metadata.
-
-Use a document service rather than forcing every dynamic record through hand-written model classes. The service should own lifecycle, validation, permissions, audit, transactions, and after-commit side effects.
-
-Lifecycle:
-
-```text
-new -> validate -> before_insert -> insert -> after_insert
-load -> validate -> before_save -> save -> after_save
-submit -> before_submit -> set status -> after_submit
-cancel -> before_cancel -> set status -> after_cancel
-delete -> before_delete -> delete -> after_delete
-```
-
-Hooks may come from metadata rules, trusted code, isolated service extensions, or future sandboxed logic. Hooks must be time-bounded, traced, auditable, and clear about whether they run before or after permission filtering.
-
-## Storage And Schema
-
-Prefer physical tables for important document types and typed columns for declared fields. Use a JSON/custom extension area only for limited customization and low-traffic fields.
-
-Schema changes should come from migration plans, not request-time DDL. A schema compiler should:
-
-1. Validate app metadata.
-2. Resolve dependencies.
-3. Compare expected schema with actual schema.
-4. Produce a plan.
-5. Identify destructive changes.
-6. Acquire locks.
-7. Apply migrations.
-8. Record checksums and versions.
-9. Refresh metadata caches.
-
-Forward-only migrations are the default. Destructive changes require explicit backup/checkpoint and should usually be staged by hiding or deprecating fields before dropping data.
-
-## Permissions And Security
-
-Build the permission engine early. Generic role libraries can inspire implementation, but the platform needs document-aware decisions.
-
-Permission dimensions include:
-
-- app
-- module
-- document type
-- document
-- field
-- child table
-- report
-- action
-- workflow transition
-- file
-- export
-- import
-- print
-- share
-- owner
-- assignee
-- team or department
-- site or tenant
-
-Permission checks must happen in:
-
-- list query compilation
-- document reads
-- document writes
-- field rendering
-- field writes
-- report execution
-- file download
-- export
-- print
-- workflow actions
-- API response serialization
-- realtime delivery
-- background jobs acting for a user or system actor
-
-Rules:
-
-- Deny by default.
-- Apply permission scopes in queries, not only after records are loaded.
-- Apply field masking before serialization, export, print, or report output.
-- UI permissions are presentation only; server checks are authoritative.
-- Realtime events must be permission-filtered before delivery.
-- Jobs must carry an explicit actor or system context.
-- Audit permission-sensitive operations.
-
-Audit records should include actor, site, session, request ID, IP/user agent where allowed, action, resource, before/after diff, permission decision, app version/digest, hook/extension source, and timestamp.
-
-Never log passwords, tokens, raw secrets, private file contents, or unnecessary sensitive data.
-
-## Workbench UI
-
-The platform should ship a complete operational workbench.
-
-Core screens:
-
-- login and setup
-- workspace/home
-- app switcher
-- module navigation
-- global search and command palette
-- document list view
-- document form view
-- child table editor
-- file attachments
-- comments and timeline
-- assignments
-- notifications
-- report list
-- report runner
-- dashboards
-- workflow actions
-- user and role management
-- permission matrix
-- app install/update UI
-- job monitor
-- scheduler monitor
-- audit log
-- system health
-
-Core generated components:
-
-- field renderer
-- field editor
-- field error display
-- link picker
-- child table
-- attachment picker
-- form section
-- form tab
-- list filter
-- list card
-- list table
-- report table
-- chart wrapper
-- action menu
-- timeline event
-- permission badge
-- workflow state badge
-
-Mobile and offline should be designed into the metadata model:
-
-- mobile summary fields
-- mobile field groups
-- sticky primary actions
-- bottom command bar
-- drawer filters
-- compact list cards
-- scan/upload actions
-- offline eligibility per document type/action
-- offline shell
-- cached recent records
-- local draft forms
-- queued simple mutations
-- conflict-resolution UI
-
-Never silently overwrite enterprise records after reconnect.
-
-## APIs
-
-Expose two API layers:
-
-- Platform APIs used by the workbench and generic clients.
-- App-specific APIs and extension endpoints.
-
-Generic document API shape:
-
-```text
-GET    /api/docs/{type}
-POST   /api/docs/{type}
-GET    /api/docs/{type}/{name}
-PATCH  /api/docs/{type}/{name}
-DELETE /api/docs/{type}/{name}
-POST   /api/docs/{type}/{name}/submit
-POST   /api/docs/{type}/{name}/cancel
-POST   /api/docs/{type}/{name}/actions/{action}
-```
-
-Metadata API shape:
-
-```text
-GET /api/meta/types
-GET /api/meta/types/{type}
-GET /api/meta/workspaces
-GET /api/meta/forms/{type}
-GET /api/meta/lists/{type}
-```
-
-Rules:
-
-- Metadata defines allowed fields, filters, sorting, actions, and serialization.
-- Permission scopes apply to list queries.
-- Field masks apply to responses.
-- State-changing requests must use state-changing HTTP verbs and appropriate CSRF/session/token protection.
-- Bulk import/export requires explicit permission.
-- Public API contracts should be described with a machine-readable spec when stable.
-- Avoid generic graph-style APIs until the permission and query compiler are mature.
-
-## Reports, Exports, And Print
-
-Start with:
-
-- saved list filters
-- simple tabular reports
-- permission-scoped query builder
-- CSV/XLSX export
-- background report generation
-- downloadable report artifacts
-
-Add later:
-
-- report builder with filters, columns, grouping, aggregates, and charts
-- trusted read-only SQL reports
-- print format metadata
-- HTML-to-PDF service
-- report-specific print formats
-
-Do not allow arbitrary end-user code or unrestricted SQL in production. Reports must be read-only, permission-scoped, field-masked, auditable, and safe for large data sets.
-
-Use HTML as the canonical print format:
-
-```text
-document/report -> print metadata -> trusted template or constrained DSL -> HTML -> PDF backend -> file store
-```
-
-Print must respect field permissions, locale, timezone, watermarking, audit, and background generation requirements.
-
-## Jobs, Scheduler, Notifications, And Realtime
-
-Use durable jobs from the beginning.
-
-Core job use cases:
-
-- email send
-- push send
-- imports
-- exports
-- report generation
-- PDF generation
-- app install/update tasks
-- webhooks
-- integrations
-- scheduled workflows
-- file scanning
-- search indexing
-
-Scheduler should enqueue jobs, not execute work directly.
-
-App schedule metadata should include name, schedule, queue, timeout, and handler reference.
-
-Realtime should start with simple server-to-client event streams for notifications and progress. Add bidirectional sockets when collaboration, chat, live dashboards, or interactive builders require them.
-
-Every event must be permission-filtered before delivery.
-
-Notifications should support document events, workflow events, role/user recipients, digest preferences, push preferences, an in-app inbox, delivery logs, and queued sending.
-
-## Files
-
-Create a storage interface early. Support local development storage and production object storage through adapters.
-
-Track file metadata:
-
-- file id
-- storage key
-- provider/bucket
-- owner
-- attached document type/name
-- visibility
-- checksum
-- content type
-- size
-- created timestamp
-- retention policy
-- scan status
-
-File serving must be permission-aware. Private files need authenticated access, signed URLs or equivalent controls, expiry, and download audit. Enterprise controls should include file type policy, size policy, antivirus hook, legal hold, and retention support.
-
-## Tenancy
-
-Choose one tenancy model as the initial default and make that choice explicit. The product should not deeply support every tenancy model on day one.
-
-Tenancy concerns:
-
-- site registry
-- host resolution
-- database or row scope
-- installed app set
-- metadata cache
-- permission cache
-- file namespace
-- job context
-- backup/restore boundary
-- migration boundary
-- app rollout boundary
-
-Site resolution concept:
-
-```text
-host -> site registry -> storage boundary -> installed app set -> metadata cache
-```
-
-If using many site-specific storage boundaries, bound connection pools carefully.
-
-## Operations
-
-Required operational features:
-
-- app install ledger
-- migration ledger
-- migration dry run
-- backup and restore
-- health checks
+- jobs
+- migrations
+- logging
+- auditing
+- observability
+- credentials
+- site configuration
+- maintenance mode
+- consistent Desk UI
+- secure APIs
+- analytics-ready data patterns
+
+Do not make implementers rebuild these pieces in every app.
+
+## What dygo is not
+
+dygo is not an AI slop generator.
+
+dygo is not a vibe-coding playground.
+
+dygo is not a generic admin template.
+
+dygo is not a loose collection of helpers.
+
+dygo is a framework with strong opinions and safe boundaries.
+
+## Agentic Coding Position
+
+dygo should praise and support agentic coding.
+
+Agents should be able to build apps on top of dygo quickly by following strong conventions, clear docs, predictable file structure, and well-documented CLI commands.
+
+But agents should not invent architecture casually.
+
+When implementing features, prefer:
+
+- explicit schemas
+- clear manifests
+- small focused files
+- predictable naming
+- secure defaults
+- observable behavior
+- testable boundaries
+- boring reliability over cleverness
+
+## Engineering Principles
+
+### 1. Business logic belongs in apps
+
+Framework code should provide reusable platform capability.
+
+Business-specific behavior should live in apps/modules built on top of dygo.
+
+### 2. Framework internals stay internal
+
+Use `internal/` for dygo implementation details.
+
+Only expose stable public APIs through `pkg/sdk/`.
+
+### 3. Everything important should be observable
+
+When adding runtime behavior, consider:
+
+- logs
+- audit events
 - metrics
 - traces
-- structured logs
-- admin audit
-- job monitor
-- scheduler monitor
-- slow query visibility
-- system health screen
-- vulnerability scanning
-- release signing
-- app bundle signing
-- compatibility matrix
-- documented upgrade path
-- disaster recovery docs
+- failure states
+- admin visibility
 
-Upgrade flow:
+Silent behavior is usually bad behavior.
 
-1. Check target platform version.
-2. Check installed app compatibility.
-3. Check migrations.
-4. Take and verify backup.
-5. Apply platform migration.
-6. Apply app migrations.
-7. Refresh metadata.
-8. Run smoke tests.
-9. Emit audit and health events.
+### 4. Security and permissions are not optional
 
-## Extension Runtime
+Business apps need permissions from the start.
 
-Do not make native runtime code plugins the primary extension system.
+Any document, API, job, file, report, or view that exposes business data must respect dygo's permission model.
 
-Preferred extension tiers:
+### 5. Metadata should be explicit
 
-- metadata hooks for validations, notifications, workflows, and simple automations
-- trusted compiled hooks registered at build time
-- isolated service extensions for customer or third-party code
-- sandboxed logic later for formulas, validation, transformations, and constrained workflow actions
+dygo is metadata-driven, but metadata should not become mystery behavior.
 
-Extension rules:
+Schemas, views, permissions, fixtures, app manifests, and jobs should be readable, diffable, and easy for humans and agents to understand.
 
-- Extensions receive scoped context, not raw storage credentials.
-- Calls are time-limited and traced.
-- Permission context is explicit.
-- Failures are visible in workbench logs.
-- App capabilities are declared.
-- Marketplace-style apps require publisher identity, bundle signature, digest, SBOM/provenance, migration preview, and declared data access.
+### 6. Keep the Desk consistent
 
-## CLI
+The Desk UI should feel like one coherent product.
 
-The CLI is part of the product, not just developer convenience.
+Do not create one-off UI patterns unless the framework needs a new reusable pattern.
 
-Expected command areas:
+Prefer metadata-driven views, shared components, and consistent interaction models.
 
-```text
-serve
-worker
-scheduler
-migrate
-doctor
+### 7. Enterprise-grade does not mean bloated
 
-site create
-site list
-site backup
-site restore
-site migrate
-site console
+dygo should feel simple to use, but serious underneath.
 
-app new
-app validate
-app package
-app install
-app uninstall
-app migrate
-app list
-app diff
+Avoid unnecessary abstractions. Build strong primitives.
 
-generate document-type
-generate migration
-generate sdk
+## Preferred Stack
 
-dev
-dev ui
-dev seed
-```
+Backend:
 
-The doctor command should check version, database connectivity, migration status, app compatibility, missing indexes, worker/scheduler health, storage access, queue backlog, disk space, secrets, TLS/debug posture, and other safety checks.
+- Go
+- PostgreSQL
+- CLI-first workflows
+- explicit config
+- encrypted credentials
+- app manifests
+- schema-driven documents
+- background jobs
+- observability and auditability
 
-## Testing
+## Implementation Guidance
 
-Testing must match the platform risk.
+When adding a feature, ask:
 
-Required test layers:
+1. Is this framework capability or app-specific business logic?
+2. Does this need permissions?
+3. Does this need audit logging?
+4. Does this need observability?
+5. Does this need CLI support?
+6. Does this need documentation?
+7. Will an agent understand this structure later?
+8. Is this safe for serious business software?
 
-- unit tests for metadata validation
-- unit tests for permission decisions
-- field type mapping tests
-- integration tests for migrations
-- integration tests for app install/update/disable/uninstall
-- query compiler tests
-- API contract tests
-- generated form/list UI tests
-- mobile viewport tests
-- offline draft/conflict tests
-- job/scheduler tests
-- realtime permission tests
-- file permission tests
-- audit tests
-- race/concurrency tests where relevant
-- fuzz tests for filters and query compilation
-- security tests for permission bypass attempts
+If the answer is unclear, choose the simpler and more explicit design.
 
-Must-have fixtures:
+## Tone of the Codebase
 
-- multiple sites
-- multiple apps
-- app dependency graph
-- conflicting migrations
-- private fields
-- child tables
-- owner-only records
-- workflow-restricted records
-- report permission boundaries
-- offline draft conflicts
+dygo should feel:
 
-## MVP Priorities
+- opinionated
+- boring where it matters
+- fast where it helps
+- secure by default
+- observable by default
+- friendly to agents
+- clean enough for enterprise systems
+- simple enough for small business teams
 
-Prove the core loop before broadening scope:
+## North Star
 
-1. Platform module and CLI.
-2. Config loader.
-3. Site or tenant registry.
-4. Database connection and migration runner.
-5. Core app manifest.
-6. Installed app ledger.
-7. Metadata parser and validator.
-8. Document type registry.
-9. Basic permission engine.
-10. Audit log.
-11. Structured logging and health checks.
-12. Physical table per document type.
-13. Field type mapping.
-14. Schema compiler.
-15. Generated migrations.
-16. Document CRUD service.
-17. Lifecycle hooks.
-18. Field permissions.
-19. Naming rules.
-20. Child tables.
-21. Fixtures.
-22. Generated list view.
-23. Generated form view.
-24. Metadata API.
-25. Generic document API.
-26. Example business app.
-27. App install/list/disable commands.
-28. Durable jobs and scheduler.
-29. Attachments.
-30. Minimal docs.
+Use agentic coding for speed.
 
-## Explicit Non-Goals For Early Versions
+Use dygo for structure.
 
-- supporting every database
-- runtime installation of arbitrary trusted-code plugins
-- generic graph API
-- full offline sync for every document type
-- untrusted marketplace code execution
-- broad low-code scripting with server privileges
-- complex collaborative editing
-- serverless-first deployment
-- multiple first-class workbench frontend frameworks
-- cloning every feature from prior art
-- destructive uninstall as the default path
-
-## Implementation Style
-
-- Prefer simple, explicit, boring interfaces over magic.
-- Keep metadata schemas versioned and validated.
-- Make lifecycle decisions visible in ledgers and audit logs.
-- Keep permissions central and hard to bypass.
-- Keep migrations deterministic and repeatable.
-- Add public API only when the contract is worth maintaining.
-- Document architectural decisions as they are made.
-- Let the smallest working platform kernel ship before adding builders, marketplace, advanced reports, or broad customization.
+Build business software that is fast to create, safe to run, and clean enough to scale.
