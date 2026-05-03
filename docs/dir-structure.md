@@ -24,7 +24,7 @@ dygo/                                      # Root repository for the dygo framew
       manifest/                           # App manifest parsing, validation, and compatibility checks.
 
     config/                               # Non-secret configuration loading and validation code.
-    credentials/                          # Encrypted secrets and credential management.
+    secrets/                              # Encrypted secrets and credential management.
     db/                                   # Database connectivity and persistence primitives.
     schema/                               # Metadata schema engine for DocType-style business objects.
     document/                             # Runtime document model built on top of schemas.
@@ -96,11 +96,22 @@ dygo/                                      # Root repository for the dygo framew
       development.yaml                    # Development config.
       staging.yaml                        # Staging config.
       production.yaml                     # Production config.
+    secrets/                              # ASCII-armored age-encrypted secret files and public recipients.
+      development.age.yaml                # Encrypted development secrets.
+      staging.age.yaml                    # Encrypted staging secrets.
+      production.age.yaml                 # Encrypted production secrets.
+      recipients/                         # Public age recipients safe to commit.
+        development.txt                   # Development public recipient.
+        staging.txt                       # Staging public recipient.
+        production.txt                    # Production public recipient.
 
-  credentials/                            # Encrypted credential files for each environment.
-    development.enc.yaml                  # Encrypted development secrets.
-    staging.enc.yaml                      # Encrypted staging secrets.
-    production.enc.yaml                   # Encrypted production secrets.
+  .dygo/                                  # Local-only dygo state ignored by git.
+    secrets/
+      keys/                               # Private age identities ignored by git.
+        development.agekey                # Development private identity.
+        staging.agekey                    # Staging private identity.
+        production.agekey                 # Production private identity.
+      tmp/                                # Short-lived plaintext edit files ignored by git.
 
   sites/                                  # Site-specific runtime state and tenant configuration.
     default/                              # Default local site.

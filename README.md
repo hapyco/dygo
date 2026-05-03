@@ -23,6 +23,7 @@ The current repository contains the first Go module, CLI entrypoint, config defa
 go run ./cmd/dygo
 go run ./cmd/dygo version
 go run ./cmd/dygo serve
+go run ./cmd/dygo secrets --help
 ```
 
 The default server address is:
@@ -57,8 +58,12 @@ docs/              project doctrine, thesis, and structure notes
 
 ## Docs
 
+- [Documentation Index](docs/index.md)
 - [The dygo Doctrine](docs/doctrine.md)
 - [Platform Thesis](docs/platform-thesis.md)
+- [Nomenclature](docs/nomenclature.md)
+- [Encrypted Secrets](docs/secrets.md)
+- [Documentation Strategy](docs/docs-strategy.md)
 - [Directory Structure](docs/dir-structure.md)
 
 ## Roadmap

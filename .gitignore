@@ -27,6 +27,10 @@ go.work.sum
 # env file
 .env
 
+# dygo local secrets
+.dygo/secrets/keys/
+.dygo/secrets/tmp/
+
 # Editor/IDE
 # .idea/
 # .vscode/

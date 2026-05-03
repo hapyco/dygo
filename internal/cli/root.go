@@ -12,8 +12,8 @@ import (
 const version = "dev"
 
 // Run executes the dygo command-line interface.
-func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	cmd, err := NewRootCommand(ctx, stdout, stderr)
+func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	cmd, err := NewRootCommand(ctx, stdin, stdout, stderr)
 	if err != nil {
 		return err
 	}
@@ -28,9 +28,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 }
 
 // NewRootCommand creates the root dygo CLI command.
-func NewRootCommand(ctx context.Context, stdout, stderr io.Writer) (*cobra.Command, error) {
+func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
+	}
+	if stdin == nil {
+		return nil, fmt.Errorf("stdin reader is required")
 	}
 	if stdout == nil {
 		return nil, fmt.Errorf("stdout writer is required")
@@ -58,6 +61,7 @@ func NewRootCommand(ctx context.Context, stdout, stderr io.Writer) (*cobra.Comma
 
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newServeCommand(stdout))
+	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))
 
 	return root, nil
 }
