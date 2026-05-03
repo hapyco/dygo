@@ -45,7 +45,7 @@ That means dygo should provide strong defaults and built-in capabilities for:
 - configuration
 - encrypted credentials
 - analytics-ready data structures
-- consistent Console UI patterns
+- consistent Studio UI patterns
 - secure APIs
 - developer and agent documentation
 

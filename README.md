@@ -7,7 +7,7 @@
 
 dygo is an open-source framework for building serious business software in Go.
 
-It is designed for business processes, internal operating systems, enterprise applications, and workflow-heavy products where permissions, migrations, audit trails, observability, background jobs, secure configuration, and consistent operational UI matter from day one.
+It is designed for business processes, internal operating systems, enterprise applications, and workflow-heavy products where permissions, migrations, audit trails, observability, background jobs, secure configuration, and a consistent Studio UI matter from day one.
 
 The goal is speed with structure: builders should focus on business logic while dygo handles the platform foundation.
 
@@ -52,6 +52,7 @@ go vet ./...
 cmd/dygo/          executable entrypoint
 internal/cli/      private CLI implementation
 internal/config/   private config defaults and loading code
+apps/              first-party dygo apps such as core and Studio
 configs/           safe committed config files
 docs/              project doctrine, thesis, and structure notes
 ```
@@ -62,6 +63,8 @@ docs/              project doctrine, thesis, and structure notes
 - [The dygo Doctrine](docs/doctrine.md)
 - [Platform Thesis](docs/platform-thesis.md)
 - [Nomenclature](docs/nomenclature.md)
+- [App Model](docs/app-model.md)
+- [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)
 - [Documentation Strategy](docs/docs-strategy.md)
 - [Directory Structure](docs/dir-structure.md)

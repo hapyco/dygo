@@ -67,7 +67,7 @@ Metadata should answer:
 - what exists
 - who can see it
 - who can change it
-- how it appears in the Console
+- how it appears in Studio
 - how it moves through workflows
 - what jobs or hooks act on it
 
@@ -116,15 +116,15 @@ Silent background behavior creates fear. Observable systems create trust.
 
 If an app installs, a job fails, a report runs, a permission denies access, a file is downloaded, or a workflow changes state, there should be a way to understand what happened.
 
-## 7. The Console Is Product UI
+## 7. Studio Is Product UI
 
-The Console is not a temporary admin panel.
+Studio is not a temporary admin panel.
 
 It is where people run the business.
 
 It should feel consistent, predictable, and built for repeated daily work. Lists, forms, filters, reports, files, comments, assignments, notifications, and permissions should share a coherent interaction model.
 
-The Console should be generated from metadata where possible, but still feel designed.
+Studio should be generated from metadata where possible, but still feel designed.
 
 Internal software deserves good product taste.
 
@@ -197,7 +197,7 @@ dygo serve
 
 The exact commands may evolve, but the feeling should not.
 
-The first success should be small, fast, and real: define something meaningful, run the app, see it in the Console, use the API, and know where the code lives.
+The first success should be small, fast, and real: define something meaningful, run the app, see it in Studio, use the API, and know where the code lives.
 
 Frameworks people love make users feel oriented.
 

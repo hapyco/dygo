@@ -29,7 +29,7 @@ dygo should handle the foundation:
 - credentials
 - site configuration
 - maintenance mode
-- consistent Console UI
+- consistent Studio UI
 - secure APIs
 - analytics-ready data patterns
 
@@ -105,9 +105,9 @@ dygo is metadata-driven, but metadata should not become mystery behavior.
 
 Entity definitions, views, permissions, fixtures, app manifests, and jobs should be readable, diffable, and easy for humans and agents to understand.
 
-### 6. Keep the Console consistent
+### 6. Keep Studio consistent
 
-The Console UI should feel like one coherent product.
+Studio should feel like one coherent product.
 
 Do not create one-off UI patterns unless the framework needs a new reusable pattern.
 
@@ -132,6 +132,14 @@ Backend:
 - schema-driven entities and records
 - background jobs
 - observability and auditability
+
+## Product Vocabulary
+
+Follow `docs/nomenclature.md`.
+
+Use Studio for the main operational and builder UI. Use Space for a page or group inside Studio. Use Entity for business object definitions. Use Record for saved business data.
+
+Core is the required system App. Studio is the first-party UI App. Business Apps define Entities, Permissions, Hooks, Fixtures, and Patches.
 
 ## Implementation Guidance
 
