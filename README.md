@@ -3,7 +3,7 @@
 [![Go](https://img.shields.io/badge/go-1.26.2-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License](https://img.shields.io/github/license/dygo-dev/dygo)](https://github.com/dygo-dev/dygo/blob/develop/LICENSE)
 [![Status](https://img.shields.io/badge/status-early%20framework%20development-f2cc60)](https://github.com/dygo-dev/dygo/commits/develop)
-[![Roadmap](https://img.shields.io/badge/roadmap-GitHub%20Projects-6f42c1)](https://github.com/orgs/dygo-dev/projects/1)
+[![Roadmap](https://img.shields.io/badge/roadmap-GitHub%20Projects-6f42c1)](https://github.com/orgs/dygo-dev/projects/2/views/1)
 
 dygo is an open-source framework for building serious business software in Go.
 
@@ -65,6 +65,6 @@ docs/              project doctrine, thesis, and structure notes
 
 Roadmap work is tracked in GitHub Projects:
 
-- [dygo Roadmap](https://github.com/orgs/dygo-dev/projects/1)
+- [dygo Roadmap](https://github.com/orgs/dygo-dev/projects/2/views/1)
 
 Repository/project metadata for maintainers and agents lives in [configs/github.yml](configs/github.yml).

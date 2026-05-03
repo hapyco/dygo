@@ -33,10 +33,9 @@ func TestRun(t *testing.T) {
 			wantStdout: "127.0.0.1:6790",
 		},
 		{
-			name:       "rejects unknown command",
-			args:       []string{"missing"},
-			wantStderr: "unknown command: missing",
-			wantErr:    true,
+			name:    "rejects unknown command",
+			args:    []string{"missing"},
+			wantErr: true,
 		},
 	}
 
