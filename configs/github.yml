@@ -13,9 +13,10 @@ projects:
     title: Roadmap
     owner: dygo-dev
     owner_type: organization
-    number: 1
-    id: PVT_kwDOEL_VIc4BWVuP
-    url: https://github.com/orgs/dygo-dev/projects/1
+    number: 2
+    id: PVT_kwDOEL_VIc4BWf19
+    url: https://github.com/orgs/dygo-dev/projects/2
+    default_view_url: https://github.com/orgs/dygo-dev/projects/2/views/1
     cli:
-      list_items: gh project item-list 1 --owner dygo-dev --format json --limit 50
-      add_issue: gh project item-add 1 --owner dygo-dev --url ISSUE_URL
+      list_items: gh project item-list 2 --owner dygo-dev --format json --limit 50
+      add_issue: gh project item-add 2 --owner dygo-dev --url ISSUE_URL

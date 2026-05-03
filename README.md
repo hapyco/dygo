@@ -3,7 +3,7 @@
 [![Go](https://img.shields.io/badge/go-1.26.2-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License](https://img.shields.io/github/license/dygo-dev/dygo)](https://github.com/dygo-dev/dygo/blob/develop/LICENSE)
 [![Status](https://img.shields.io/badge/status-early%20framework%20development-f2cc60)](https://github.com/dygo-dev/dygo/commits/develop)
-[![Roadmap](https://img.shields.io/badge/roadmap-GitHub%20Projects-6f42c1)](https://github.com/orgs/dygo-dev/projects/1)
+[![Roadmap](https://img.shields.io/badge/roadmap-GitHub%20Projects-6f42c1)](https://github.com/orgs/dygo-dev/projects/2/views/1)
 
 dygo is an open-source framework for building serious business software in Go.
 
@@ -23,6 +23,7 @@ The current repository contains the first Go module, CLI entrypoint, config defa
 go run ./cmd/dygo
 go run ./cmd/dygo version
 go run ./cmd/dygo serve
+go run ./cmd/dygo secrets --help
 ```
 
 The default server address is:
@@ -57,14 +58,18 @@ docs/              project doctrine, thesis, and structure notes
 
 ## Docs
 
+- [Documentation Index](docs/index.md)
 - [The dygo Doctrine](docs/doctrine.md)
 - [Platform Thesis](docs/platform-thesis.md)
+- [Nomenclature](docs/nomenclature.md)
+- [Encrypted Secrets](docs/secrets.md)
+- [Documentation Strategy](docs/docs-strategy.md)
 - [Directory Structure](docs/dir-structure.md)
 
 ## Roadmap
 
 Roadmap work is tracked in GitHub Projects:
 
-- [dygo Roadmap](https://github.com/orgs/dygo-dev/projects/1)
+- [dygo Roadmap](https://github.com/orgs/dygo-dev/projects/2/views/1)
 
 Repository/project metadata for maintainers and agents lives in [configs/github.yml](configs/github.yml).

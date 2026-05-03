@@ -71,7 +71,7 @@ These opinions are not limitations. They are guardrails.
 
 The purpose is to let teams move fast without creating fragile systems.
 
-## Agentic development, but with rails
+## Agentic development, but with guardrails
 
 dygo should actively support agentic coding.
 

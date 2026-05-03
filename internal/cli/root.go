@@ -4,69 +4,93 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/dygo-dev/dygo/internal/config"
+	"github.com/spf13/cobra"
 )
 
 const version = "dev"
 
 // Run executes the dygo command-line interface.
-func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	if ctx == nil {
-		return fmt.Errorf("context is required")
-	}
-	if stdout == nil {
-		return fmt.Errorf("stdout writer is required")
-	}
-	if stderr == nil {
-		return fmt.Errorf("stderr writer is required")
+func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	cmd, err := NewRootCommand(ctx, stdin, stdout, stderr)
+	if err != nil {
+		return err
 	}
 
-	if err := ctx.Err(); err != nil {
+	cmd.SetArgs(args)
+
+	if err := cmd.Execute(); err != nil {
 		return fmt.Errorf("run cli: %w", err)
 	}
 
-	if len(args) == 0 {
-		printHelp(stdout)
-		return nil
+	return nil
+}
+
+// NewRootCommand creates the root dygo CLI command.
+func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("context is required")
+	}
+	if stdin == nil {
+		return nil, fmt.Errorf("stdin reader is required")
+	}
+	if stdout == nil {
+		return nil, fmt.Errorf("stdout writer is required")
+	}
+	if stderr == nil {
+		return nil, fmt.Errorf("stderr writer is required")
 	}
 
-	switch args[0] {
-	case "help", "-h", "--help":
-		printHelp(stdout)
-		return nil
-	case "version":
-		_, err := fmt.Fprintf(stdout, "dygo %s\n", version)
-		if err != nil {
-			return fmt.Errorf("write version: %w", err)
-		}
-		return nil
-	case "serve":
-		cfg := config.Default()
-		_, err := fmt.Fprintf(stdout, "dygo serve will listen on %s\n", cfg.Server.Address())
-		if err != nil {
-			return fmt.Errorf("write serve output: %w", err)
-		}
-		return nil
-	default:
-		fmt.Fprintf(stderr, "unknown command: %s\n", args[0])
-		return fmt.Errorf("unknown command %q", args[0])
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("create root command: %w", err)
+	}
+
+	root := &cobra.Command{
+		Use:           "dygo",
+		Short:         "dygo is a metadata-driven business application platform.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
+	}
+
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+
+	root.AddCommand(newVersionCommand(stdout))
+	root.AddCommand(newServeCommand(stdout))
+	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))
+
+	return root, nil
+}
+
+func newVersionCommand(stdout io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the dygo version",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if _, err := fmt.Fprintf(stdout, "dygo %s\n", version); err != nil {
+				return fmt.Errorf("write version: %w", err)
+			}
+			return nil
+		},
 	}
 }
 
-func printHelp(w io.Writer) {
-	lines := []string{
-		"dygo is a metadata-driven business application platform.",
-		"",
-		"Usage:",
-		"  dygo <command>",
-		"",
-		"Commands:",
-		"  help      Show this help text",
-		"  version   Print the dygo version",
-		"  serve     Start the dygo server",
+func newServeCommand(stdout io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "serve",
+		Short: "Start the dygo server",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			cfg := config.Default()
+			if _, err := fmt.Fprintf(stdout, "dygo serve will listen on %s\n", cfg.Server.Address()); err != nil {
+				return fmt.Errorf("write serve output: %w", err)
+			}
+			return nil
+		},
 	}
-
-	fmt.Fprintln(w, strings.Join(lines, "\n"))
 }
