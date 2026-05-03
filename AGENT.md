@@ -19,7 +19,7 @@ Builders should focus on business logic.
 dygo should handle the foundation:
 
 - app/module structure
-- schemas and documents
+- entities and records
 - permissions
 - jobs
 - migrations
@@ -29,7 +29,7 @@ dygo should handle the foundation:
 - credentials
 - site configuration
 - maintenance mode
-- consistent Desk UI
+- consistent Console UI
 - secure APIs
 - analytics-ready data patterns
 
@@ -57,7 +57,7 @@ But agents should not invent architecture casually.
 
 When implementing features, prefer:
 
-- explicit schemas
+- explicit entity definitions
 - clear manifests
 - small focused files
 - predictable naming
@@ -97,17 +97,17 @@ Silent behavior is usually bad behavior.
 
 Business apps need permissions from the start.
 
-Any document, API, job, file, report, or view that exposes business data must respect dygo's permission model.
+Any record, API, job, file, report, or view that exposes business data must respect dygo's permission model.
 
 ### 5. Metadata should be explicit
 
 dygo is metadata-driven, but metadata should not become mystery behavior.
 
-Schemas, views, permissions, fixtures, app manifests, and jobs should be readable, diffable, and easy for humans and agents to understand.
+Entity definitions, views, permissions, fixtures, app manifests, and jobs should be readable, diffable, and easy for humans and agents to understand.
 
-### 6. Keep the Desk consistent
+### 6. Keep the Console consistent
 
-The Desk UI should feel like one coherent product.
+The Console UI should feel like one coherent product.
 
 Do not create one-off UI patterns unless the framework needs a new reusable pattern.
 
@@ -129,7 +129,7 @@ Backend:
 - explicit config
 - encrypted credentials
 - app manifests
-- schema-driven documents
+- schema-driven entities and records
 - background jobs
 - observability and auditability
 

@@ -26,13 +26,13 @@ dygo/                                      # Root repository for the dygo framew
     config/                               # Non-secret configuration loading and validation code.
     secrets/                              # Encrypted secrets and credential management.
     db/                                   # Database connectivity and persistence primitives.
-    schema/                               # Metadata schema engine for DocType-style business objects.
-    document/                             # Runtime document model built on top of schemas.
+    entity/                               # Metadata engine for Entity-style business objects.
+    record/                               # Runtime record model built on top of entities.
     permissions/                          # Role, field, row, and action permission engine.
     modules/                              # Module loading and extension system for app-owned features.
     sites/                                # Site and tenant management.
     jobs/                                 # Background jobs, scheduled tasks, and workers.
-    desk/                                 # Backend support for the dygo Desk UI.
+    console/                              # Backend support for the dygo Console UI.
     files/                                # File storage and file access management.
     audit/                                # Audit logs, activity history, and security-relevant events.
     telemetry/                            # Metrics, tracing, health checks, and diagnostics.
@@ -44,51 +44,51 @@ dygo/                                      # Root repository for the dygo framew
     sdk/                                  # Stable SDK surface for app authors.
 
   apps/                                   # First-party and development-time dygo apps.
-    core/                                 # Core app containing system schemas, roles, and required metadata.
+    core/                                 # Core app containing system entities, roles, and required metadata.
       app.yaml                            # App manifest for dependency, version, and install metadata.
-      schemas/                            # System schemas such as User, Role, Site, File, and Installed App.
-      modules/                            # Core module definitions and workspace grouping.
+      entities/                           # System entities such as User, Role, Site, File, and Installed App.
+      modules/                            # Core module definitions and Space grouping.
       permissions/                        # Core permissions and default roles.
       fixtures/                           # Default records required by the core app.
       patches/                            # One-time data patches for the core app.
       migrations/                         # SQL migrations owned by the core app.
-      views/                              # Default forms, lists, and workspace views for core schemas.
+      views/                              # Default forms, lists, and Space views for core entities.
       jobs/                               # Core scheduled jobs and background task definitions.
 
-    desk/                                 # First-party app that provides Desk metadata and UI surfaces.
-      app.yaml                            # App manifest for the Desk app.
-      schemas/                            # Desk-specific schemas such as Workspace, View, Menu, and Report.
-      modules/                            # Desk module definitions.
-      views/                              # Desk forms, lists, and generated operational views.
-      permissions/                        # Permissions for Desk configuration and usage.
+    console/                              # First-party app that provides Console metadata and UI surfaces.
+      app.yaml                            # App manifest for the Console app.
+      entities/                           # Console-specific entities such as Space, View, Menu, and Report.
+      modules/                            # Console module definitions.
+      views/                              # Console forms, lists, and generated operational views.
+      permissions/                        # Permissions for Console configuration and usage.
 
     examples/                             # Example apps used for development and documentation.
       crm/                                # Example CRM app built on top of dygo.
 
   ui/                                     # Frontend projects shipped with dygo.
-    desk/                                 # Vue-based Desk frontend.
-      package.json                        # JavaScript package definition for the Desk UI.
+    console/                              # Vue-based Console frontend.
+      package.json                        # JavaScript package definition for the Console UI.
       vite.config.ts                      # Vite build configuration.
-      index.html                          # Desk frontend HTML entrypoint.
-      src/                                # Vue source code for the Desk UI.
+      index.html                          # Console frontend HTML entrypoint.
+      src/                                # Vue source code for the Console UI.
         app/                              # Vue app bootstrap and providers.
         components/                       # Shared UI components.
-        layouts/                          # Main Desk layouts and shells.
+        layouts/                          # Main Console layouts and shells.
         pages/                            # Route-level pages.
         router/                           # Vue Router configuration.
         stores/                           # Pinia stores or equivalent state management.
         modules/                          # Frontend module loaders and app-specific UI registration.
-        views/                            # Metadata-driven view renderers for forms, lists, reports, and workspaces.
+        views/                            # Metadata-driven view renderers for forms, lists, reports, and Spaces.
         api/                              # API client for dygo backend endpoints.
         styles/                           # Tailwind, tokens, and global styles.
-      public/                             # Static assets for the Desk frontend.
+      public/                             # Static assets for the Console frontend.
 
-  schemas/                                # Framework-level schema definitions outside a specific app when needed.
-    system/                               # System schemas that define dygo's own runtime concepts.
-    examples/                             # Small standalone schema examples for documentation or tests.
+  entities/                               # Framework-level Entity definitions outside a specific app when needed.
+    system/                               # System entities that define dygo's own runtime concepts.
+    examples/                             # Small standalone entity examples for documentation or tests.
 
   views/                                  # Framework-level view definitions outside a specific app when needed.
-    system/                               # System views for framework-owned schemas.
+    system/                               # System views for framework-owned entities.
 
   configs/                                # Safe, commit-friendly configuration files.
     dygo.yaml                             # Base dygo configuration.
@@ -134,7 +134,7 @@ dygo/                                      # Root repository for the dygo framew
     architecture.md                       # High-level architecture and major system boundaries.
     roadmap.md                            # Product and engineering roadmap.
     directory-structure.md                # This file.
-    schema-system.md                      # Schema and document model documentation.
+    entity-system.md                      # Entity and record model documentation.
     module-system.md                      # App/module system documentation.
     app-authoring.md                      # Guide for creating dygo apps.
     sites.md                              # Site and tenancy model documentation.
@@ -146,7 +146,7 @@ dygo/                                      # Root repository for the dygo framew
 
   scripts/                                # Helper scripts for local development and CI.
     dev.sh                                # Starts local development services.
-    build-ui.sh                           # Builds the Vue Desk frontend.
+    build-ui.sh                           # Builds the Vue Console frontend.
     migrate.sh                            # Runs migrations in local/dev contexts.
 
   deploy/                                 # Deployment templates and infrastructure examples.

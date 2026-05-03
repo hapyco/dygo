@@ -12,7 +12,7 @@ Coding agents, generated code, and rapid iteration make it possible to build use
 
 But business software is not disposable.
 
-Business systems hold customer data, financial data, operational history, approvals, documents, files, jobs, logs, permissions, and decisions people rely on. Speed without structure turns those systems into fragile piles of code.
+Business systems hold customer data, financial data, operational history, approvals, records, files, jobs, logs, permissions, and decisions people rely on. Speed without structure turns those systems into fragile piles of code.
 
 dygo exists to keep the speed while adding the structure.
 
@@ -28,7 +28,7 @@ They should not rebuild the same foundation in every project:
 
 - command-line workflows
 - app and module structure
-- schema-driven documents
+- schema-driven entities and records
 - migrations
 - permissions
 - background jobs
@@ -48,7 +48,7 @@ dygo should own the foundation so builders can own the domain.
 
 dygo should not be a box of unrelated libraries.
 
-It should have a point of view about how business software is built: where files go, how modules are installed, how documents are modeled, how permissions are checked, how jobs run, how views are exposed, and how systems are operated.
+It should have a point of view about how business software is built: where files go, how modules are installed, how entities and records are modeled, how permissions are checked, how jobs run, how views are exposed, and how systems are operated.
 
 These opinions are not there to restrict good teams. They are there to remove repeated decisions that do not need to be made again.
 
@@ -60,14 +60,14 @@ When a builder follows the dygo path, things should work with very little ceremo
 
 dygo is metadata-driven, but metadata must not become mystery.
 
-Schemas, fields, views, permissions, jobs, fixtures, reports, workflows, and app manifests should be readable, diffable, and understandable by both humans and agents.
+Entity definitions, fields, views, permissions, jobs, fixtures, reports, workflows, and app manifests should be readable, diffable, and understandable by both humans and agents.
 
 Metadata should answer:
 
 - what exists
 - who can see it
 - who can change it
-- how it appears in the workbench
+- how it appears in the Console
 - how it moves through workflows
 - what jobs or hooks act on it
 
@@ -116,15 +116,15 @@ Silent background behavior creates fear. Observable systems create trust.
 
 If an app installs, a job fails, a report runs, a permission denies access, a file is downloaded, or a workflow changes state, there should be a way to understand what happened.
 
-## 7. The Workbench Is Product UI
+## 7. The Console Is Product UI
 
-The operational workbench is not a temporary admin panel.
+The Console is not a temporary admin panel.
 
 It is where people run the business.
 
 It should feel consistent, predictable, and built for repeated daily work. Lists, forms, filters, reports, files, comments, assignments, notifications, and permissions should share a coherent interaction model.
 
-The workbench should be generated from metadata where possible, but still feel designed.
+The Console should be generated from metadata where possible, but still feel designed.
 
 Internal software deserves good product taste.
 
@@ -173,7 +173,7 @@ That means:
 - clear documentation
 - predictable file structure
 - small focused files
-- explicit schemas
+- explicit entity definitions
 - readable manifests
 - consistent naming
 - repeatable CLI workflows
@@ -189,15 +189,15 @@ Agentic development is not an excuse for messy systems. It is a reason to make t
 A new builder should be able to understand the basic dygo loop quickly:
 
 ```sh
-dygo new app crm
-dygo generate document Lead
+dygo app new crm
+dygo generate entity Lead
 dygo migrate
 dygo serve
 ```
 
 The exact commands may evolve, but the feeling should not.
 
-The first success should be small, fast, and real: define something meaningful, run the app, see it in the workbench, use the API, and know where the code lives.
+The first success should be small, fast, and real: define something meaningful, run the app, see it in the Console, use the API, and know where the code lives.
 
 Frameworks people love make users feel oriented.
 

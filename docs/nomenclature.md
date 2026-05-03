@@ -4,6 +4,18 @@ dygo should use one vocabulary across code, docs, CLI output, generated metadata
 
 The terms below are the source of truth unless a future design note explicitly changes them.
 
+## Usage Rules
+
+Use **Console**, not Desk.
+
+Use **Space**, not Workspace.
+
+Use **Entity**, not DocType.
+
+Use **Record**, not Document, when referring to saved business data.
+
+Technical implementation details may still use words such as document when they describe a file format, YAML payload, or parser concept rather than dygo business data.
+
 ## Core Terms
 
 | Concept | dygo term |

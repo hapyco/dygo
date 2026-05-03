@@ -32,7 +32,7 @@ That means dygo should provide strong defaults and built-in capabilities for:
 
 - CLI workflows
 - app/module installation
-- schema-driven documents
+- schema-driven entities and records
 - permissions and access control
 - observability
 - logging
@@ -45,7 +45,7 @@ That means dygo should provide strong defaults and built-in capabilities for:
 - configuration
 - encrypted credentials
 - analytics-ready data structures
-- consistent Desk UI patterns
+- consistent Console UI patterns
 - secure APIs
 - developer and agent documentation
 
@@ -81,7 +81,7 @@ That includes:
 - well-documented CLI commands
 - predictable project structure
 - small, focused files
-- explicit schemas and manifests
+- explicit entity definitions and manifests
 - strong naming conventions
 - examples that agents can copy safely
 - repeatable app-generation workflows
