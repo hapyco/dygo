@@ -49,6 +49,11 @@ func TestRun(t *testing.T) {
 			wantStdout: "0 entities are valid",
 		},
 		{
+			name:       "prints no apps message for entity list",
+			args:       []string{"entities", "list"},
+			wantStdout: "No apps found.",
+		},
+		{
 			name:    "rejects unknown command",
 			args:    []string{"missing"},
 			wantErr: true,
@@ -204,6 +209,44 @@ fields:
 	}
 	if stdout.String() != "2 entities are valid\n" {
 		t.Fatalf("entities validate stdout = %q, want success count", stdout.String())
+	}
+}
+
+func TestEntitiesListCommand(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	writeCLIApp(t, filepath.Join(root, "apps", "core"), "core")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company.yml"), `
+name: company
+label: Company
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead.yml"), `
+name: lead
+label: Lead
+fields:
+  - name: company
+    label: Company
+    type: link
+    options:
+      entity: company
+`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"entities", "list"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(entities list) error = %v, want nil", err)
+	}
+
+	want := "core\n  (no entities)\nsales\n  - company\n  - lead\n"
+	if stdout.String() != want {
+		t.Fatalf("entities list stdout = %q, want %q", stdout.String(), want)
 	}
 }
 

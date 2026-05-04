@@ -56,6 +56,7 @@ List discovered apps from the current project:
 ```sh
 go run ./cmd/dygo apps list
 go run ./cmd/dygo apps validate
+go run ./cmd/dygo entities list
 go run ./cmd/dygo entities validate
 ```
 

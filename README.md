@@ -25,6 +25,7 @@ go run ./cmd/dygo version
 go run ./cmd/dygo serve
 go run ./cmd/dygo apps list
 go run ./cmd/dygo apps validate
+go run ./cmd/dygo entities list
 go run ./cmd/dygo entities validate
 go run ./cmd/dygo secrets --help
 ```
