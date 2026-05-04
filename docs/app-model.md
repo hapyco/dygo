@@ -83,6 +83,8 @@ Business apps should not need default `views`, `spaces`, `reports`, or `migratio
 
 Each app is described by an `app.yml` manifest. See [App Manifest](app-manifest.md) for the v1 schema.
 
+Entity files live in the app's manifest-defined `entities` directory. Entity names are unique within the owning app for v1, and each Entity's `module` must be declared in the owning app manifest.
+
 ## Install Locations
 
 Framework repo `apps/` contains first-party apps shipped by dygo.

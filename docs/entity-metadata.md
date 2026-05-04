@@ -2,7 +2,7 @@
 
 Entities define business object structure in dygo.
 
-The first Entity parser is metadata-only. It validates one Entity file at a time and does not create database tables, records, permissions, Studio views, or migrations.
+The first Entity catalog is metadata-only. It loads Entity files from discovered apps and does not create database tables, records, permissions, Studio views, or migrations.
 
 ## Example
 
@@ -76,6 +76,16 @@ json
 
 Field types are registered in Go. App-defined field types in YAML are out of scope for v1.
 
-## Follow-Up
+## App Discovery
 
-Issue `#19` will load Entity definitions from discovered apps. This first parser only validates individual Entity files.
+Entity files belong to an app's manifest-defined `entities` directory. By default, that directory is:
+
+```txt
+entities
+```
+
+dygo loads regular `*.yml` files from the immediate directory only. Missing `entities` directories are allowed for apps that do not define Entities yet.
+
+Entity names are unique within the owning app for v1. Two different apps may use the same Entity name.
+
+An Entity's `module` must be declared in the owning app's `app.yml`.
