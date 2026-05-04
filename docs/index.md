@@ -2,7 +2,7 @@
 
 dygo is an opinionated Go framework for building serious business software.
 
-It is built for business processes, internal operating systems, enterprise applications, and workflow-heavy products where permissions, audits, observability, migrations, secure configuration, app modules, schema-driven entities, jobs, and a consistent Studio UI matter from the beginning.
+It is built for business processes, internal operating systems, enterprise applications, and workflow-heavy products where permissions, audits, observability, migrations, secure configuration, apps, schema-driven entities, jobs, and a consistent Studio UI matter from the beginning.
 
 These docs live in the repository so they are versioned with code, reviewed in PRs, and easy for coding agents to read.
 

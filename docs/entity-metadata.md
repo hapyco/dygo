@@ -9,7 +9,6 @@ The first Entity catalog is metadata-only. It loads Entity files from discovered
 ```yaml
 name: lead
 label: Lead
-module: crm
 description: Sales lead
 fields:
   - name: full-name
@@ -41,9 +40,9 @@ fields:
 
 ## Rules
 
-Entity `name`, `label`, `module`, and at least one field are required.
+Entity `name`, `label`, and at least one field are required.
 
-Entity names, module names, field names, and field type names use kebab-case.
+Entity names, field names, and field type names use kebab-case.
 
 Field `name`, `label`, and `type` are required.
 
@@ -87,5 +86,3 @@ entities
 dygo loads regular `*.yml` files from the immediate directory only. Missing `entities` directories are allowed for apps that do not define Entities yet.
 
 Entity names are unique within the owning app for v1. Two different apps may use the same Entity name.
-
-An Entity's `module` must be declared in the owning app's `app.yml`.

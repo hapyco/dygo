@@ -17,9 +17,6 @@ version: 0.1.0
 description: Customer relationship management
 dependencies:
   - core
-modules:
-  - name: crm
-    label: CRM
 `)
 
 	app, err := LoadFile(path)
@@ -209,20 +206,6 @@ dependencies:
   - core
 `,
 			wantError: "duplicate dependency",
-		},
-		{
-			name: "duplicate module",
-			body: `
-name: dygo-crm
-label: CRM
-version: 0.1.0
-modules:
-  - name: crm
-    label: CRM
-  - name: crm
-    label: CRM Duplicate
-`,
-			wantError: "duplicate module",
 		},
 		{
 			name: "absolute path",

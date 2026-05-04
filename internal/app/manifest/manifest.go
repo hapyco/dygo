@@ -29,14 +29,7 @@ type Manifest struct {
 	Version      string   `yaml:"version"`
 	Description  string   `yaml:"description,omitempty"`
 	Dependencies []string `yaml:"dependencies,omitempty"`
-	Modules      []Module `yaml:"modules,omitempty"`
 	Paths        Paths    `yaml:"paths,omitempty"`
-}
-
-// Module describes one app-owned module.
-type Module struct {
-	Name  string `yaml:"name"`
-	Label string `yaml:"label"`
 }
 
 // Paths contains app-relative directories for app-owned metadata and behavior.
@@ -218,22 +211,6 @@ func (m Manifest) Validate() error {
 			problems = append(problems, fmt.Sprintf("duplicate dependency %q", dependency))
 		}
 		seenDependencies[dependency] = struct{}{}
-	}
-
-	seenModules := map[string]struct{}{}
-	for _, module := range m.Modules {
-		if strings.TrimSpace(module.Name) == "" {
-			problems = append(problems, "module name is required")
-		} else if !isKebabName(module.Name) {
-			problems = append(problems, fmt.Sprintf("module name %q must be kebab-case", module.Name))
-		}
-		if strings.TrimSpace(module.Label) == "" {
-			problems = append(problems, fmt.Sprintf("module %q label is required", module.Name))
-		}
-		if _, ok := seenModules[module.Name]; ok {
-			problems = append(problems, fmt.Sprintf("duplicate module %q", module.Name))
-		}
-		seenModules[module.Name] = struct{}{}
 	}
 
 	validatePaths(m.Paths.WithDefaults(), &problems)

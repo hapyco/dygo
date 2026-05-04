@@ -14,9 +14,9 @@ func TestValidateLoadsEntitiesFromManifestPath(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{Entities: "metadata/entities"}, manifest.Module{Name: "crm", Label: "CRM"})
+	app := loadedApp(root, "sales", "sales", manifest.Paths{Entities: "metadata/entities"})
 	entityPath := filepath.Join(app.Dir, "metadata", "entities", "lead.yml")
-	writeEntity(t, entityPath, "lead", "crm")
+	writeEntity(t, entityPath, "lead")
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -44,7 +44,7 @@ func TestValidateLoadsEntitiesFromManifestPath(t *testing.T) {
 func TestValidateAllowsMissingEntitiesDirectory(t *testing.T) {
 	t.Parallel()
 
-	app := loadedApp(t.TempDir(), "sales", "sales", manifest.Paths{}, manifest.Module{Name: "crm", Label: "CRM"})
+	app := loadedApp(t.TempDir(), "sales", "sales", manifest.Paths{})
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -59,11 +59,11 @@ func TestValidateReturnsDeterministicOrdering(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	sales := loadedApp(root, "sales", "sales", manifest.Paths{}, manifest.Module{Name: "crm", Label: "CRM"})
-	core := loadedApp(root, "core", "core", manifest.Paths{}, manifest.Module{Name: "core", Label: "Core"})
-	writeEntity(t, filepath.Join(sales.Dir, "entities", "z-lead.yml"), "lead", "crm")
-	writeEntity(t, filepath.Join(sales.Dir, "entities", "a-company.yml"), "company", "crm")
-	writeEntity(t, filepath.Join(core.Dir, "entities", "user.yml"), "user", "core")
+	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
+	core := loadedApp(root, "core", "core", manifest.Paths{})
+	writeEntity(t, filepath.Join(sales.Dir, "entities", "z-lead.yml"), "lead")
+	writeEntity(t, filepath.Join(sales.Dir, "entities", "a-company.yml"), "company")
+	writeEntity(t, filepath.Join(core.Dir, "entities", "user.yml"), "user")
 
 	entities, err := New([]manifest.LoadedApp{sales, core}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -81,11 +81,10 @@ func TestValidateRejectsInvalidEntityWithAppAndPathContext(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{}, manifest.Module{Name: "crm", Label: "CRM"})
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
 	badPath := filepath.Join(app.Dir, "entities", "bad.yml")
 	writeFile(t, badPath, `
 name: bad
-module: crm
 fields:
   - name: title
     label: Title
@@ -107,9 +106,9 @@ func TestValidateRejectsDuplicateEntityNamesWithinApp(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{}, manifest.Module{Name: "crm", Label: "CRM"})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead", "crm")
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead-copy.yml"), "lead", "crm")
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead-copy.yml"), "lead")
 
 	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err == nil {
@@ -124,10 +123,10 @@ func TestValidateAllowsDuplicateEntityNamesAcrossApps(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	sales := loadedApp(root, "sales", "sales", manifest.Paths{}, manifest.Module{Name: "crm", Label: "CRM"})
-	support := loadedApp(root, "support", "support", manifest.Paths{}, manifest.Module{Name: "support", Label: "Support"})
-	writeEntity(t, filepath.Join(sales.Dir, "entities", "customer.yml"), "customer", "crm")
-	writeEntity(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer", "support")
+	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
+	support := loadedApp(root, "support", "support", manifest.Paths{})
+	writeEntity(t, filepath.Join(sales.Dir, "entities", "customer.yml"), "customer")
+	writeEntity(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer")
 
 	entities, err := New([]manifest.LoadedApp{sales, support}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -138,34 +137,15 @@ func TestValidateAllowsDuplicateEntityNamesAcrossApps(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsUndeclaredModule(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{}, manifest.Module{Name: "sales", Label: "Sales"})
-	entityPath := filepath.Join(app.Dir, "entities", "lead.yml")
-	writeEntity(t, entityPath, "lead", "crm")
-
-	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
-	if err == nil {
-		t.Fatal("Validate() error = nil, want undeclared module error")
-	}
-	for _, want := range []string{`app "sales"`, `entity "lead"`, entityPath, `undeclared module "crm"`} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
-		}
-	}
-}
-
 func TestDiscoverIgnoresNonYAMLFilesAndNestedDirectories(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{}, manifest.Module{Name: "crm", Label: "CRM"})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead", "crm")
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
 	writeFile(t, filepath.Join(app.Dir, "entities", "ignored.yaml"), "not: valid: yaml")
 	writeFile(t, filepath.Join(app.Dir, "entities", "notes.txt"), "not an entity")
-	writeEntity(t, filepath.Join(app.Dir, "entities", "nested", "bad.yml"), "bad", "unknown")
+	writeEntity(t, filepath.Join(app.Dir, "entities", "nested", "bad.yml"), "bad")
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -176,7 +156,7 @@ func TestDiscoverIgnoresNonYAMLFilesAndNestedDirectories(t *testing.T) {
 	}
 }
 
-func loadedApp(root string, dirName string, name string, paths manifest.Paths, modules ...manifest.Module) manifest.LoadedApp {
+func loadedApp(root string, dirName string, name string, paths manifest.Paths) manifest.LoadedApp {
 	dir := filepath.Join(root, dirName)
 	return manifest.LoadedApp{
 		Dir:          dir,
@@ -185,19 +165,17 @@ func loadedApp(root string, dirName string, name string, paths manifest.Paths, m
 			Name:    name,
 			Label:   labelForName(name),
 			Version: "0.1.0",
-			Modules: modules,
 			Paths:   paths.WithDefaults(),
 		},
 	}
 }
 
-func writeEntity(t *testing.T, path string, name string, module string) {
+func writeEntity(t *testing.T, path string, name string) {
 	t.Helper()
 
 	writeFile(t, path, `
 name: `+name+`
 label: `+labelForName(name)+`
-module: `+module+`
 fields:
   - name: title
     label: Title

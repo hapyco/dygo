@@ -61,7 +61,6 @@ func TestDecodeWithCustomFieldType(t *testing.T) {
 	entity, err := Decode([]byte(`
 name: review
 label: Review
-module: crm
 fields:
   - name: score
     label: Score
@@ -95,7 +94,6 @@ description: Missing required fields
 			body: `
 name: BadName
 label: Bad
-module: crm
 fields:
   - name: title
     label: Title
@@ -104,24 +102,10 @@ fields:
 			wantError: "must be kebab-case",
 		},
 		{
-			name: "invalid module name",
-			body: `
-name: lead
-label: Lead
-module: sales_ops
-fields:
-  - name: title
-    label: Title
-    type: text
-`,
-			wantError: "module",
-		},
-		{
 			name: "missing fields",
 			body: `
 name: lead
 label: Lead
-module: crm
 `,
 			wantError: "at least one field",
 		},
@@ -130,7 +114,6 @@ module: crm
 			body: `
 name: lead
 label: Lead
-module: crm
 fields:
   - name: title
     label: Title
@@ -146,7 +129,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-module: crm
 fields:
   - name: title
     label: Title
@@ -159,7 +141,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-module: crm
 unknown: true
 fields:
   - name: title
@@ -174,7 +155,6 @@ fields:
 name: lead
 name: duplicate
 label: Lead
-module: crm
 fields:
   - name: title
     label: Title
@@ -187,7 +167,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-module: crm
 fields:
   - name: status
     label: Status
@@ -200,7 +179,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-module: crm
 fields:
   - name: company
     label: Company
@@ -213,7 +191,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-module: crm
 fields:
   - name: contacts
     label: Contacts
@@ -228,7 +205,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-module: crm
 fields:
   - name: details
     label: Details
@@ -242,7 +218,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-module: crm
 fields:
   - name: payload
     label: Payload
@@ -273,7 +248,6 @@ func validEntityYAML() string {
 	return strings.TrimSpace(`
 name: lead
 label: Lead
-module: crm
 description: Sales lead
 fields:
   - name: full-name

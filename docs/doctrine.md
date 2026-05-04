@@ -27,7 +27,7 @@ They should define customers, invoices, leads, tickets, work orders, approvals, 
 They should not rebuild the same foundation in every project:
 
 - command-line workflows
-- app and module structure
+- app structure
 - schema-driven entities and records
 - migrations
 - permissions
@@ -48,7 +48,7 @@ dygo should own the foundation so builders can own the domain.
 
 dygo should not be a box of unrelated libraries.
 
-It should have a point of view about how business software is built: where files go, how modules are installed, how entities and records are modeled, how permissions are checked, how jobs run, how views are exposed, and how systems are operated.
+It should have a point of view about how business software is built: where files go, how apps are installed, how entities and records are modeled, how permissions are checked, how jobs run, how views are exposed, and how systems are operated.
 
 These opinions are not there to restrict good teams. They are there to remove repeated decisions that do not need to be made again.
 
@@ -144,7 +144,7 @@ The framework should be powerful because its pieces fit together, not because ev
 
 Framework code should provide reusable platform capability.
 
-Business-specific behavior belongs in apps and modules built on top of dygo.
+Business-specific behavior belongs in apps built on top of dygo.
 
 This boundary matters.
 

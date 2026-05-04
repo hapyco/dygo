@@ -15,7 +15,6 @@ import (
 type Entity struct {
 	Name        string  `yaml:"name"`
 	Label       string  `yaml:"label"`
-	Module      string  `yaml:"module"`
 	Description string  `yaml:"description,omitempty"`
 	Fields      []Field `yaml:"fields"`
 }
@@ -82,11 +81,6 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	}
 	if strings.TrimSpace(e.Label) == "" {
 		problems = append(problems, "label is required")
-	}
-	if strings.TrimSpace(e.Module) == "" {
-		problems = append(problems, "module is required")
-	} else if !fieldtype.IsName(e.Module) {
-		problems = append(problems, fmt.Sprintf("module %q must be kebab-case", e.Module))
 	}
 	if len(e.Fields) == 0 {
 		problems = append(problems, "at least one field is required")

@@ -59,7 +59,7 @@ func (c Catalog) Validate() ([]LoadedEntity, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCatalog(c.apps, entities); err != nil {
+	if err := validateCatalog(entities); err != nil {
 		return nil, err
 	}
 	return entities, nil
@@ -105,16 +105,7 @@ func (c Catalog) discoverApp(app manifest.LoadedApp) ([]LoadedEntity, error) {
 	return entities, nil
 }
 
-func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
-	moduleNames := map[string]map[string]struct{}{}
-	for _, app := range apps {
-		modules := map[string]struct{}{}
-		for _, module := range app.Manifest.Modules {
-			modules[module.Name] = struct{}{}
-		}
-		moduleNames[app.Manifest.Name] = modules
-	}
-
+func validateCatalog(entities []LoadedEntity) error {
 	var problems []string
 	seen := map[string]string{}
 	for _, entity := range entities {
@@ -123,11 +114,6 @@ func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
 			problems = append(problems, fmt.Sprintf("app %q has duplicate entity %q in %s and %s", entity.AppName, entity.Entity.Name, previousPath, entity.Path))
 		} else {
 			seen[key] = entity.Path
-		}
-
-		modules := moduleNames[entity.AppName]
-		if _, ok := modules[entity.Entity.Module]; !ok {
-			problems = append(problems, fmt.Sprintf("app %q entity %q in %s uses undeclared module %q", entity.AppName, entity.Entity.Name, entity.Path, entity.Entity.Module))
 		}
 	}
 

@@ -2,7 +2,7 @@
 
 Every dygo app is described by an `app.yml` file at the app root.
 
-The manifest is intentionally small in v1. It identifies the app, names its dependencies, lists its modules, and records the standard app-relative paths dygo should read later.
+The manifest is intentionally small in v1. It identifies the app, names its dependencies, and records the standard app-relative paths dygo should read later.
 
 ## Example
 
@@ -13,9 +13,6 @@ version: 0.1.0
 description: Customer relationship management
 dependencies:
   - core
-modules:
-  - name: crm
-    label: CRM
 paths:
   entities: entities
   permissions: permissions
@@ -37,8 +34,6 @@ paths:
 `description` is optional.
 
 `dependencies` is optional and contains app names only. Version constraints and remote source references are intentionally out of scope for v1.
-
-`modules` is optional. Module names must use kebab-case.
 
 `paths` is optional. Omitted paths use dygo's standard app folder names:
 

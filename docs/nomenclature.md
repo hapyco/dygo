@@ -26,7 +26,6 @@ Technical implementation details may still use words such as document when they 
 | Saved instance of an Entity | Record |
 | Repeating structured data inside a Record | Child Table |
 | One item inside a Child Table | Row |
-| Group of related features/entities | Module |
 | Installable package | App |
 | Field inside an Entity | Field |
 | Search/filter/sort state | Saved View |
@@ -38,7 +37,7 @@ Technical implementation details may still use words such as document when they 
 | Background execution | Job |
 | Recurring job definition | Schedule |
 | Business state process | Workflow |
-| App/module install history | Ledger |
+| App install/change history | Ledger |
 | Human-friendly timeline | Activity Log |
 | Compliance/security-grade history | Audit Log |
 | File attached to a Record | Attachment |
@@ -51,10 +50,6 @@ Technical implementation details may still use words such as document when they 
 The Studio contains Spaces.
 
 A Space organizes work around a business function.
-
-An App contains Modules.
-
-A Module contains Entities.
 
 An Entity defines Fields, Permissions, Hooks, and Child Tables.
 
@@ -75,7 +70,6 @@ dygo is not trying to clone Frappe, but some concepts map cleanly enough to make
 | Desk | Studio |
 | Workspace | Space |
 | Child Table | Child Table |
-| Module | Module |
 | App | App |
 | Field | Field |
 | Report | Report |

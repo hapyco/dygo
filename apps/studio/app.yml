@@ -4,6 +4,3 @@ version: 0.1.0
 description: First-party UI app for dygo operators, builders, and agents.
 dependencies:
   - core
-modules:
-  - name: studio
-    label: Studio

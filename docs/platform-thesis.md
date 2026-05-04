@@ -31,7 +31,7 @@ The framework should handle everything else.
 That means dygo should provide strong defaults and built-in capabilities for:
 
 - CLI workflows
-- app/module installation
+- app installation
 - schema-driven entities and records
 - permissions and access control
 - observability
@@ -59,7 +59,7 @@ It should provide safe boundaries around:
 
 - how data is modeled
 - how permissions are enforced
-- how modules are installed
+- how apps are installed
 - how jobs are scheduled
 - how logs and audit trails are captured
 - how apps expose views and workflows
@@ -128,7 +128,7 @@ Implementers should be able to build full operating systems for businesses using
 
 That means not just isolated apps, but connected systems with:
 
-- modules
+- apps
 - records
 - workflows
 - roles

@@ -18,7 +18,7 @@ Builders should focus on business logic.
 
 dygo should handle the foundation:
 
-- app/module structure
+- app structure
 - entities and records
 - permissions
 - jobs
@@ -72,7 +72,7 @@ When implementing features, prefer:
 
 Framework code should provide reusable platform capability.
 
-Business-specific behavior should live in apps/modules built on top of dygo.
+Business-specific behavior should live in apps built on top of dygo.
 
 ### 2. Framework internals stay internal
 
