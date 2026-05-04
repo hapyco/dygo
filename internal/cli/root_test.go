@@ -39,6 +39,11 @@ func TestRun(t *testing.T) {
 			wantStdout: "No apps found.",
 		},
 		{
+			name:       "validates empty app set",
+			args:       []string{"apps", "validate"},
+			wantStdout: "0 apps are valid",
+		},
+		{
 			name:    "rejects unknown command",
 			args:    []string{"missing"},
 			wantErr: true,
@@ -102,6 +107,63 @@ func TestAppsListCommand(t *testing.T) {
 		if !strings.Contains(output, want) {
 			t.Fatalf("apps list stdout = %q, want substring %q", output, want)
 		}
+	}
+}
+
+func TestAppsValidateCommand(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	if err := os.MkdirAll(filepath.Join(root, ".dygo", "apps", "core"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.dygo/apps/core) error = %v", err)
+	}
+	corePath := filepath.Join(root, ".dygo", "apps", "core", "app.yml")
+	core := []byte("name: core\nlabel: Core\nversion: 0.1.0\n")
+	if err := os.WriteFile(corePath, core, 0o644); err != nil {
+		t.Fatalf("WriteFile(core app.yml) error = %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(root, "apps", "sales"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(apps/sales) error = %v", err)
+	}
+	manifestPath := filepath.Join(root, "apps", "sales", "app.yml")
+	manifest := []byte("name: sales\nlabel: Sales\nversion: 0.1.0\ndependencies:\n  - core\n")
+	if err := os.WriteFile(manifestPath, manifest, 0o644); err != nil {
+		t.Fatalf("WriteFile(app.yml) error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"apps", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(apps validate) error = %v, want nil", err)
+	}
+	if stdout.String() != "2 apps are valid\n" {
+		t.Fatalf("apps validate stdout = %q, want success count", stdout.String())
+	}
+}
+
+func TestAppsValidateCommandRejectsInvalidAppSet(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	if err := os.MkdirAll(filepath.Join(root, "apps", "sales"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(apps/sales) error = %v", err)
+	}
+	manifestPath := filepath.Join(root, "apps", "sales", "app.yml")
+	manifest := []byte("name: sales\nlabel: Sales\nversion: 0.1.0\ndependencies:\n  - core\n")
+	if err := os.WriteFile(manifestPath, manifest, 0o644); err != nil {
+		t.Fatalf("WriteFile(app.yml) error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"apps", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(apps validate) error = nil, want missing dependency error")
+	}
+	if !strings.Contains(err.Error(), "unknown app") {
+		t.Fatalf("Run(apps validate) error = %q, want unknown app", err.Error())
 	}
 }
 

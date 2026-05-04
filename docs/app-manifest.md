@@ -60,9 +60,10 @@ List discovered apps from the current project:
 
 ```sh
 go run ./cmd/dygo apps list
+go run ./cmd/dygo apps validate
 ```
 
-The command reads app manifests from `apps/` and `.dygo/apps/`.
+The commands read app manifests from `apps/` and `.dygo/apps/`.
 
 ## V1 Boundaries
 

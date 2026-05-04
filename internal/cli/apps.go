@@ -3,11 +3,9 @@ package cli
 import (
 	"fmt"
 	"io"
-	"path/filepath"
-	"sort"
 	"text/tabwriter"
 
-	"github.com/dygo-dev/dygo/internal/app/manifest"
+	"github.com/dygo-dev/dygo/internal/app/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +20,7 @@ func newAppsCommand(stdout io.Writer) *cobra.Command {
 	}
 
 	cmd.AddCommand(newAppsListCommand(stdout))
+	cmd.AddCommand(newAppsValidateCommand(stdout))
 
 	return cmd
 }
@@ -32,11 +31,8 @@ func newAppsListCommand(stdout io.Writer) *cobra.Command {
 		Short: "List discovered dygo apps",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			apps, err := discoverApps([]string{filepath.Join(".dygo", "apps"), "apps"})
+			apps, err := registry.New(".").Validate()
 			if err != nil {
-				return fmt.Errorf("discover apps: %w", err)
-			}
-			if err := manifest.ValidateSet(apps); err != nil {
 				return fmt.Errorf("validate apps: %w", err)
 			}
 			if len(apps) == 0 {
@@ -64,19 +60,20 @@ func newAppsListCommand(stdout io.Writer) *cobra.Command {
 	}
 }
 
-func discoverApps(roots []string) ([]manifest.LoadedApp, error) {
-	var apps []manifest.LoadedApp
-	for _, root := range roots {
-		discovered, err := manifest.Discover(root)
-		if err != nil {
-			return nil, err
-		}
-		apps = append(apps, discovered...)
+func newAppsValidateCommand(stdout io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "validate",
+		Short: "Validate discovered dygo apps",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			apps, err := registry.New(".").Validate()
+			if err != nil {
+				return fmt.Errorf("validate apps: %w", err)
+			}
+			if _, err := fmt.Fprintf(stdout, "%d apps are valid\n", len(apps)); err != nil {
+				return fmt.Errorf("write apps validation output: %w", err)
+			}
+			return nil
+		},
 	}
-
-	sort.SliceStable(apps, func(i, j int) bool {
-		return apps[i].Manifest.Name < apps[j].Manifest.Name
-	})
-
-	return apps, nil
 }
