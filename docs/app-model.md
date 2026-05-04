@@ -23,6 +23,8 @@ It owns:
 - core fixtures
 - core patches
 
+The framework repo includes the initial Core app manifest at `apps/core/app.yml`.
+
 `apps/studio` is the first-party UI app.
 
 It owns:

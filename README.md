@@ -23,6 +23,7 @@ The current repository contains the first Go module, CLI entrypoint, config defa
 go run ./cmd/dygo
 go run ./cmd/dygo version
 go run ./cmd/dygo serve
+go run ./cmd/dygo apps list
 go run ./cmd/dygo secrets --help
 ```
 

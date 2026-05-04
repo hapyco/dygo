@@ -34,6 +34,11 @@ func TestRun(t *testing.T) {
 			wantStdout: "127.0.0.1:6790",
 		},
 		{
+			name:       "prints no apps message",
+			args:       []string{"apps", "list"},
+			wantStdout: "No apps found.",
+		},
+		{
 			name:    "rejects unknown command",
 			args:    []string{"missing"},
 			wantErr: true,
@@ -60,6 +65,43 @@ func TestRun(t *testing.T) {
 				t.Fatalf("stderr = %q, want substring %q", stderr.String(), tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestAppsListCommand(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	if err := os.MkdirAll(filepath.Join(root, ".dygo", "apps", "core"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.dygo/apps/core) error = %v", err)
+	}
+	corePath := filepath.Join(root, ".dygo", "apps", "core", "app.yml")
+	core := []byte("name: core\nlabel: Core\nversion: 0.1.0\n")
+	if err := os.WriteFile(corePath, core, 0o644); err != nil {
+		t.Fatalf("WriteFile(core app.yml) error = %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(root, "apps", "sales"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(apps/sales) error = %v", err)
+	}
+	manifestPath := filepath.Join(root, "apps", "sales", "app.yml")
+	manifest := []byte("name: sales\nlabel: Sales\nversion: 0.1.0\ndependencies:\n  - core\n")
+	if err := os.WriteFile(manifestPath, manifest, 0o644); err != nil {
+		t.Fatalf("WriteFile(app.yml) error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"apps", "list"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(apps list) error = %v, want nil", err)
+	}
+
+	output := stdout.String()
+	for _, want := range []string{"NAME", "VERSION", "LABEL", "core", "Core", "sales", "Sales", "0.1.0"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("apps list stdout = %q, want substring %q", output, want)
+		}
 	}
 }
 

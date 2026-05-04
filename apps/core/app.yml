@@ -1,0 +1,7 @@
+name: core
+label: Core
+version: 0.1.0
+description: Required system app for dygo platform foundations.
+modules:
+  - name: core
+    label: Core

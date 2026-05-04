@@ -56,6 +56,14 @@ Path values must be relative, clean, use forward slashes, and stay inside the ap
 
 The app root directory should usually match the manifest `name`.
 
+List discovered apps from the current project:
+
+```sh
+go run ./cmd/dygo apps list
+```
+
+The command reads app manifests from `apps/` and `.dygo/apps/`.
+
 ## V1 Boundaries
 
 The app manifest loader is internal for now.
