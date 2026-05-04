@@ -6,6 +6,8 @@ It is where operators run the business, builders configure the system, and agent
 
 Studio is a first-party dygo app, not a temporary admin panel. It should feel like one coherent product across records, lists, forms, saved views, jobs, audit logs, settings, and spaces.
 
+The framework repo includes the initial Studio app manifest at `apps/studio/app.yml`. The first scaffold defines the app contract only; UI source and runtime behavior come later.
+
 ## Mental Model
 
 The Studio contains Spaces.

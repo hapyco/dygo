@@ -45,6 +45,8 @@ It owns:
 - metadata API client
 - frontend stores
 
+The framework repo includes the initial Studio app manifest at `apps/studio/app.yml`.
+
 ## Business Apps
 
 Business apps define metadata and behavior for a project.
