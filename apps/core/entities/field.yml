@@ -1,0 +1,43 @@
+name: field
+label: Field
+description: Field definition belonging to an Entity.
+fields:
+  - name: entity
+    label: Entity
+    type: link
+    required: true
+    options:
+      entity: entity
+
+  - name: name
+    label: Name
+    type: text
+    required: true
+
+  - name: label
+    label: Label
+    type: text
+    required: true
+
+  - name: type
+    label: Type
+    type: text
+    required: true
+
+  - name: required
+    label: Required
+    type: boolean
+    default: false
+
+  - name: unique
+    label: Unique
+    type: boolean
+    default: false
+
+  - name: position
+    label: Position
+    type: int
+
+  - name: options
+    label: Options
+    type: json

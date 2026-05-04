@@ -25,6 +25,9 @@ func TestDecode(t *testing.T) {
 	if entity.Fields[1].Options.Values[0] != "New" {
 		t.Fatalf("Decode().Fields[1].Options.Values[0] = %q, want New", entity.Fields[1].Options.Values[0])
 	}
+	if entity.Fields[1].Default.Value != "New" {
+		t.Fatalf("Decode().Fields[1].Default.Value = %q, want New", entity.Fields[1].Default.Value)
+	}
 }
 
 func TestLoadFile(t *testing.T) {
@@ -257,6 +260,7 @@ fields:
   - name: status
     label: Status
     type: select
+    default: New
     options:
       values:
         - New

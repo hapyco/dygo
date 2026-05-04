@@ -2,6 +2,8 @@ package catalog
 
 import (
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	appregistry "github.com/dygo-dev/dygo/internal/app/registry"
@@ -15,7 +17,31 @@ func TestRepositoryEntitiesValidate(t *testing.T) {
 		t.Fatalf("app registry Validate(repository) error = %v, want nil", err)
 	}
 
-	if _, err := New(apps, fieldtype.DefaultRegistry()).Validate(); err != nil {
+	entities, err := New(apps, fieldtype.DefaultRegistry()).Validate()
+	if err != nil {
 		t.Fatalf("entity catalog Validate(repository) error = %v, want nil", err)
+	}
+
+	var coreEntities []string
+	for _, entity := range entities {
+		if entity.AppName != "core" {
+			continue
+		}
+		coreEntities = append(coreEntities, entity.Entity.Name)
+	}
+	sort.Strings(coreEntities)
+
+	want := []string{
+		"app",
+		"entity",
+		"field",
+		"permission",
+		"role",
+		"session",
+		"user",
+		"user-role",
+	}
+	if strings.Join(coreEntities, ",") != strings.Join(want, ",") {
+		t.Fatalf("core entities = %#v, want %#v", coreEntities, want)
 	}
 }

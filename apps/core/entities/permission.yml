@@ -1,0 +1,47 @@
+name: permission
+label: Permission
+description: Role access rule for an Entity.
+fields:
+  - name: entity
+    label: Entity
+    type: link
+    required: true
+    options:
+      entity: entity
+
+  - name: role
+    label: Role
+    type: link
+    required: true
+    options:
+      entity: role
+
+  - name: read
+    label: Read
+    type: boolean
+    default: false
+
+  - name: create
+    label: Create
+    type: boolean
+    default: false
+
+  - name: update
+    label: Update
+    type: boolean
+    default: false
+
+  - name: delete
+    label: Delete
+    type: boolean
+    default: false
+
+  - name: export
+    label: Export
+    type: boolean
+    default: false
+
+  - name: print
+    label: Print
+    type: boolean
+    default: false

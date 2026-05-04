@@ -1,0 +1,33 @@
+name: app
+label: App
+description: Runtime state for an installed App.
+fields:
+  - name: name
+    label: Name
+    type: text
+    required: true
+    unique: true
+
+  - name: label
+    label: Label
+    type: text
+    required: true
+
+  - name: version
+    label: Version
+    type: text
+    required: true
+
+  - name: status
+    label: Status
+    type: select
+    required: true
+    default: active
+    options:
+      values:
+        - installed
+        - active
+        - disabled
+        - pending-install
+        - pending-upgrade
+        - failed

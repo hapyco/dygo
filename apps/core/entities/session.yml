@@ -1,0 +1,34 @@
+name: session
+label: Session
+description: Login session metadata.
+fields:
+  - name: user
+    label: User
+    type: link
+    required: true
+    options:
+      entity: user
+
+  - name: status
+    label: Status
+    type: select
+    required: true
+    default: active
+    options:
+      values:
+        - active
+        - expired
+        - revoked
+
+  - name: started-at
+    label: Started At
+    type: datetime
+    required: true
+
+  - name: expires-at
+    label: Expires At
+    type: datetime
+
+  - name: last-seen-at
+    label: Last Seen At
+    type: datetime

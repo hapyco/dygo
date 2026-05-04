@@ -1,0 +1,17 @@
+name: user-role
+label: User Role
+description: Role assignment for a User.
+fields:
+  - name: user
+    label: User
+    type: link
+    required: true
+    options:
+      entity: user
+
+  - name: role
+    label: Role
+    type: link
+    required: true
+    options:
+      entity: role

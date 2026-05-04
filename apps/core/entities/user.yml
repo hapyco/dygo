@@ -1,0 +1,19 @@
+name: user
+label: User
+description: User account identity.
+fields:
+  - name: email
+    label: Email
+    type: text
+    required: true
+    unique: true
+
+  - name: full-name
+    label: Full Name
+    type: text
+    required: true
+
+  - name: enabled
+    label: Enabled
+    type: boolean
+    default: true

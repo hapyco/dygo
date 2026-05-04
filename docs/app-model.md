@@ -12,18 +12,19 @@ The framework repo may contain first-party apps that ship with dygo.
 
 It owns:
 
+- system Entity and Field contracts
 - users
 - roles
 - permissions
 - sessions
-- installed apps
-- patch ledger
-- migration ledger
+- installed App state
 - files and attachments when required by the runtime
 - core fixtures
 - core patches
 
 The framework repo includes the initial Core app manifest at `apps/core/app.yml`.
+
+The first Core Entity contracts are metadata-only and live under `apps/core/entities/`. They do not create database tables, records, auth behavior, permission resolution, migrations, or Studio screens yet.
 
 `apps/studio` is the first-party UI app.
 

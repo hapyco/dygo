@@ -1,0 +1,23 @@
+name: role
+label: Role
+description: Named permission group.
+fields:
+  - name: name
+    label: Name
+    type: text
+    required: true
+    unique: true
+
+  - name: label
+    label: Label
+    type: text
+    required: true
+
+  - name: description
+    label: Description
+    type: long-text
+
+  - name: enabled
+    label: Enabled
+    type: boolean
+    default: true
