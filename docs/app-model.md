@@ -77,6 +77,8 @@ dygo-crm/
 
 Business apps should not need default `views`, `spaces`, `reports`, or `migrations` folders at the start. Add those only when the app needs custom behavior beyond global Studio rendering.
 
+Each app is described by an `app.yml` manifest. See [App Manifest](app-manifest.md) for the v1 schema.
+
 ## Install Locations
 
 Framework repo `apps/` contains first-party apps shipped by dygo.

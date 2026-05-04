@@ -64,6 +64,7 @@ docs/              project doctrine, thesis, and structure notes
 - [Platform Thesis](docs/platform-thesis.md)
 - [Nomenclature](docs/nomenclature.md)
 - [App Model](docs/app-model.md)
+- [App Manifest](docs/app-manifest.md)
 - [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)
 - [Documentation Strategy](docs/docs-strategy.md)

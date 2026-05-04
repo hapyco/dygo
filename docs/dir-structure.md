@@ -39,7 +39,6 @@ dygo/
 
   pkg/
     sdk/
-    appmanifest/
 
   apps/
     core/
@@ -83,6 +82,7 @@ dygo/
     nomenclature.md
     dir-structure.md
     app-model.md
+    app-manifest.md
     studio.md
     secrets.md
     docs-strategy.md
@@ -155,7 +155,7 @@ my-company/
   go.sum
 
   apps/
-    my_company/
+    my-company/
       app.yml
       entities/
       permissions/
