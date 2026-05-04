@@ -86,3 +86,15 @@ entities
 dygo loads regular `*.yml` files from the immediate directory only. Missing `entities` directories are allowed for apps that do not define Entities yet.
 
 Entity names are unique within the owning app for v1. Two different apps may use the same Entity name.
+
+Validate discovered Entity metadata from the current project:
+
+```sh
+go run ./cmd/dygo entities validate
+```
+
+The command checks Entity syntax, field types, duplicate Entity names within an app, and `link` or `child-table` targets.
+
+`link` and `child-table` targets use Entity names in v1. A target is valid only when exactly one loaded Entity has that name. If no Entity matches, validation fails. If multiple apps define the same target name, validation fails as ambiguous until app-qualified references exist.
+
+Validation errors include the app name, Entity name, field name when relevant, file path, and a best-effort YAML line number.

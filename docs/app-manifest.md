@@ -56,9 +56,10 @@ List discovered apps from the current project:
 ```sh
 go run ./cmd/dygo apps list
 go run ./cmd/dygo apps validate
+go run ./cmd/dygo entities validate
 ```
 
-The commands read app manifests from `apps/` and `.dygo/apps/`.
+The app commands read app manifests from `apps/` and `.dygo/apps/`. Entity validation uses the discovered apps to load each app's `entities/` directory.
 
 ## V1 Boundaries
 

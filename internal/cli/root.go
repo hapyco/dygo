@@ -62,6 +62,7 @@ func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newServeCommand(stdout))
 	root.AddCommand(newAppsCommand(stdout))
+	root.AddCommand(newEntitiesCommand(stdout))
 	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))
 
 	return root, nil

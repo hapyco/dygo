@@ -44,6 +44,11 @@ func TestRun(t *testing.T) {
 			wantStdout: "0 apps are valid",
 		},
 		{
+			name:       "validates empty entity set",
+			args:       []string{"entities", "validate"},
+			wantStdout: "0 entities are valid",
+		},
+		{
 			name:    "rejects unknown command",
 			args:    []string{"missing"},
 			wantErr: true,
@@ -167,6 +172,72 @@ func TestAppsValidateCommandRejectsInvalidAppSet(t *testing.T) {
 	}
 }
 
+func TestEntitiesValidateCommand(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company.yml"), `
+name: company
+label: Company
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead.yml"), `
+name: lead
+label: Lead
+fields:
+  - name: company
+    label: Company
+    type: link
+    options:
+      entity: company
+`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"entities", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(entities validate) error = %v, want nil", err)
+	}
+	if stdout.String() != "2 entities are valid\n" {
+		t.Fatalf("entities validate stdout = %q, want success count", stdout.String())
+	}
+}
+
+func TestEntitiesValidateCommandRejectsInvalidTargets(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	entityPath := filepath.Join(root, "apps", "sales", "entities", "lead.yml")
+	writeCLIEntity(t, entityPath, `
+name: lead
+label: Lead
+fields:
+  - name: company
+    label: Company
+    type: link
+    options:
+      entity: company
+`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"entities", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(entities validate) error = nil, want missing target error")
+	}
+	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "lead.yml")) + ":4"
+	for _, want := range []string{wantPath, `field "company"`, `unknown entity target "company"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
 func TestSecretsCommands(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -245,6 +316,29 @@ func TestSecretsCommands(t *testing.T) {
 
 	if _, _, err := run([]string{"secrets", "get", "--env", "development", "DATABASE_URL"}, ""); err == nil {
 		t.Fatal("get after remove error = nil, want error")
+	}
+}
+
+func writeCLIApp(t *testing.T, dir string, name string) {
+	t.Helper()
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) error = %v", dir, err)
+	}
+	manifest := []byte("name: " + name + "\nlabel: " + strings.ToUpper(name[:1]) + name[1:] + "\nversion: 0.1.0\n")
+	if err := os.WriteFile(filepath.Join(dir, "app.yml"), manifest, 0o644); err != nil {
+		t.Fatalf("WriteFile(app.yml) error = %v", err)
+	}
+}
+
+func writeCLIEntity(t *testing.T, path string, body string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(strings.TrimSpace(body)+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
 }
 

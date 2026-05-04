@@ -137,6 +137,97 @@ func TestValidateAllowsDuplicateEntityNamesAcrossApps(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsResolvedFieldTargets(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeEntity(t, filepath.Join(app.Dir, "entities", "company.yml"), "company")
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead-contact.yml"), "lead-contact")
+	writeFile(t, filepath.Join(app.Dir, "entities", "lead.yml"), `
+name: lead
+label: Lead
+fields:
+  - name: company
+    label: Company
+    type: link
+    options:
+      entity: company
+  - name: contacts
+    label: Contacts
+    type: child-table
+    options:
+      entity: lead-contact
+`)
+
+	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	if len(entities) != 3 {
+		t.Fatalf("Validate() len = %d, want 3", len(entities))
+	}
+}
+
+func TestValidateRejectsMissingFieldTarget(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	entityPath := filepath.Join(app.Dir, "entities", "lead.yml")
+	writeFile(t, entityPath, `
+name: lead
+label: Lead
+fields:
+  - name: company
+    label: Company
+    type: link
+    options:
+      entity: company
+`)
+
+	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want missing target error")
+	}
+	for _, want := range []string{entityPath + ":4", `app "sales"`, `entity "lead"`, `field "company"`, `unknown entity target "company"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
+func TestValidateRejectsAmbiguousFieldTarget(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
+	support := loadedApp(root, "support", "support", manifest.Paths{})
+	writeEntity(t, filepath.Join(sales.Dir, "entities", "customer.yml"), "customer")
+	writeEntity(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer")
+	entityPath := filepath.Join(sales.Dir, "entities", "lead.yml")
+	writeFile(t, entityPath, `
+name: lead
+label: Lead
+fields:
+  - name: customer
+    label: Customer
+    type: link
+    options:
+      entity: customer
+`)
+
+	_, err := New([]manifest.LoadedApp{sales, support}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want ambiguous target error")
+	}
+	for _, want := range []string{entityPath + ":4", `field "customer"`, `ambiguous entity target "customer"`, "sales/customer", "support/customer"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
 func TestDiscoverIgnoresNonYAMLFilesAndNestedDirectories(t *testing.T) {
 	t.Parallel()
 

@@ -111,16 +111,46 @@ func validateCatalog(entities []LoadedEntity) error {
 	for _, entity := range entities {
 		key := entity.AppName + "\x00" + entity.Entity.Name
 		if previousPath, ok := seen[key]; ok {
-			problems = append(problems, fmt.Sprintf("app %q has duplicate entity %q in %s and %s", entity.AppName, entity.Entity.Name, previousPath, entity.Path))
+			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q has duplicate entity %q in %s and %s", entity.AppName, entity.Entity.Name, previousPath, entity.Path)))
 		} else {
 			seen[key] = entity.Path
 		}
 	}
 
+	validateFieldTargets(entities, &problems)
+
 	if len(problems) > 0 {
 		return ValidationError{Problems: problems}
 	}
 	return nil
+}
+
+func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
+	targets := map[string][]LoadedEntity{}
+	for _, entity := range entities {
+		targets[entity.Entity.Name] = append(targets[entity.Entity.Name], entity)
+	}
+
+	for _, entity := range entities {
+		for _, field := range entity.Entity.Fields {
+			if field.Type != "link" && field.Type != "child-table" {
+				continue
+			}
+			targetName := field.Options.Entity
+			if targetName == "" {
+				continue
+			}
+
+			matches := targets[targetName]
+			if len(matches) == 0 {
+				*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("references unknown entity target %q", targetName)))
+				continue
+			}
+			if len(matches) > 1 {
+				*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("references ambiguous entity target %q found in %s", targetName, targetLocations(matches))))
+			}
+		}
+	}
 }
 
 func sortEntities(entities []LoadedEntity) {
@@ -142,4 +172,36 @@ type ValidationError struct {
 
 func (e ValidationError) Error() string {
 	return "entity catalog validation failed: " + strings.Join(e.Problems, "; ")
+}
+
+func entityDiagnostic(entity LoadedEntity, message string) string {
+	return fmt.Sprintf("%s: %s", location(entity.Path, entity.Entity.Line), message)
+}
+
+func fieldDiagnostic(entity LoadedEntity, field schema.Field, message string) string {
+	line := field.Line
+	if line == 0 {
+		line = entity.Entity.Line
+	}
+	fieldName := field.Name
+	if fieldName == "" {
+		fieldName = "<missing>"
+	}
+	return fmt.Sprintf("%s: app %q entity %q field %q: %s", location(entity.Path, line), entity.AppName, entity.Entity.Name, fieldName, message)
+}
+
+func location(path string, line int) string {
+	if line == 0 {
+		return path
+	}
+	return fmt.Sprintf("%s:%d", path, line)
+}
+
+func targetLocations(entities []LoadedEntity) string {
+	locations := make([]string, 0, len(entities))
+	for _, entity := range entities {
+		locations = append(locations, fmt.Sprintf("%s/%s at %s", entity.AppName, entity.Entity.Name, location(entity.Path, entity.Entity.Line)))
+	}
+	sort.Strings(locations)
+	return strings.Join(locations, ", ")
 }

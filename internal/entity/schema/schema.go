@@ -13,6 +13,7 @@ import (
 
 // Entity describes one dygo business object definition.
 type Entity struct {
+	Line        int     `yaml:"-"`
 	Name        string  `yaml:"name"`
 	Label       string  `yaml:"label"`
 	Description string  `yaml:"description,omitempty"`
@@ -21,6 +22,7 @@ type Entity struct {
 
 // Field describes one field inside an Entity.
 type Field struct {
+	Line     int               `yaml:"-"`
 	Name     string            `yaml:"name"`
 	Label    string            `yaml:"label"`
 	Type     string            `yaml:"type"`
@@ -54,7 +56,8 @@ func LoadFile(path string, registry fieldtype.Registry) (Entity, error) {
 
 // Decode decodes and validates one Entity metadata document.
 func Decode(data []byte, registry fieldtype.Registry) (Entity, error) {
-	if err := rejectDuplicateKeys(data); err != nil {
+	source, err := inspectSource(data)
+	if err != nil {
 		return Entity{}, err
 	}
 
@@ -64,6 +67,7 @@ func Decode(data []byte, registry fieldtype.Registry) (Entity, error) {
 	if err := decoder.Decode(&entity); err != nil {
 		return Entity{}, fmt.Errorf("decode entity schema: %w", err)
 	}
+	source.apply(&entity)
 	if err := entity.Validate(registry); err != nil {
 		return Entity{}, err
 	}
@@ -75,15 +79,15 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	var problems []string
 
 	if strings.TrimSpace(e.Name) == "" {
-		problems = append(problems, "name is required")
+		problems = append(problems, withLine(e.Line, "name is required"))
 	} else if !fieldtype.IsName(e.Name) {
-		problems = append(problems, fmt.Sprintf("name %q must be kebab-case", e.Name))
+		problems = append(problems, withLine(e.Line, fmt.Sprintf("name %q must be kebab-case", e.Name)))
 	}
 	if strings.TrimSpace(e.Label) == "" {
-		problems = append(problems, "label is required")
+		problems = append(problems, withLine(e.Line, "label is required"))
 	}
 	if len(e.Fields) == 0 {
-		problems = append(problems, "at least one field is required")
+		problems = append(problems, withLine(e.Line, "at least one field is required"))
 	}
 
 	seenFields := map[string]struct{}{}
@@ -107,50 +111,101 @@ func validateField(field Field, registry fieldtype.Registry, seenFields map[stri
 	}
 
 	if strings.TrimSpace(field.Name) == "" {
-		*problems = append(*problems, "field name is required")
+		*problems = append(*problems, withLine(field.Line, "field name is required"))
 	} else if !fieldtype.IsName(field.Name) {
-		*problems = append(*problems, fmt.Sprintf("field %q name must be kebab-case", field.Name))
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q name must be kebab-case", field.Name)))
 	}
 	if _, ok := seenFields[field.Name]; ok {
-		*problems = append(*problems, fmt.Sprintf("duplicate field %q", field.Name))
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("duplicate field %q", field.Name)))
 	}
 	if strings.TrimSpace(field.Label) == "" {
-		*problems = append(*problems, fmt.Sprintf("field %q label is required", fieldLabel))
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q label is required", fieldLabel)))
 	}
 	if strings.TrimSpace(field.Type) == "" {
-		*problems = append(*problems, fmt.Sprintf("field %q type is required", fieldLabel))
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type is required", fieldLabel)))
 		return
 	}
 	if !fieldtype.IsName(field.Type) {
-		*problems = append(*problems, fmt.Sprintf("field %q type %q must be kebab-case", fieldLabel, field.Type))
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q must be kebab-case", fieldLabel, field.Type)))
 		return
 	}
 
 	definition, ok := registry.Get(field.Type)
 	if !ok {
-		*problems = append(*problems, fmt.Sprintf("field %q uses unknown type %q", fieldLabel, field.Type))
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q uses unknown type %q", fieldLabel, field.Type)))
 		return
 	}
 	if field.Required && !definition.AllowRequired {
-		*problems = append(*problems, fmt.Sprintf("field %q type %q cannot be required", fieldLabel, field.Type))
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q cannot be required", fieldLabel, field.Type)))
 	}
 	if field.Unique && !definition.AllowUnique {
-		*problems = append(*problems, fmt.Sprintf("field %q type %q cannot be unique", fieldLabel, field.Type))
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q cannot be unique", fieldLabel, field.Type)))
 	}
 	if field.Default.Kind != 0 && !definition.AllowDefault {
-		*problems = append(*problems, fmt.Sprintf("field %q type %q does not support default values", fieldLabel, field.Type))
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q does not support default values", fieldLabel, field.Type)))
 	}
 	if err := definition.Validate(field.Options); err != nil {
-		*problems = append(*problems, fmt.Sprintf("field %q options invalid for type %q: %v", fieldLabel, field.Type, err))
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q options invalid for type %q: %v", fieldLabel, field.Type, err)))
 	}
 }
 
-func rejectDuplicateKeys(data []byte) error {
+type sourceMap struct {
+	entityLine int
+	fieldLines []int
+}
+
+func (m sourceMap) apply(entity *Entity) {
+	entity.Line = m.entityLine
+	for i := range entity.Fields {
+		if i >= len(m.fieldLines) {
+			break
+		}
+		entity.Fields[i].Line = m.fieldLines[i]
+	}
+}
+
+func inspectSource(data []byte) (sourceMap, error) {
 	var root yaml.Node
 	if err := yaml.Unmarshal(data, &root); err != nil {
-		return fmt.Errorf("parse entity schema: %w", err)
+		return sourceMap{}, fmt.Errorf("parse entity schema: %w", err)
 	}
-	return rejectDuplicateKeysNode(&root, "$")
+	if err := rejectDuplicateKeysNode(&root, "$"); err != nil {
+		return sourceMap{}, err
+	}
+	return buildSourceMap(&root), nil
+}
+
+func buildSourceMap(root *yaml.Node) sourceMap {
+	mapping := documentMapping(root)
+	if mapping == nil {
+		return sourceMap{}
+	}
+
+	source := sourceMap{entityLine: mapping.Line}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		key := mapping.Content[i]
+		value := mapping.Content[i+1]
+		if key.Value != "fields" || value.Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, item := range value.Content {
+			source.fieldLines = append(source.fieldLines, item.Line)
+		}
+	}
+	return source
+}
+
+func documentMapping(node *yaml.Node) *yaml.Node {
+	if node == nil {
+		return nil
+	}
+	if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
+		return documentMapping(node.Content[0])
+	}
+	if node.Kind == yaml.MappingNode {
+		return node
+	}
+	return nil
 }
 
 func rejectDuplicateKeysNode(node *yaml.Node, location string) error {
@@ -183,7 +238,7 @@ func rejectDuplicateKeysNode(node *yaml.Node, location string) error {
 		key := node.Content[i]
 		value := node.Content[i+1]
 		if _, ok := seen[key.Value]; ok {
-			return fmt.Errorf("duplicate key %q at %s", key.Value, location)
+			return fmt.Errorf("duplicate key %q at %s line %d", key.Value, location, key.Line)
 		}
 		seen[key.Value] = struct{}{}
 
@@ -194,4 +249,11 @@ func rejectDuplicateKeysNode(node *yaml.Node, location string) error {
 	}
 
 	return nil
+}
+
+func withLine(line int, message string) string {
+	if line == 0 {
+		return message
+	}
+	return fmt.Sprintf("line %d: %s", line, message)
 }

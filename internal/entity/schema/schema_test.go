@@ -19,8 +19,14 @@ func TestDecode(t *testing.T) {
 	if entity.Name != "lead" {
 		t.Fatalf("Decode().Name = %q, want lead", entity.Name)
 	}
+	if entity.Line != 1 {
+		t.Fatalf("Decode().Line = %d, want 1", entity.Line)
+	}
 	if len(entity.Fields) != 4 {
 		t.Fatalf("Decode().Fields len = %d, want 4", len(entity.Fields))
+	}
+	if entity.Fields[0].Line == 0 {
+		t.Fatal("Decode().Fields[0].Line = 0, want source line")
 	}
 	if entity.Fields[1].Options.Values[0] != "New" {
 		t.Fatalf("Decode().Fields[1].Options.Values[0] = %q, want New", entity.Fields[1].Options.Values[0])
@@ -126,6 +132,17 @@ fields:
     type: text
 `,
 			wantError: "duplicate field",
+		},
+		{
+			name: "field validation includes line",
+			body: `
+name: lead
+label: Lead
+fields:
+  - name: title
+    type: text
+`,
+			wantError: "line 4",
 		},
 		{
 			name: "unknown field type",
