@@ -15,7 +15,7 @@ The goal is speed with structure: builders should focus on business logic while 
 
 dygo is in early framework development.
 
-The current repository contains the first Go module, CLI entrypoint, config defaults, and project doctrine/docs. The framework APIs are not stable yet.
+The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server skeleton, and project doctrine/docs. The framework APIs are not stable yet.
 
 ## Current CLI
 
@@ -31,10 +31,18 @@ go run ./cmd/dygo entities validate
 go run ./cmd/dygo secrets --help
 ```
 
+`go run ./cmd/dygo serve` starts the local HTTP server.
+
 The default server address is:
 
 ```txt
 127.0.0.1:6790
+```
+
+The first health endpoint is:
+
+```txt
+GET /health
 ```
 
 Project-aware commands discover the dygo root by walking upward from the current directory. Generated projects use `dygo.yml` as the root marker; the framework repository is also recognized during development.
@@ -74,6 +82,7 @@ docs/              project doctrine, thesis, and structure notes
 - [App Manifest](docs/app-manifest.md)
 - [Entity Metadata](docs/entity-metadata.md)
 - [Config](docs/config.md)
+- [Server](docs/server.md)
 - [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)
 - [Documentation Strategy](docs/docs-strategy.md)

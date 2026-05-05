@@ -6,14 +6,21 @@ import (
 	"io"
 
 	"github.com/dygo-dev/dygo/internal/config"
+	"github.com/dygo-dev/dygo/internal/server"
 	"github.com/spf13/cobra"
 )
 
 const version = "dev"
 
+type serveRunner func(context.Context, string) error
+
 // Run executes the dygo command-line interface.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	cmd, err := NewRootCommand(ctx, stdin, stdout, stderr)
+	return run(ctx, args, stdin, stdout, stderr, server.Serve)
+}
+
+func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner) error {
+	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve)
 	if err != nil {
 		return err
 	}
@@ -29,6 +36,10 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 // NewRootCommand creates the root dygo CLI command.
 func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, error) {
+	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve)
+}
+
+func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
 	}
@@ -40,6 +51,9 @@ func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	}
 	if stderr == nil {
 		return nil, fmt.Errorf("stderr writer is required")
+	}
+	if serve == nil {
+		return nil, fmt.Errorf("serve runner is required")
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -61,7 +75,7 @@ func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDoctorCommand(ctx, stdout))
-	root.AddCommand(newServeCommand(stdout))
+	root.AddCommand(newServeCommand(ctx, stdout, serve))
 	root.AddCommand(newAppsCommand(stdout))
 	root.AddCommand(newEntitiesCommand(stdout))
 	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))
@@ -83,7 +97,7 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 	}
 }
 
-func newServeCommand(stdout io.Writer) *cobra.Command {
+func newServeCommand(ctx context.Context, stdout io.Writer, serve serveRunner) *cobra.Command {
 	return &cobra.Command{
 		Use:   "serve",
 		Short: "Start the dygo server",
@@ -97,8 +111,12 @@ func newServeCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			if _, err := fmt.Fprintf(stdout, "dygo serve will listen on %s\n", cfg.Server.Address()); err != nil {
+			address := cfg.Server.Address()
+			if _, err := fmt.Fprintf(stdout, "dygo serving on %s\n", address); err != nil {
 				return fmt.Errorf("write serve output: %w", err)
+			}
+			if err := serve(ctx, address); err != nil {
+				return fmt.Errorf("serve dygo: %w", err)
 			}
 			return nil
 		},

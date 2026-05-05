@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,11 +28,6 @@ func TestRun(t *testing.T) {
 			name:       "prints version",
 			args:       []string{"version"},
 			wantStdout: "dygo dev",
-		},
-		{
-			name:       "prints default serve address",
-			args:       []string{"serve"},
-			wantStdout: "127.0.0.1:6790",
 		},
 		{
 			name:       "prints no apps message",
@@ -88,6 +84,25 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestRootHelpIncludesServe(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), nil, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(help) error = %v, want nil", err)
+	}
+	for _, want := range []string{"Available Commands:", "serve", "Start the dygo server"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("help stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+}
+
 func TestServeCommandLoadsProjectConfig(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -104,12 +119,19 @@ server:
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr)
+	var gotAddress string
+	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, address string) error {
+		gotAddress = address
+		return nil
+	})
 	if err != nil {
 		t.Fatalf("Run(serve) error = %v, want nil", err)
 	}
-	if !strings.Contains(stdout.String(), "0.0.0.0:7777") {
+	if !strings.Contains(stdout.String(), "dygo serving on 0.0.0.0:7777") {
 		t.Fatalf("serve stdout = %q, want configured address", stdout.String())
+	}
+	if gotAddress != "0.0.0.0:7777" {
+		t.Fatalf("serve address = %q, want configured address", gotAddress)
 	}
 }
 
@@ -120,11 +142,39 @@ func TestServeCommandRequiresProjectConfig(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr)
+	called := false
+	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, _ string) error {
+		called = true
+		return nil
+	})
 	if err == nil {
 		t.Fatal("Run(serve) error = nil, want missing config error")
 	}
 	for _, want := range []string{"load config", "configs/dygo.yaml"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(serve) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+	if called {
+		t.Fatal("serve runner was called for missing config")
+	}
+}
+
+func TestServeCommandReturnsRunnerError(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, _ string) error {
+		return errors.New("listen failed")
+	})
+	if err == nil {
+		t.Fatal("Run(serve) error = nil, want runner error")
+	}
+	for _, want := range []string{"serve dygo", "listen failed"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(serve) error = %q, want substring %q", err.Error(), want)
 		}

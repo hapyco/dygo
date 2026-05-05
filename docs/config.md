@@ -44,3 +44,5 @@ There are no `DYGO_` environment overrides yet.
 There are no global config flags yet.
 
 Secrets stay separate from runtime config. Future config schemas may reference secret names, but raw secret values should not live in `configs/dygo.yaml`.
+
+`dygo serve` uses this config to choose the HTTP bind address.
