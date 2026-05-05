@@ -199,6 +199,81 @@ func TestAppsValidateCommandRejectsMissingProjectRoot(t *testing.T) {
 	}
 }
 
+func TestDoctorCommand(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLISecretsLayout(t, root)
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company.yml"), `
+name: company
+label: Company
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	t.Chdir(filepath.Join(root, "apps", "sales", "entities"))
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"doctor"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(doctor) error = %v, want nil", err)
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"PASS project root:",
+		"PASS go toolchain:",
+		"PASS app manifests: 1 apps valid",
+		"PASS entity metadata: 1 entities valid",
+		"PASS config files: configs/dygo.yaml",
+		"PASS secrets layout: 3 environments configured",
+		"dygo doctor passed",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
+func TestDoctorCommandReportsFailures(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	t.Chdir(root)
+
+	writeCLIAppWithBody(t, filepath.Join(root, "apps", "sales"), `
+name: sales
+label: Sales
+version: 0.1.0
+dependencies:
+  - core
+`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"doctor"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(doctor) error = nil, want diagnostics failure")
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"PASS project root:",
+		"PASS go toolchain:",
+		"FAIL app manifests:",
+		"SKIP entity metadata: app manifests are invalid",
+		"FAIL config files: missing configs, configs/dygo.yaml",
+		"FAIL secrets layout:",
+		"dygo doctor found",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
 func TestEntitiesValidateCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -392,11 +467,16 @@ func TestSecretsCommands(t *testing.T) {
 func writeCLIApp(t *testing.T, dir string, name string) {
 	t.Helper()
 
+	writeCLIAppWithBody(t, dir, "name: "+name+"\nlabel: "+strings.ToUpper(name[:1])+name[1:]+"\nversion: 0.1.0\n")
+}
+
+func writeCLIAppWithBody(t *testing.T, dir string, body string) {
+	t.Helper()
+
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s) error = %v", dir, err)
 	}
-	manifest := []byte("name: " + name + "\nlabel: " + strings.ToUpper(name[:1]) + name[1:] + "\nversion: 0.1.0\n")
-	if err := os.WriteFile(filepath.Join(dir, "app.yml"), manifest, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "app.yml"), []byte(strings.TrimSpace(body)+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(app.yml) error = %v", err)
 	}
 }
@@ -406,6 +486,40 @@ func writeCLIProjectRoot(t *testing.T, root string) {
 
 	if err := os.WriteFile(filepath.Join(root, "dygo.yml"), []byte("name: test\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
+	}
+}
+
+func writeCLIConfig(t *testing.T, root string) {
+	t.Helper()
+
+	configPath := filepath.Join(root, "configs", "dygo.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(configs) error = %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte("server:\n  port: 6790\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(dygo.yaml) error = %v", err)
+	}
+}
+
+func writeCLISecretsLayout(t *testing.T, root string) {
+	t.Helper()
+
+	for _, env := range []string{"development", "staging", "production"} {
+		secretPath := filepath.Join(root, "configs", "secrets", env+".age.yaml")
+		if err := os.MkdirAll(filepath.Dir(secretPath), 0o755); err != nil {
+			t.Fatalf("MkdirAll(secrets) error = %v", err)
+		}
+		if err := os.WriteFile(secretPath, []byte("placeholder\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", secretPath, err)
+		}
+
+		recipientPath := filepath.Join(root, "configs", "secrets", "recipients", env+".txt")
+		if err := os.MkdirAll(filepath.Dir(recipientPath), 0o755); err != nil {
+			t.Fatalf("MkdirAll(recipients) error = %v", err)
+		}
+		if err := os.WriteFile(recipientPath, []byte("age1placeholder\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", recipientPath, err)
+		}
 	}
 }
 

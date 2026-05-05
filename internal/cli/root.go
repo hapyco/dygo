@@ -60,6 +60,7 @@ func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.SetErr(stderr)
 
 	root.AddCommand(newVersionCommand(stdout))
+	root.AddCommand(newDoctorCommand(ctx, stdout))
 	root.AddCommand(newServeCommand(stdout))
 	root.AddCommand(newAppsCommand(stdout))
 	root.AddCommand(newEntitiesCommand(stdout))
