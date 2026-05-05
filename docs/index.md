@@ -25,4 +25,5 @@ These docs live in the repository so they are versioned with code, reviewed in P
 ## Working Notes
 
 - [Project README](../README.md) gives a short overview and basic development commands.
+- [Contributing](../CONTRIBUTING.md) explains the current paused contribution status.
 - [Agent Instructions](../AGENT.md) stores repo-level guidance for coding agents.

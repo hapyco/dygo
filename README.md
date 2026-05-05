@@ -3,6 +3,7 @@
 [![Go](https://img.shields.io/badge/go-1.26.2-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License](https://img.shields.io/github/license/dygo-dev/dygo)](https://github.com/dygo-dev/dygo/blob/develop/LICENSE)
 [![Status](https://img.shields.io/badge/status-early%20framework%20development-f2cc60)](https://github.com/dygo-dev/dygo/commits/develop)
+[![Contributions](https://img.shields.io/badge/contributions-paused-lightgrey)](CONTRIBUTING.md)
 [![Roadmap](https://img.shields.io/badge/roadmap-GitHub%20Projects-6f42c1)](https://github.com/orgs/dygo-dev/projects/2/views/1)
 
 dygo is an open-source framework for building serious business software in Go.
@@ -91,6 +92,7 @@ docs/              project doctrine, thesis, and structure notes
 - [Server](docs/server.md)
 - [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)
+- [Contributing](CONTRIBUTING.md)
 - [Documentation Strategy](docs/docs-strategy.md)
 - [Directory Structure](docs/dir-structure.md)
 
