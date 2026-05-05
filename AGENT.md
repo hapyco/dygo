@@ -156,6 +156,10 @@ When adding a feature, ask:
 
 If the answer is unclear, choose the simpler and more explicit design.
 
+## Project Skills
+
+For Go CLI work, use `.agents/skills/go-cli-cobra-viper/SKILL.md`. It captures dygo's Cobra command patterns, when to introduce Viper-style config precedence, CLI output rules, and test expectations.
+
 ## Tone of the Codebase
 
 dygo should feel:
