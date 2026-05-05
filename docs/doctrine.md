@@ -191,7 +191,7 @@ A new builder should be able to understand the basic dygo loop quickly:
 ```sh
 dygo app new crm
 dygo generate entity Lead
-dygo migrate
+dygo migrate up
 dygo serve
 ```
 

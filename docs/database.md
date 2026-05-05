@@ -52,6 +52,59 @@ go run ./cmd/dygo db check --env production
 
 Connection errors must not print the raw database URL.
 
+## Migrations
+
+dygo uses paired raw SQL migrations:
+
+```txt
+20260505180000_create_core_tables.up.sql
+20260505180000_create_core_tables.down.sql
+```
+
+Framework-owned migrations live under:
+
+```txt
+internal/db/migrations/
+```
+
+Project-owned migrations live under:
+
+```txt
+db/migrations/
+```
+
+Framework migrations run before project migrations. Each migration runs in a database transaction. Applied migrations are tracked in the database table `migrations` with scope, version, name, checksums, and applied timestamp.
+
+Check migration status:
+
+```sh
+go run ./cmd/dygo migrate status
+```
+
+Apply pending migrations:
+
+```sh
+go run ./cmd/dygo migrate up
+```
+
+Roll back applied migrations:
+
+```sh
+go run ./cmd/dygo migrate down --steps 1
+```
+
+All migration commands default to `development` and support `--env staging` or `--env production`.
+
+## Schema Snapshot
+
+After a successful `migrate up` or `migrate down`, dygo writes a Postgres-native schema snapshot:
+
+```txt
+db/schema.sql
+```
+
+The snapshot is generated with `pg_dump --schema-only --no-owner --no-privileges`. dygo looks for `pg_dump` in `PATH`, then checks Postgres.app's latest macOS path.
+
 ## Boundaries
 
-The database foundation does not create schemas, run migrations, store Records, resolve permissions, or perform authentication yet.
+The migration foundation creates platform schema only. It does not store Records, resolve permissions, run app lifecycle patches, or perform authentication yet.

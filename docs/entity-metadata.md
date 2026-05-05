@@ -2,13 +2,15 @@
 
 Entities define business object structure in dygo.
 
-The first Entity catalog is metadata-only. It loads Entity files from discovered apps and does not create database tables, records, permissions, Studio views, or migrations.
+The Entity catalog loads Entity files from discovered apps. Entity metadata is still the contract layer: migrations create platform tables, but record storage, permissions, Studio views, and runtime behavior are handled by later framework layers.
 
 ## Example
 
 ```yaml
 name: lead
 label: Lead
+plural-name: leads
+plural-label: Leads
 description: Sales lead
 fields:
   - name: full-name
@@ -40,9 +42,13 @@ fields:
 
 ## Rules
 
-Entity `name`, `label`, and at least one field are required.
+Entity `name`, `label`, `plural-name`, `plural-label`, and at least one field are required.
 
-Entity names, field names, and field type names use kebab-case.
+Entity names, plural names, field names, and field type names use kebab-case.
+
+`plural-name` is explicit. dygo does not auto-pluralize Entity names in runtime code because English pluralization is too fragile for schema decisions. Future generators may suggest a default, but the YAML must store the chosen plural name.
+
+When dygo needs a SQL table name from Entity metadata, it converts `plural-name` from kebab-case to snake_case. For example, `user-roles` maps to `user_roles`.
 
 Field `name`, `label`, and `type` are required.
 

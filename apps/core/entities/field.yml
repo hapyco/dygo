@@ -1,5 +1,7 @@
 name: field
 label: Field
+plural-name: fields
+plural-label: Fields
 description: Field definition belonging to an Entity.
 fields:
   - name: entity

@@ -1,5 +1,7 @@
 name: user-role
 label: User Role
+plural-name: user-roles
+plural-label: User Roles
 description: Role assignment for a User.
 fields:
   - name: user

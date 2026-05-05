@@ -141,6 +141,8 @@ Use Studio for the main operational and builder UI. Use Space for a page or grou
 
 Core is the required system App. Studio is the first-party UI App. Business Apps define Entities, Permissions, Hooks, Fixtures, and Patches.
 
+Entity metadata must store explicit `plural-name` and `plural-label` values. Do not add runtime auto-pluralization; storage naming comes from the Entity's `plural-name`.
+
 ## Implementation Guidance
 
 When adding a feature, ask:

@@ -1,5 +1,7 @@
 name: entity
 label: Entity
+plural-name: entities
+plural-label: Entities
 description: Registry entry for a known Entity definition.
 fields:
   - name: name
@@ -10,6 +12,17 @@ fields:
 
   - name: label
     label: Label
+    type: text
+    required: true
+
+  - name: plural-name
+    label: Plural Name
+    type: text
+    required: true
+    unique: true
+
+  - name: plural-label
+    label: Plural Label
     type: text
     required: true
 

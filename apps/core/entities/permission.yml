@@ -1,5 +1,7 @@
 name: permission
 label: Permission
+plural-name: permissions
+plural-label: Permissions
 description: Role access rule for an Entity.
 fields:
   - name: entity

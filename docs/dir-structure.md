@@ -26,6 +26,7 @@ dygo/
     runtime/
     server/
     db/
+      migrations/
     app/
     entity/
     record/
@@ -74,6 +75,10 @@ dygo/
   configs/
     dygo.yaml
     github.yml
+
+  db/
+    migrations/
+    schema.sql
 
   docs/
     index.md
@@ -136,7 +141,7 @@ dygo-crm/
     index.md
 ```
 
-Do not create default `views`, `spaces`, `reports`, or `migrations` folders for every app. Add them later only when a specific app needs them.
+Do not create default `views`, `spaces`, or `reports` folders for every app. Add them later only when a specific app needs them.
 
 ## Generated Project
 
@@ -166,14 +171,14 @@ my-company/
 
   configs/
     dygo.yaml
-    environments/
-      development.yaml
-      staging.yaml
-      production.yaml
-    credentials/
-      development.enc.yaml
-      staging.enc.yaml
-      production.enc.yaml
+    secrets/
+      development.age.yaml
+      staging.age.yaml
+      production.age.yaml
+
+  db/
+    migrations/
+    schema.sql
 
   docs/
 
@@ -202,6 +207,10 @@ my-company/
 `apps/` in a generated project is for business apps owned by the project.
 
 `.dygo/apps/` is for framework-managed cached apps.
+
+`db/migrations/` is for project-owned SQL migrations.
+
+`db/schema.sql` is the generated Postgres schema snapshot after migrations run.
 
 `var/` is for runtime-generated data.
 

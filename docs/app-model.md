@@ -24,7 +24,7 @@ It owns:
 
 The framework repo includes the initial Core app manifest at `apps/core/app.yml`.
 
-The first Core Entity contracts are metadata-only and live under `apps/core/entities/`. They do not create database tables, records, auth behavior, permission resolution, migrations, or Studio screens yet.
+The first Core Entity contracts live under `apps/core/entities/`. Framework migrations create the initial Core SQL tables from these contracts, but records, auth behavior, permission resolution, app lifecycle patches, and Studio screens are still separate follow-up layers.
 
 `apps/studio` is the first-party UI app.
 
@@ -80,11 +80,13 @@ dygo-crm/
     index.md
 ```
 
-Business apps should not need default `views`, `spaces`, `reports`, or `migrations` folders at the start. Add those only when the app needs custom behavior beyond global Studio rendering.
+Business apps should not need default `views`, `spaces`, or `reports` folders at the start. Add those only when the app needs custom behavior beyond global Studio rendering.
 
 Each app is described by an `app.yml` manifest. See [App Manifest](app-manifest.md) for the v1 schema.
 
 Entity files live in the app's manifest-defined `entities` directory. Entity names are unique within the owning app for v1.
+
+Entity metadata stores explicit singular and plural names. Runtime code uses `plural-name` as the source for storage naming; it does not auto-pluralize Entity names.
 
 ## Install Locations
 

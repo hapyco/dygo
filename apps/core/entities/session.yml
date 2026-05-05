@@ -1,5 +1,7 @@
 name: session
 label: Session
+plural-name: sessions
+plural-label: Sessions
 description: Login session metadata.
 fields:
   - name: user

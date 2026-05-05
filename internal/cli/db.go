@@ -47,11 +47,11 @@ func newDBCheckCommand(ctx context.Context, stdout io.Writer, checkDatabase data
 			}
 
 			secretName := cfg.Database.URL.Secret
-			secret, err := secrets.NewStore(root).Get(env, secretName)
+			databaseURL, err := databaseURLForEnvironment(root, env, secretName)
 			if err != nil {
 				return fmt.Errorf("read database secret %q for %s: %w", secretName, env, err)
 			}
-			if err := checkDatabase(ctx, secret.Value); err != nil {
+			if err := checkDatabase(ctx, databaseURL); err != nil {
 				return fmt.Errorf("check database: %w", err)
 			}
 			if _, err := fmt.Fprintf(stdout, "database connected (%s)\n", env); err != nil {
@@ -64,4 +64,12 @@ func newDBCheckCommand(ctx context.Context, stdout io.Writer, checkDatabase data
 	cmd.Flags().StringVar(&envName, "env", string(secrets.EnvironmentDevelopment), "Environment: development, staging, or production")
 
 	return cmd
+}
+
+func databaseURLForEnvironment(root string, env secrets.Environment, secretName string) (string, error) {
+	secret, err := secrets.NewStore(root).Get(env, secretName)
+	if err != nil {
+		return "", err
+	}
+	return secret.Value, nil
 }

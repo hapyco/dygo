@@ -57,3 +57,5 @@ Secrets stay separate from runtime config. `configs/dygo.yaml` references secret
 `dygo serve` uses this config to choose the HTTP bind address.
 
 `dygo db check` uses this config to find the encrypted database URL secret.
+
+`dygo migrate status`, `dygo migrate up`, and `dygo migrate down` use this config to find the same encrypted database URL secret before running PostgreSQL migrations.

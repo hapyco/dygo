@@ -15,6 +15,11 @@ const version = "dev"
 
 type serveRunner func(context.Context, string) error
 type databaseChecker func(context.Context, string) error
+type migrationRunner interface {
+	Status(context.Context, string, string) ([]db.MigrationStatus, error)
+	Up(context.Context, string, string) (db.MigrationResult, error)
+	Down(context.Context, string, string, int) (db.MigrationResult, error)
+}
 
 // Run executes the dygo command-line interface.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -22,7 +27,11 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker) error {
-	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, checkDatabase)
+	return runWithServices(ctx, args, stdin, stdout, stderr, serve, checkDatabase, db.NewMigrator())
+}
+
+func runWithServices(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker, migrate migrationRunner) error {
+	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, checkDatabase, migrate)
 	if err != nil {
 		return err
 	}
@@ -38,10 +47,10 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 // NewRootCommand creates the root dygo CLI command.
 func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, error) {
-	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.Check)
+	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.Check, db.NewMigrator())
 }
 
-func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker) (*cobra.Command, error) {
+func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker, migrate migrationRunner) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
 	}
@@ -59,6 +68,9 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	}
 	if checkDatabase == nil {
 		return nil, fmt.Errorf("database checker is required")
+	}
+	if migrate == nil {
+		return nil, fmt.Errorf("migration runner is required")
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -82,6 +94,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newDoctorCommand(ctx, stdout))
 	root.AddCommand(newServeCommand(ctx, stdout, serve))
 	root.AddCommand(newDBCommand(ctx, stdout, checkDatabase))
+	root.AddCommand(newMigrateCommand(ctx, stdout, migrate))
 	root.AddCommand(newAppsCommand(stdout))
 	root.AddCommand(newEntitiesCommand(stdout))
 	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))

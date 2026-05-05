@@ -16,6 +16,8 @@ type Entity struct {
 	Line        int     `yaml:"-"`
 	Name        string  `yaml:"name"`
 	Label       string  `yaml:"label"`
+	PluralName  string  `yaml:"plural-name"`
+	PluralLabel string  `yaml:"plural-label"`
 	Description string  `yaml:"description,omitempty"`
 	Fields      []Field `yaml:"fields"`
 }
@@ -85,6 +87,14 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	}
 	if strings.TrimSpace(e.Label) == "" {
 		problems = append(problems, withLine(e.Line, "label is required"))
+	}
+	if strings.TrimSpace(e.PluralName) == "" {
+		problems = append(problems, withLine(e.Line, "plural-name is required"))
+	} else if !fieldtype.IsName(e.PluralName) {
+		problems = append(problems, withLine(e.Line, fmt.Sprintf("plural-name %q must be kebab-case", e.PluralName)))
+	}
+	if strings.TrimSpace(e.PluralLabel) == "" {
+		problems = append(problems, withLine(e.Line, "plural-label is required"))
 	}
 	if len(e.Fields) == 0 {
 		problems = append(problems, withLine(e.Line, "at least one field is required"))
