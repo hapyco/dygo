@@ -6,7 +6,7 @@ description: User account identity.
 fields:
   - name: email
     label: Email
-    type: text
+    type: email
     required: true
     unique: true
 
@@ -18,4 +18,5 @@ fields:
   - name: enabled
     label: Enabled
     type: boolean
+    index: true
     default: true

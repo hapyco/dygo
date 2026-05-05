@@ -34,6 +34,9 @@ func TestDecode(t *testing.T) {
 	if entity.Fields[1].Default.Value != "New" {
 		t.Fatalf("Decode().Fields[1].Default.Value = %q, want New", entity.Fields[1].Default.Value)
 	}
+	if !entity.Fields[2].Index {
+		t.Fatal("Decode().Fields[2].Index = false, want true")
+	}
 }
 
 func TestLoadFile(t *testing.T) {
@@ -312,6 +315,21 @@ fields:
 `,
 			wantError: "does not support default",
 		},
+		{
+			name: "index unsupported",
+			body: `
+name: lead
+label: Lead
+plural-name: leads
+plural-label: Leads
+fields:
+  - name: details
+    label: Details
+    type: long-text
+    index: true
+`,
+			wantError: "cannot be indexed",
+		},
 	}
 
 	for _, tt := range tests {
@@ -354,6 +372,7 @@ fields:
   - name: company
     label: Company
     type: link
+    index: true
     options:
       entity: company
   - name: contacts

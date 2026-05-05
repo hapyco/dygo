@@ -8,6 +8,7 @@ fields:
     label: App
     type: link
     required: true
+    index: true
     options:
       entity: app
 
@@ -16,6 +17,7 @@ fields:
     type: text
     required: true
     unique: true
+    index: true
 
   - name: label
     label: Label

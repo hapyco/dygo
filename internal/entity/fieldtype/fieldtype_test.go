@@ -11,6 +11,8 @@ func TestDefaultRegistryContainsBuiltIns(t *testing.T) {
 	registry := DefaultRegistry()
 	for _, name := range []string{
 		"text",
+		"email",
+		"phone",
 		"long-text",
 		"int",
 		"decimal",

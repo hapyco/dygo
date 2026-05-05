@@ -30,6 +30,7 @@ type Field struct {
 	Type     string            `yaml:"type"`
 	Required bool              `yaml:"required,omitempty"`
 	Unique   bool              `yaml:"unique,omitempty"`
+	Index    bool              `yaml:"index,omitempty"`
 	Default  yaml.Node         `yaml:"default,omitempty"`
 	Options  fieldtype.Options `yaml:"options,omitempty"`
 }
@@ -150,6 +151,9 @@ func validateField(field Field, registry fieldtype.Registry, seenFields map[stri
 	}
 	if field.Unique && !definition.AllowUnique {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q cannot be unique", fieldLabel, field.Type)))
+	}
+	if field.Index && !definition.AllowIndex {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q cannot be indexed", fieldLabel, field.Type)))
 	}
 	if field.Default.Kind != 0 && !definition.AllowDefault {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q does not support default values", fieldLabel, field.Type)))

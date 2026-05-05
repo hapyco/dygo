@@ -26,6 +26,7 @@ type Definition struct {
 	AllowRequired bool
 	AllowUnique   bool
 	AllowDefault  bool
+	AllowIndex    bool
 	Validate      Validator
 }
 
@@ -151,21 +152,24 @@ func EntityOptions(options Options) error {
 
 func builtIns() []Definition {
 	return []Definition{
-		scalar("text", "Text", true, true, true),
-		scalar("long-text", "Long Text", true, false, true),
-		scalar("int", "Integer", true, true, true),
-		scalar("decimal", "Decimal", true, true, true),
-		scalar("currency", "Currency", true, true, true),
-		scalar("boolean", "Boolean", true, true, true),
-		scalar("date", "Date", true, true, true),
-		scalar("datetime", "Datetime", true, true, true),
-		scalar("time", "Time", true, true, true),
+		scalar("text", "Text", true, true, true, true),
+		scalar("email", "Email", true, true, true, true),
+		scalar("phone", "Phone", true, true, true, true),
+		scalar("long-text", "Long Text", true, false, true, false),
+		scalar("int", "Integer", true, true, true, true),
+		scalar("decimal", "Decimal", true, true, true, true),
+		scalar("currency", "Currency", true, true, true, true),
+		scalar("boolean", "Boolean", true, true, true, true),
+		scalar("date", "Date", true, true, true, true),
+		scalar("datetime", "Datetime", true, true, true, true),
+		scalar("time", "Time", true, true, true, true),
 		{
 			Name:          "select",
 			Label:         "Select",
 			AllowRequired: true,
 			AllowUnique:   true,
 			AllowDefault:  true,
+			AllowIndex:    true,
 			Validate:      SelectOptions,
 		},
 		{
@@ -174,6 +178,7 @@ func builtIns() []Definition {
 			AllowRequired: true,
 			AllowUnique:   true,
 			AllowDefault:  true,
+			AllowIndex:    true,
 			Validate:      EntityOptions,
 		},
 		{
@@ -182,20 +187,22 @@ func builtIns() []Definition {
 			AllowRequired: true,
 			AllowUnique:   false,
 			AllowDefault:  false,
+			AllowIndex:    false,
 			Validate:      EntityOptions,
 		},
-		scalar("attachment", "Attachment", true, false, false),
-		scalar("json", "JSON", true, false, false),
+		scalar("attachment", "Attachment", true, false, false, false),
+		scalar("json", "JSON", true, false, false, false),
 	}
 }
 
-func scalar(name string, label string, allowRequired bool, allowUnique bool, allowDefault bool) Definition {
+func scalar(name string, label string, allowRequired bool, allowUnique bool, allowDefault bool, allowIndex bool) Definition {
 	return Definition{
 		Name:          name,
 		Label:         label,
 		AllowRequired: allowRequired,
 		AllowUnique:   allowUnique,
 		AllowDefault:  allowDefault,
+		AllowIndex:    allowIndex,
 		Validate:      NoOptions,
 	}
 }

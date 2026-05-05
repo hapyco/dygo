@@ -8,6 +8,7 @@ fields:
     label: User
     type: link
     required: true
+    index: true
     options:
       entity: user
 
@@ -15,6 +16,7 @@ fields:
     label: Status
     type: select
     required: true
+    index: true
     default: active
     options:
       values:

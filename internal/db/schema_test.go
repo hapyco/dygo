@@ -31,7 +31,7 @@ func TestBuildMetadataSchemaStatements(t *testing.T) {
 				Name:       "entity",
 				PluralName: "entities",
 				Fields: []schema.Field{
-					{Name: "app", Type: "link", Required: true, Options: entityOption("app")},
+					{Name: "app", Type: "link", Required: true, Index: true, Options: entityOption("app")},
 					{Name: "plural-name", Type: "text", Required: true, Unique: true},
 				},
 			},
@@ -46,6 +46,7 @@ func TestBuildMetadataSchemaStatements(t *testing.T) {
 	assertContains(t, joined, `CREATE TABLE IF NOT EXISTS "apps"`)
 	assertContains(t, joined, `ALTER TABLE "apps" ADD COLUMN IF NOT EXISTS "name" text NOT NULL`)
 	assertContains(t, joined, `ALTER TABLE "entities" ADD COLUMN IF NOT EXISTS "app_id" bigint NOT NULL`)
+	assertContains(t, joined, `CREATE INDEX IF NOT EXISTS "entities_app_id_idx" ON "entities" ("app_id")`)
 	assertContains(t, joined, `CONSTRAINT "entities_app_id_fkey" FOREIGN KEY ("app_id") REFERENCES "apps"("id") ON DELETE CASCADE`)
 	assertContains(t, joined, `CONSTRAINT "apps_name_key" UNIQUE ("name")`)
 	assertContains(t, joined, `CONSTRAINT "apps_status_check" CHECK ("status" IN ('installed', 'active'))`)

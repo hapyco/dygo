@@ -8,6 +8,7 @@ fields:
     label: User
     type: link
     required: true
+    index: true
     options:
       entity: user
 
@@ -15,5 +16,6 @@ fields:
     label: Role
     type: link
     required: true
+    index: true
     options:
       entity: role

@@ -370,6 +370,97 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: entities_app_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX entities_app_id_idx ON public.entities USING btree (app_id);
+
+
+--
+-- Name: entities_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX entities_name_idx ON public.entities USING btree (name);
+
+
+--
+-- Name: fields_entity_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX fields_entity_id_idx ON public.fields USING btree (entity_id);
+
+
+--
+-- Name: fields_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX fields_name_idx ON public.fields USING btree (name);
+
+
+--
+-- Name: fields_type_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX fields_type_idx ON public.fields USING btree (type);
+
+
+--
+-- Name: permissions_entity_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX permissions_entity_id_idx ON public.permissions USING btree (entity_id);
+
+
+--
+-- Name: permissions_role_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX permissions_role_id_idx ON public.permissions USING btree (role_id);
+
+
+--
+-- Name: roles_enabled_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX roles_enabled_idx ON public.roles USING btree (enabled);
+
+
+--
+-- Name: sessions_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX sessions_status_idx ON public.sessions USING btree (status);
+
+
+--
+-- Name: sessions_user_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX sessions_user_id_idx ON public.sessions USING btree (user_id);
+
+
+--
+-- Name: user_roles_role_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX user_roles_role_id_idx ON public.user_roles USING btree (role_id);
+
+
+--
+-- Name: user_roles_user_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX user_roles_user_id_idx ON public.user_roles USING btree (user_id);
+
+
+--
+-- Name: users_enabled_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX users_enabled_idx ON public.users USING btree (enabled);
+
+
+--
 -- Name: entities entities_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 

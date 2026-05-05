@@ -8,6 +8,7 @@ fields:
     label: Entity
     type: link
     required: true
+    index: true
     options:
       entity: entity
 
@@ -15,6 +16,7 @@ fields:
     label: Name
     type: text
     required: true
+    index: true
 
   - name: label
     label: Label
@@ -25,6 +27,7 @@ fields:
     label: Type
     type: text
     required: true
+    index: true
 
   - name: required
     label: Required

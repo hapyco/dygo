@@ -22,4 +22,5 @@ fields:
   - name: enabled
     label: Enabled
     type: boolean
+    index: true
     default: true

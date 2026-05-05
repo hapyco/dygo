@@ -20,9 +20,15 @@ fields:
     type: text
     required: true
 
+  - name: email
+    label: Email
+    type: email
+    unique: true
+
   - name: status
     label: Status
     type: select
+    index: true
     options:
       values:
         - New
@@ -58,6 +64,8 @@ Field `name`, `label`, and `type` are required.
 
 Field names must be unique inside an Entity.
 
+`index: true` creates a non-unique database index for field types that support indexing. It is useful for fields commonly used in filters, lookups, joins, or status screens.
+
 Type-specific settings live under `options`.
 
 `select` fields require non-empty `options.values`.
@@ -68,6 +76,8 @@ Type-specific settings live under `options`.
 
 ```txt
 text
+email
+phone
 long-text
 int
 decimal

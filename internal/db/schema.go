@@ -71,6 +71,7 @@ func BuildMetadataSchemaStatements(entities []catalog.LoadedEntity) ([]string, e
 
 	var creates []string
 	var columns []string
+	var indexes []string
 	var constraints []string
 	seenTables := map[string]catalog.LoadedEntity{}
 	for _, loaded := range ordered {
@@ -113,6 +114,10 @@ func BuildMetadataSchemaStatements(entities []catalog.LoadedEntity) ([]string, e
 				constraint := constraintName(table, column, "key")
 				constraints = append(constraints, addConstraintStatement(table, constraint, fmt.Sprintf("UNIQUE (%s)", quoteIdent(column))))
 			}
+			if field.Index {
+				index := constraintName(table, column, "idx")
+				indexes = append(indexes, fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (%s)", quoteIdent(index), quoteIdent(table), quoteIdent(column)))
+			}
 			if field.Type == "select" && len(field.Options.Values) > 0 {
 				constraint := constraintName(table, column, "check")
 				constraints = append(constraints, addConstraintStatement(table, constraint, selectCheck(column, field.Options.Values)))
@@ -132,9 +137,10 @@ func BuildMetadataSchemaStatements(entities []catalog.LoadedEntity) ([]string, e
 		}
 	}
 
-	statements := make([]string, 0, len(creates)+len(columns)+len(constraints))
+	statements := make([]string, 0, len(creates)+len(columns)+len(indexes)+len(constraints))
 	statements = append(statements, creates...)
 	statements = append(statements, columns...)
+	statements = append(statements, indexes...)
 	statements = append(statements, constraints...)
 	return statements, nil
 }
@@ -167,7 +173,7 @@ func columnForField(field schema.Field) (string, error) {
 
 func columnType(field schema.Field, targets map[string]catalog.LoadedEntity) (string, error) {
 	switch field.Type {
-	case "text", "long-text", "select", "attachment":
+	case "text", "email", "phone", "long-text", "select", "attachment":
 		return "text", nil
 	case "int":
 		return "integer", nil
