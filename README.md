@@ -26,9 +26,14 @@ go run ./cmd/dygo version
 go run ./cmd/dygo doctor
 go run ./cmd/dygo serve
 go run ./cmd/dygo db check
+go run ./cmd/dygo db create
+go run ./cmd/dygo db prepare
+go run ./cmd/dygo db version
+go run ./cmd/dygo db schema dump
 go run ./cmd/dygo migrate status
 go run ./cmd/dygo migrate up
 go run ./cmd/dygo migrate down --steps 1
+go run ./cmd/dygo migrate redo --steps 1
 go run ./cmd/dygo apps list
 go run ./cmd/dygo apps validate
 go run ./cmd/dygo entities list

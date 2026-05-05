@@ -52,6 +52,41 @@ go run ./cmd/dygo db check --env production
 
 Connection errors must not print the raw database URL.
 
+## Database Lifecycle
+
+The database name comes from the selected environment's `DATABASE_URL`.
+
+Create the configured database if it is missing:
+
+```sh
+go run ./cmd/dygo db create
+```
+
+Prepare the database for running dygo:
+
+```sh
+go run ./cmd/dygo db prepare
+```
+
+`db prepare` creates the database if needed, applies pending migrations, and updates `db/schema.sql`.
+
+Drop or reset the configured database only with explicit confirmation:
+
+```sh
+go run ./cmd/dygo db drop --force
+go run ./cmd/dygo db reset --force
+```
+
+`db reset` drops the database, creates it again, applies migrations, and updates `db/schema.sql`.
+
+Print the latest applied migration version:
+
+```sh
+go run ./cmd/dygo db version
+```
+
+All database commands default to `development` and support `--env staging` or `--env production`.
+
 ## Migrations
 
 dygo uses paired raw SQL migrations:
@@ -93,6 +128,12 @@ Roll back applied migrations:
 go run ./cmd/dygo migrate down --steps 1
 ```
 
+Roll back and reapply migrations while developing migration files:
+
+```sh
+go run ./cmd/dygo migrate redo --steps 1
+```
+
 All migration commands default to `development` and support `--env staging` or `--env production`.
 
 ## Schema Snapshot
@@ -104,6 +145,15 @@ db/schema.sql
 ```
 
 The snapshot is generated with `pg_dump --schema-only --no-owner --no-privileges`. dygo looks for `pg_dump` in `PATH`, then checks Postgres.app's latest macOS path.
+
+You can also manage the snapshot manually:
+
+```sh
+go run ./cmd/dygo db schema dump
+go run ./cmd/dygo db schema load --force
+```
+
+`db schema load --force` replaces the database's `public` schema from `db/schema.sql`.
 
 ## Boundaries
 

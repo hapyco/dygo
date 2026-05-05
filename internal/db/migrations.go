@@ -178,6 +178,30 @@ func (m Migrator) Down(ctx context.Context, root string, databaseURL string, ste
 	return result, nil
 }
 
+// Redo rolls back applied migrations and applies pending migrations again.
+func (m Migrator) Redo(ctx context.Context, root string, databaseURL string, steps int) (MigrationResult, error) {
+	if steps < 1 {
+		return MigrationResult{}, fmt.Errorf("steps must be at least 1")
+	}
+	down, err := m.Down(ctx, root, databaseURL, steps)
+	if err != nil {
+		return MigrationResult{}, err
+	}
+	up, err := m.Up(ctx, root, databaseURL)
+	if err != nil {
+		return MigrationResult{}, err
+	}
+	return MigrationResult{
+		Applied:    up.Applied,
+		RolledBack: down.RolledBack,
+	}, nil
+}
+
+// DumpSchema writes db/schema.sql using the configured snapshotter.
+func (m Migrator) DumpSchema(ctx context.Context, root string, databaseURL string) error {
+	return m.dumpSchema(ctx, root, databaseURL)
+}
+
 func (m Migrator) dumpSchema(ctx context.Context, root string, databaseURL string) error {
 	if m.Snapshotter == nil {
 		return nil
