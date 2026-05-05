@@ -62,6 +62,8 @@ go run ./cmd/dygo entities validate
 
 The app commands read app manifests from `apps/` and `.dygo/apps/`. Entity validation uses the discovered apps to load each app's `entities/` directory.
 
+These commands can be run from nested directories. The CLI walks upward to find the dygo project root before reading app manifests.
+
 ## V1 Boundaries
 
 The app manifest loader is internal for now.

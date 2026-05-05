@@ -36,6 +36,8 @@ The default server address is:
 127.0.0.1:6790
 ```
 
+Project-aware commands discover the dygo root by walking upward from the current directory. Generated projects use `dygo.yml` as the root marker; the framework repository is also recognized during development.
+
 ## Development
 
 Requirements:

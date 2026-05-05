@@ -98,6 +98,8 @@ go run ./cmd/dygo entities validate
 
 `entities validate` checks Entity syntax, field types, duplicate Entity names within an app, and `link` or `child-table` targets.
 
+Both commands discover the dygo project root before loading apps, so they can be run from nested directories inside a project.
+
 `link` and `child-table` targets use Entity names in v1. A target is valid only when exactly one loaded Entity has that name. If no Entity matches, validation fails. If multiple apps define the same target name, validation fails as ambiguous until app-qualified references exist.
 
 Validation errors include the app name, Entity name, field name when relevant, file path, and a best-effort YAML line number.

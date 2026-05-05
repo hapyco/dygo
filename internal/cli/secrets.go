@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/dygo-dev/dygo/internal/secrets"
@@ -387,11 +386,11 @@ func newSecretsRotateKeyCommand(stdout, stderr io.Writer) *cobra.Command {
 }
 
 func newWorkingSecretsStore() (secrets.Store, error) {
-	wd, err := os.Getwd()
+	root, err := workingRootPath()
 	if err != nil {
-		return secrets.Store{}, fmt.Errorf("detect working directory: %w", err)
+		return secrets.Store{}, err
 	}
-	return secrets.NewStore(wd), nil
+	return secrets.NewStore(root), nil
 }
 
 func readSecretValue(stdin io.Reader, stdout io.Writer) (string, error) {
@@ -512,13 +511,5 @@ func openEditor(ctx context.Context, path string, stdin io.Reader, stdout, stder
 }
 
 func rel(path string) string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	relative, err := filepath.Rel(wd, path)
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	return relative
+	return relToWorkingRoot(path)
 }

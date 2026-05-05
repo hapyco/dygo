@@ -193,6 +193,8 @@ my-company/
     cache/
 ```
 
+`dygo.yml` is the generated project root marker. CLI commands walk upward from the current directory to find it before reading apps, config, secrets, and future runtime state.
+
 ## Runtime Rules
 
 `apps/` in the framework repo is for first-party apps shipped by dygo.

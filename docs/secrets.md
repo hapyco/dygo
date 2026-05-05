@@ -44,6 +44,8 @@ Do not use short forms like `dev` or `prod`.
 
 ## Commands
 
+Secret commands discover the dygo project root before reading or writing `configs/secrets/` and `.dygo/secrets/`, so they can be run from nested directories inside a project.
+
 Initialize an environment:
 
 ```sh

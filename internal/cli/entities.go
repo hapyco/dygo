@@ -32,7 +32,11 @@ func newEntitiesListCommand(stdout io.Writer) *cobra.Command {
 		Short: "List discovered dygo entities",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			apps, err := appregistry.New(".").Validate()
+			root, err := workingRootPath()
+			if err != nil {
+				return err
+			}
+			apps, err := appregistry.New(root).Validate()
 			if err != nil {
 				return fmt.Errorf("validate apps: %w", err)
 			}
@@ -84,7 +88,11 @@ func newEntitiesValidateCommand(stdout io.Writer) *cobra.Command {
 		Short: "Validate discovered dygo entities",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			apps, err := appregistry.New(".").Validate()
+			root, err := workingRootPath()
+			if err != nil {
+				return err
+			}
+			apps, err := appregistry.New(root).Validate()
 			if err != nil {
 				return fmt.Errorf("validate apps: %w", err)
 			}

@@ -63,6 +63,10 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeCLIProjectRoot(t, root)
+			t.Chdir(root)
+
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
 
@@ -85,6 +89,7 @@ func TestRun(t *testing.T) {
 
 func TestAppsListCommand(t *testing.T) {
 	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
 
 	if err := os.MkdirAll(filepath.Join(root, ".dygo", "apps", "core"), 0o755); err != nil {
@@ -122,6 +127,7 @@ func TestAppsListCommand(t *testing.T) {
 
 func TestAppsValidateCommand(t *testing.T) {
 	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
 
 	if err := os.MkdirAll(filepath.Join(root, ".dygo", "apps", "core"), 0o755); err != nil {
@@ -155,6 +161,7 @@ func TestAppsValidateCommand(t *testing.T) {
 
 func TestAppsValidateCommandRejectsInvalidAppSet(t *testing.T) {
 	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
 
 	if err := os.MkdirAll(filepath.Join(root, "apps", "sales"), 0o755); err != nil {
@@ -177,8 +184,24 @@ func TestAppsValidateCommandRejectsInvalidAppSet(t *testing.T) {
 	}
 }
 
+func TestAppsValidateCommandRejectsMissingProjectRoot(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"apps", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(apps validate) error = nil, want missing project root error")
+	}
+	if !strings.Contains(err.Error(), "no dygo project root found") {
+		t.Fatalf("Run(apps validate) error = %q, want missing project root", err.Error())
+	}
+}
+
 func TestEntitiesValidateCommand(t *testing.T) {
 	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
@@ -214,7 +237,7 @@ fields:
 
 func TestEntitiesListCommand(t *testing.T) {
 	root := t.TempDir()
-	t.Chdir(root)
+	writeCLIProjectRoot(t, root)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "core"), "core")
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
@@ -237,6 +260,8 @@ fields:
       entity: company
 `)
 
+	t.Chdir(filepath.Join(root, "apps", "sales", "entities"))
+
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	err := Run(context.Background(), []string{"entities", "list"}, strings.NewReader(""), &stdout, &stderr)
@@ -252,6 +277,7 @@ fields:
 
 func TestEntitiesValidateCommandRejectsInvalidTargets(t *testing.T) {
 	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
@@ -283,6 +309,7 @@ fields:
 
 func TestSecretsCommands(t *testing.T) {
 	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
 
 	run := func(args []string, stdin string) (string, string, error) {
@@ -374,6 +401,14 @@ func writeCLIApp(t *testing.T, dir string, name string) {
 	}
 }
 
+func writeCLIProjectRoot(t *testing.T, root string) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(root, "dygo.yml"), []byte("name: test\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
+	}
+}
+
 func writeCLIEntity(t *testing.T, path string, body string) {
 	t.Helper()
 
@@ -387,6 +422,7 @@ func writeCLIEntity(t *testing.T, path string, body string) {
 
 func TestSecretsSetFromStdinAndFile(t *testing.T) {
 	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
 
 	run := func(args []string, stdin string) (string, string, error) {
@@ -425,6 +461,7 @@ func TestSecretsSetFromStdinAndFile(t *testing.T) {
 
 func TestSecretsProductionWarningAndRotateKey(t *testing.T) {
 	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
 
 	run := func(args []string, stdin string) (string, string, error) {

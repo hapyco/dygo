@@ -31,7 +31,11 @@ func newAppsListCommand(stdout io.Writer) *cobra.Command {
 		Short: "List discovered dygo apps",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			apps, err := registry.New(".").Validate()
+			root, err := workingRootPath()
+			if err != nil {
+				return err
+			}
+			apps, err := registry.New(root).Validate()
 			if err != nil {
 				return fmt.Errorf("validate apps: %w", err)
 			}
@@ -66,7 +70,11 @@ func newAppsValidateCommand(stdout io.Writer) *cobra.Command {
 		Short: "Validate discovered dygo apps",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			apps, err := registry.New(".").Validate()
+			root, err := workingRootPath()
+			if err != nil {
+				return err
+			}
+			apps, err := registry.New(root).Validate()
 			if err != nil {
 				return fmt.Errorf("validate apps: %w", err)
 			}
