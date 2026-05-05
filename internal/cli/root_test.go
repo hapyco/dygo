@@ -65,6 +65,7 @@ func TestRun(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeCLIProjectRoot(t, root)
+			writeCLIConfig(t, root)
 			t.Chdir(root)
 
 			var stdout bytes.Buffer
@@ -84,6 +85,49 @@ func TestRun(t *testing.T) {
 				t.Fatalf("stderr = %q, want substring %q", stderr.String(), tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestServeCommandLoadsProjectConfig(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfigBody(t, root, `
+server:
+  host: 0.0.0.0
+  port: 7777
+`)
+	nested := filepath.Join(root, "apps", "sales")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("MkdirAll(nested) error = %v", err)
+	}
+	t.Chdir(nested)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(serve) error = %v, want nil", err)
+	}
+	if !strings.Contains(stdout.String(), "0.0.0.0:7777") {
+		t.Fatalf("serve stdout = %q, want configured address", stdout.String())
+	}
+}
+
+func TestServeCommandRequiresProjectConfig(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(serve) error = nil, want missing config error")
+	}
+	for _, want := range []string{"load config", "configs/dygo.yaml"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(serve) error = %q, want substring %q", err.Error(), want)
+		}
 	}
 }
 
@@ -228,7 +272,7 @@ fields:
 		"PASS go toolchain:",
 		"PASS app manifests: 1 apps valid",
 		"PASS entity metadata: 1 entities valid",
-		"PASS config files: configs/dygo.yaml",
+		"PASS config: configs/dygo.yaml server=127.0.0.1:6790",
 		"PASS secrets layout: 3 environments configured",
 		"dygo doctor passed",
 	} {
@@ -264,9 +308,42 @@ dependencies:
 		"PASS go toolchain:",
 		"FAIL app manifests:",
 		"SKIP entity metadata: app manifests are invalid",
-		"FAIL config files: missing configs, configs/dygo.yaml",
+		"FAIL config:",
+		"configs/dygo.yaml",
 		"FAIL secrets layout:",
 		"dygo doctor found",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
+func TestDoctorCommandReportsInvalidConfig(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfigBody(t, root, `
+server:
+  port: 70000
+`)
+	writeCLISecretsLayout(t, root)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"doctor"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(doctor) error = nil, want invalid config failure")
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"PASS project root:",
+		"PASS app manifests: 0 apps valid",
+		"PASS entity metadata: 0 entities valid",
+		"FAIL config:",
+		"server.port must be between 1 and 65535",
+		"PASS secrets layout: 3 environments configured",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
@@ -492,11 +569,20 @@ func writeCLIProjectRoot(t *testing.T, root string) {
 func writeCLIConfig(t *testing.T, root string) {
 	t.Helper()
 
+	writeCLIConfigBody(t, root, `
+server:
+  port: 6790
+`)
+}
+
+func writeCLIConfigBody(t *testing.T, root string, body string) {
+	t.Helper()
+
 	configPath := filepath.Join(root, "configs", "dygo.yaml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(configs) error = %v", err)
 	}
-	if err := os.WriteFile(configPath, []byte("server:\n  port: 6790\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte(strings.TrimSpace(body)+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(dygo.yaml) error = %v", err)
 	}
 }

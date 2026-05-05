@@ -11,6 +11,7 @@ import (
 
 	"github.com/dygo-dev/dygo/internal/app/manifest"
 	appregistry "github.com/dygo-dev/dygo/internal/app/registry"
+	"github.com/dygo-dev/dygo/internal/config"
 	"github.com/dygo-dev/dygo/internal/entity/catalog"
 	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
 	"github.com/dygo-dev/dygo/internal/project"
@@ -65,7 +66,7 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 		results = append(results,
 			doctorResult{Status: doctorSkip, Name: "app manifests", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "entity metadata", Detail: "project root not found"},
-			doctorResult{Status: doctorSkip, Name: "config files", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "config", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "secrets layout", Detail: "project root not found"},
 		)
 		return writeDoctorResults(stdout, results)
@@ -78,7 +79,7 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 	} else {
 		results = append(results, doctorResult{Status: doctorSkip, Name: "entity metadata", Detail: "app manifests are invalid"})
 	}
-	results = append(results, checkConfigFiles(root))
+	results = append(results, checkConfig(root))
 	results = append(results, checkSecretsLayout(root))
 
 	return writeDoctorResults(stdout, results)
@@ -121,15 +122,12 @@ func checkEntityMetadata(apps []manifest.LoadedApp) doctorResult {
 	return doctorResult{Status: doctorPass, Name: "entity metadata", Detail: fmt.Sprintf("%d entities valid", len(entities))}
 }
 
-func checkConfigFiles(root string) doctorResult {
-	missing := missingRequiredPaths(root, []requiredPath{
-		{Path: "configs", Directory: true},
-		{Path: filepath.Join("configs", "dygo.yaml")},
-	})
-	if len(missing) > 0 {
-		return doctorResult{Status: doctorFail, Name: "config files", Detail: "missing " + strings.Join(missing, ", ")}
+func checkConfig(root string) doctorResult {
+	cfg, err := config.Load(root)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "config", Detail: err.Error()}
 	}
-	return doctorResult{Status: doctorPass, Name: "config files", Detail: filepath.ToSlash(filepath.Join("configs", "dygo.yaml"))}
+	return doctorResult{Status: doctorPass, Name: "config", Detail: fmt.Sprintf("%s server=%s", config.FilePath, cfg.Server.Address())}
 }
 
 func checkSecretsLayout(root string) doctorResult {

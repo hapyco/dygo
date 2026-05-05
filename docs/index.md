@@ -14,6 +14,7 @@ These docs live in the repository so they are versioned with code, reviewed in P
 - [App Model](app-model.md) explains built-in apps, business apps, and app install locations.
 - [App Manifest](app-manifest.md) defines the first `app.yml` schema.
 - [Entity Metadata](entity-metadata.md) defines the first Entity YAML schema and built-in field types.
+- [Config](config.md) explains required project config and current runtime settings.
 - [Studio](studio.md) explains the first-party global UI app.
 - [Encrypted Secrets](secrets.md) explains repo-stored encrypted secrets and the `dygo secrets` CLI.
 - [Directory Structure](dir-structure.md) describes the intended repository layout.

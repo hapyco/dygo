@@ -73,6 +73,7 @@ docs/              project doctrine, thesis, and structure notes
 - [App Model](docs/app-model.md)
 - [App Manifest](docs/app-manifest.md)
 - [Entity Metadata](docs/entity-metadata.md)
+- [Config](docs/config.md)
 - [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)
 - [Documentation Strategy](docs/docs-strategy.md)

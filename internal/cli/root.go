@@ -89,7 +89,14 @@ func newServeCommand(stdout io.Writer) *cobra.Command {
 		Short: "Start the dygo server",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			cfg := config.Default()
+			root, err := workingRootPath()
+			if err != nil {
+				return err
+			}
+			cfg, err := config.Load(root)
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
 			if _, err := fmt.Fprintf(stdout, "dygo serve will listen on %s\n", cfg.Server.Address()); err != nil {
 				return fmt.Errorf("write serve output: %w", err)
 			}
