@@ -6,13 +6,24 @@ The project is still in early framework development. Core concepts, metadata for
 
 ## Current Status
 
-Contributions are paused.
+Code contributions are paused.
 
 Please do not open pull requests for features, refactors, documentation rewrites, or bug fixes yet. They are likely to be closed without review while the framework is still taking shape.
 
 ## What Helps Right Now
 
 The most useful support at this stage is reading the public docs and roadmap to understand the direction.
+
+Issues are welcome when they help clarify the framework:
+
+- product ideas
+- developer experience feedback
+- tooling suggestions
+- setup pain points
+- confusing docs or naming
+- use cases dygo should eventually support
+
+Keep issues focused on the problem, context, and desired outcome. Implementation pull requests should wait until contribution guidelines reopen.
 
 If you are following the project, start here:
 
