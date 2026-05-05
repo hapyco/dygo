@@ -4,6 +4,13 @@ plural-name: entities
 plural-label: Entities
 description: Registry entry for a known Entity definition.
 fields:
+  - name: app
+    label: App
+    type: link
+    required: true
+    options:
+      entity: app
+
   - name: name
     label: Name
     type: text

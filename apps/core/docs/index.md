@@ -17,6 +17,6 @@ permission
 session
 ```
 
-These contracts do not create database tables, authentication behavior, permission resolution, records, migrations, or Studio screens yet.
+These contracts create Core database tables through dygo's metadata-driven schema sync. They do not create authentication behavior, permission resolution, records, app lifecycle behavior, or Studio screens yet.
 
-Lifecycle and history records such as patch runs, migration runs, and ledger-style change history are deferred until migrations and app lifecycle behavior are designed.
+Lifecycle and history records such as patch runs and ledger-style change history are deferred until patches and app lifecycle behavior are designed.

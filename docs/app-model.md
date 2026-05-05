@@ -24,7 +24,9 @@ It owns:
 
 The framework repo includes the initial Core app manifest at `apps/core/app.yml`.
 
-The first Core Entity contracts live under `apps/core/entities/`. Framework migrations create the initial Core SQL tables from these contracts, but records, auth behavior, permission resolution, app lifecycle patches, and Studio screens are still separate follow-up layers.
+The first Core Entity contracts live under `apps/core/entities/`. dygo creates Core SQL tables from this metadata through the same schema path used by every other App. Core is required, but it is still an App.
+
+Records, auth behavior, permission resolution, app lifecycle patches, and Studio screens are still separate follow-up layers.
 
 `apps/studio` is the first-party UI app.
 

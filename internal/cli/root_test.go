@@ -106,7 +106,7 @@ func TestRootHelpIncludesServeAndDB(t *testing.T) {
 		"db",
 		"Manage dygo database lifecycle",
 		"migrate",
-		"Manage dygo database migrations",
+		"Sync dygo metadata to the database",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("help stdout = %q, want substring %q", stdout.String(), want)
@@ -314,7 +314,7 @@ func TestDBCreateCommand(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "create"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
+	err := runWithServices(context.Background(), []string{"db", "create"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err != nil {
 		t.Fatalf("Run(db create) error = %v, want nil", err)
 	}
@@ -338,7 +338,7 @@ func TestDBCreateCommandAlreadyExists(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "create"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
+	err := runWithServices(context.Background(), []string{"db", "create"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err != nil {
 		t.Fatalf("Run(db create exists) error = %v, want nil", err)
 	}
@@ -354,7 +354,7 @@ func TestDBDropCommandRequiresForce(t *testing.T) {
 	fake := &fakeDatabaseRunner{}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "drop"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
+	err := runWithServices(context.Background(), []string{"db", "drop"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err == nil {
 		t.Fatal("Run(db drop) error = nil, want force error")
 	}
@@ -379,7 +379,7 @@ func TestDBDropCommand(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "drop", "--force", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
+	err := runWithServices(context.Background(), []string{"db", "drop", "--force", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err != nil {
 		t.Fatalf("Run(db drop) error = %v, want nil", err)
 	}
@@ -400,15 +400,15 @@ func TestDBPrepareCommand(t *testing.T) {
 	t.Chdir(root)
 
 	fake := &fakeDatabaseRunner{
-		prepareResult: db.MigrationResult{Applied: []db.Migration{testCLIMigration(db.MigrationScopeFramework, "20260505180000", "create_core_tables")}},
+		prepareResult: db.SchemaSyncResult{Entities: 8, Fields: 34},
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "prepare"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
+	err := runWithServices(context.Background(), []string{"db", "prepare"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err != nil {
 		t.Fatalf("Run(db prepare) error = %v, want nil", err)
 	}
-	if stdout.String() != "database prepared: applied 1 migrations (development)\n" {
+	if stdout.String() != "database prepared: synced 8 entities, 34 fields (development)\n" {
 		t.Fatalf("db prepare stdout = %q, want prepare output", stdout.String())
 	}
 	if fake.operation != "prepare" || fake.root != root || fake.databaseURL != databaseURL {
@@ -423,7 +423,7 @@ func TestDBResetCommandRequiresForce(t *testing.T) {
 	fake := &fakeDatabaseRunner{}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "reset"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
+	err := runWithServices(context.Background(), []string{"db", "reset"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err == nil {
 		t.Fatal("Run(db reset) error = nil, want force error")
 	}
@@ -443,55 +443,16 @@ func TestDBResetCommand(t *testing.T) {
 	t.Chdir(root)
 
 	fake := &fakeDatabaseRunner{
-		resetResult: db.MigrationResult{Applied: []db.Migration{testCLIMigration(db.MigrationScopeFramework, "20260505180000", "create_core_tables")}},
+		resetResult: db.SchemaSyncResult{Entities: 8, Fields: 34},
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "reset", "--force"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
+	err := runWithServices(context.Background(), []string{"db", "reset", "--force"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err != nil {
 		t.Fatalf("Run(db reset) error = %v, want nil", err)
 	}
-	if stdout.String() != "database reset: applied 1 migrations (development)\n" {
+	if stdout.String() != "database reset: synced 8 entities, 34 fields (development)\n" {
 		t.Fatalf("db reset stdout = %q, want reset output", stdout.String())
-	}
-}
-
-func TestDBVersionCommand(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user@localhost:5432/dygo")
-	t.Chdir(root)
-
-	fake := &fakeDatabaseRunner{
-		versionResult: db.DatabaseVersion{Version: "20260505180000", Found: true},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "version"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
-	if err != nil {
-		t.Fatalf("Run(db version) error = %v, want nil", err)
-	}
-	if stdout.String() != "database version: 20260505180000 (development)\n" {
-		t.Fatalf("db version stdout = %q, want version output", stdout.String())
-	}
-}
-
-func TestDBVersionCommandEmpty(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user@localhost:5432/dygo")
-	t.Chdir(root)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "version"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, &fakeDatabaseRunner{}, &fakeMigrationRunner{})
-	if err != nil {
-		t.Fatalf("Run(db version empty) error = %v, want nil", err)
-	}
-	if stdout.String() != "database version: none (development)\n" {
-		t.Fatalf("db version stdout = %q, want none output", stdout.String())
 	}
 }
 
@@ -506,7 +467,7 @@ func TestDBSchemaDumpCommand(t *testing.T) {
 	fake := &fakeDatabaseRunner{}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "schema", "dump"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
+	err := runWithServices(context.Background(), []string{"db", "schema", "dump"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err != nil {
 		t.Fatalf("Run(db schema dump) error = %v, want nil", err)
 	}
@@ -518,48 +479,7 @@ func TestDBSchemaDumpCommand(t *testing.T) {
 	}
 }
 
-func TestDBSchemaLoadCommandRequiresForce(t *testing.T) {
-	root := t.TempDir()
-	t.Chdir(root)
-
-	fake := &fakeDatabaseRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "schema", "load"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
-	if err == nil {
-		t.Fatal("Run(db schema load) error = nil, want force error")
-	}
-	if !strings.Contains(err.Error(), "db schema load requires --force") {
-		t.Fatalf("Run(db schema load) error = %q, want force context", err.Error())
-	}
-	if fake.calls != 0 {
-		t.Fatalf("database runner calls = %d, want 0", fake.calls)
-	}
-}
-
-func TestDBSchemaLoadCommand(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user@localhost:5432/dygo")
-	t.Chdir(root)
-
-	fake := &fakeDatabaseRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "schema", "load", "--force"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeMigrationRunner{})
-	if err != nil {
-		t.Fatalf("Run(db schema load) error = %v, want nil", err)
-	}
-	if stdout.String() != "schema loaded from db/schema.sql (development)\n" {
-		t.Fatalf("db schema load stdout = %q, want load output", stdout.String())
-	}
-	if fake.operation != "schema-load" {
-		t.Fatalf("database runner operation = %q, want schema-load", fake.operation)
-	}
-}
-
-func TestMigrateStatusCommandDefaultsToDevelopment(t *testing.T) {
+func TestMigrateCommandDefaultsToDevelopment(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -567,67 +487,27 @@ func TestMigrateStatusCommandDefaultsToDevelopment(t *testing.T) {
 	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
 	t.Chdir(root)
 
-	fake := &fakeMigrationRunner{
-		statuses: []db.MigrationStatus{
-			{Migration: testCLIMigration(db.MigrationScopeFramework, "20260505180000", "create_core_tables")},
-		},
+	fake := &fakeSchemaSyncRunner{
+		result: db.SchemaSyncResult{Entities: 8, Fields: 34},
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate", "status"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	err := runWithServices(context.Background(), []string{"migrate"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
 	if err != nil {
-		t.Fatalf("Run(migrate status) error = %v, want nil", err)
+		t.Fatalf("Run(migrate) error = %v, want nil", err)
 	}
-	output := stdout.String()
-	for _, want := range []string{"Migrations (development)", "STATUS", "pending", "framework", "20260505180000", "create_core_tables"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("migrate status stdout = %q, want substring %q", output, want)
-		}
-	}
-	if fake.operation != "status" {
-		t.Fatalf("migration operation = %q, want status", fake.operation)
+	if stdout.String() != "metadata synced: 8 entities, 34 fields (development)\n" {
+		t.Fatalf("migrate stdout = %q, want synced output", stdout.String())
 	}
 	if fake.root != root {
-		t.Fatalf("migration root = %q, want %q", fake.root, root)
+		t.Fatalf("schema sync root = %q, want %q", fake.root, root)
 	}
 	if fake.databaseURL != databaseURL {
-		t.Fatalf("migration database URL = %q, want %q", fake.databaseURL, databaseURL)
+		t.Fatalf("schema sync database URL = %q, want %q", fake.databaseURL, databaseURL)
 	}
 }
 
-func TestMigrateUpCommand(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeMigrationRunner{
-		upResult: db.MigrationResult{
-			Applied: []db.Migration{
-				testCLIMigration(db.MigrationScopeFramework, "20260505180000", "create_core_tables"),
-			},
-		},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate", "up"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(migrate up) error = %v, want nil", err)
-	}
-	if stdout.String() != "applied 1 migrations (development)\n" {
-		t.Fatalf("migrate up stdout = %q, want success count", stdout.String())
-	}
-	if fake.operation != "up" {
-		t.Fatalf("migration operation = %q, want up", fake.operation)
-	}
-	if fake.databaseURL != databaseURL {
-		t.Fatalf("migration database URL = %q, want %q", fake.databaseURL, databaseURL)
-	}
-}
-
-func TestMigrateDownCommandUsesStepsAndEnvironment(t *testing.T) {
+func TestMigrateCommandUsesEnvironment(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -635,107 +515,20 @@ func TestMigrateDownCommandUsesStepsAndEnvironment(t *testing.T) {
 	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
 	t.Chdir(root)
 
-	fake := &fakeMigrationRunner{
-		downResult: db.MigrationResult{
-			RolledBack: []db.Migration{
-				testCLIMigration(db.MigrationScopeProject, "20260505190000", "project_one"),
-				testCLIMigration(db.MigrationScopeFramework, "20260505180000", "create_core_tables"),
-			},
-		},
+	fake := &fakeSchemaSyncRunner{
+		result: db.SchemaSyncResult{Entities: 3, Fields: 9},
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate", "down", "--steps", "2", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	err := runWithServices(context.Background(), []string{"migrate", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
 	if err != nil {
-		t.Fatalf("Run(migrate down) error = %v, want nil", err)
+		t.Fatalf("Run(migrate --env staging) error = %v, want nil", err)
 	}
-	if stdout.String() != "rolled back 2 migrations (staging)\n" {
-		t.Fatalf("migrate down stdout = %q, want rollback count", stdout.String())
-	}
-	if fake.operation != "down" {
-		t.Fatalf("migration operation = %q, want down", fake.operation)
-	}
-	if fake.steps != 2 {
-		t.Fatalf("migration steps = %d, want 2", fake.steps)
+	if stdout.String() != "metadata synced: 3 entities, 9 fields (staging)\n" {
+		t.Fatalf("migrate stdout = %q, want synced output", stdout.String())
 	}
 	if fake.databaseURL != databaseURL {
-		t.Fatalf("migration database URL = %q, want %q", fake.databaseURL, databaseURL)
-	}
-}
-
-func TestMigrateDownCommandRejectsInvalidSteps(t *testing.T) {
-	root := t.TempDir()
-	t.Chdir(root)
-
-	fake := &fakeMigrationRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate", "down", "--steps", "0"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(migrate down --steps 0) error = nil, want steps error")
-	}
-	if !strings.Contains(err.Error(), "steps must be at least 1") {
-		t.Fatalf("Run(migrate down --steps 0) error = %q, want steps context", err.Error())
-	}
-	if fake.calls != 0 {
-		t.Fatalf("migration runner calls = %d, want 0", fake.calls)
-	}
-}
-
-func TestMigrateRedoCommand(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeMigrationRunner{
-		redoResult: db.MigrationResult{
-			Applied: []db.Migration{
-				testCLIMigration(db.MigrationScopeFramework, "20260505180000", "create_core_tables"),
-			},
-			RolledBack: []db.Migration{
-				testCLIMigration(db.MigrationScopeFramework, "20260505180000", "create_core_tables"),
-			},
-		},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate", "redo", "--steps", "1", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(migrate redo) error = %v, want nil", err)
-	}
-	if stdout.String() != "redid 1 migrations (staging)\n" {
-		t.Fatalf("migrate redo stdout = %q, want redo count", stdout.String())
-	}
-	if fake.operation != "redo" {
-		t.Fatalf("migration operation = %q, want redo", fake.operation)
-	}
-	if fake.steps != 1 {
-		t.Fatalf("migration steps = %d, want 1", fake.steps)
-	}
-	if fake.databaseURL != databaseURL {
-		t.Fatalf("migration database URL = %q, want %q", fake.databaseURL, databaseURL)
-	}
-}
-
-func TestMigrateRedoCommandRejectsInvalidSteps(t *testing.T) {
-	root := t.TempDir()
-	t.Chdir(root)
-
-	fake := &fakeMigrationRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate", "redo", "--steps", "0"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(migrate redo --steps 0) error = nil, want steps error")
-	}
-	if !strings.Contains(err.Error(), "steps must be at least 1") {
-		t.Fatalf("Run(migrate redo --steps 0) error = %q, want steps context", err.Error())
-	}
-	if fake.calls != 0 {
-		t.Fatalf("migration runner calls = %d, want 0", fake.calls)
+		t.Fatalf("schema sync database URL = %q, want %q", fake.databaseURL, databaseURL)
 	}
 }
 
@@ -749,20 +542,20 @@ func TestMigrateCommandRequiresSecret(t *testing.T) {
 	}
 	t.Chdir(root)
 
-	fake := &fakeMigrationRunner{}
+	fake := &fakeSchemaSyncRunner{}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate", "status"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	err := runWithServices(context.Background(), []string{"migrate"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
 	if err == nil {
-		t.Fatal("Run(migrate status) error = nil, want missing secret error")
+		t.Fatal("Run(migrate) error = nil, want missing secret error")
 	}
 	for _, want := range []string{`read database secret "DATABASE_URL" for development`, `secret "DATABASE_URL" is not defined`} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Run(migrate status) error = %q, want substring %q", err.Error(), want)
+			t.Fatalf("Run(migrate) error = %q, want substring %q", err.Error(), want)
 		}
 	}
 	if fake.calls != 0 {
-		t.Fatalf("migration runner calls = %d, want 0", fake.calls)
+		t.Fatalf("schema sync runner calls = %d, want 0", fake.calls)
 	}
 }
 
@@ -1466,14 +1259,11 @@ type fakeDatabaseRunner struct {
 	createErr     error
 	dropResult    db.DatabaseResult
 	dropErr       error
-	prepareResult db.MigrationResult
+	prepareResult db.SchemaSyncResult
 	prepareErr    error
-	resetResult   db.MigrationResult
+	resetResult   db.SchemaSyncResult
 	resetErr      error
 	schemaDumpErr error
-	schemaLoadErr error
-	versionResult db.DatabaseVersion
-	versionErr    error
 	operation     string
 	root          string
 	databaseURL   string
@@ -1501,7 +1291,7 @@ func (r *fakeDatabaseRunner) Drop(_ context.Context, databaseURL string) (db.Dat
 	return r.dropResult, r.dropErr
 }
 
-func (r *fakeDatabaseRunner) Prepare(_ context.Context, root string, databaseURL string) (db.MigrationResult, error) {
+func (r *fakeDatabaseRunner) Prepare(_ context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
 	r.calls++
 	r.operation = "prepare"
 	r.root = root
@@ -1509,7 +1299,7 @@ func (r *fakeDatabaseRunner) Prepare(_ context.Context, root string, databaseURL
 	return r.prepareResult, r.prepareErr
 }
 
-func (r *fakeDatabaseRunner) Reset(_ context.Context, root string, databaseURL string) (db.MigrationResult, error) {
+func (r *fakeDatabaseRunner) Reset(_ context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
 	r.calls++
 	r.operation = "reset"
 	r.root = root
@@ -1525,78 +1315,19 @@ func (r *fakeDatabaseRunner) SchemaDump(_ context.Context, root string, database
 	return r.schemaDumpErr
 }
 
-func (r *fakeDatabaseRunner) SchemaLoad(_ context.Context, root string, databaseURL string) error {
-	r.calls++
-	r.operation = "schema-load"
-	r.root = root
-	r.databaseURL = databaseURL
-	return r.schemaLoadErr
-}
-
-func (r *fakeDatabaseRunner) Version(_ context.Context, root string, databaseURL string) (db.DatabaseVersion, error) {
-	r.calls++
-	r.operation = "version"
-	r.root = root
-	r.databaseURL = databaseURL
-	return r.versionResult, r.versionErr
-}
-
-type fakeMigrationRunner struct {
-	statuses    []db.MigrationStatus
-	statusErr   error
-	upResult    db.MigrationResult
-	upErr       error
-	downResult  db.MigrationResult
-	downErr     error
-	redoResult  db.MigrationResult
-	redoErr     error
-	operation   string
+type fakeSchemaSyncRunner struct {
+	result      db.SchemaSyncResult
+	err         error
 	root        string
 	databaseURL string
-	steps       int
 	calls       int
 }
 
-func (r *fakeMigrationRunner) Status(_ context.Context, root string, databaseURL string) ([]db.MigrationStatus, error) {
+func (r *fakeSchemaSyncRunner) Sync(_ context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
 	r.calls++
-	r.operation = "status"
 	r.root = root
 	r.databaseURL = databaseURL
-	return r.statuses, r.statusErr
-}
-
-func (r *fakeMigrationRunner) Up(_ context.Context, root string, databaseURL string) (db.MigrationResult, error) {
-	r.calls++
-	r.operation = "up"
-	r.root = root
-	r.databaseURL = databaseURL
-	return r.upResult, r.upErr
-}
-
-func (r *fakeMigrationRunner) Down(_ context.Context, root string, databaseURL string, steps int) (db.MigrationResult, error) {
-	r.calls++
-	r.operation = "down"
-	r.root = root
-	r.databaseURL = databaseURL
-	r.steps = steps
-	return r.downResult, r.downErr
-}
-
-func (r *fakeMigrationRunner) Redo(_ context.Context, root string, databaseURL string, steps int) (db.MigrationResult, error) {
-	r.calls++
-	r.operation = "redo"
-	r.root = root
-	r.databaseURL = databaseURL
-	r.steps = steps
-	return r.redoResult, r.redoErr
-}
-
-func testCLIMigration(scope string, version string, name string) db.Migration {
-	return db.Migration{
-		Scope:   scope,
-		Version: version,
-		Name:    name,
-	}
+	return r.result, r.err
 }
 
 func writeCLIEntity(t *testing.T, path string, body string) {

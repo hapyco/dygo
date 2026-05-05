@@ -16,7 +16,7 @@ Builders can now move faster than ever with coding agents, AI-assisted implement
 
 But serious business software cannot be built like disposable vibe-coded apps.
 
-Business systems need predictable behavior. They need audit logs. They need permissions. They need stable data models. They need migrations, observability, logging, analytics, background jobs, secure credentials, site management, and consistent UI patterns.
+Business systems need predictable behavior. They need audit logs. They need permissions. They need stable data models. They need metadata-driven schema sync, observability, logging, analytics, background jobs, secure credentials, site management, and consistent UI patterns.
 
 Without strong boundaries, agentic coding can easily create messy, inconsistent, insecure, and hard-to-maintain systems.
 
@@ -39,7 +39,7 @@ That means dygo should provide strong defaults and built-in capabilities for:
 - auditing
 - background jobs
 - scheduling
-- migrations
+- metadata-driven schema sync
 - site management
 - maintenance mode
 - configuration

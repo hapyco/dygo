@@ -29,7 +29,7 @@ They should not rebuild the same foundation in every project:
 - command-line workflows
 - app structure
 - schema-driven entities and records
-- migrations
+- metadata-driven schema sync
 - permissions
 - background jobs
 - scheduling
@@ -132,7 +132,7 @@ Internal software deserves good product taste.
 
 dygo should be serious underneath and simple on the surface.
 
-Enterprise-grade means reliable defaults, secure boundaries, migrations, audit trails, observability, permissions, backups, and operational clarity.
+Enterprise-grade means reliable defaults, secure boundaries, metadata-driven schema sync, audit trails, observability, permissions, backups, and operational clarity.
 
 It does not mean creating abstractions before they are needed.
 
@@ -148,7 +148,7 @@ Business-specific behavior belongs in apps built on top of dygo.
 
 This boundary matters.
 
-The framework should know how to install an app, load its metadata, run its migrations, enforce its permissions, expose its views, and schedule its jobs.
+The framework should know how to install an app, load its metadata, sync its schema, run its patches, enforce its permissions, expose its views, and schedule its jobs.
 
 The app should know what the business is trying to do.
 
@@ -191,7 +191,7 @@ A new builder should be able to understand the basic dygo loop quickly:
 ```sh
 dygo app new crm
 dygo generate entity Lead
-dygo migrate up
+dygo migrate
 dygo serve
 ```
 

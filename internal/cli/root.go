@@ -19,17 +19,12 @@ type databaseRunner interface {
 	Check(context.Context, string) error
 	Create(context.Context, string) (db.DatabaseResult, error)
 	Drop(context.Context, string) (db.DatabaseResult, error)
-	Prepare(context.Context, string, string) (db.MigrationResult, error)
-	Reset(context.Context, string, string) (db.MigrationResult, error)
+	Prepare(context.Context, string, string) (db.SchemaSyncResult, error)
+	Reset(context.Context, string, string) (db.SchemaSyncResult, error)
 	SchemaDump(context.Context, string, string) error
-	SchemaLoad(context.Context, string, string) error
-	Version(context.Context, string, string) (db.DatabaseVersion, error)
 }
-type migrationRunner interface {
-	Status(context.Context, string, string) ([]db.MigrationStatus, error)
-	Up(context.Context, string, string) (db.MigrationResult, error)
-	Down(context.Context, string, string, int) (db.MigrationResult, error)
-	Redo(context.Context, string, string, int) (db.MigrationResult, error)
+type schemaSyncRunner interface {
+	Sync(context.Context, string, string) (db.SchemaSyncResult, error)
 }
 
 // Run executes the dygo command-line interface.
@@ -43,8 +38,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	return runWithServices(ctx, args, stdin, stdout, stderr, serve, checkBackedDatabaseRunner{check: checkDatabase, manager: db.NewManager(migrator)}, migrator)
 }
 
-func runWithServices(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, migrate migrationRunner) error {
-	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, migrate)
+func runWithServices(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner) error {
+	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync)
 	if err != nil {
 		return err
 	}
@@ -64,7 +59,7 @@ func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator)
 }
 
-func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, migrate migrationRunner) (*cobra.Command, error) {
+func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
 	}
@@ -83,8 +78,8 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	if database == nil {
 		return nil, fmt.Errorf("database runner is required")
 	}
-	if migrate == nil {
-		return nil, fmt.Errorf("migration runner is required")
+	if sync == nil {
+		return nil, fmt.Errorf("schema sync runner is required")
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -108,7 +103,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newDoctorCommand(ctx, stdout))
 	root.AddCommand(newServeCommand(ctx, stdout, serve))
 	root.AddCommand(newDBCommand(ctx, stdout, database))
-	root.AddCommand(newMigrateCommand(ctx, stdout, migrate))
+	root.AddCommand(newMigrateCommand(ctx, stdout, sync))
 	root.AddCommand(newAppsCommand(stdout))
 	root.AddCommand(newEntitiesCommand(stdout))
 	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))
@@ -136,24 +131,16 @@ func (r checkBackedDatabaseRunner) Drop(ctx context.Context, databaseURL string)
 	return r.manager.Drop(ctx, databaseURL)
 }
 
-func (r checkBackedDatabaseRunner) Prepare(ctx context.Context, root string, databaseURL string) (db.MigrationResult, error) {
+func (r checkBackedDatabaseRunner) Prepare(ctx context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
 	return r.manager.Prepare(ctx, root, databaseURL)
 }
 
-func (r checkBackedDatabaseRunner) Reset(ctx context.Context, root string, databaseURL string) (db.MigrationResult, error) {
+func (r checkBackedDatabaseRunner) Reset(ctx context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
 	return r.manager.Reset(ctx, root, databaseURL)
 }
 
 func (r checkBackedDatabaseRunner) SchemaDump(ctx context.Context, root string, databaseURL string) error {
 	return r.manager.SchemaDump(ctx, root, databaseURL)
-}
-
-func (r checkBackedDatabaseRunner) SchemaLoad(ctx context.Context, root string, databaseURL string) error {
-	return r.manager.SchemaLoad(ctx, root, databaseURL)
-}
-
-func (r checkBackedDatabaseRunner) Version(ctx context.Context, root string, databaseURL string) (db.DatabaseVersion, error) {
-	return r.manager.Version(ctx, root, databaseURL)
 }
 
 func newVersionCommand(stdout io.Writer) *cobra.Command {

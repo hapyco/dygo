@@ -26,7 +26,6 @@ dygo/
     runtime/
     server/
     db/
-      migrations/
     app/
     entity/
     record/
@@ -77,7 +76,6 @@ dygo/
     github.yml
 
   db/
-    migrations/
     schema.sql
 
   docs/
@@ -105,7 +103,7 @@ dygo/
 
 `apps/core` is the required system app. dygo cannot boot properly without it.
 
-It owns users, roles, permissions, sessions, installed apps, patch ledger, migration ledger, core fixtures, core patches, and files or attachments when they are required by the runtime.
+It owns users, roles, permissions, sessions, installed apps, patch history, core fixtures, core patches, and files or attachments when they are required by the runtime.
 
 `apps/studio` is the first-party UI app.
 
@@ -177,7 +175,6 @@ my-company/
       production.age.yaml
 
   db/
-    migrations/
     schema.sql
 
   docs/
@@ -208,9 +205,7 @@ my-company/
 
 `.dygo/apps/` is for framework-managed cached apps.
 
-`db/migrations/` is for project-owned SQL migrations.
-
-`db/schema.sql` is the generated Postgres schema snapshot after migrations run.
+`db/schema.sql` is the generated Postgres schema snapshot after metadata schema sync runs.
 
 `var/` is for runtime-generated data.
 

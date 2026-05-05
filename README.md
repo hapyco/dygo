@@ -8,7 +8,7 @@
 
 dygo is an open-source framework for building serious business software in Go.
 
-It is designed for business processes, internal operating systems, enterprise applications, and workflow-heavy products where permissions, migrations, audit trails, observability, background jobs, secure configuration, and a consistent Studio UI matter from day one.
+It is designed for business processes, internal operating systems, enterprise applications, and workflow-heavy products where permissions, metadata-driven schema, audit trails, observability, background jobs, secure configuration, and a consistent Studio UI matter from day one.
 
 The goal is speed with structure: builders should focus on business logic while dygo handles the platform foundation.
 
@@ -16,7 +16,7 @@ The goal is speed with structure: builders should focus on business logic while 
 
 dygo is in early framework development.
 
-The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server skeleton, encrypted credentials, app/entity metadata validation, and PostgreSQL migration foundation. The framework APIs are not stable yet.
+The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server skeleton, encrypted credentials, app/entity metadata validation, and PostgreSQL schema sync foundation. The framework APIs are not stable yet.
 
 ## Current CLI
 
@@ -28,12 +28,8 @@ go run ./cmd/dygo serve
 go run ./cmd/dygo db check
 go run ./cmd/dygo db create
 go run ./cmd/dygo db prepare
-go run ./cmd/dygo db version
 go run ./cmd/dygo db schema dump
-go run ./cmd/dygo migrate status
-go run ./cmd/dygo migrate up
-go run ./cmd/dygo migrate down --steps 1
-go run ./cmd/dygo migrate redo --steps 1
+go run ./cmd/dygo migrate
 go run ./cmd/dygo apps list
 go run ./cmd/dygo apps validate
 go run ./cmd/dygo entities list
@@ -81,10 +77,9 @@ cmd/dygo/          executable entrypoint
 internal/cli/      private CLI implementation
 internal/config/   private config defaults and loading code
 internal/db/       private PostgreSQL code
-  migrations/      framework-owned SQL migrations
 apps/              first-party dygo apps such as core and Studio
 configs/           safe committed config files
-db/                project migrations and schema snapshot
+db/                generated schema snapshot
 docs/              project doctrine, thesis, and structure notes
 ```
 

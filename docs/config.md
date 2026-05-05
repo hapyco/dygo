@@ -56,6 +56,6 @@ Secrets stay separate from runtime config. `configs/dygo.yaml` references secret
 
 `dygo serve` uses this config to choose the HTTP bind address.
 
-`dygo db check`, `dygo db create`, `dygo db prepare`, `dygo db reset`, `dygo db version`, and `dygo db schema` use this config to find the encrypted database URL secret.
+`dygo db check`, `dygo db create`, `dygo db prepare`, `dygo db reset`, and `dygo db schema` use this config to find the encrypted database URL secret.
 
-`dygo migrate status`, `dygo migrate up`, `dygo migrate down`, and `dygo migrate redo` use this config to find the same encrypted database URL secret before running PostgreSQL migrations.
+`dygo migrate` uses this config to find the same encrypted database URL secret before syncing metadata schema.

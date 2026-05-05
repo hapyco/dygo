@@ -25,7 +25,6 @@ func newDBCommand(ctx context.Context, stdout io.Writer, database databaseRunner
 	cmd.AddCommand(newDBDropCommand(ctx, stdout, database))
 	cmd.AddCommand(newDBPrepareCommand(ctx, stdout, database))
 	cmd.AddCommand(newDBResetCommand(ctx, stdout, database))
-	cmd.AddCommand(newDBVersionCommand(ctx, stdout, database))
 	cmd.AddCommand(newDBSchemaCommand(ctx, stdout, database))
 
 	return cmd
@@ -132,7 +131,7 @@ func newDBPrepareCommand(ctx context.Context, stdout io.Writer, database databas
 
 	cmd := &cobra.Command{
 		Use:   "prepare",
-		Short: "Create and migrate the configured PostgreSQL database",
+		Short: "Create and sync the configured PostgreSQL database",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			env, root, databaseURL, err := databaseInputs(envName)
@@ -143,7 +142,7 @@ func newDBPrepareCommand(ctx context.Context, stdout io.Writer, database databas
 			if err != nil {
 				return fmt.Errorf("prepare database: %w", err)
 			}
-			if _, err := fmt.Fprintf(stdout, "database prepared: applied %d migrations (%s)\n", len(result.Applied), env); err != nil {
+			if _, err := fmt.Fprintf(stdout, "database prepared: synced %d entities, %d fields (%s)\n", result.Entities, result.Fields, env); err != nil {
 				return fmt.Errorf("write database prepare output: %w", err)
 			}
 			return nil
@@ -161,7 +160,7 @@ func newDBResetCommand(ctx context.Context, stdout io.Writer, database databaseR
 
 	cmd := &cobra.Command{
 		Use:   "reset",
-		Short: "Drop, create, and migrate the configured PostgreSQL database",
+		Short: "Drop, create, and sync the configured PostgreSQL database",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if !force {
@@ -175,7 +174,7 @@ func newDBResetCommand(ctx context.Context, stdout io.Writer, database databaseR
 			if err != nil {
 				return fmt.Errorf("reset database: %w", err)
 			}
-			if _, err := fmt.Fprintf(stdout, "database reset: applied %d migrations (%s)\n", len(result.Applied), env); err != nil {
+			if _, err := fmt.Fprintf(stdout, "database reset: synced %d entities, %d fields (%s)\n", result.Entities, result.Fields, env); err != nil {
 				return fmt.Errorf("write database reset output: %w", err)
 			}
 			return nil
@@ -184,38 +183,6 @@ func newDBResetCommand(ctx context.Context, stdout io.Writer, database databaseR
 
 	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
 	cmd.Flags().BoolVar(&force, "force", force, "Confirm the destructive database reset")
-
-	return cmd
-}
-
-func newDBVersionCommand(ctx context.Context, stdout io.Writer, database databaseRunner) *cobra.Command {
-	envName := string(secrets.EnvironmentDevelopment)
-
-	cmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print the current database migration version",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			env, root, databaseURL, err := databaseInputs(envName)
-			if err != nil {
-				return err
-			}
-			version, err := database.Version(ctx, root, databaseURL)
-			if err != nil {
-				return fmt.Errorf("database version: %w", err)
-			}
-			value := "none"
-			if version.Found {
-				value = version.Version
-			}
-			if _, err := fmt.Fprintf(stdout, "database version: %s (%s)\n", value, env); err != nil {
-				return fmt.Errorf("write database version output: %w", err)
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
 
 	return cmd
 }
@@ -231,7 +198,6 @@ func newDBSchemaCommand(ctx context.Context, stdout io.Writer, database database
 	}
 
 	cmd.AddCommand(newDBSchemaDumpCommand(ctx, stdout, database))
-	cmd.AddCommand(newDBSchemaLoadCommand(ctx, stdout, database))
 
 	return cmd
 }
@@ -259,38 +225,6 @@ func newDBSchemaDumpCommand(ctx context.Context, stdout io.Writer, database data
 	}
 
 	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
-
-	return cmd
-}
-
-func newDBSchemaLoadCommand(ctx context.Context, stdout io.Writer, database databaseRunner) *cobra.Command {
-	envName := string(secrets.EnvironmentDevelopment)
-	force := false
-
-	cmd := &cobra.Command{
-		Use:   "load",
-		Short: "Load db/schema.sql into the configured database",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if !force {
-				return fmt.Errorf("db schema load requires --force")
-			}
-			env, root, databaseURL, err := databaseInputs(envName)
-			if err != nil {
-				return err
-			}
-			if err := database.SchemaLoad(ctx, root, databaseURL); err != nil {
-				return fmt.Errorf("load database schema: %w", err)
-			}
-			if _, err := fmt.Fprintf(stdout, "schema loaded from db/schema.sql (%s)\n", env); err != nil {
-				return fmt.Errorf("write schema load output: %w", err)
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
-	cmd.Flags().BoolVar(&force, "force", force, "Confirm the destructive schema load")
 
 	return cmd
 }

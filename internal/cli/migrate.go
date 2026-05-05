@@ -9,60 +9,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newMigrateCommand(ctx context.Context, stdout io.Writer, migrate migrationRunner) *cobra.Command {
+func newMigrateCommand(ctx context.Context, stdout io.Writer, sync schemaSyncRunner) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+
 	cmd := &cobra.Command{
 		Use:   "migrate",
-		Short: "Manage dygo database migrations",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return cmd.Help()
-		},
-	}
-
-	cmd.AddCommand(newMigrateStatusCommand(ctx, stdout, migrate))
-	cmd.AddCommand(newMigrateUpCommand(ctx, stdout, migrate))
-	cmd.AddCommand(newMigrateDownCommand(ctx, stdout, migrate))
-	cmd.AddCommand(newMigrateRedoCommand(ctx, stdout, migrate))
-
-	return cmd
-}
-
-func newMigrateStatusCommand(ctx context.Context, stdout io.Writer, migrate migrationRunner) *cobra.Command {
-	envName := string(secrets.EnvironmentDevelopment)
-
-	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show database migration status",
+		Short: "Sync dygo metadata to the database",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			env, root, databaseURL, err := migrationInputs(envName)
+			env, root, databaseURL, err := databaseInputs(envName)
 			if err != nil {
 				return err
 			}
-			statuses, err := migrate.Status(ctx, root, databaseURL)
+			result, err := sync.Sync(ctx, root, databaseURL)
 			if err != nil {
-				return fmt.Errorf("migration status: %w", err)
+				return fmt.Errorf("migrate metadata: %w", err)
 			}
-			if _, err := fmt.Fprintf(stdout, "Migrations (%s)\n", env); err != nil {
-				return fmt.Errorf("write migrate status output: %w", err)
-			}
-			if len(statuses) == 0 {
-				if _, err := fmt.Fprintln(stdout, "No migrations found."); err != nil {
-					return fmt.Errorf("write migrate status output: %w", err)
-				}
-				return nil
-			}
-			if _, err := fmt.Fprintln(stdout, "STATUS   SCOPE       VERSION         NAME"); err != nil {
-				return fmt.Errorf("write migrate status output: %w", err)
-			}
-			for _, status := range statuses {
-				state := "pending"
-				if status.Applied {
-					state = "applied"
-				}
-				if _, err := fmt.Fprintf(stdout, "%-8s %-11s %-15s %s\n", state, status.Scope, status.Version, status.Name); err != nil {
-					return fmt.Errorf("write migrate status output: %w", err)
-				}
+			if _, err := fmt.Fprintf(stdout, "metadata synced: %d entities, %d fields (%s)\n", result.Entities, result.Fields, env); err != nil {
+				return fmt.Errorf("write migrate output: %w", err)
 			}
 			return nil
 		},
@@ -71,102 +35,4 @@ func newMigrateStatusCommand(ctx context.Context, stdout io.Writer, migrate migr
 	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
 
 	return cmd
-}
-
-func newMigrateUpCommand(ctx context.Context, stdout io.Writer, migrate migrationRunner) *cobra.Command {
-	envName := string(secrets.EnvironmentDevelopment)
-
-	cmd := &cobra.Command{
-		Use:   "up",
-		Short: "Apply pending database migrations",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			env, root, databaseURL, err := migrationInputs(envName)
-			if err != nil {
-				return err
-			}
-			result, err := migrate.Up(ctx, root, databaseURL)
-			if err != nil {
-				return fmt.Errorf("migrate up: %w", err)
-			}
-			if _, err := fmt.Fprintf(stdout, "applied %d migrations (%s)\n", len(result.Applied), env); err != nil {
-				return fmt.Errorf("write migrate up output: %w", err)
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
-
-	return cmd
-}
-
-func newMigrateDownCommand(ctx context.Context, stdout io.Writer, migrate migrationRunner) *cobra.Command {
-	envName := string(secrets.EnvironmentDevelopment)
-	steps := 1
-
-	cmd := &cobra.Command{
-		Use:   "down",
-		Short: "Roll back applied database migrations",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if steps < 1 {
-				return fmt.Errorf("steps must be at least 1")
-			}
-			env, root, databaseURL, err := migrationInputs(envName)
-			if err != nil {
-				return err
-			}
-			result, err := migrate.Down(ctx, root, databaseURL, steps)
-			if err != nil {
-				return fmt.Errorf("migrate down: %w", err)
-			}
-			if _, err := fmt.Fprintf(stdout, "rolled back %d migrations (%s)\n", len(result.RolledBack), env); err != nil {
-				return fmt.Errorf("write migrate down output: %w", err)
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
-	cmd.Flags().IntVar(&steps, "steps", steps, "Number of applied migrations to roll back")
-
-	return cmd
-}
-
-func newMigrateRedoCommand(ctx context.Context, stdout io.Writer, migrate migrationRunner) *cobra.Command {
-	envName := string(secrets.EnvironmentDevelopment)
-	steps := 1
-
-	cmd := &cobra.Command{
-		Use:   "redo",
-		Short: "Roll back and reapply database migrations",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if steps < 1 {
-				return fmt.Errorf("steps must be at least 1")
-			}
-			env, root, databaseURL, err := migrationInputs(envName)
-			if err != nil {
-				return err
-			}
-			result, err := migrate.Redo(ctx, root, databaseURL, steps)
-			if err != nil {
-				return fmt.Errorf("migrate redo: %w", err)
-			}
-			if _, err := fmt.Fprintf(stdout, "redid %d migrations (%s)\n", len(result.Applied), env); err != nil {
-				return fmt.Errorf("write migrate redo output: %w", err)
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
-	cmd.Flags().IntVar(&steps, "steps", steps, "Number of applied migrations to roll back and reapply")
-
-	return cmd
-}
-
-func migrationInputs(envName string) (secrets.Environment, string, string, error) {
-	return databaseInputs(envName)
 }

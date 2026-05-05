@@ -68,7 +68,7 @@ Prepare the database for running dygo:
 go run ./cmd/dygo db prepare
 ```
 
-`db prepare` creates the database if needed, applies pending migrations, and updates `db/schema.sql`.
+`db prepare` creates the database if needed, syncs metadata schema, and updates `db/schema.sql`.
 
 Drop or reset the configured database only with explicit confirmation:
 
@@ -77,68 +77,36 @@ go run ./cmd/dygo db drop --force
 go run ./cmd/dygo db reset --force
 ```
 
-`db reset` drops the database, creates it again, applies migrations, and updates `db/schema.sql`.
-
-Print the latest applied migration version:
-
-```sh
-go run ./cmd/dygo db version
-```
+`db reset` drops the database, creates it again, syncs metadata schema, and updates `db/schema.sql`.
 
 All database commands default to `development` and support `--env staging` or `--env production`.
 
-## Migrations
+## Metadata Schema Sync
 
-dygo uses paired raw SQL migrations:
-
-```txt
-20260505180000_create_core_tables.up.sql
-20260505180000_create_core_tables.down.sql
-```
-
-Framework-owned migrations live under:
+dygo has one normal schema input:
 
 ```txt
-internal/db/migrations/
+apps/*/entities/*.yml
+  desired table schema
 ```
 
-Project-owned migrations live under:
+During `dygo migrate` and `dygo db prepare`, dygo loads discovered Apps and Entities, then creates or updates tables from Entity metadata. Core is handled this way too: `apps/core/entities/*.yml` is the source for Core tables such as `apps`, `entities`, `fields`, `users`, `roles`, `permissions`, and `sessions`.
 
-```txt
-db/migrations/
-```
-
-Framework migrations run before project migrations. Each migration runs in a database transaction. Applied migrations are tracked in the database table `migrations` with scope, version, name, checksums, and applied timestamp.
-
-Check migration status:
+Run metadata sync:
 
 ```sh
-go run ./cmd/dygo migrate status
+go run ./cmd/dygo migrate
 ```
 
-Apply pending migrations:
+`dygo migrate` defaults to `development` and supports `--env staging` or `--env production`.
 
-```sh
-go run ./cmd/dygo migrate up
-```
+The current sync path is intentionally additive. Adding an Entity or field creates the corresponding table or column. Removing, renaming, destructive type changes, and unsafe required/unique changes are not inferred automatically. Those cases need an explicit app patch once the patch runner exists.
 
-Roll back applied migrations:
-
-```sh
-go run ./cmd/dygo migrate down --steps 1
-```
-
-Roll back and reapply migrations while developing migration files:
-
-```sh
-go run ./cmd/dygo migrate redo --steps 1
-```
-
-All migration commands default to `development` and support `--env staging` or `--env production`.
+There is no SQL migration file path or `migrations` table in this model. dygo compares metadata intent with the database shape and moves the database forward through metadata.
 
 ## Schema Snapshot
 
-After a successful `migrate up` or `migrate down`, dygo writes a Postgres-native schema snapshot:
+After a successful `dygo migrate`, `db prepare`, or `db reset`, dygo writes a Postgres-native schema snapshot:
 
 ```txt
 db/schema.sql
@@ -150,11 +118,10 @@ You can also manage the snapshot manually:
 
 ```sh
 go run ./cmd/dygo db schema dump
-go run ./cmd/dygo db schema load --force
 ```
 
-`db schema load --force` replaces the database's `public` schema from `db/schema.sql`.
+`db/schema.sql` is generated output. It is useful for review and debugging, but app Entity metadata remains the source of truth.
 
 ## Boundaries
 
-The migration foundation creates platform schema only. It does not store Records, resolve permissions, run app lifecycle patches, or perform authentication yet.
+The schema sync foundation creates platform schema only. It does not store Records, resolve permissions, run app lifecycle patches, or perform authentication yet.

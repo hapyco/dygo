@@ -1,0 +1,171 @@
+package db
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+const SchemaPath = "db/schema.sql"
+
+// SchemaSyncResult reports the metadata schema synced by an operation.
+type SchemaSyncResult struct {
+	Entities int
+	Fields   int
+}
+
+// Migrator syncs dygo metadata into PostgreSQL and writes schema snapshots.
+type Migrator struct {
+	Snapshotter Snapshotter
+}
+
+// Snapshotter writes a schema snapshot for a database.
+type Snapshotter interface {
+	Dump(ctx context.Context, root string, databaseURL string) error
+}
+
+// NewMigrator returns the default dygo migrator.
+func NewMigrator() Migrator {
+	return Migrator{Snapshotter: PgdumpSnapshotter{}}
+}
+
+// Sync applies app Entity metadata to PostgreSQL and regenerates the schema snapshot.
+func (m Migrator) Sync(ctx context.Context, root string, databaseURL string) (SchemaSyncResult, error) {
+	pool, err := connectMetadataPool(ctx, databaseURL)
+	if err != nil {
+		return SchemaSyncResult{}, err
+	}
+	defer pool.Close()
+
+	result, err := SyncMetadataSchema(ctx, pool, root)
+	if err != nil {
+		return SchemaSyncResult{}, fmt.Errorf("sync metadata schema: %w", err)
+	}
+	if err := m.dumpSchema(ctx, root, databaseURL); err != nil {
+		return SchemaSyncResult{}, err
+	}
+	return result, nil
+}
+
+// DumpSchema writes db/schema.sql using the configured snapshotter.
+func (m Migrator) DumpSchema(ctx context.Context, root string, databaseURL string) error {
+	return m.dumpSchema(ctx, root, databaseURL)
+}
+
+func (m Migrator) dumpSchema(ctx context.Context, root string, databaseURL string) error {
+	if m.Snapshotter == nil {
+		return nil
+	}
+	return m.Snapshotter.Dump(ctx, root, databaseURL)
+}
+
+// PgdumpSnapshotter writes db/schema.sql using pg_dump.
+type PgdumpSnapshotter struct{}
+
+// Dump writes db/schema.sql from the live database schema.
+func (s PgdumpSnapshotter) Dump(ctx context.Context, root string, databaseURL string) error {
+	pgDump, err := findPGDump()
+	if err != nil {
+		return err
+	}
+	schemaPath := filepath.Join(root, filepath.FromSlash(SchemaPath))
+	if err := os.MkdirAll(filepath.Dir(schemaPath), 0o755); err != nil {
+		return fmt.Errorf("create schema directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(schemaPath), ".schema.*.sql")
+	if err != nil {
+		return fmt.Errorf("create temporary schema file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("close temporary schema file: %w", err)
+	}
+	cleanup := true
+	defer func() {
+		if cleanup {
+			os.Remove(tmpPath)
+		}
+	}()
+
+	connectionString, password := pgDumpConnection(databaseURL)
+	output, err := runPGDump(ctx, pgDump, tmpPath, connectionString, password, true)
+	if err != nil && pgDumpRestrictKeyUnsupported(output) {
+		output, err = runPGDump(ctx, pgDump, tmpPath, connectionString, password, false)
+	}
+	if err != nil {
+		return fmt.Errorf("dump schema with pg_dump: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	if err := os.Rename(tmpPath, schemaPath); err != nil {
+		return fmt.Errorf("write schema snapshot: %w", err)
+	}
+	cleanup = false
+	return nil
+}
+
+func runPGDump(ctx context.Context, pgDump string, tmpPath string, connectionString string, password string, useRestrictKey bool) ([]byte, error) {
+	args := []string{"--schema-only", "--no-owner", "--no-privileges"}
+	if useRestrictKey {
+		args = append(args, "--restrict-key", "dygoschemasnapshot")
+	}
+	args = append(args, "--file", tmpPath, connectionString)
+
+	cmd := exec.CommandContext(ctx, pgDump, args...)
+	cmd.Env = os.Environ()
+	if password != "" {
+		cmd.Env = append(cmd.Env, "PGPASSWORD="+password)
+	}
+	return cmd.CombinedOutput()
+}
+
+func pgDumpRestrictKeyUnsupported(output []byte) bool {
+	text := string(output)
+	return strings.Contains(text, "unrecognized option") && strings.Contains(text, "restrict-key")
+}
+
+func connectMetadataPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+	databaseURL = strings.TrimSpace(databaseURL)
+	if databaseURL == "" {
+		return nil, fmt.Errorf("database url is required")
+	}
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid postgres database url")
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, sanitizeError("connect to postgres", databaseURL, err)
+	}
+	return pool, nil
+}
+
+func findPGDump() (string, error) {
+	if path, err := exec.LookPath("pg_dump"); err == nil {
+		return path, nil
+	}
+	const postgresAppPGDump = "/Applications/Postgres.app/Contents/Versions/latest/bin/pg_dump"
+	if info, err := os.Stat(postgresAppPGDump); err == nil && !info.IsDir() {
+		return postgresAppPGDump, nil
+	}
+	return "", fmt.Errorf("pg_dump not found in PATH or Postgres.app")
+}
+
+func pgDumpConnection(databaseURL string) (string, string) {
+	parsed, err := url.Parse(databaseURL)
+	if err != nil || parsed.User == nil {
+		return databaseURL, ""
+	}
+	password, ok := parsed.User.Password()
+	if !ok || password == "" {
+		return databaseURL, ""
+	}
+	username := parsed.User.Username()
+	parsed.User = url.User(username)
+	return parsed.String(), password
+}

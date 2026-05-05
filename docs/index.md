@@ -2,7 +2,7 @@
 
 dygo is an opinionated Go framework for building serious business software.
 
-It is built for business processes, internal operating systems, enterprise applications, and workflow-heavy products where permissions, audits, observability, migrations, secure configuration, apps, schema-driven entities, jobs, and a consistent Studio UI matter from the beginning.
+It is built for business processes, internal operating systems, enterprise applications, and workflow-heavy products where permissions, audits, observability, metadata-driven schema sync, secure configuration, apps, schema-driven entities, jobs, and a consistent Studio UI matter from the beginning.
 
 These docs live in the repository so they are versioned with code, reviewed in PRs, and easy for coding agents to read.
 
@@ -15,7 +15,7 @@ These docs live in the repository so they are versioned with code, reviewed in P
 - [App Manifest](app-manifest.md) defines the first `app.yml` schema.
 - [Entity Metadata](entity-metadata.md) defines the Entity YAML schema, explicit plural metadata, and built-in field types.
 - [Config](config.md) explains required project config and current runtime settings.
-- [Database](database.md) explains PostgreSQL config, secrets, migrations, schema snapshots, and `dygo db check`.
+- [Database](database.md) explains PostgreSQL config, secrets, metadata schema sync, schema snapshots, and `dygo db check`.
 - [Server](server.md) explains `dygo serve` and the health endpoint.
 - [Studio](studio.md) explains the first-party global UI app.
 - [Encrypted Secrets](secrets.md) explains repo-stored encrypted secrets and the `dygo secrets` CLI.

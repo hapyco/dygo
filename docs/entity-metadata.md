@@ -2,7 +2,9 @@
 
 Entities define business object structure in dygo.
 
-The Entity catalog loads Entity files from discovered apps. Entity metadata is still the contract layer: migrations create platform tables, but record storage, permissions, Studio views, and runtime behavior are handled by later framework layers.
+The Entity catalog loads Entity files from discovered apps. During `dygo migrate` and `dygo db prepare`, dygo uses this metadata to create or update PostgreSQL tables. Core is not a separate schema path; Core tables come from `apps/core/entities/*.yml` the same way business app tables come from their Entity files.
+
+Entity metadata is still the contract layer. Record CRUD, permission enforcement, Studio views, and runtime behavior are handled by later framework layers.
 
 ## Example
 
@@ -49,6 +51,8 @@ Entity names, plural names, field names, and field type names use kebab-case.
 `plural-name` is explicit. dygo does not auto-pluralize Entity names in runtime code because English pluralization is too fragile for schema decisions. Future generators may suggest a default, but the YAML must store the chosen plural name.
 
 When dygo needs a SQL table name from Entity metadata, it converts `plural-name` from kebab-case to snake_case. For example, `user-roles` maps to `user_roles`.
+
+Current metadata-driven schema sync supports scalar fields, `select`, and `link` fields. `child-table` parsing is supported, but child table storage is deferred until the record model is designed.
 
 Field `name`, `label`, and `type` are required.
 
