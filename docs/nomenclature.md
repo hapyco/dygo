@@ -6,13 +6,13 @@ The terms below are the source of truth unless a future design note explicitly c
 
 ## Usage Rules
 
-Use **Studio**, not Console or Desk.
+Use **Studio** for the main operational and builder UI.
 
-Use **Space**, not Workspace.
+Use **Space** for a page or group inside Studio.
 
-Use **Entity**, not DocType.
+Use **Entity** for a business object definition.
 
-Use **Record**, not Document, when referring to saved business data.
+Use **Record** for saved business data created from an Entity.
 
 Technical implementation details may still use words such as document when they describe a file format, YAML payload, or parser concept rather than dygo business data.
 
@@ -58,22 +58,3 @@ A Record is saved data created from an Entity.
 A Child Table contains Rows inside a Record.
 
 The Studio globally renders Entities and Records.
-
-## Frappe To dygo
-
-dygo is not trying to clone Frappe, but some concepts map cleanly enough to make migration and comparison easier.
-
-| Frappe term | dygo term |
-|---|---|
-| DocType | Entity |
-| Document | Record |
-| Desk | Studio |
-| Workspace | Space |
-| Child Table | Child Table |
-| App | App |
-| Field | Field |
-| Report | Report |
-| Permission | Permission |
-| Hook | Hook |
-| Fixture | Fixture |
-| Patch | Patch |
