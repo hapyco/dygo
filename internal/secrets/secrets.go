@@ -50,11 +50,10 @@ type Entry struct {
 	Secret Secret
 }
 
-// Paths contains the filesystem locations used for one environment.
+// Paths contains the filesystem locations used by encrypted secrets.
 type Paths struct {
 	SecretFile    string
-	RecipientFile string
-	KeyFile       string
+	MasterKeyFile string
 	TempDir       string
 }
 
@@ -97,6 +96,15 @@ func ParseEnvironment(value string) (Environment, error) {
 	}
 }
 
+// SupportedEnvironments returns the environments managed by dygo secrets.
+func SupportedEnvironments() []Environment {
+	return []Environment{
+		EnvironmentDevelopment,
+		EnvironmentStaging,
+		EnvironmentProduction,
+	}
+}
+
 // ValidateSecretName checks the public identifier used to reference a secret.
 func ValidateSecretName(name string) error {
 	if !secretNamePattern.MatchString(name) {
@@ -110,99 +118,128 @@ func (s Store) Paths(env Environment) Paths {
 	envName := string(env)
 	return Paths{
 		SecretFile:    filepath.Join(s.root, "configs", "secrets", envName+".age.yaml"),
-		RecipientFile: filepath.Join(s.root, "configs", "secrets", "recipients", envName+".txt"),
-		KeyFile:       filepath.Join(s.root, ".dygo", "secrets", "keys", envName+".agekey"),
+		MasterKeyFile: filepath.Join(s.root, "master.key"),
 		TempDir:       filepath.Join(s.root, ".dygo", "secrets", "tmp"),
 	}
 }
 
-// Init creates a new key, recipient, and empty encrypted secret document.
-func (s Store) Init(env Environment, force bool) (Paths, error) {
-	if _, err := ParseEnvironment(string(env)); err != nil {
-		return Paths{}, err
-	}
+// Init creates a root master key and encrypted secret files for all environments.
+func (s Store) Init(force bool) (Paths, error) {
+	paths := s.Paths(EnvironmentDevelopment)
+	envs := SupportedEnvironments()
 
-	paths := s.Paths(env)
 	if !force {
-		for _, path := range []string{paths.SecretFile, paths.RecipientFile, paths.KeyFile} {
-			if exists(path) {
-				return Paths{}, fmt.Errorf("%s already exists; rerun with --force to replace it", path)
+		masterExists := exists(paths.MasterKeyFile)
+		var identity *age.HybridIdentity
+		var keyData []byte
+		var err error
+		if masterExists {
+			identity, err = loadMasterIdentity(paths.MasterKeyFile)
+			if err != nil {
+				return Paths{}, err
+			}
+		} else {
+			identity, keyData, err = generateMasterKeyData()
+			if err != nil {
+				return Paths{}, err
 			}
 		}
+
+		docs := make(map[Environment]Document, len(envs))
+		for _, env := range envs {
+			envPaths := s.Paths(env)
+			if exists(envPaths.SecretFile) {
+				if !masterExists {
+					return Paths{}, fmt.Errorf("%s already exists; rerun with --force to migrate it to master.key", envPaths.SecretFile)
+				}
+				continue
+			}
+			docs[env] = NewDocument(env)
+		}
+
+		encrypted, err := encryptDocuments(docs, identity.Recipient())
+		if err != nil {
+			return Paths{}, err
+		}
+		if !masterExists {
+			if err := writeFileAtomic(paths.MasterKeyFile, keyData, 0o600); err != nil {
+				return Paths{}, fmt.Errorf("write master key: %w", err)
+			}
+		}
+		for _, env := range envs {
+			ciphertext, ok := encrypted[env]
+			if !ok {
+				continue
+			}
+			if err := writeFileAtomic(s.Paths(env).SecretFile, ciphertext, 0o644); err != nil {
+				return Paths{}, fmt.Errorf("write encrypted %s secrets file: %w", env, err)
+			}
+		}
+		return paths, nil
 	}
 
-	identity, err := age.GenerateHybridIdentity()
-	if err != nil {
-		return Paths{}, fmt.Errorf("generate age identity: %w", err)
+	docs := make(map[Environment]Document, len(envs))
+	for _, env := range envs {
+		doc, err := s.loadForRewrite(env)
+		if err != nil {
+			if !force || exists(s.Paths(env).SecretFile) {
+				return Paths{}, fmt.Errorf("load existing %s secrets: %w", env, err)
+			}
+			doc = NewDocument(env)
+		}
+		docs[env] = doc
 	}
 
-	keyData := fmt.Sprintf("# dygo %s secrets identity\n# public recipient: %s\n%s\n", env, identity.Recipient(), identity)
-	recipientData := fmt.Sprintf("# dygo %s secrets recipient\n%s\n", env, identity.Recipient())
-
-	doc := NewDocument(env)
-	plaintext, err := EncodeDocument(doc)
+	identity, keyData, err := generateMasterKeyData()
 	if err != nil {
 		return Paths{}, err
 	}
-	ciphertext, err := encryptArmored(plaintext, []age.Recipient{identity.Recipient()})
+	encrypted, err := encryptDocuments(docs, identity.Recipient())
 	if err != nil {
 		return Paths{}, err
 	}
 
-	if err := writeFileAtomic(paths.KeyFile, []byte(keyData), 0o600); err != nil {
-		return Paths{}, fmt.Errorf("write identity key: %w", err)
+	if err := writeFileAtomic(paths.MasterKeyFile, keyData, 0o600); err != nil {
+		return Paths{}, fmt.Errorf("write master key: %w", err)
 	}
-	if err := writeFileAtomic(paths.RecipientFile, []byte(recipientData), 0o644); err != nil {
-		return Paths{}, fmt.Errorf("write recipient file: %w", err)
-	}
-	if err := writeFileAtomic(paths.SecretFile, ciphertext, 0o644); err != nil {
-		return Paths{}, fmt.Errorf("write encrypted secrets file: %w", err)
+	for _, env := range envs {
+		if err := writeFileAtomic(s.Paths(env).SecretFile, encrypted[env], 0o644); err != nil {
+			return Paths{}, fmt.Errorf("write encrypted %s secrets file: %w", env, err)
+		}
 	}
 
 	return paths, nil
 }
 
-// RotateKey replaces the local identity and committed recipient for env.
-func (s Store) RotateKey(env Environment, force bool) (Paths, error) {
-	var doc Document
-	var err error
-	if force {
-		doc, err = s.Load(env)
+// RotateKey replaces the root master key and re-encrypts all environments.
+func (s Store) RotateKey() (Paths, error) {
+	envs := SupportedEnvironments()
+	docs := make(map[Environment]Document, len(envs))
+	for _, env := range envs {
+		doc, err := s.Load(env)
 		if err != nil {
-			doc = NewDocument(env)
+			return Paths{}, fmt.Errorf("load existing %s secrets before rotating key: %w", env, err)
 		}
-	} else {
-		doc, err = s.Load(env)
-		if err != nil {
-			return Paths{}, fmt.Errorf("load existing secrets before rotating key: %w", err)
-		}
+		docs[env] = doc
 	}
 
-	paths := s.Paths(env)
-	identity, err := age.GenerateHybridIdentity()
-	if err != nil {
-		return Paths{}, fmt.Errorf("generate age identity: %w", err)
-	}
-
-	keyData := fmt.Sprintf("# dygo %s secrets identity\n# public recipient: %s\n%s\n", env, identity.Recipient(), identity)
-	recipientData := fmt.Sprintf("# dygo %s secrets recipient\n%s\n", env, identity.Recipient())
-	plaintext, err := EncodeDocument(doc)
+	identity, keyData, err := generateMasterKeyData()
 	if err != nil {
 		return Paths{}, err
 	}
-	ciphertext, err := encryptArmored(plaintext, []age.Recipient{identity.Recipient()})
+	encrypted, err := encryptDocuments(docs, identity.Recipient())
 	if err != nil {
 		return Paths{}, err
 	}
 
-	if err := writeFileAtomic(paths.KeyFile, []byte(keyData), 0o600); err != nil {
-		return Paths{}, fmt.Errorf("write identity key: %w", err)
+	paths := s.Paths(EnvironmentDevelopment)
+	if err := writeFileAtomic(paths.MasterKeyFile, keyData, 0o600); err != nil {
+		return Paths{}, fmt.Errorf("write master key: %w", err)
 	}
-	if err := writeFileAtomic(paths.RecipientFile, []byte(recipientData), 0o644); err != nil {
-		return Paths{}, fmt.Errorf("write recipient file: %w", err)
-	}
-	if err := writeFileAtomic(paths.SecretFile, ciphertext, 0o644); err != nil {
-		return Paths{}, fmt.Errorf("write encrypted secrets file: %w", err)
+	for _, env := range envs {
+		if err := writeFileAtomic(s.Paths(env).SecretFile, encrypted[env], 0o644); err != nil {
+			return Paths{}, fmt.Errorf("write encrypted %s secrets file: %w", env, err)
+		}
 	}
 
 	return paths, nil
@@ -225,11 +262,11 @@ func (s Store) Load(env Environment) (Document, error) {
 	if err != nil {
 		return Document{}, fmt.Errorf("read encrypted secrets file: %w", err)
 	}
-	identities, err := loadIdentities(paths.KeyFile)
+	identity, err := loadMasterIdentity(paths.MasterKeyFile)
 	if err != nil {
 		return Document{}, err
 	}
-	plaintext, err := decryptArmored(ciphertext, identities)
+	plaintext, err := decryptArmored(ciphertext, []age.Identity{identity})
 	if err != nil {
 		return Document{}, fmt.Errorf("decrypt secrets for %s: %w", env, err)
 	}
@@ -247,7 +284,7 @@ func (s Store) Save(env Environment, doc Document) error {
 	}
 
 	paths := s.Paths(env)
-	recipients, err := loadRecipients(paths.RecipientFile)
+	identity, err := loadMasterIdentity(paths.MasterKeyFile)
 	if err != nil {
 		return err
 	}
@@ -255,7 +292,7 @@ func (s Store) Save(env Environment, doc Document) error {
 	if err != nil {
 		return err
 	}
-	ciphertext, err := encryptArmored(plaintext, recipients)
+	ciphertext, err := encryptArmored(plaintext, []age.Recipient{identity.Recipient()})
 	if err != nil {
 		return err
 	}
@@ -460,7 +497,7 @@ type ManifestReference struct {
 	SecretName string
 }
 
-// FindManifestReferences scans YAML configs for env entries with secret references.
+// FindManifestReferences scans YAML configs for secret references.
 func FindManifestReferences(configRoot string) ([]ManifestReference, error) {
 	if !exists(configRoot) {
 		return nil, nil
@@ -517,6 +554,13 @@ func collectManifestReferences(path string, node *yaml.Node, references *[]Manif
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		key := node.Content[i]
 		value := node.Content[i+1]
+		if key.Value == "secret" && value.Kind == yaml.ScalarNode && value.Value != "" {
+			*references = append(*references, ManifestReference{
+				Path:       path,
+				SecretName: value.Value,
+			})
+			continue
+		}
 		if key.Value == "env" && value.Kind == yaml.MappingNode {
 			collectEnvSecretReferences(path, value, references)
 			continue
@@ -576,23 +620,6 @@ func rejectDuplicateSecretNames(data []byte) error {
 	return nil
 }
 
-func loadRecipients(path string) ([]age.Recipient, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("read recipient file: %w", err)
-	}
-	defer file.Close()
-
-	recipients, err := age.ParseRecipients(file)
-	if err != nil {
-		return nil, fmt.Errorf("parse recipient file: %w", err)
-	}
-	if len(recipients) == 0 {
-		return nil, fmt.Errorf("recipient file %s does not contain any recipients", path)
-	}
-	return recipients, nil
-}
-
 func loadIdentities(path string) ([]age.Identity, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -608,6 +635,99 @@ func loadIdentities(path string) ([]age.Identity, error) {
 		return nil, fmt.Errorf("identity key %s does not contain any identities", path)
 	}
 	return identities, nil
+}
+
+func loadMasterIdentity(path string) (*age.HybridIdentity, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read master key: %w", err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		identity, err := age.ParseHybridIdentity(line)
+		if err != nil {
+			return nil, fmt.Errorf("parse master key: %w", err)
+		}
+		return identity, nil
+	}
+	return nil, fmt.Errorf("master key %s does not contain an age identity", path)
+}
+
+func generateMasterKeyData() (*age.HybridIdentity, []byte, error) {
+	identity, err := age.GenerateHybridIdentity()
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate age identity: %w", err)
+	}
+	data := fmt.Sprintf("# dygo master key\n# public recipient: %s\n%s\n", identity.Recipient(), identity)
+	return identity, []byte(data), nil
+}
+
+func encryptDocuments(docs map[Environment]Document, recipient age.Recipient) (map[Environment][]byte, error) {
+	encrypted := make(map[Environment][]byte, len(docs))
+	for _, env := range SupportedEnvironments() {
+		doc, ok := docs[env]
+		if !ok {
+			continue
+		}
+		plaintext, err := EncodeDocument(doc)
+		if err != nil {
+			return nil, err
+		}
+		ciphertext, err := encryptArmored(plaintext, []age.Recipient{recipient})
+		if err != nil {
+			return nil, fmt.Errorf("encrypt %s secrets: %w", env, err)
+		}
+		encrypted[env] = ciphertext
+	}
+	return encrypted, nil
+}
+
+func (s Store) loadForRewrite(env Environment) (Document, error) {
+	paths := s.Paths(env)
+	if !exists(paths.SecretFile) {
+		return NewDocument(env), nil
+	}
+
+	if exists(paths.MasterKeyFile) {
+		doc, err := s.Load(env)
+		if err == nil {
+			return doc, nil
+		}
+	}
+
+	legacyKeyFile := filepath.Join(s.root, ".dygo", "secrets", "keys", string(env)+".agekey")
+	if exists(legacyKeyFile) {
+		doc, err := loadLegacyDocument(paths.SecretFile, legacyKeyFile, env)
+		if err == nil {
+			return doc, nil
+		}
+		return Document{}, err
+	}
+
+	return Document{}, fmt.Errorf("encrypted secrets file exists but no usable master.key or legacy environment key was found")
+}
+
+func loadLegacyDocument(secretFile string, keyFile string, env Environment) (Document, error) {
+	ciphertext, err := os.ReadFile(secretFile)
+	if err != nil {
+		return Document{}, fmt.Errorf("read encrypted secrets file: %w", err)
+	}
+	identities, err := loadIdentities(keyFile)
+	if err != nil {
+		return Document{}, err
+	}
+	plaintext, err := decryptArmored(ciphertext, identities)
+	if err != nil {
+		return Document{}, fmt.Errorf("decrypt legacy secrets for %s: %w", env, err)
+	}
+	doc, err := DecodeDocument(plaintext, env)
+	if err != nil {
+		return Document{}, err
+	}
+	return doc, nil
 }
 
 func encryptArmored(plaintext []byte, recipients []age.Recipient) ([]byte, error) {

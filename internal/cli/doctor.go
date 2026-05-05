@@ -127,7 +127,7 @@ func checkConfig(root string) doctorResult {
 	if err != nil {
 		return doctorResult{Status: doctorFail, Name: "config", Detail: err.Error()}
 	}
-	return doctorResult{Status: doctorPass, Name: "config", Detail: fmt.Sprintf("%s server=%s", config.FilePath, cfg.Server.Address())}
+	return doctorResult{Status: doctorPass, Name: "config", Detail: fmt.Sprintf("%s server=%s database=%s secret=%s", config.FilePath, cfg.Server.Address(), cfg.Database.Driver, cfg.Database.URL.Secret)}
 }
 
 func checkSecretsLayout(root string) doctorResult {
@@ -139,11 +139,11 @@ func checkSecretsLayout(root string) doctorResult {
 	}
 
 	var required []requiredPath
+	required = append(required, requiredPath{Path: relToRoot(root, store.Paths(secrets.EnvironmentDevelopment).MasterKeyFile)})
 	for _, env := range envs {
 		paths := store.Paths(env)
 		required = append(required,
 			requiredPath{Path: relToRoot(root, paths.SecretFile)},
-			requiredPath{Path: relToRoot(root, paths.RecipientFile)},
 		)
 	}
 

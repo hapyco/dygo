@@ -24,11 +24,15 @@ go run ./cmd/dygo
 go run ./cmd/dygo version
 go run ./cmd/dygo doctor
 go run ./cmd/dygo serve
+go run ./cmd/dygo db check
 go run ./cmd/dygo apps list
 go run ./cmd/dygo apps validate
 go run ./cmd/dygo entities list
 go run ./cmd/dygo entities validate
-go run ./cmd/dygo secrets --help
+go run ./cmd/dygo secrets init
+go run ./cmd/dygo secrets edit
+go run ./cmd/dygo secrets validate
+go run ./cmd/dygo secrets rotate-key
 ```
 
 `go run ./cmd/dygo serve` starts the local HTTP server.
@@ -67,6 +71,7 @@ go vet ./...
 cmd/dygo/          executable entrypoint
 internal/cli/      private CLI implementation
 internal/config/   private config defaults and loading code
+internal/db/       private PostgreSQL connection code
 apps/              first-party dygo apps such as core and Studio
 configs/           safe committed config files
 docs/              project doctrine, thesis, and structure notes
@@ -82,6 +87,7 @@ docs/              project doctrine, thesis, and structure notes
 - [App Manifest](docs/app-manifest.md)
 - [Entity Metadata](docs/entity-metadata.md)
 - [Config](docs/config.md)
+- [Database](docs/database.md)
 - [Server](docs/server.md)
 - [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)

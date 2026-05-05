@@ -1,10 +1,10 @@
 # Encrypted Secrets
 
-dygo stores secrets as encrypted files in the repository.
+dygo stores environment secrets as encrypted YAML files in the repository.
 
-The encrypted files are safe to commit. The private keys are local-only and ignored by git.
+The encrypted files are safe to commit. The root `master.key` is local-only, ignored by git, and required to decrypt, edit, validate, or rotate secrets.
 
-This gives dygo a simple default: secret names and encrypted state can be reviewed with the app, while raw values stay out of the repository.
+Database credentials use the same model. Local development should store `DATABASE_URL` in the `development` encrypted secrets file, not in plaintext config.
 
 ## Storage Model
 
@@ -14,23 +14,18 @@ Committed files:
 configs/secrets/development.age.yaml
 configs/secrets/staging.age.yaml
 configs/secrets/production.age.yaml
-configs/secrets/recipients/development.txt
-configs/secrets/recipients/staging.txt
-configs/secrets/recipients/production.txt
 ```
 
 Ignored local files:
 
 ```txt
-.dygo/secrets/keys/development.agekey
-.dygo/secrets/keys/staging.agekey
-.dygo/secrets/keys/production.agekey
+master.key
 .dygo/secrets/tmp/
 ```
 
-dygo uses `filippo.io/age` with hybrid age identities and ASCII-armored encrypted files.
+dygo uses `filippo.io/age` with one hybrid age identity in `master.key`. The public encryption recipient is derived from that key when dygo writes encrypted files, so separate recipient files are not needed.
 
-Do not commit `.dygo/secrets/keys/`. Those files decrypt the committed secret files.
+Do not commit `master.key`. Anyone with that file can decrypt every environment secret file in the project.
 
 ## Environments
 
@@ -44,73 +39,51 @@ Do not use short forms like `dev` or `prod`.
 
 ## Commands
 
-Secret commands discover the dygo project root before reading or writing `configs/secrets/` and `.dygo/secrets/`, so they can be run from nested directories inside a project.
+Secret commands discover the dygo project root before reading or writing `master.key`, `configs/secrets/`, and `.dygo/secrets/tmp/`, so they can be run from nested directories inside a project.
 
-Initialize an environment:
-
-```sh
-go run ./cmd/dygo secrets init --env development
-```
-
-Set a secret:
+Initialize secrets:
 
 ```sh
-go run ./cmd/dygo secrets set --env development DATABASE_URL
-go run ./cmd/dygo secrets set --env development DATABASE_URL --value postgres://local
-go run ./cmd/dygo secrets set --env development DATABASE_URL --from-file ./database-url.txt
+go run ./cmd/dygo secrets init
 ```
 
-Read a secret for scripts:
+This creates `master.key` and missing encrypted files for `development`, `staging`, and `production`.
+
+Edit development secrets:
 
 ```sh
-go run ./cmd/dygo secrets get --env development DATABASE_URL
+go run ./cmd/dygo secrets edit
 ```
 
-`get` prints the raw value. Use it intentionally.
+Without `--editor`, dygo opens `nano`.
 
-Show a secret for humans:
+Edit another environment:
 
 ```sh
-go run ./cmd/dygo secrets show --env development DATABASE_URL
-go run ./cmd/dygo secrets show --env development DATABASE_URL --reveal
+go run ./cmd/dygo secrets edit --env staging
 ```
 
-`show` redacts by default. `--reveal` prints the raw value.
-
-List secrets:
+Choose an editor explicitly:
 
 ```sh
-go run ./cmd/dygo secrets list --env development
+go run ./cmd/dygo secrets edit --editor nano
+go run ./cmd/dygo secrets edit --env staging --editor "code --wait"
 ```
-
-`list` redacts values.
-
-Edit the decrypted YAML in `$EDITOR`:
-
-```sh
-go run ./cmd/dygo secrets edit --env development
-```
-
-Remove a secret:
-
-```sh
-go run ./cmd/dygo secrets remove --env development DATABASE_URL
-go run ./cmd/dygo secrets remove --env development DATABASE_URL --yes
-```
-
-The command is `remove`, not `rm`.
 
 Validate secrets and config references:
 
 ```sh
-go run ./cmd/dygo secrets validate --env development
+go run ./cmd/dygo secrets validate
+go run ./cmd/dygo secrets validate --env staging
 ```
 
-Rotate an environment key:
+Rotate the project master key:
 
 ```sh
-go run ./cmd/dygo secrets rotate-key --env development
+go run ./cmd/dygo secrets rotate-key
 ```
+
+`rotate-key` decrypts every environment with the existing `master.key`, generates a new `master.key`, and re-encrypts every existing environment file.
 
 ## Decrypted Shape
 
@@ -143,6 +116,31 @@ dev-token
 1PASSWORD
 ```
 
+## Adding Database Credentials
+
+Open the development secrets file:
+
+```sh
+go run ./cmd/dygo secrets edit
+```
+
+Add `DATABASE_URL` under `secrets`:
+
+```yaml
+version: 1
+environment: development
+secrets:
+  DATABASE_URL:
+    value: postgres://user:password@127.0.0.1:5432/dygo
+    updated_at: 2026-05-03T08:00:00Z
+```
+
+Then validate:
+
+```sh
+go run ./cmd/dygo secrets validate
+```
+
 ## Manifest References
 
 Manifests should reference secret names, not raw values.
@@ -155,24 +153,16 @@ env:
 
 `dygo secrets validate --env <environment>` checks existing YAML under `configs/` for this shape and fails when a referenced secret is missing.
 
-## Production Keys
+The project database config also references secrets:
 
-The production key path exists for consistency:
-
-```txt
-.dygo/secrets/keys/production.agekey
+```yaml
+database:
+  url:
+    secret: DATABASE_URL
 ```
 
-That does not mean every developer should have the production key.
+## Boundaries
 
-For production deployments, prefer injecting the private key through CI or deployment secret storage. Use the local ignored path only when a production key is intentionally present on a machine.
+Secrets can only be changed through `dygo secrets edit`. There are no public `set`, `get`, `show`, `list`, or `remove` commands.
 
-## Placeholder Files
-
-The repository can contain empty encrypted files for each environment. They make the expected layout explicit and keep the first setup path predictable.
-
-If placeholder files already exist and you intentionally need to replace the local key, recipient, and empty encrypted file, run:
-
-```sh
-go run ./cmd/dygo secrets init --env development --force
-```
+`master.key` is intentionally project-local for now. Sharing it, backing it up, and injecting it into deployment environments are operational concerns outside this first implementation.

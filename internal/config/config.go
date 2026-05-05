@@ -8,12 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dygo-dev/dygo/internal/secrets"
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	defaultServerHost = "127.0.0.1"
-	defaultServerPort = 6790
+	defaultServerHost     = "127.0.0.1"
+	defaultServerPort     = 6790
+	defaultDatabaseDriver = "postgres"
 
 	// FilePath is the project-relative dygo runtime config path.
 	FilePath = "configs/dygo.yaml"
@@ -21,13 +23,25 @@ const (
 
 // Config contains dygo runtime settings.
 type Config struct {
-	Server Server
+	Server   Server
+	Database Database
 }
 
 // Server contains HTTP server settings.
 type Server struct {
 	Host string
 	Port int
+}
+
+// Database contains dygo database settings.
+type Database struct {
+	Driver string
+	URL    SecretReference
+}
+
+// SecretReference names one encrypted secret value.
+type SecretReference struct {
+	Secret string
 }
 
 // Load reads, decodes, and validates the dygo project config from root.
@@ -79,6 +93,9 @@ func Default() Config {
 			Host: defaultServerHost,
 			Port: defaultServerPort,
 		},
+		Database: Database{
+			Driver: defaultDatabaseDriver,
+		},
 	}
 }
 
@@ -90,6 +107,16 @@ func (c Config) Validate() error {
 	}
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		problems = append(problems, fmt.Sprintf("server.port must be between 1 and 65535, got %d", c.Server.Port))
+	}
+	if strings.TrimSpace(c.Database.Driver) == "" {
+		problems = append(problems, "database.driver is required")
+	} else if c.Database.Driver != defaultDatabaseDriver {
+		problems = append(problems, fmt.Sprintf("database.driver must be postgres, got %q", c.Database.Driver))
+	}
+	if strings.TrimSpace(c.Database.URL.Secret) == "" {
+		problems = append(problems, "database.url.secret is required")
+	} else if err := secrets.ValidateSecretName(c.Database.URL.Secret); err != nil {
+		problems = append(problems, fmt.Sprintf("database.url.secret is invalid: %v", err))
 	}
 	if len(problems) > 0 {
 		return ValidationError{Problems: problems}
@@ -112,7 +139,8 @@ func (e ValidationError) Error() string {
 }
 
 type rawConfig struct {
-	Server *rawServer `yaml:"server,omitempty"`
+	Server   *rawServer   `yaml:"server,omitempty"`
+	Database *rawDatabase `yaml:"database,omitempty"`
 }
 
 type rawServer struct {
@@ -120,15 +148,31 @@ type rawServer struct {
 	Port *int    `yaml:"port,omitempty"`
 }
 
+type rawDatabase struct {
+	Driver *string             `yaml:"driver,omitempty"`
+	URL    *rawSecretReference `yaml:"url,omitempty"`
+}
+
+type rawSecretReference struct {
+	Secret *string `yaml:"secret,omitempty"`
+}
+
 func (r rawConfig) apply(cfg *Config) {
-	if r.Server == nil {
-		return
+	if r.Server != nil {
+		if r.Server.Host != nil {
+			cfg.Server.Host = *r.Server.Host
+		}
+		if r.Server.Port != nil {
+			cfg.Server.Port = *r.Server.Port
+		}
 	}
-	if r.Server.Host != nil {
-		cfg.Server.Host = *r.Server.Host
-	}
-	if r.Server.Port != nil {
-		cfg.Server.Port = *r.Server.Port
+	if r.Database != nil {
+		if r.Database.Driver != nil {
+			cfg.Database.Driver = *r.Database.Driver
+		}
+		if r.Database.URL != nil && r.Database.URL.Secret != nil {
+			cfg.Database.URL.Secret = *r.Database.URL.Secret
+		}
 	}
 }
 

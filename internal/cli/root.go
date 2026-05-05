@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/dygo-dev/dygo/internal/config"
+	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/dygo-dev/dygo/internal/server"
 	"github.com/spf13/cobra"
 )
@@ -13,14 +14,15 @@ import (
 const version = "dev"
 
 type serveRunner func(context.Context, string) error
+type databaseChecker func(context.Context, string) error
 
 // Run executes the dygo command-line interface.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	return run(ctx, args, stdin, stdout, stderr, server.Serve)
+	return run(ctx, args, stdin, stdout, stderr, server.Serve, db.Check)
 }
 
-func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner) error {
-	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve)
+func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker) error {
+	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, checkDatabase)
 	if err != nil {
 		return err
 	}
@@ -36,10 +38,10 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 // NewRootCommand creates the root dygo CLI command.
 func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, error) {
-	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve)
+	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.Check)
 }
 
-func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner) (*cobra.Command, error) {
+func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
 	}
@@ -54,6 +56,9 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	}
 	if serve == nil {
 		return nil, fmt.Errorf("serve runner is required")
+	}
+	if checkDatabase == nil {
+		return nil, fmt.Errorf("database checker is required")
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -76,6 +81,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDoctorCommand(ctx, stdout))
 	root.AddCommand(newServeCommand(ctx, stdout, serve))
+	root.AddCommand(newDBCommand(ctx, stdout, checkDatabase))
 	root.AddCommand(newAppsCommand(stdout))
 	root.AddCommand(newEntitiesCommand(stdout))
 	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))

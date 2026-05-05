@@ -21,6 +21,9 @@ func TestDefault(t *testing.T) {
 	if cfg.Server.Address() != "127.0.0.1:6790" {
 		t.Fatalf("Default().Server.Address() = %q, want %q", cfg.Server.Address(), "127.0.0.1:6790")
 	}
+	if cfg.Database.Driver != "postgres" {
+		t.Fatalf("Default().Database.Driver = %q, want postgres", cfg.Database.Driver)
+	}
 }
 
 func TestLoadRepositoryConfig(t *testing.T) {
@@ -33,6 +36,12 @@ func TestLoadRepositoryConfig(t *testing.T) {
 	if cfg.Server.Address() != "127.0.0.1:6790" {
 		t.Fatalf("Load(repo root).Server.Address() = %q, want 127.0.0.1:6790", cfg.Server.Address())
 	}
+	if cfg.Database.Driver != "postgres" {
+		t.Fatalf("Load(repo root).Database.Driver = %q, want postgres", cfg.Database.Driver)
+	}
+	if cfg.Database.URL.Secret != "DATABASE_URL" {
+		t.Fatalf("Load(repo root).Database.URL.Secret = %q, want DATABASE_URL", cfg.Database.URL.Secret)
+	}
 }
 
 func TestLoadFileMergesDefaults(t *testing.T) {
@@ -40,7 +49,7 @@ func TestLoadFileMergesDefaults(t *testing.T) {
 
 	root := t.TempDir()
 	path := filepath.Join(root, "dygo.yaml")
-	if err := os.WriteFile(path, []byte("server:\n  port: 7777\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("server:\n  port: 7777\ndatabase:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}
 
@@ -53,6 +62,12 @@ func TestLoadFileMergesDefaults(t *testing.T) {
 	}
 	if cfg.Server.Port != 7777 {
 		t.Fatalf("LoadFile().Server.Port = %d, want 7777", cfg.Server.Port)
+	}
+	if cfg.Database.Driver != "postgres" {
+		t.Fatalf("LoadFile().Database.Driver = %q, want postgres", cfg.Database.Driver)
+	}
+	if cfg.Database.URL.Secret != "DATABASE_URL" {
+		t.Fatalf("LoadFile().Database.URL.Secret = %q, want DATABASE_URL", cfg.Database.URL.Secret)
 	}
 }
 
@@ -102,18 +117,38 @@ func TestDecodeValidatesResolvedConfig(t *testing.T) {
 	}{
 		{
 			name: "empty host",
-			body: "server:\n  host: \"\"\n",
+			body: validDatabaseConfig("server:\n  host: \"\"\n"),
 			want: "server.host is required",
 		},
 		{
 			name: "zero port",
-			body: "server:\n  port: 0\n",
+			body: validDatabaseConfig("server:\n  port: 0\n"),
 			want: "server.port must be between 1 and 65535",
 		},
 		{
 			name: "port too high",
-			body: "server:\n  port: 65536\n",
+			body: validDatabaseConfig("server:\n  port: 65536\n"),
 			want: "server.port must be between 1 and 65535",
+		},
+		{
+			name: "missing database",
+			body: "server:\n  port: 6790\n",
+			want: "database.url.secret is required",
+		},
+		{
+			name: "unsupported database driver",
+			body: "database:\n  driver: mysql\n  url:\n    secret: DATABASE_URL\n",
+			want: "database.driver must be postgres",
+		},
+		{
+			name: "missing database secret",
+			body: "database:\n  driver: postgres\n  url: {}\n",
+			want: "database.url.secret is required",
+		},
+		{
+			name: "invalid database secret",
+			body: "database:\n  driver: postgres\n  url:\n    secret: database_url\n",
+			want: "database.url.secret is invalid",
 		},
 	}
 
@@ -131,4 +166,20 @@ func TestDecodeValidatesResolvedConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDecodeRejectsRawDatabaseURL(t *testing.T) {
+	t.Parallel()
+
+	_, err := Decode([]byte("database:\n  driver: postgres\n  url: postgres://user:pass@localhost/db\n"))
+	if err == nil {
+		t.Fatal("Decode(raw database URL) error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "cannot unmarshal") {
+		t.Fatalf("Decode(raw database URL) error = %q, want unmarshal error", err.Error())
+	}
+}
+
+func validDatabaseConfig(body string) string {
+	return strings.TrimSpace(body) + "\ndatabase:\n  url:\n    secret: DATABASE_URL\n"
 }

@@ -17,9 +17,12 @@ func TestStoreLifecycle(t *testing.T) {
 		return now
 	})
 
-	paths, err := store.Init(EnvironmentDevelopment, false)
+	paths, err := store.Init(false)
 	if err != nil {
 		t.Fatalf("Init() error = %v", err)
+	}
+	if _, err := os.Stat(paths.MasterKeyFile); err != nil {
+		t.Fatalf("Stat(master.key) error = %v", err)
 	}
 
 	ciphertext, err := os.ReadFile(paths.SecretFile)
@@ -54,7 +57,7 @@ func TestStoreLifecycle(t *testing.T) {
 	}
 
 	configPath := filepath.Join(root, "configs", "app.yaml")
-	if err := os.WriteFile(configPath, []byte("env:\n  DATABASE_URL:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("env:\n  DATABASE_URL:\n    secret: DATABASE_URL\ndatabase:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}
 	if err := store.Validate(EnvironmentDevelopment); err != nil {
@@ -80,7 +83,7 @@ func TestStoreValidationFailures(t *testing.T) {
 		t.Fatal("ValidateSecretName(database_url) error = nil, want error")
 	}
 
-	if _, err := store.Init(EnvironmentDevelopment, false); err != nil {
+	if _, err := store.Init(false); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 	if err := store.Set(EnvironmentDevelopment, "database_url", "value"); err == nil {
@@ -88,7 +91,7 @@ func TestStoreValidationFailures(t *testing.T) {
 	}
 
 	configPath := filepath.Join(root, "configs", "app.yaml")
-	if err := os.WriteFile(configPath, []byte("env:\n  DATABASE_URL:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("database:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}
 	if err := store.Validate(EnvironmentDevelopment); err == nil {
@@ -100,7 +103,7 @@ func TestLoadWithWrongIdentityFails(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 
-	paths, err := store.Init(EnvironmentDevelopment, false)
+	paths, err := store.Init(false)
 	if err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
@@ -112,12 +115,85 @@ func TestLoadWithWrongIdentityFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateHybridIdentity() error = %v", err)
 	}
-	if err := os.WriteFile(paths.KeyFile, []byte(wrongIdentity.String()+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(paths.MasterKeyFile, []byte(wrongIdentity.String()+"\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile(key) error = %v", err)
 	}
 
 	if _, err := store.Load(EnvironmentDevelopment); err == nil {
 		t.Fatal("Load() error = nil with wrong identity, want error")
+	}
+}
+
+func TestMasterKeyRequired(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	paths, err := store.Init(false)
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	if err := os.Remove(paths.MasterKeyFile); err != nil {
+		t.Fatalf("Remove(master.key) error = %v", err)
+	}
+
+	if _, err := store.Load(EnvironmentDevelopment); err == nil {
+		t.Fatal("Load() error = nil without master.key, want error")
+	}
+}
+
+func TestCorruptMasterKeyFails(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	paths, err := store.Init(false)
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	if err := os.WriteFile(paths.MasterKeyFile, []byte("not-an-age-key\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(master.key) error = %v", err)
+	}
+
+	if _, err := store.Load(EnvironmentDevelopment); err == nil {
+		t.Fatal("Load() error = nil with corrupt master.key, want error")
+	}
+}
+
+func TestRotateKeyPreservesAllEnvironments(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+
+	if _, err := store.Init(false); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	if err := store.Set(EnvironmentDevelopment, "DATABASE_URL", "postgres://development"); err != nil {
+		t.Fatalf("Set(development) error = %v", err)
+	}
+	if err := store.Set(EnvironmentStaging, "DATABASE_URL", "postgres://staging"); err != nil {
+		t.Fatalf("Set(staging) error = %v", err)
+	}
+	if err := store.Set(EnvironmentProduction, "DATABASE_URL", "postgres://production"); err != nil {
+		t.Fatalf("Set(production) error = %v", err)
+	}
+
+	if _, err := store.RotateKey(); err != nil {
+		t.Fatalf("RotateKey() error = %v", err)
+	}
+
+	for _, tt := range []struct {
+		env  Environment
+		want string
+	}{
+		{env: EnvironmentDevelopment, want: "postgres://development"},
+		{env: EnvironmentStaging, want: "postgres://staging"},
+		{env: EnvironmentProduction, want: "postgres://production"},
+	} {
+		secret, err := store.Get(tt.env, "DATABASE_URL")
+		if err != nil {
+			t.Fatalf("Get(%s) error = %v", tt.env, err)
+		}
+		if secret.Value != tt.want {
+			t.Fatalf("Get(%s).Value = %q, want %q", tt.env, secret.Value, tt.want)
+		}
 	}
 }
 

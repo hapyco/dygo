@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dygo-dev/dygo/internal/secrets"
 )
 
 func TestRun(t *testing.T) {
@@ -84,7 +86,7 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestRootHelpIncludesServe(t *testing.T) {
+func TestRootHelpIncludesServeAndDB(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -96,7 +98,7 @@ func TestRootHelpIncludesServe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(help) error = %v, want nil", err)
 	}
-	for _, want := range []string{"Available Commands:", "serve", "Start the dygo server"} {
+	for _, want := range []string{"Available Commands:", "serve", "Start the dygo server", "db", "Manage dygo database connectivity"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("help stdout = %q, want substring %q", stdout.String(), want)
 		}
@@ -110,6 +112,9 @@ func TestServeCommandLoadsProjectConfig(t *testing.T) {
 server:
   host: 0.0.0.0
   port: 7777
+database:
+  url:
+    secret: DATABASE_URL
 `)
 	nested := filepath.Join(root, "apps", "sales")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
@@ -123,7 +128,7 @@ server:
 	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, address string) error {
 		gotAddress = address
 		return nil
-	})
+	}, noopDatabaseChecker)
 	if err != nil {
 		t.Fatalf("Run(serve) error = %v, want nil", err)
 	}
@@ -146,7 +151,7 @@ func TestServeCommandRequiresProjectConfig(t *testing.T) {
 	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, _ string) error {
 		called = true
 		return nil
-	})
+	}, noopDatabaseChecker)
 	if err == nil {
 		t.Fatal("Run(serve) error = nil, want missing config error")
 	}
@@ -170,7 +175,7 @@ func TestServeCommandReturnsRunnerError(t *testing.T) {
 	var stderr bytes.Buffer
 	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, _ string) error {
 		return errors.New("listen failed")
-	})
+	}, noopDatabaseChecker)
 	if err == nil {
 		t.Fatal("Run(serve) error = nil, want runner error")
 	}
@@ -178,6 +183,112 @@ func TestServeCommandReturnsRunnerError(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(serve) error = %q, want substring %q", err.Error(), want)
 		}
+	}
+}
+
+func TestDBCheckCommandDefaultsToDevelopment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var gotURL string
+	err := run(context.Background(), []string{"db", "check"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, func(_ context.Context, url string) error {
+		gotURL = url
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Run(db check) error = %v, want nil", err)
+	}
+	if stdout.String() != "database connected (development)\n" {
+		t.Fatalf("db check stdout = %q, want development success", stdout.String())
+	}
+	if gotURL != databaseURL {
+		t.Fatalf("database checker URL = %q, want %q", gotURL, databaseURL)
+	}
+}
+
+func TestDBCheckCommandUsesSelectedEnvironment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var gotURL string
+	err := run(context.Background(), []string{"db", "check", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, func(_ context.Context, url string) error {
+		gotURL = url
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Run(db check --env staging) error = %v, want nil", err)
+	}
+	if stdout.String() != "database connected (staging)\n" {
+		t.Fatalf("db check stdout = %q, want staging success", stdout.String())
+	}
+	if gotURL != databaseURL {
+		t.Fatalf("database checker URL = %q, want %q", gotURL, databaseURL)
+	}
+}
+
+func TestDBCheckCommandRequiresSecret(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	store := secrets.NewStore(root)
+	if _, err := store.Init(true); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
+	}
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	called := false
+	err := run(context.Background(), []string{"db", "check"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, func(context.Context, string) error {
+		called = true
+		return nil
+	})
+	if err == nil {
+		t.Fatal("Run(db check) error = nil, want missing secret error")
+	}
+	for _, want := range []string{`read database secret "DATABASE_URL" for development`, `secret "DATABASE_URL" is not defined`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(db check) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+	if called {
+		t.Fatal("database checker was called without DATABASE_URL")
+	}
+}
+
+func TestDBCheckCommandReturnsConnectionFailure(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := run(context.Background(), []string{"db", "check"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, func(context.Context, string) error {
+		return errors.New("ping postgres failed")
+	})
+	if err == nil {
+		t.Fatal("Run(db check) error = nil, want checker error")
+	}
+	if !strings.Contains(err.Error(), "check database: ping postgres failed") {
+		t.Fatalf("Run(db check) error = %q, want checker context", err.Error())
+	}
+	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
+		t.Fatalf("Run(db check) error = %q, leaked database URL", err.Error())
 	}
 }
 
@@ -375,6 +486,9 @@ func TestDoctorCommandReportsInvalidConfig(t *testing.T) {
 	writeCLIConfigBody(t, root, `
 server:
   port: 70000
+database:
+  url:
+    secret: DATABASE_URL
 `)
 	writeCLISecretsLayout(t, root)
 	t.Chdir(root)
@@ -509,7 +623,7 @@ fields:
 	}
 }
 
-func TestSecretsCommands(t *testing.T) {
+func TestSecretsCommandSurface(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
@@ -522,72 +636,259 @@ func TestSecretsCommands(t *testing.T) {
 		return stdout.String(), stderr.String(), err
 	}
 
-	if _, _, err := run([]string{"secrets", "init", "--env", "dev"}, ""); err == nil {
-		t.Fatal("init --env dev error = nil, want error")
+	stdout, _, err := run([]string{"secrets", "--help"}, "")
+	if err != nil {
+		t.Fatalf("secrets --help error = %v", err)
 	}
-	if stdout, _, err := run([]string{"secrets", "init", "--env", "development"}, ""); err != nil {
-		t.Fatalf("init development error = %v", err)
-	} else if !strings.Contains(stdout, "initialized development secrets") {
-		t.Fatalf("init stdout = %q, want initialization message", stdout)
+	for _, want := range []string{"init", "edit", "validate", "rotate-key"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("secrets help = %q, want command %q", stdout, want)
+		}
 	}
-	if _, _, err := run([]string{"secrets", "rm", "--env", "development", "DATABASE_URL"}, ""); err == nil {
-		t.Fatal("secrets rm error = nil, want unknown command error")
+	for _, removed := range []string{"set", "get", "show", "list", "remove"} {
+		if strings.Contains(stdout, removed+" ") {
+			t.Fatalf("secrets help = %q, should not include removed command %q", stdout, removed)
+		}
+		if _, _, err := run([]string{"secrets", removed}, ""); err == nil {
+			t.Fatalf("secrets %s error = nil, want unknown command", removed)
+		}
+	}
+}
+
+func TestSecretsInitCommand(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"secrets", "init"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(secrets init) error = %v, want nil", err)
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"initialized secrets",
+		"key: master.key",
+		"configs/secrets/development.age.yaml",
+		"configs/secrets/staging.age.yaml",
+		"configs/secrets/production.age.yaml",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("secrets init stdout = %q, want substring %q", output, want)
+		}
 	}
 
-	if stdout, _, err := run([]string{"secrets", "set", "--env", "development", "DATABASE_URL", "--value", "postgres://local"}, ""); err != nil {
-		t.Fatalf("set --value error = %v", err)
-	} else if !strings.Contains(stdout, "set DATABASE_URL in development") {
-		t.Fatalf("set stdout = %q, want set message", stdout)
+	info, err := os.Stat(filepath.Join(root, "master.key"))
+	if err != nil {
+		t.Fatalf("Stat(master.key) error = %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("master.key mode = %v, want 0600", got)
 	}
 
-	if stdout, _, err := run([]string{"secrets", "get", "--env", "development", "DATABASE_URL"}, ""); err != nil {
-		t.Fatalf("get error = %v", err)
-	} else if stdout != "postgres://local\n" {
-		t.Fatalf("get stdout = %q, want raw secret", stdout)
+	stdout.Reset()
+	stderr.Reset()
+	if err := Run(context.Background(), []string{"secrets", "init"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("second secrets init error = %v, want nil", err)
+	}
+}
+
+func TestSecretsEditDefaultsToDevelopment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	store := secrets.NewStore(root)
+	if _, err := store.Init(false); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
+	}
+	editor := writeEditorScript(t, root, `
+cat > "$1" <<'YAML'
+version: 1
+environment: development
+secrets:
+  DATABASE_URL:
+    value: postgres://development
+    updated_at: 2026-05-03T08:00:00Z
+YAML
+`)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"secrets", "edit", "--editor", editor}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(secrets edit) error = %v, want nil", err)
+	}
+	if stdout.String() != "updated development secrets\n" {
+		t.Fatalf("secrets edit stdout = %q, want development update", stdout.String())
+	}
+	secret, err := store.Get(secrets.EnvironmentDevelopment, "DATABASE_URL")
+	if err != nil {
+		t.Fatalf("Get(development DATABASE_URL) error = %v", err)
+	}
+	if secret.Value != "postgres://development" {
+		t.Fatalf("DATABASE_URL = %q, want development value", secret.Value)
+	}
+}
+
+func TestSecretsEditSelectedEnvironmentAndEditorArgs(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	store := secrets.NewStore(root)
+	if _, err := store.Init(false); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
+	}
+	editor := writeEditorScript(t, root, `
+if [ "$1" != "--flag" ]; then
+  exit 12
+fi
+cat > "$2" <<'YAML'
+version: 1
+environment: staging
+secrets:
+  DATABASE_URL:
+    value: postgres://staging
+    updated_at: 2026-05-03T08:00:00Z
+YAML
+`)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"secrets", "edit", "--env", "staging", "--editor", editor + " --flag"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(secrets edit --env staging) error = %v, want nil", err)
+	}
+	if stdout.String() != "updated staging secrets\n" {
+		t.Fatalf("secrets edit stdout = %q, want staging update", stdout.String())
+	}
+	secret, err := store.Get(secrets.EnvironmentStaging, "DATABASE_URL")
+	if err != nil {
+		t.Fatalf("Get(staging DATABASE_URL) error = %v", err)
+	}
+	if secret.Value != "postgres://staging" {
+		t.Fatalf("DATABASE_URL = %q, want staging value", secret.Value)
+	}
+}
+
+func TestSecretsEditInvalidYAMLDoesNotOverwrite(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	store := secrets.NewStore(root)
+	if _, err := store.Init(false); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
+	}
+	if err := store.Set(secrets.EnvironmentDevelopment, "DATABASE_URL", "postgres://old"); err != nil {
+		t.Fatalf("Set(old DATABASE_URL) error = %v", err)
+	}
+	editor := writeEditorScript(t, root, `
+cat > "$1" <<'YAML'
+version: 1
+environment: development
+secrets:
+  database_url:
+    value: bad
+YAML
+`)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"secrets", "edit", "--editor", editor}, strings.NewReader("no\n"), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(secrets edit invalid) error = nil, want validation error")
+	}
+	if !strings.Contains(stderr.String(), "invalid secrets document") {
+		t.Fatalf("secrets edit stderr = %q, want validation diagnostic", stderr.String())
+	}
+	secret, err := store.Get(secrets.EnvironmentDevelopment, "DATABASE_URL")
+	if err != nil {
+		t.Fatalf("Get(old DATABASE_URL) error = %v", err)
+	}
+	if secret.Value != "postgres://old" {
+		t.Fatalf("DATABASE_URL after invalid edit = %q, want original value", secret.Value)
+	}
+}
+
+func TestSecretsEditorDefaultsToNano(t *testing.T) {
+	root := t.TempDir()
+	nanoPath := filepath.Join(root, "nano")
+	if err := os.WriteFile(nanoPath, []byte("#!/bin/sh\nprintf 'nano-default\\n' > \"$1\"\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile(nano) error = %v", err)
+	}
+	targetPath := filepath.Join(root, "secrets.yaml")
+	if err := os.WriteFile(targetPath, []byte("original\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(target) error = %v", err)
 	}
 
-	if stdout, _, err := run([]string{"secrets", "show", "--env", "development", "DATABASE_URL"}, ""); err != nil {
-		t.Fatalf("show error = %v", err)
-	} else if strings.Contains(stdout, "postgres://local") || !strings.Contains(stdout, "************ocal") {
-		t.Fatalf("show stdout = %q, want redacted output", stdout)
-	}
+	t.Setenv("EDITOR", "vim")
+	t.Setenv("PATH", root)
 
-	if stdout, _, err := run([]string{"secrets", "show", "--env", "development", "DATABASE_URL", "--reveal"}, ""); err != nil {
-		t.Fatalf("show --reveal error = %v", err)
-	} else if !strings.Contains(stdout, "postgres://local") {
-		t.Fatalf("show --reveal stdout = %q, want raw secret", stdout)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := openEditor(context.Background(), "", targetPath, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("openEditor() error = %v, want nil", err)
 	}
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("ReadFile(target) error = %v", err)
+	}
+	if string(data) != "nano-default\n" {
+		t.Fatalf("edited file = %q, want nano default output", data)
+	}
+}
 
-	if stdout, _, err := run([]string{"secrets", "list", "--env", "development"}, ""); err != nil {
-		t.Fatalf("list error = %v", err)
-	} else if strings.Contains(stdout, "postgres://local") || !strings.Contains(stdout, "DATABASE_URL=************ocal") {
-		t.Fatalf("list stdout = %q, want redacted entry", stdout)
+func TestSecretsValidateDefaultsToDevelopment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	store := secrets.NewStore(root)
+	if _, err := store.Init(false); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
 	}
+	if err := store.Set(secrets.EnvironmentDevelopment, "DATABASE_URL", "postgres://development"); err != nil {
+		t.Fatalf("Set(DATABASE_URL) error = %v", err)
+	}
+	t.Chdir(root)
 
-	configPath := filepath.Join(root, "configs", "app.yaml")
-	if err := os.WriteFile(configPath, []byte("env:\n  DATABASE_URL:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(config) error = %v", err)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"secrets", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(secrets validate) error = %v, want nil", err)
 	}
-	if stdout, _, err := run([]string{"secrets", "validate", "--env", "development"}, ""); err != nil {
-		t.Fatalf("validate error = %v", err)
-	} else if !strings.Contains(stdout, "development secrets are valid") {
-		t.Fatalf("validate stdout = %q, want success", stdout)
+	if stdout.String() != "development secrets are valid\n" {
+		t.Fatalf("secrets validate stdout = %q, want development success", stdout.String())
 	}
+}
 
-	if stdout, _, err := run([]string{"secrets", "remove", "--env", "development", "DATABASE_URL"}, "no\n"); err != nil {
-		t.Fatalf("remove canceled error = %v", err)
-	} else if !strings.Contains(stdout, "remove canceled") {
-		t.Fatalf("remove canceled stdout = %q, want canceled message", stdout)
+func TestSecretsRotateKeyCommand(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	store := secrets.NewStore(root)
+	if _, err := store.Init(false); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
 	}
-
-	if stdout, _, err := run([]string{"secrets", "remove", "--env", "development", "DATABASE_URL"}, "yes\n"); err != nil {
-		t.Fatalf("remove confirmed error = %v", err)
-	} else if !strings.Contains(stdout, "removed DATABASE_URL from development") {
-		t.Fatalf("remove confirmed stdout = %q, want removed message", stdout)
+	if err := store.Set(secrets.EnvironmentProduction, "DATABASE_URL", "postgres://production"); err != nil {
+		t.Fatalf("Set(production DATABASE_URL) error = %v", err)
 	}
+	t.Chdir(root)
 
-	if _, _, err := run([]string{"secrets", "get", "--env", "development", "DATABASE_URL"}, ""); err == nil {
-		t.Fatal("get after remove error = nil, want error")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"secrets", "rotate-key"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(secrets rotate-key) error = %v, want nil", err)
+	}
+	if !strings.Contains(stdout.String(), "rotated secrets master key") || !strings.Contains(stdout.String(), "master.key") {
+		t.Fatalf("secrets rotate-key stdout = %q, want rotate output", stdout.String())
+	}
+	secret, err := store.Get(secrets.EnvironmentProduction, "DATABASE_URL")
+	if err != nil {
+		t.Fatalf("Get(production DATABASE_URL) error = %v", err)
+	}
+	if secret.Value != "postgres://production" {
+		t.Fatalf("production DATABASE_URL after rotate = %q, want preserved value", secret.Value)
 	}
 }
 
@@ -622,6 +923,9 @@ func writeCLIConfig(t *testing.T, root string) {
 	writeCLIConfigBody(t, root, `
 server:
   port: 6790
+database:
+  url:
+    secret: DATABASE_URL
 `)
 }
 
@@ -640,23 +944,30 @@ func writeCLIConfigBody(t *testing.T, root string, body string) {
 func writeCLISecretsLayout(t *testing.T, root string) {
 	t.Helper()
 
-	for _, env := range []string{"development", "staging", "production"} {
-		secretPath := filepath.Join(root, "configs", "secrets", env+".age.yaml")
-		if err := os.MkdirAll(filepath.Dir(secretPath), 0o755); err != nil {
-			t.Fatalf("MkdirAll(secrets) error = %v", err)
-		}
-		if err := os.WriteFile(secretPath, []byte("placeholder\n"), 0o644); err != nil {
-			t.Fatalf("WriteFile(%s) error = %v", secretPath, err)
-		}
-
-		recipientPath := filepath.Join(root, "configs", "secrets", "recipients", env+".txt")
-		if err := os.MkdirAll(filepath.Dir(recipientPath), 0o755); err != nil {
-			t.Fatalf("MkdirAll(recipients) error = %v", err)
-		}
-		if err := os.WriteFile(recipientPath, []byte("age1placeholder\n"), 0o644); err != nil {
-			t.Fatalf("WriteFile(%s) error = %v", recipientPath, err)
-		}
+	store := secrets.NewStore(root)
+	if _, err := store.Init(true); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
 	}
+}
+
+func writeCLIDatabaseSecret(t *testing.T, root string, env secrets.Environment, value string) {
+	t.Helper()
+
+	store := secrets.NewStore(root)
+	if _, err := store.Init(true); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
+	}
+	if err := store.Set(env, "DATABASE_URL", value); err != nil {
+		t.Fatalf("Set(DATABASE_URL) error = %v", err)
+	}
+}
+
+func noopServeRunner(context.Context, string) error {
+	return nil
+}
+
+func noopDatabaseChecker(context.Context, string) error {
+	return nil
 }
 
 func writeCLIEntity(t *testing.T, path string, body string) {
@@ -670,74 +981,13 @@ func writeCLIEntity(t *testing.T, path string, body string) {
 	}
 }
 
-func TestSecretsSetFromStdinAndFile(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	t.Chdir(root)
+func writeEditorScript(t *testing.T, root string, body string) string {
+	t.Helper()
 
-	run := func(args []string, stdin string) (string, string, error) {
-		t.Helper()
-		var stdout bytes.Buffer
-		var stderr bytes.Buffer
-		err := Run(context.Background(), args, strings.NewReader(stdin), &stdout, &stderr)
-		return stdout.String(), stderr.String(), err
+	path := filepath.Join(root, "editor.sh")
+	script := "#!/bin/sh\nset -eu\n" + strings.TrimSpace(body) + "\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("WriteFile(editor) error = %v", err)
 	}
-
-	if _, _, err := run([]string{"secrets", "init", "--env", "staging"}, ""); err != nil {
-		t.Fatalf("init staging error = %v", err)
-	}
-	if _, _, err := run([]string{"secrets", "set", "--env", "staging", "API_KEY"}, "secret-from-stdin\n"); err != nil {
-		t.Fatalf("set from stdin error = %v", err)
-	}
-	if stdout, _, err := run([]string{"secrets", "get", "--env", "staging", "API_KEY"}, ""); err != nil {
-		t.Fatalf("get API_KEY error = %v", err)
-	} else if stdout != "secret-from-stdin\n" {
-		t.Fatalf("get API_KEY stdout = %q, want stdin secret", stdout)
-	}
-
-	valuePath := filepath.Join(root, "value.txt")
-	if err := os.WriteFile(valuePath, []byte("secret-from-file\nwith-newline"), 0o600); err != nil {
-		t.Fatalf("WriteFile(value) error = %v", err)
-	}
-	if _, _, err := run([]string{"secrets", "set", "--env", "staging", "FILE_SECRET", "--from-file", valuePath}, ""); err != nil {
-		t.Fatalf("set from file error = %v", err)
-	}
-	if stdout, _, err := run([]string{"secrets", "get", "--env", "staging", "FILE_SECRET"}, ""); err != nil {
-		t.Fatalf("get FILE_SECRET error = %v", err)
-	} else if stdout != "secret-from-file\nwith-newline\n" {
-		t.Fatalf("get FILE_SECRET stdout = %q, want file contents plus command newline", stdout)
-	}
-}
-
-func TestSecretsProductionWarningAndRotateKey(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	t.Chdir(root)
-
-	run := func(args []string, stdin string) (string, string, error) {
-		t.Helper()
-		var stdout bytes.Buffer
-		var stderr bytes.Buffer
-		err := Run(context.Background(), args, strings.NewReader(stdin), &stdout, &stderr)
-		return stdout.String(), stderr.String(), err
-	}
-
-	if _, stderr, err := run([]string{"secrets", "init", "--env", "production"}, ""); err != nil {
-		t.Fatalf("init production error = %v", err)
-	} else if !strings.Contains(stderr, "production private keys") {
-		t.Fatalf("init production stderr = %q, want production key warning", stderr)
-	}
-	if _, _, err := run([]string{"secrets", "set", "--env", "production", "DATABASE_URL", "--value", "postgres://prod"}, ""); err != nil {
-		t.Fatalf("set production error = %v", err)
-	}
-	if stdout, stderr, err := run([]string{"secrets", "rotate-key", "--env", "production"}, ""); err != nil {
-		t.Fatalf("rotate-key production error = %v", err)
-	} else if !strings.Contains(stdout, "rotated production secrets key") || !strings.Contains(stderr, "production private keys") {
-		t.Fatalf("rotate-key stdout=%q stderr=%q, want rotate message and warning", stdout, stderr)
-	}
-	if stdout, _, err := run([]string{"secrets", "get", "--env", "production", "DATABASE_URL"}, ""); err != nil {
-		t.Fatalf("get after rotate error = %v", err)
-	} else if stdout != "postgres://prod\n" {
-		t.Fatalf("get after rotate stdout = %q, want preserved secret", stdout)
-	}
+	return path
 }

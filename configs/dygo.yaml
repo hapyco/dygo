@@ -1,3 +1,7 @@
 server:
   host: 127.0.0.1
   port: 6790
+database:
+  driver: postgres
+  url:
+    secret: DATABASE_URL
