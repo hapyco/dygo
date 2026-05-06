@@ -488,7 +488,7 @@ func TestMigrateCommandDefaultsToDevelopment(t *testing.T) {
 	t.Chdir(root)
 
 	fake := &fakeSchemaSyncRunner{
-		result: db.SchemaSyncResult{Entities: 8, Fields: 34},
+		result: db.SchemaSyncResult{Entities: 8, Fields: 34, Operations: 2},
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -496,7 +496,7 @@ func TestMigrateCommandDefaultsToDevelopment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(migrate) error = %v, want nil", err)
 	}
-	if stdout.String() != "metadata synced: 8 entities, 34 fields (development)\n" {
+	if stdout.String() != "metadata synced: 8 entities, 34 fields, 2 operations (development)\n" {
 		t.Fatalf("migrate stdout = %q, want synced output", stdout.String())
 	}
 	if fake.root != root {
@@ -524,11 +524,90 @@ func TestMigrateCommandUsesEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(migrate --env staging) error = %v, want nil", err)
 	}
-	if stdout.String() != "metadata synced: 3 entities, 9 fields (staging)\n" {
+	if stdout.String() != "metadata already synced: 3 entities, 9 fields (staging)\n" {
 		t.Fatalf("migrate stdout = %q, want synced output", stdout.String())
 	}
 	if fake.databaseURL != databaseURL {
 		t.Fatalf("schema sync database URL = %q, want %q", fake.databaseURL, databaseURL)
+	}
+}
+
+func TestMigratePlanCommandDefaultsToDevelopment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{
+		plan: db.SchemaPlan{
+			Entities: 8,
+			Fields:   40,
+			Operations: []db.SchemaOperation{
+				{Description: "add column users.email"},
+			},
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"migrate", "plan"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(migrate plan) error = %v, want nil", err)
+	}
+	for _, want := range []string{
+		"metadata schema plan (development)\n",
+		"safe operations: 1\n",
+		"unsafe diagnostics: 0\n",
+		"unsupported diagnostics: 0\n",
+		"- add column users.email\n",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("migrate plan stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if fake.planRoot != root {
+		t.Fatalf("schema plan root = %q, want %q", fake.planRoot, root)
+	}
+	if fake.planDatabaseURL != databaseURL {
+		t.Fatalf("schema plan database URL = %q, want %q", fake.planDatabaseURL, databaseURL)
+	}
+}
+
+func TestMigratePlanCommandUsesEnvironmentAndReportsBlockers(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{
+		plan: db.SchemaPlan{
+			Diagnostics: []db.SchemaDiagnostic{
+				{Classification: db.SchemaDiagnosticUnsafe, Table: "users", Column: "legacy", Message: "column exists in database but not metadata"},
+			},
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"migrate", "plan", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(migrate plan --env staging) error = %v, want nil", err)
+	}
+	for _, want := range []string{
+		"metadata schema plan (staging)\n",
+		"safe operations: 0\n",
+		"unsafe diagnostics: 1\n",
+		"unsupported diagnostics: 0\n",
+		"- unsafe: users.legacy: column exists in database but not metadata\n",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("migrate plan stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if fake.planDatabaseURL != databaseURL {
+		t.Fatalf("schema plan database URL = %q, want %q", fake.planDatabaseURL, databaseURL)
 	}
 }
 
@@ -1316,11 +1395,23 @@ func (r *fakeDatabaseRunner) SchemaDump(_ context.Context, root string, database
 }
 
 type fakeSchemaSyncRunner struct {
-	result      db.SchemaSyncResult
-	err         error
-	root        string
-	databaseURL string
-	calls       int
+	result          db.SchemaSyncResult
+	err             error
+	plan            db.SchemaPlan
+	planErr         error
+	root            string
+	databaseURL     string
+	planRoot        string
+	planDatabaseURL string
+	calls           int
+	planCalls       int
+}
+
+func (r *fakeSchemaSyncRunner) Plan(_ context.Context, root string, databaseURL string) (db.SchemaPlan, error) {
+	r.planCalls++
+	r.planRoot = root
+	r.planDatabaseURL = databaseURL
+	return r.plan, r.planErr
 }
 
 func (r *fakeSchemaSyncRunner) Sync(_ context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {

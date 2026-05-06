@@ -92,15 +92,25 @@ apps/*/entities/*.yml
 
 During `dygo migrate` and `dygo db prepare`, dygo loads discovered Apps and Entities, then creates or updates tables from Entity metadata. Core is handled this way too: `apps/core/entities/*.yml` is the source for Core tables such as `apps`, `entities`, `fields`, `users`, `roles`, `permissions`, and `sessions`.
 
-Run metadata sync:
+Preview metadata sync:
+
+```sh
+go run ./cmd/dygo migrate plan
+```
+
+Apply metadata sync:
 
 ```sh
 go run ./cmd/dygo migrate
 ```
 
-`dygo migrate` defaults to `development` and supports `--env staging` or `--env production`.
+`dygo migrate plan` and `dygo migrate` default to `development` and support `--env staging` or `--env production`.
 
-The current sync path is intentionally additive. Adding an Entity or field creates the corresponding table or column. Removing, renaming, destructive type changes, and unsafe required/unique changes are not inferred automatically. Those cases need an explicit app patch once the patch runner exists.
+Before applying changes, dygo builds a schema plan from metadata and compares it with the live PostgreSQL `public` schema. The plan classifies safe operations separately from unsafe or unsupported drift.
+
+Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
+
+The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check/foreign-key changes are not inferred automatically. Those cases need an explicit app patch or a future explicit prune command.
 
 There is no SQL migration file path or `migrations` table in this model. dygo compares metadata intent with the database shape and moves the database forward through metadata.
 

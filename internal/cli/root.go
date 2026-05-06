@@ -24,6 +24,7 @@ type databaseRunner interface {
 	SchemaDump(context.Context, string, string) error
 }
 type schemaSyncRunner interface {
+	Plan(context.Context, string, string) (db.SchemaPlan, error)
 	Sync(context.Context, string, string) (db.SchemaSyncResult, error)
 }
 

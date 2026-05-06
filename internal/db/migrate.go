@@ -16,8 +16,9 @@ const SchemaPath = "db/schema.sql"
 
 // SchemaSyncResult reports the metadata schema synced by an operation.
 type SchemaSyncResult struct {
-	Entities int
-	Fields   int
+	Entities   int
+	Fields     int
+	Operations int
 }
 
 // Migrator syncs dygo metadata into PostgreSQL and writes schema snapshots.
@@ -51,6 +52,21 @@ func (m Migrator) Sync(ctx context.Context, root string, databaseURL string) (Sc
 		return SchemaSyncResult{}, err
 	}
 	return result, nil
+}
+
+// Plan compares app Entity metadata with the live database without applying changes.
+func (m Migrator) Plan(ctx context.Context, root string, databaseURL string) (SchemaPlan, error) {
+	pool, err := connectMetadataPool(ctx, databaseURL)
+	if err != nil {
+		return SchemaPlan{}, err
+	}
+	defer pool.Close()
+
+	plan, err := PlanMetadataSchema(ctx, pool, root)
+	if err != nil {
+		return SchemaPlan{}, fmt.Errorf("plan metadata schema: %w", err)
+	}
+	return plan, nil
 }
 
 // DumpSchema writes db/schema.sql using the configured snapshotter.
