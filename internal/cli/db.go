@@ -142,7 +142,7 @@ func newDBPrepareCommand(ctx context.Context, stdout io.Writer, database databas
 			if err != nil {
 				return fmt.Errorf("prepare database: %w", err)
 			}
-			if _, err := fmt.Fprintf(stdout, "database prepared: synced %d entities, %d fields (%s)\n", result.Entities, result.Fields, env); err != nil {
+			if _, err := fmt.Fprintf(stdout, "database prepared: synced %d %s, %d %s, %d %s (%s)\n", result.Apps, noun(result.Apps, "app"), result.Entities, noun(result.Entities, "entity"), result.Fields, noun(result.Fields, "field"), env); err != nil {
 				return fmt.Errorf("write database prepare output: %w", err)
 			}
 			return nil
@@ -174,7 +174,7 @@ func newDBResetCommand(ctx context.Context, stdout io.Writer, database databaseR
 			if err != nil {
 				return fmt.Errorf("reset database: %w", err)
 			}
-			if _, err := fmt.Fprintf(stdout, "database reset: synced %d entities, %d fields (%s)\n", result.Entities, result.Fields, env); err != nil {
+			if _, err := fmt.Fprintf(stdout, "database reset: synced %d %s, %d %s, %d %s (%s)\n", result.Apps, noun(result.Apps, "app"), result.Entities, noun(result.Entities, "entity"), result.Fields, noun(result.Fields, "field"), env); err != nil {
 				return fmt.Errorf("write database reset output: %w", err)
 			}
 			return nil

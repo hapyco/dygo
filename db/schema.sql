@@ -99,7 +99,9 @@ CREATE TABLE public.fields (
     required boolean DEFAULT false,
     "unique" boolean DEFAULT false,
     "position" integer,
-    options jsonb
+    options jsonb,
+    index boolean DEFAULT false,
+    "default" jsonb
 );
 
 

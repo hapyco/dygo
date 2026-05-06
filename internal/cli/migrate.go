@@ -62,10 +62,7 @@ func newMigratePlanCommand(ctx context.Context, stdout io.Writer, sync schemaSyn
 }
 
 func migrateResultLine(result db.SchemaSyncResult, env secrets.Environment) string {
-	if result.Operations == 0 {
-		return fmt.Sprintf("metadata already synced: %d entities, %d fields (%s)", result.Entities, result.Fields, env)
-	}
-	return fmt.Sprintf("metadata synced: %d entities, %d fields, %d operations (%s)", result.Entities, result.Fields, result.Operations, env)
+	return fmt.Sprintf("metadata synced: %d %s, %d %s, %d %s, %d schema %s (%s)", result.Apps, noun(result.Apps, "app"), result.Entities, noun(result.Entities, "entity"), result.Fields, noun(result.Fields, "field"), result.Operations, noun(result.Operations, "operation"), env)
 }
 
 func writeSchemaPlan(stdout io.Writer, env secrets.Environment, plan db.SchemaPlan) error {
@@ -121,4 +118,14 @@ func schemaDiagnosticCounts(plan db.SchemaPlan) (int, int) {
 		}
 	}
 	return unsafeCount, unsupportedCount
+}
+
+func noun(count int, singular string) string {
+	if count == 1 {
+		return singular
+	}
+	if singular == "entity" {
+		return "entities"
+	}
+	return singular + "s"
 }

@@ -26,6 +26,8 @@ The framework repo includes the initial Core app manifest at `apps/core/app.yml`
 
 The first Core Entity contracts live under `apps/core/entities/`. dygo creates Core SQL tables from this metadata through the same schema path used by every other App. Core is required, but it is still an App.
 
+After schema sync succeeds, dygo persists discovered App, Entity, and Field metadata into Core records. YAML metadata stays the source of truth; the Core records are the runtime registry that APIs and Studio can read later.
+
 Records, auth behavior, permission resolution, app lifecycle patches, and Studio screens are still separate follow-up layers.
 
 `apps/studio` is the first-party UI app.

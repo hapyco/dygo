@@ -16,6 +16,7 @@ const SchemaPath = "db/schema.sql"
 
 // SchemaSyncResult reports the metadata schema synced by an operation.
 type SchemaSyncResult struct {
+	Apps       int
 	Entities   int
 	Fields     int
 	Operations int

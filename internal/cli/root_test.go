@@ -400,7 +400,7 @@ func TestDBPrepareCommand(t *testing.T) {
 	t.Chdir(root)
 
 	fake := &fakeDatabaseRunner{
-		prepareResult: db.SchemaSyncResult{Entities: 8, Fields: 34},
+		prepareResult: db.SchemaSyncResult{Apps: 2, Entities: 8, Fields: 34},
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -408,7 +408,7 @@ func TestDBPrepareCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(db prepare) error = %v, want nil", err)
 	}
-	if stdout.String() != "database prepared: synced 8 entities, 34 fields (development)\n" {
+	if stdout.String() != "database prepared: synced 2 apps, 8 entities, 34 fields (development)\n" {
 		t.Fatalf("db prepare stdout = %q, want prepare output", stdout.String())
 	}
 	if fake.operation != "prepare" || fake.root != root || fake.databaseURL != databaseURL {
@@ -443,7 +443,7 @@ func TestDBResetCommand(t *testing.T) {
 	t.Chdir(root)
 
 	fake := &fakeDatabaseRunner{
-		resetResult: db.SchemaSyncResult{Entities: 8, Fields: 34},
+		resetResult: db.SchemaSyncResult{Apps: 2, Entities: 8, Fields: 34},
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -451,7 +451,7 @@ func TestDBResetCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(db reset) error = %v, want nil", err)
 	}
-	if stdout.String() != "database reset: synced 8 entities, 34 fields (development)\n" {
+	if stdout.String() != "database reset: synced 2 apps, 8 entities, 34 fields (development)\n" {
 		t.Fatalf("db reset stdout = %q, want reset output", stdout.String())
 	}
 }
@@ -488,7 +488,7 @@ func TestMigrateCommandDefaultsToDevelopment(t *testing.T) {
 	t.Chdir(root)
 
 	fake := &fakeSchemaSyncRunner{
-		result: db.SchemaSyncResult{Entities: 8, Fields: 34, Operations: 2},
+		result: db.SchemaSyncResult{Apps: 2, Entities: 8, Fields: 34, Operations: 2},
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -496,7 +496,7 @@ func TestMigrateCommandDefaultsToDevelopment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(migrate) error = %v, want nil", err)
 	}
-	if stdout.String() != "metadata synced: 8 entities, 34 fields, 2 operations (development)\n" {
+	if stdout.String() != "metadata synced: 2 apps, 8 entities, 34 fields, 2 schema operations (development)\n" {
 		t.Fatalf("migrate stdout = %q, want synced output", stdout.String())
 	}
 	if fake.root != root {
@@ -516,7 +516,7 @@ func TestMigrateCommandUsesEnvironment(t *testing.T) {
 	t.Chdir(root)
 
 	fake := &fakeSchemaSyncRunner{
-		result: db.SchemaSyncResult{Entities: 3, Fields: 9},
+		result: db.SchemaSyncResult{Apps: 1, Entities: 3, Fields: 9},
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -524,7 +524,7 @@ func TestMigrateCommandUsesEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(migrate --env staging) error = %v, want nil", err)
 	}
-	if stdout.String() != "metadata already synced: 3 entities, 9 fields (staging)\n" {
+	if stdout.String() != "metadata synced: 1 app, 3 entities, 9 fields, 0 schema operations (staging)\n" {
 		t.Fatalf("migrate stdout = %q, want synced output", stdout.String())
 	}
 	if fake.databaseURL != databaseURL {

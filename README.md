@@ -16,7 +16,7 @@ The goal is speed with structure: builders should focus on business logic while 
 
 dygo is in early framework development.
 
-The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server skeleton, encrypted credentials, app/entity metadata validation, and PostgreSQL schema sync foundation. The framework APIs are not stable yet.
+The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server skeleton, encrypted credentials, app/entity metadata validation, PostgreSQL schema sync, and Core metadata registry foundation. The framework APIs are not stable yet.
 
 ## Current CLI
 

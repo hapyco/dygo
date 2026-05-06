@@ -39,6 +39,15 @@ fields:
     type: boolean
     default: false
 
+  - name: index
+    label: Index
+    type: boolean
+    default: false
+
+  - name: default
+    label: Default
+    type: json
+
   - name: position
     label: Position
     type: int

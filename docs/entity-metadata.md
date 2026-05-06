@@ -66,6 +66,8 @@ Field names must be unique inside an Entity.
 
 `index: true` creates a non-unique database index for field types that support indexing. It is useful for fields commonly used in filters, lookups, joins, or status screens.
 
+During `dygo migrate`, Field metadata is also upserted into the Core `fields` table with name, label, type, required, unique, index, default, position, and options.
+
 Type-specific settings live under `options`.
 
 `select` fields require non-empty `options.values`.
