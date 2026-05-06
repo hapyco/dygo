@@ -103,7 +103,7 @@ dygo/
 
 `apps/core` is the required system app. dygo cannot boot properly without it.
 
-It owns users, roles, permissions, sessions, installed apps, patch history, core fixtures, core patches, and files or attachments when they are required by the runtime.
+It owns users, roles, permissions, sessions, installed apps, Entity/Field/Index/Constraint metadata contracts, patch history, core fixtures, core patches, and files or attachments when they are required by the runtime.
 
 `apps/studio` is the first-party UI app.
 

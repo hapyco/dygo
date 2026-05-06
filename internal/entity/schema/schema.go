@@ -13,13 +13,15 @@ import (
 
 // Entity describes one dygo business object definition.
 type Entity struct {
-	Line        int     `yaml:"-"`
-	Name        string  `yaml:"name"`
-	Label       string  `yaml:"label"`
-	PluralName  string  `yaml:"plural-name"`
-	PluralLabel string  `yaml:"plural-label"`
-	Description string  `yaml:"description,omitempty"`
-	Fields      []Field `yaml:"fields"`
+	Line        int          `yaml:"-"`
+	Name        string       `yaml:"name"`
+	Label       string       `yaml:"label"`
+	PluralName  string       `yaml:"plural-name"`
+	PluralLabel string       `yaml:"plural-label"`
+	Description string       `yaml:"description,omitempty"`
+	Fields      []Field      `yaml:"fields"`
+	Indexes     []Index      `yaml:"indexes,omitempty"`
+	Constraints []Constraint `yaml:"constraints,omitempty"`
 }
 
 // Field describes one field inside an Entity.
@@ -33,6 +35,53 @@ type Field struct {
 	Index    bool              `yaml:"index,omitempty"`
 	Default  yaml.Node         `yaml:"default,omitempty"`
 	Options  fieldtype.Options `yaml:"options,omitempty"`
+}
+
+// Index describes a non-unique Entity-level database index.
+type Index struct {
+	Line   int      `yaml:"-"`
+	Name   string   `yaml:"name,omitempty"`
+	Fields []string `yaml:"fields"`
+}
+
+// EffectiveName returns the configured or deterministic metadata name for the index.
+func (i Index) EffectiveName(entity Entity) string {
+	if strings.TrimSpace(i.Name) != "" {
+		return i.Name
+	}
+	parts := []string{entity.PluralName}
+	parts = append(parts, i.Fields...)
+	parts = append(parts, "idx")
+	return strings.Join(parts, "-")
+}
+
+// Constraint describes an Entity-level database constraint.
+type Constraint struct {
+	Line     int       `yaml:"-"`
+	Name     string    `yaml:"name,omitempty"`
+	Type     string    `yaml:"type"`
+	Fields   []string  `yaml:"fields,omitempty"`
+	Field    string    `yaml:"field,omitempty"`
+	Operator string    `yaml:"operator,omitempty"`
+	Value    yaml.Node `yaml:"value,omitempty"`
+}
+
+// EffectiveName returns the configured or deterministic metadata name for the constraint.
+func (c Constraint) EffectiveName(entity Entity) string {
+	if strings.TrimSpace(c.Name) != "" {
+		return c.Name
+	}
+	switch c.Type {
+	case "unique":
+		parts := []string{entity.PluralName}
+		parts = append(parts, c.Fields...)
+		parts = append(parts, "key")
+		return strings.Join(parts, "-")
+	case "check":
+		return strings.Join([]string{entity.PluralName, c.Field, c.Operator, "check"}, "-")
+	default:
+		return strings.Join([]string{entity.PluralName, "constraint"}, "-")
+	}
 }
 
 // ValidationError reports one or more Entity validation problems.
@@ -102,17 +151,238 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	}
 
 	seenFields := map[string]struct{}{}
+	fields := map[string]Field{}
+	fieldTypes := map[string]fieldtype.Definition{}
 	for _, field := range e.Fields {
 		validateField(field, registry, seenFields, &problems)
 		if field.Name != "" {
 			seenFields[field.Name] = struct{}{}
+			fields[field.Name] = field
+			if definition, ok := registry.Get(field.Type); ok {
+				fieldTypes[field.Name] = definition
+			}
 		}
 	}
+	validateIndexes(e, fields, fieldTypes, &problems)
+	validateConstraints(e, fields, fieldTypes, &problems)
 
 	if len(problems) > 0 {
 		return ValidationError{Problems: problems}
 	}
 	return nil
+}
+
+func validateIndexes(entity Entity, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, problems *[]string) {
+	seenNames := map[string]struct{}{}
+	seenDefinitions := map[string]struct{}{}
+	for _, index := range entity.Indexes {
+		if strings.TrimSpace(index.Name) != "" && !fieldtype.IsName(index.Name) {
+			*problems = append(*problems, withLine(index.Line, fmt.Sprintf("index name %q must be kebab-case", index.Name)))
+		}
+		if len(index.Fields) == 0 {
+			*problems = append(*problems, withLine(index.Line, "index fields are required"))
+		}
+		validateFieldReferences(index.Line, "index", index.Fields, fields, fieldTypes, func(definition fieldtype.Definition) bool {
+			return definition.AllowIndex
+		}, "indexed", problems)
+
+		name := index.EffectiveName(entity)
+		if strings.TrimSpace(name) != "" {
+			if _, ok := seenNames[name]; ok {
+				*problems = append(*problems, withLine(index.Line, fmt.Sprintf("duplicate index name %q", name)))
+			}
+			seenNames[name] = struct{}{}
+		}
+		definitionKey := strings.Join(index.Fields, "\x00")
+		if definitionKey != "" {
+			if _, ok := seenDefinitions[definitionKey]; ok {
+				*problems = append(*problems, withLine(index.Line, fmt.Sprintf("duplicate index fields %q", strings.Join(index.Fields, ", "))))
+			}
+			seenDefinitions[definitionKey] = struct{}{}
+		}
+	}
+}
+
+func validateConstraints(entity Entity, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, problems *[]string) {
+	seenNames := map[string]struct{}{}
+	seenDefinitions := map[string]struct{}{}
+	for _, constraint := range entity.Constraints {
+		if strings.TrimSpace(constraint.Name) != "" && !fieldtype.IsName(constraint.Name) {
+			*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("constraint name %q must be kebab-case", constraint.Name)))
+		}
+		if strings.TrimSpace(constraint.Type) == "" {
+			*problems = append(*problems, withLine(constraint.Line, "constraint type is required"))
+			continue
+		}
+		switch constraint.Type {
+		case "unique":
+			validateUniqueConstraint(constraint, fields, fieldTypes, seenDefinitions, problems)
+		case "check":
+			validateCheckConstraint(constraint, fields, fieldTypes, seenDefinitions, problems)
+		default:
+			*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("constraint type %q is not supported", constraint.Type)))
+		}
+
+		name := constraint.EffectiveName(entity)
+		if strings.TrimSpace(name) != "" {
+			if _, ok := seenNames[name]; ok {
+				*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("duplicate constraint name %q", name)))
+			}
+			seenNames[name] = struct{}{}
+		}
+	}
+}
+
+func validateUniqueConstraint(constraint Constraint, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, seenDefinitions map[string]struct{}, problems *[]string) {
+	if len(constraint.Fields) < 2 {
+		*problems = append(*problems, withLine(constraint.Line, "unique constraint requires at least two fields"))
+	}
+	if strings.TrimSpace(constraint.Field) != "" {
+		*problems = append(*problems, withLine(constraint.Line, "unique constraint uses fields, not field"))
+	}
+	if strings.TrimSpace(constraint.Operator) != "" || constraint.Value.Kind != 0 {
+		*problems = append(*problems, withLine(constraint.Line, "unique constraint does not support operator or value"))
+	}
+	validateFieldReferences(constraint.Line, "unique constraint", constraint.Fields, fields, fieldTypes, func(definition fieldtype.Definition) bool {
+		return definition.AllowUnique
+	}, "unique", problems)
+
+	key := constraint.Type + "\x00" + strings.Join(constraint.Fields, "\x00")
+	if key != constraint.Type+"\x00" {
+		if _, ok := seenDefinitions[key]; ok {
+			*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("duplicate unique constraint fields %q", strings.Join(constraint.Fields, ", "))))
+		}
+		seenDefinitions[key] = struct{}{}
+	}
+}
+
+func validateCheckConstraint(constraint Constraint, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, seenDefinitions map[string]struct{}, problems *[]string) {
+	if len(constraint.Fields) > 0 {
+		*problems = append(*problems, withLine(constraint.Line, "check constraint uses field, not fields"))
+	}
+	if strings.TrimSpace(constraint.Field) == "" {
+		*problems = append(*problems, withLine(constraint.Line, "check constraint field is required"))
+	} else if !fieldtype.IsName(constraint.Field) {
+		*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("check constraint field %q must be kebab-case", constraint.Field)))
+	} else {
+		field, ok := fields[constraint.Field]
+		if !ok {
+			*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("check constraint references unknown field %q", constraint.Field)))
+		} else if !isCheckFieldType(field.Type) {
+			*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("check constraint field %q type %q is not supported", constraint.Field, field.Type)))
+		} else if _, ok := fieldTypes[constraint.Field]; !ok {
+			*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("check constraint field %q type %q is unknown", constraint.Field, field.Type)))
+		}
+	}
+	if !isCheckOperator(constraint.Operator) {
+		*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("check constraint operator %q is not supported", constraint.Operator)))
+	}
+	validateCheckValue(constraint, problems)
+
+	key := strings.Join([]string{constraint.Type, constraint.Field, constraint.Operator, checkValueKey(constraint.Value)}, "\x00")
+	if _, ok := seenDefinitions[key]; ok {
+		*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("duplicate check constraint on field %q", constraint.Field)))
+	}
+	seenDefinitions[key] = struct{}{}
+}
+
+func validateFieldReferences(line int, owner string, refs []string, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, allowed func(fieldtype.Definition) bool, capability string, problems *[]string) {
+	seen := map[string]struct{}{}
+	for _, ref := range refs {
+		if strings.TrimSpace(ref) == "" {
+			*problems = append(*problems, withLine(line, fmt.Sprintf("%s field names must not be empty", owner)))
+			continue
+		}
+		if !fieldtype.IsName(ref) {
+			*problems = append(*problems, withLine(line, fmt.Sprintf("%s field %q must be kebab-case", owner, ref)))
+			continue
+		}
+		if _, ok := seen[ref]; ok {
+			*problems = append(*problems, withLine(line, fmt.Sprintf("%s has duplicate field %q", owner, ref)))
+			continue
+		}
+		seen[ref] = struct{}{}
+		field, ok := fields[ref]
+		if !ok {
+			*problems = append(*problems, withLine(line, fmt.Sprintf("%s references unknown field %q", owner, ref)))
+			continue
+		}
+		definition, ok := fieldTypes[ref]
+		if !ok {
+			*problems = append(*problems, withLine(line, fmt.Sprintf("%s field %q type %q is unknown", owner, ref, field.Type)))
+			continue
+		}
+		if !allowed(definition) {
+			*problems = append(*problems, withLine(line, fmt.Sprintf("%s field %q type %q cannot be %s", owner, ref, field.Type, capability)))
+		}
+	}
+}
+
+func isCheckOperator(value string) bool {
+	switch value {
+	case "eq", "neq", "gt", "gte", "lt", "lte", "in", "not-in":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateCheckValue(constraint Constraint, problems *[]string) {
+	if constraint.Operator == "in" || constraint.Operator == "not-in" {
+		if constraint.Value.Kind == 0 {
+			*problems = append(*problems, withLine(constraint.Line, "check constraint value is required"))
+			return
+		}
+		if constraint.Value.Kind != yaml.SequenceNode || len(constraint.Value.Content) == 0 {
+			*problems = append(*problems, withLine(constraint.Line, "check constraint value must be a non-empty list for in and not-in"))
+			return
+		}
+		for _, item := range constraint.Value.Content {
+			if item.Kind != yaml.ScalarNode {
+				*problems = append(*problems, withLine(constraint.Line, "check constraint list values must be scalar"))
+				return
+			}
+			if item.Tag == "!!null" {
+				*problems = append(*problems, withLine(constraint.Line, "check constraint list values must not be null"))
+				return
+			}
+		}
+		return
+	}
+	if constraint.Value.Kind == 0 {
+		*problems = append(*problems, withLine(constraint.Line, "check constraint value is required"))
+		return
+	}
+	if constraint.Value.Kind != yaml.ScalarNode {
+		*problems = append(*problems, withLine(constraint.Line, "check constraint value must be scalar"))
+		return
+	}
+	if constraint.Value.Tag == "!!null" {
+		*problems = append(*problems, withLine(constraint.Line, "check constraint value must not be null"))
+	}
+}
+
+func isCheckFieldType(fieldType string) bool {
+	switch fieldType {
+	case "text", "email", "phone", "long-text", "int", "decimal", "currency", "boolean", "date", "datetime", "time", "select":
+		return true
+	default:
+		return false
+	}
+}
+
+func checkValueKey(node yaml.Node) string {
+	if node.Kind == 0 {
+		return ""
+	}
+	if node.Kind == yaml.SequenceNode {
+		values := make([]string, 0, len(node.Content))
+		for _, item := range node.Content {
+			values = append(values, item.Tag+"="+item.Value)
+		}
+		return strings.Join(values, ",")
+	}
+	return node.Tag + "=" + node.Value
 }
 
 func validateField(field Field, registry fieldtype.Registry, seenFields map[string]struct{}, problems *[]string) {
@@ -164,8 +434,10 @@ func validateField(field Field, registry fieldtype.Registry, seenFields map[stri
 }
 
 type sourceMap struct {
-	entityLine int
-	fieldLines []int
+	entityLine      int
+	fieldLines      []int
+	indexLines      []int
+	constraintLines []int
 }
 
 func (m sourceMap) apply(entity *Entity) {
@@ -175,6 +447,18 @@ func (m sourceMap) apply(entity *Entity) {
 			break
 		}
 		entity.Fields[i].Line = m.fieldLines[i]
+	}
+	for i := range entity.Indexes {
+		if i >= len(m.indexLines) {
+			break
+		}
+		entity.Indexes[i].Line = m.indexLines[i]
+	}
+	for i := range entity.Constraints {
+		if i >= len(m.constraintLines) {
+			break
+		}
+		entity.Constraints[i].Line = m.constraintLines[i]
 	}
 }
 
@@ -199,11 +483,22 @@ func buildSourceMap(root *yaml.Node) sourceMap {
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
 		key := mapping.Content[i]
 		value := mapping.Content[i+1]
-		if key.Value != "fields" || value.Kind != yaml.SequenceNode {
+		if value.Kind != yaml.SequenceNode {
 			continue
 		}
-		for _, item := range value.Content {
-			source.fieldLines = append(source.fieldLines, item.Line)
+		switch key.Value {
+		case "fields":
+			for _, item := range value.Content {
+				source.fieldLines = append(source.fieldLines, item.Line)
+			}
+		case "indexes":
+			for _, item := range value.Content {
+				source.indexLines = append(source.indexLines, item.Line)
+			}
+		case "constraints":
+			for _, item := range value.Content {
+				source.constraintLines = append(source.constraintLines, item.Line)
+			}
 		}
 	}
 	return source

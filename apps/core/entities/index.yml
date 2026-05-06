@@ -1,0 +1,32 @@
+name: index
+label: Index
+plural-name: indexes
+plural-label: Indexes
+description: Top-level non-unique index definition belonging to an Entity.
+fields:
+  - name: entity
+    label: Entity
+    type: link
+    required: true
+    index: true
+    options:
+      entity: entity
+
+  - name: name
+    label: Name
+    type: text
+    required: true
+    index: true
+
+  - name: fields
+    label: Fields
+    type: json
+    required: true
+
+  - name: position
+    label: Position
+    type: int
+
+constraints:
+  - type: unique
+    fields: [entity, name]

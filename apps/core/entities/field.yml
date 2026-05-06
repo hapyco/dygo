@@ -55,3 +55,7 @@ fields:
   - name: options
     label: Options
     type: json
+
+constraints:
+  - type: unique
+    fields: [entity, name]

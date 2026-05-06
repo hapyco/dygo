@@ -31,6 +31,16 @@ func TestBuildMetadataRecords(t *testing.T) {
 						{Name: "enabled", Label: "Enabled", Type: "boolean", Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"}},
 						{Name: "status", Label: "Status", Type: "select", Options: fieldtype.Options{Values: []string{"Active", "Disabled"}}},
 					},
+					Indexes: []schema.Index{
+						{Name: "by-enabled-status", Fields: []string{"enabled", "status"}},
+					},
+					Constraints: []schema.Constraint{
+						{Type: "unique", Fields: []string{"email", "status"}},
+						{Type: "check", Field: "status", Operator: "in", Value: yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{
+							{Kind: yaml.ScalarNode, Tag: "!!str", Value: "Active"},
+							{Kind: yaml.ScalarNode, Tag: "!!str", Value: "Disabled"},
+						}}},
+					},
 				},
 			},
 		},
@@ -58,6 +68,20 @@ func TestBuildMetadataRecords(t *testing.T) {
 	status := records.Fields[2]
 	if !strings.Contains(string(status.Options), `"values":["Active","Disabled"]`) {
 		t.Fatalf("status options = %s, want select values", status.Options)
+	}
+	if len(records.Indexes) != 1 || records.Indexes[0].Name != "by-enabled-status" || string(records.Indexes[0].Fields) != `["enabled","status"]` {
+		t.Fatalf("index records = %+v, want top-level index", records.Indexes)
+	}
+	if len(records.Constraints) != 2 {
+		t.Fatalf("constraint records count = %d, want 2", len(records.Constraints))
+	}
+	unique := records.Constraints[0]
+	if unique.Name != "users-email-status-key" || unique.Type != "unique" || string(unique.Fields) != `["email","status"]` {
+		t.Fatalf("unique constraint record = %+v, want email/status unique", unique)
+	}
+	check := records.Constraints[1]
+	if check.Name != "users-status-in-check" || check.Type != "check" || check.Field != "status" || !strings.Contains(string(check.Value), `"Active"`) {
+		t.Fatalf("check constraint record = %+v, want status check", check)
 	}
 }
 

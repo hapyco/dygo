@@ -143,6 +143,8 @@ Core is the required system App. Studio is the first-party UI App. Business Apps
 
 Entity metadata must store explicit `plural-name` and `plural-label` values. Do not add runtime auto-pluralization; storage naming comes from the Entity's `plural-name`.
 
+Use field-level `index` and `unique` only for single-field shorthands. Use top-level Entity `indexes` and `constraints` for composite indexes, composite uniqueness, and structured check constraints.
+
 ## Implementation Guidance
 
 When adding a feature, ask:

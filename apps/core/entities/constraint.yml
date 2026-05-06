@@ -1,0 +1,63 @@
+name: constraint
+label: Constraint
+plural-name: constraints
+plural-label: Constraints
+description: Top-level unique or check constraint definition belonging to an Entity.
+fields:
+  - name: entity
+    label: Entity
+    type: link
+    required: true
+    index: true
+    options:
+      entity: entity
+
+  - name: name
+    label: Name
+    type: text
+    required: true
+    index: true
+
+  - name: type
+    label: Type
+    type: select
+    required: true
+    index: true
+    options:
+      values:
+        - unique
+        - check
+
+  - name: fields
+    label: Fields
+    type: json
+
+  - name: field
+    label: Field
+    type: text
+
+  - name: operator
+    label: Operator
+    type: select
+    options:
+      values:
+        - eq
+        - neq
+        - gt
+        - gte
+        - lt
+        - lte
+        - in
+        - not-in
+
+  - name: value
+    label: Value
+    type: json
+
+  - name: position
+    label: Position
+    type: int
+
+constraints:
+  - type: unique
+    fields: [entity, name]

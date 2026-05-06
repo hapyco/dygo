@@ -146,6 +146,124 @@ func TestBuildMetadataSchemaPlanAddsMissingIndexAndConstraint(t *testing.T) {
 	assertContains(t, operationDescriptions(plan), "add unique constraint leads_email_key on leads.email")
 }
 
+func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) {
+	entity := catalog.LoadedEntity{
+		AppName: "sales",
+		Path:    "apps/sales/entities/deal.yml",
+		Entity: schema.Entity{
+			Name:       "deal",
+			PluralName: "deals",
+			Fields: []schema.Field{
+				{Name: "company", Type: "link", Options: entityOption("company")},
+				{Name: "status", Type: "text"},
+				{Name: "amount", Type: "currency"},
+			},
+			Indexes: []schema.Index{
+				{Name: "by-company-status", Fields: []string{"company", "status"}},
+			},
+			Constraints: []schema.Constraint{
+				{Type: "unique", Fields: []string{"company", "status"}},
+				{Type: "check", Field: "amount", Operator: "gte", Value: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: "0"}},
+			},
+		},
+	}
+	company := catalog.LoadedEntity{
+		AppName: "sales",
+		Path:    "apps/sales/entities/company.yml",
+		Entity: schema.Entity{
+			Name:       "company",
+			PluralName: "companies",
+			Fields:     []schema.Field{{Name: "name", Type: "text"}},
+		},
+	}
+	columns := systemColumns()
+	columns["company_id"] = liveColumn{Name: "company_id", Type: "bigint", Nullable: true}
+	columns["status"] = liveColumn{Name: "status", Type: "text", Nullable: true}
+	columns["amount"] = liveColumn{Name: "amount", Type: "numeric", Nullable: true}
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity, company}, LiveSchema{Tables: map[string]liveTable{
+		"deals":     liveSchemaTable("deals", columns, map[string]liveConstraint{"deals_pkey": {Name: "deals_pkey", Type: "primary-key"}}, nil),
+		"companies": liveSchemaTable("companies", systemColumns(), map[string]liveConstraint{"companies_pkey": {Name: "companies_pkey", Type: "primary-key"}}, nil),
+	}})
+	if err != nil {
+		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
+	}
+	if plan.HasBlockers() {
+		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
+	}
+
+	descriptions := operationDescriptions(plan)
+	assertContains(t, descriptions, "create index by_company_status on deals(company_id, status)")
+	assertContains(t, descriptions, "add unique constraint deals_company_status_key on deals(company_id, status)")
+	assertContains(t, descriptions, "add check constraint deals_amount_gte_check on deals.amount")
+
+	sql := operationSQL(plan)
+	assertContains(t, sql, `CREATE INDEX "by_company_status" ON "deals" ("company_id", "status")`)
+	assertContains(t, sql, `ALTER TABLE "deals" ADD CONSTRAINT "deals_company_status_key" UNIQUE ("company_id", "status")`)
+	assertContains(t, sql, `ALTER TABLE "deals" ADD CONSTRAINT "deals_amount_gte_check" CHECK ("amount" >= 0)`)
+}
+
+func TestBuildMetadataSchemaPlanReportsChangedIndexAndConstraintDefinition(t *testing.T) {
+	entity := catalog.LoadedEntity{
+		AppName: "sales",
+		Path:    "apps/sales/entities/deal.yml",
+		Entity: schema.Entity{
+			Name:       "deal",
+			PluralName: "deals",
+			Fields: []schema.Field{
+				{Name: "status", Type: "text"},
+				{Name: "source", Type: "text"},
+			},
+			Indexes: []schema.Index{
+				{Name: "by-status-source", Fields: []string{"status", "source"}},
+			},
+			Constraints: []schema.Constraint{
+				{Type: "unique", Fields: []string{"status", "source"}},
+			},
+		},
+	}
+	columns := systemColumns()
+	columns["status"] = liveColumn{Name: "status", Type: "text", Nullable: true}
+	columns["source"] = liveColumn{Name: "source", Type: "text", Nullable: true}
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{
+		"deals": liveSchemaTable("deals", columns, map[string]liveConstraint{
+			"deals_pkey":              {Name: "deals_pkey", Type: "primary-key"},
+			"deals_status_source_key": {Name: "deals_status_source_key", Type: "unique", Definition: "UNIQUE (status)"},
+		}, map[string]liveIndex{
+			"by_status_source": {Name: "by_status_source", Definition: "CREATE INDEX by_status_source ON public.deals USING btree (status)"},
+		}),
+	}})
+	if err != nil {
+		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
+	}
+	if !plan.HasBlockers() {
+		t.Fatal("BuildMetadataSchemaPlan() blockers = false, want true")
+	}
+	errText := plan.BlockerError().Error()
+	assertContains(t, errText, "index \"by_status_source\" exists in database but differs from metadata")
+	assertContains(t, errText, "constraint \"deals_status_source_key\" exists in database but differs from metadata")
+}
+
+func TestBuildMetadataSchemaPlanRejectsDuplicateDesiredObjectNames(t *testing.T) {
+	_, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{{
+		AppName: "crm",
+		Path:    "apps/crm/entities/lead.yml",
+		Entity: schema.Entity{
+			Name:       "lead",
+			PluralName: "leads",
+			Fields: []schema.Field{
+				{Name: "status", Type: "text", Index: true},
+			},
+			Indexes: []schema.Index{
+				{Name: "leads-status-idx", Fields: []string{"status"}},
+			},
+		},
+	}}, LiveSchema{Tables: map[string]liveTable{}})
+	if err == nil {
+		t.Fatal("BuildMetadataSchemaPlan() error = nil, want duplicate index name error")
+	}
+	assertContains(t, err.Error(), "duplicate index name")
+}
+
 func TestBuildMetadataSchemaPlanReportsExtraTableAndColumn(t *testing.T) {
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{appEntity()}, LiveSchema{Tables: map[string]liveTable{
 		"apps": liveSchemaTable("apps",

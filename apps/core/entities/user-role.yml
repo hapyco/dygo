@@ -19,3 +19,7 @@ fields:
     index: true
     options:
       entity: role
+
+constraints:
+  - type: unique
+    fields: [user, role]

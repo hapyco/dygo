@@ -46,6 +46,22 @@ fields:
     type: child-table
     options:
       entity: lead-contact
+
+indexes:
+  - name: by-company-status
+    fields: [company, status]
+
+constraints:
+  - type: unique
+    fields: [company, status]
+
+  - type: check
+    field: status
+    operator: in
+    value:
+      - New
+      - Qualified
+      - Lost
 ```
 
 ## Rules
@@ -66,7 +82,41 @@ Field names must be unique inside an Entity.
 
 `index: true` creates a non-unique database index for field types that support indexing. It is useful for fields commonly used in filters, lookups, joins, or status screens.
 
-During `dygo migrate`, Field metadata is also upserted into the Core `fields` table with name, label, type, required, unique, index, default, position, and options.
+`unique: true` creates a single-field uniqueness rule.
+
+Composite indexes and composite uniqueness are top-level Entity metadata, not field metadata.
+
+`indexes` contains non-unique lookup/performance indexes:
+
+```yaml
+indexes:
+  - fields: [status, created-at]
+  - name: by-company-status
+    fields: [company, status]
+```
+
+`constraints` contains composite uniqueness and structured checks:
+
+```yaml
+constraints:
+  - type: unique
+    fields: [user, role]
+
+  - type: check
+    field: amount
+    operator: gte
+    value: 0
+```
+
+Unique constraints require at least two fields. Single-field uniqueness should stay on the Field with `unique: true`.
+
+Index and constraint names are optional. If omitted, dygo derives deterministic names from the Entity plural name, type, and fields. Provided names must use kebab-case and are converted to snake_case for PostgreSQL.
+
+Supported check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, and `not-in`. Checks are single-field only in v1 and must use structured metadata, not raw SQL.
+
+Check fields must be DB-backed scalar fields. `child-table`, `json`, `attachment`, and `link` checks are not supported in v1.
+
+During `dygo migrate`, Field metadata is upserted into the Core `fields` table with name, label, type, required, unique, index, default, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `indexes` and `constraints` tables.
 
 Type-specific settings live under `options`.
 

@@ -33,8 +33,10 @@ func TestRepositoryEntitiesValidate(t *testing.T) {
 
 	want := []string{
 		"app",
+		"constraint",
 		"entity",
 		"field",
+		"index",
 		"permission",
 		"role",
 		"session",

@@ -49,3 +49,7 @@ fields:
     label: Print
     type: boolean
     default: false
+
+constraints:
+  - type: unique
+    fields: [entity, role]

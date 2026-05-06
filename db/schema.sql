@@ -54,6 +54,41 @@ ALTER TABLE public.apps ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: constraints; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.constraints (
+    id bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    entity_id bigint NOT NULL,
+    name text NOT NULL,
+    type text NOT NULL,
+    fields jsonb,
+    field text,
+    operator text,
+    value jsonb,
+    "position" integer,
+    CONSTRAINT constraints_operator_check CHECK ((operator = ANY (ARRAY['eq'::text, 'neq'::text, 'gt'::text, 'gte'::text, 'lt'::text, 'lte'::text, 'in'::text, 'not-in'::text]))),
+    CONSTRAINT constraints_type_check CHECK ((type = ANY (ARRAY['unique'::text, 'check'::text])))
+);
+
+
+--
+-- Name: constraints_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.constraints ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.constraints_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: entities; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -111,6 +146,35 @@ CREATE TABLE public.fields (
 
 ALTER TABLE public.fields ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME public.fields_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: indexes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.indexes (
+    id bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    entity_id bigint NOT NULL,
+    name text NOT NULL,
+    fields jsonb NOT NULL,
+    "position" integer
+);
+
+
+--
+-- Name: indexes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.indexes ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.indexes_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -284,6 +348,22 @@ ALTER TABLE ONLY public.apps
 
 
 --
+-- Name: constraints constraints_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.constraints
+    ADD CONSTRAINT constraints_entity_name_key UNIQUE (entity_id, name);
+
+
+--
+-- Name: constraints constraints_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.constraints
+    ADD CONSTRAINT constraints_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: entities entities_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -308,11 +388,43 @@ ALTER TABLE ONLY public.entities
 
 
 --
+-- Name: fields fields_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.fields
+    ADD CONSTRAINT fields_entity_name_key UNIQUE (entity_id, name);
+
+
+--
 -- Name: fields fields_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.fields
     ADD CONSTRAINT fields_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: indexes indexes_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.indexes
+    ADD CONSTRAINT indexes_entity_name_key UNIQUE (entity_id, name);
+
+
+--
+-- Name: indexes indexes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.indexes
+    ADD CONSTRAINT indexes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: permissions permissions_entity_role_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.permissions
+    ADD CONSTRAINT permissions_entity_role_key UNIQUE (entity_id, role_id);
 
 
 --
@@ -356,6 +468,14 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
+-- Name: user_roles user_roles_user_role_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_roles
+    ADD CONSTRAINT user_roles_user_role_key UNIQUE (user_id, role_id);
+
+
+--
 -- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -369,6 +489,27 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: constraints_entity_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX constraints_entity_id_idx ON public.constraints USING btree (entity_id);
+
+
+--
+-- Name: constraints_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX constraints_name_idx ON public.constraints USING btree (name);
+
+
+--
+-- Name: constraints_type_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX constraints_type_idx ON public.constraints USING btree (type);
 
 
 --
@@ -404,6 +545,20 @@ CREATE INDEX fields_name_idx ON public.fields USING btree (name);
 --
 
 CREATE INDEX fields_type_idx ON public.fields USING btree (type);
+
+
+--
+-- Name: indexes_entity_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX indexes_entity_id_idx ON public.indexes USING btree (entity_id);
+
+
+--
+-- Name: indexes_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX indexes_name_idx ON public.indexes USING btree (name);
 
 
 --
@@ -463,6 +618,14 @@ CREATE INDEX users_enabled_idx ON public.users USING btree (enabled);
 
 
 --
+-- Name: constraints constraints_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.constraints
+    ADD CONSTRAINT constraints_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entities(id) ON DELETE CASCADE;
+
+
+--
 -- Name: entities entities_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -476,6 +639,14 @@ ALTER TABLE ONLY public.entities
 
 ALTER TABLE ONLY public.fields
     ADD CONSTRAINT fields_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entities(id) ON DELETE CASCADE;
+
+
+--
+-- Name: indexes indexes_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.indexes
+    ADD CONSTRAINT indexes_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entities(id) ON DELETE CASCADE;
 
 
 --

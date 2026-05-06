@@ -171,36 +171,43 @@ func BuildMetadataSchemaPlan(entities []catalog.LoadedEntity, live LiveSchema) (
 		}
 
 		for _, index := range table.Indexes {
-			if !availableColumns[index.Column] {
+			if !columnsAvailable(index.Columns, availableColumns) {
 				continue
 			}
-			if tableExists && liveTable.HasIndex(index.Name) {
-				continue
+			if tableExists {
+				if liveIndex, ok := liveTable.Indexes[index.Name]; ok {
+					if !indexDefinitionMatches(liveIndex, table.Name, index) {
+						plan.Diagnostics = append(plan.Diagnostics, unsafeDiagnostic("index-definition-drift", table.Name, strings.Join(index.Columns, ","), index.Name, fmt.Sprintf("index %q exists in database but differs from metadata", index.Name), index.Source))
+					}
+					continue
+				}
 			}
 			indexes = append(indexes, SchemaOperation{
 				Classification: SchemaOperationSafe,
 				Kind:           "create-index",
 				Table:          table.Name,
-				Column:         index.Column,
+				Column:         strings.Join(index.Columns, ","),
 				Name:           index.Name,
-				Description:    "create index " + index.Name + " on " + table.Name + "." + index.Column,
+				Description:    "create index " + index.Name + " on " + columnTarget(table.Name, index.Columns),
 				Source:         index.Source,
-				SQL:            fmt.Sprintf("CREATE INDEX %s ON %s (%s)", quoteIdent(index.Name), quoteIdent(table.Name), quoteIdent(index.Column)),
+				SQL:            fmt.Sprintf("CREATE INDEX %s ON %s (%s)", quoteIdent(index.Name), quoteIdent(table.Name), quoteIdentList(index.Columns)),
 			})
 		}
 
 		for _, constraint := range table.Constraints {
 			if strings.HasPrefix(constraint.Name, "unsupported:") {
-				plan.Diagnostics = append(plan.Diagnostics, unsupportedDiagnostic("unsupported-field-storage", table.Name, constraint.Column, "", constraint.Definition, constraint.Source))
+				plan.Diagnostics = append(plan.Diagnostics, unsupportedDiagnostic("unsupported-field-storage", table.Name, strings.Join(constraint.Columns, ","), "", constraint.Definition, constraint.Source))
 				continue
 			}
-			if !availableColumns[constraint.Column] {
+			if !columnsAvailable(constraint.Columns, availableColumns) {
 				continue
 			}
 			if tableExists {
 				if liveConstraint, ok := liveTable.Constraints[constraint.Name]; ok {
 					if liveConstraint.Type != constraint.Type {
-						plan.Diagnostics = append(plan.Diagnostics, unsafeDiagnostic("constraint-type-drift", table.Name, constraint.Column, constraint.Name, fmt.Sprintf("constraint %q is %s in database but metadata expects %s", constraint.Name, liveConstraint.Type, constraint.Type), constraint.Source))
+						plan.Diagnostics = append(plan.Diagnostics, unsafeDiagnostic("constraint-type-drift", table.Name, strings.Join(constraint.Columns, ","), constraint.Name, fmt.Sprintf("constraint %q is %s in database but metadata expects %s", constraint.Name, liveConstraint.Type, constraint.Type), constraint.Source))
+					} else if !constraintDefinitionMatches(liveConstraint, constraint) {
+						plan.Diagnostics = append(plan.Diagnostics, unsafeDiagnostic("constraint-definition-drift", table.Name, strings.Join(constraint.Columns, ","), constraint.Name, fmt.Sprintf("constraint %q exists in database but differs from metadata", constraint.Name), constraint.Source))
 					}
 					continue
 				}
@@ -209,9 +216,9 @@ func BuildMetadataSchemaPlan(entities []catalog.LoadedEntity, live LiveSchema) (
 				Classification: SchemaOperationSafe,
 				Kind:           "add-constraint",
 				Table:          table.Name,
-				Column:         constraint.Column,
+				Column:         strings.Join(constraint.Columns, ","),
 				Name:           constraint.Name,
-				Description:    "add " + constraint.Type + " constraint " + constraint.Name + " on " + table.Name + "." + constraint.Column,
+				Description:    "add " + constraint.Type + " constraint " + constraint.Name + " on " + columnTarget(table.Name, constraint.Columns),
 				Source:         constraint.Source,
 				SQL:            fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s %s", quoteIdent(table.Name), quoteIdent(constraint.Name), constraint.Definition),
 			})
@@ -255,15 +262,15 @@ type desiredColumn struct {
 }
 
 type desiredIndex struct {
-	Name   string
-	Column string
-	Source string
+	Name    string
+	Columns []string
+	Source  string
 }
 
 type desiredConstraint struct {
 	Name       string
 	Type       string
-	Column     string
+	Columns    []string
 	Definition string
 	Source     string
 }
@@ -308,18 +315,20 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 			},
 		}
 
+		fieldColumns := map[string]string{}
 		for _, field := range loaded.Entity.Fields {
 			column, err := columnForField(field)
 			if err != nil {
 				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
 					Name:       "unsupported:" + field.Name,
 					Type:       SchemaDiagnosticUnsupported,
-					Column:     field.Name,
+					Columns:    []string{field.Name},
 					Definition: err.Error(),
 					Source:     fieldSource(loaded, field),
 				})
 				continue
 			}
+			fieldColumns[field.Name] = column
 			sqlType, err := columnType(field, targets)
 			if err != nil {
 				return desiredSchema{}, fieldSchemaError(loaded, field, err)
@@ -351,17 +360,17 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
 					Name:       constraint,
 					Type:       "unique",
-					Column:     column,
-					Definition: fmt.Sprintf("UNIQUE (%s)", quoteIdent(column)),
+					Columns:    []string{column},
+					Definition: fmt.Sprintf("UNIQUE (%s)", quoteIdentList([]string{column})),
 					Source:     fieldSource(loaded, field),
 				})
 			}
 			if field.Index {
 				index := constraintName(table, column, "idx")
 				desiredTable.Indexes = append(desiredTable.Indexes, desiredIndex{
-					Name:   index,
-					Column: column,
-					Source: fieldSource(loaded, field),
+					Name:    index,
+					Columns: []string{column},
+					Source:  fieldSource(loaded, field),
 				})
 			}
 			if field.Type == "select" && len(field.Options.Values) > 0 {
@@ -369,7 +378,7 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
 					Name:       constraint,
 					Type:       "check",
-					Column:     column,
+					Columns:    []string{column},
 					Definition: selectCheck(column, field.Options.Values),
 					Source:     fieldSource(loaded, field),
 				})
@@ -387,15 +396,79 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
 					Name:       constraint,
 					Type:       "foreign-key",
-					Column:     column,
+					Columns:    []string{column},
 					Definition: fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", quoteIdent(column), quoteIdent(targetTable), quoteIdent("id")),
 					Source:     fieldSource(loaded, field),
 				})
 			}
 		}
+		for _, index := range loaded.Entity.Indexes {
+			columns, err := columnsForMetadataFields(index.Fields, fieldColumns)
+			if err != nil {
+				return desiredSchema{}, entitySchemaError(loaded, err)
+			}
+			desiredTable.Indexes = append(desiredTable.Indexes, desiredIndex{
+				Name:    storageName(index.EffectiveName(loaded.Entity)),
+				Columns: columns,
+				Source:  indexSource(loaded, index),
+			})
+		}
+		for _, constraint := range loaded.Entity.Constraints {
+			switch constraint.Type {
+			case "unique":
+				columns, err := columnsForMetadataFields(constraint.Fields, fieldColumns)
+				if err != nil {
+					return desiredSchema{}, entitySchemaError(loaded, err)
+				}
+				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
+					Name:       storageName(constraint.EffectiveName(loaded.Entity)),
+					Type:       "unique",
+					Columns:    columns,
+					Definition: fmt.Sprintf("UNIQUE (%s)", quoteIdentList(columns)),
+					Source:     constraintSource(loaded, constraint),
+				})
+			case "check":
+				column, ok := fieldColumns[constraint.Field]
+				if !ok {
+					return desiredSchema{}, entitySchemaError(loaded, fmt.Errorf("check constraint references non-stored field %q", constraint.Field))
+				}
+				definition, err := structuredCheck(column, constraint)
+				if err != nil {
+					return desiredSchema{}, entitySchemaError(loaded, err)
+				}
+				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
+					Name:       storageName(constraint.EffectiveName(loaded.Entity)),
+					Type:       "check",
+					Columns:    []string{column},
+					Definition: definition,
+					Source:     constraintSource(loaded, constraint),
+				})
+			}
+		}
+		if err := validateDesiredObjectNames(desiredTable); err != nil {
+			return desiredSchema{}, entitySchemaError(loaded, err)
+		}
 		desired.Tables = append(desired.Tables, desiredTable)
 	}
 	return desired, nil
+}
+
+func validateDesiredObjectNames(table desiredTable) error {
+	indexNames := map[string]string{}
+	for _, index := range table.Indexes {
+		if previous, ok := indexNames[index.Name]; ok {
+			return fmt.Errorf("duplicate index name %q also used by %s", index.Name, previous)
+		}
+		indexNames[index.Name] = index.Source
+	}
+	constraintNames := map[string]string{}
+	for _, constraint := range table.Constraints {
+		if previous, ok := constraintNames[constraint.Name]; ok {
+			return fmt.Errorf("duplicate constraint name %q also used by %s", constraint.Name, previous)
+		}
+		constraintNames[constraint.Name] = constraint.Source
+	}
+	return nil
 }
 
 func compareColumn(plan *SchemaPlan, table string, desired desiredColumn, live liveColumn) {
@@ -460,6 +533,115 @@ func unsupportedDiagnostic(kind string, table string, column string, name string
 	return SchemaDiagnostic{Classification: SchemaDiagnosticUnsupported, Kind: kind, Table: table, Column: column, Name: name, Message: message, Source: source}
 }
 
+func columnsAvailable(columns []string, available map[string]bool) bool {
+	for _, column := range columns {
+		if !available[column] {
+			return false
+		}
+	}
+	return true
+}
+
+func indexDefinitionMatches(live liveIndex, table string, desired desiredIndex) bool {
+	if strings.TrimSpace(live.Definition) == "" {
+		return true
+	}
+	definition := normalizeDefinition(live.Definition)
+	if strings.Contains(definition, "create unique index") {
+		return false
+	}
+	if !strings.Contains(definition, " on "+table+" ") && !strings.Contains(definition, " on public."+table+" ") {
+		return false
+	}
+	return strings.Contains(definition, "("+strings.Join(desired.Columns, ", ")+")")
+}
+
+func constraintDefinitionMatches(live liveConstraint, desired desiredConstraint) bool {
+	if strings.TrimSpace(live.Definition) == "" {
+		return true
+	}
+	definition := normalizeDefinition(live.Definition)
+	expected := normalizeDefinition(desired.Definition)
+	if definition == expected {
+		return true
+	}
+	switch desired.Type {
+	case "unique":
+		return strings.Contains(definition, "unique ("+strings.Join(desired.Columns, ", ")+")")
+	case "foreign-key":
+		return strings.Contains(definition, "foreign key ("+strings.Join(desired.Columns, ", ")+")")
+	case "check":
+		return checkDefinitionMatches(definition, expected)
+	default:
+		return false
+	}
+}
+
+func checkDefinitionMatches(live string, expected string) bool {
+	live = strings.TrimPrefix(live, "check ")
+	expected = strings.TrimPrefix(expected, "check ")
+	if compactDefinition(live) == compactDefinition(expected) {
+		return true
+	}
+	return setCheckDefinitionMatches(live, expected)
+}
+
+func normalizeDefinition(value string) string {
+	value = strings.ToLower(value)
+	value = strings.ReplaceAll(value, `"`, "")
+	value = strings.ReplaceAll(value, " using btree", "")
+	value = strings.ReplaceAll(value, "public.", "")
+	value = strings.Join(strings.Fields(value), " ")
+	return value
+}
+
+func compactDefinition(value string) string {
+	replacements := []string{"::time without time zone", "::timestamp with time zone", "::text", "::numeric", "::boolean", "::date", " ", "(", ")"}
+	for _, replacement := range replacements {
+		value = strings.ReplaceAll(value, replacement, "")
+	}
+	return value
+}
+
+func columnTarget(table string, columns []string) string {
+	if len(columns) == 1 {
+		return table + "." + columns[0]
+	}
+	return table + "(" + strings.Join(columns, ", ") + ")"
+}
+
+func setCheckDefinitionMatches(live string, expected string) bool {
+	operator := " in "
+	negative := false
+	if strings.Contains(expected, " not in ") {
+		operator = " not in "
+		negative = true
+	}
+	index := strings.Index(expected, operator)
+	if index < 0 {
+		return false
+	}
+	column := strings.Trim(expected[:index], " ()")
+	values := strings.Trim(expected[index+len(operator):], " ()")
+	if column == "" || values == "" || !strings.Contains(live, column) {
+		return false
+	}
+	if negative && !(strings.Contains(live, "not") || strings.Contains(live, "<> all")) {
+		return false
+	}
+	for _, value := range strings.Split(values, ",") {
+		value = strings.TrimSpace(value)
+		value = strings.Trim(value, "'")
+		if value == "" {
+			continue
+		}
+		if !strings.Contains(live, value) {
+			return false
+		}
+	}
+	return true
+}
+
 func createTableSQL(table string) string {
 	return fmt.Sprintf(`CREATE TABLE %s (
 	%s bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -472,7 +654,7 @@ func tableName(entity schema.Entity) (string, error) {
 	if strings.TrimSpace(entity.PluralName) == "" {
 		return "", fmt.Errorf("plural-name is required")
 	}
-	return strings.ReplaceAll(entity.PluralName, "-", "_"), nil
+	return storageName(entity.PluralName), nil
 }
 
 func columnForField(field schema.Field) (string, error) {
@@ -550,12 +732,101 @@ func selectCheck(column string, values []string) string {
 	return fmt.Sprintf("CHECK (%s IN (%s))", quoteIdent(column), strings.Join(quoted, ", "))
 }
 
+func structuredCheck(column string, constraint schema.Constraint) (string, error) {
+	value, err := checkValueSQL(constraint.Value)
+	if err != nil {
+		return "", fmt.Errorf("check constraint value: %w", err)
+	}
+	switch constraint.Operator {
+	case "eq":
+		return fmt.Sprintf("CHECK (%s = %s)", quoteIdent(column), value), nil
+	case "neq":
+		return fmt.Sprintf("CHECK (%s <> %s)", quoteIdent(column), value), nil
+	case "gt":
+		return fmt.Sprintf("CHECK (%s > %s)", quoteIdent(column), value), nil
+	case "gte":
+		return fmt.Sprintf("CHECK (%s >= %s)", quoteIdent(column), value), nil
+	case "lt":
+		return fmt.Sprintf("CHECK (%s < %s)", quoteIdent(column), value), nil
+	case "lte":
+		return fmt.Sprintf("CHECK (%s <= %s)", quoteIdent(column), value), nil
+	case "in":
+		return fmt.Sprintf("CHECK (%s IN (%s))", quoteIdent(column), value), nil
+	case "not-in":
+		return fmt.Sprintf("CHECK (%s NOT IN (%s))", quoteIdent(column), value), nil
+	default:
+		return "", fmt.Errorf("unsupported operator %q", constraint.Operator)
+	}
+}
+
+func checkValueSQL(node yaml.Node) (string, error) {
+	if node.Kind == yaml.SequenceNode {
+		values := make([]string, 0, len(node.Content))
+		for _, item := range node.Content {
+			value, err := scalarSQL(*item)
+			if err != nil {
+				return "", err
+			}
+			values = append(values, value)
+		}
+		return strings.Join(values, ", "), nil
+	}
+	return scalarSQL(node)
+}
+
+func scalarSQL(node yaml.Node) (string, error) {
+	if node.Kind != yaml.ScalarNode {
+		return "", fmt.Errorf("value must be scalar")
+	}
+	switch node.Tag {
+	case "!!bool":
+		value, err := strconv.ParseBool(node.Value)
+		if err != nil {
+			return "", fmt.Errorf("invalid boolean value %q", node.Value)
+		}
+		if value {
+			return "true", nil
+		}
+		return "false", nil
+	case "!!int", "!!float":
+		return node.Value, nil
+	case "!!null":
+		return "", fmt.Errorf("value must not be null")
+	default:
+		return quoteLiteral(node.Value), nil
+	}
+}
+
+func columnsForMetadataFields(fields []string, fieldColumns map[string]string) ([]string, error) {
+	columns := make([]string, 0, len(fields))
+	for _, field := range fields {
+		column, ok := fieldColumns[field]
+		if !ok {
+			return nil, fmt.Errorf("field %q does not have database storage", field)
+		}
+		columns = append(columns, column)
+	}
+	return columns, nil
+}
+
 func constraintName(table string, column string, suffix string) string {
 	return table + "_" + column + "_" + suffix
 }
 
+func storageName(value string) string {
+	return strings.ReplaceAll(value, "-", "_")
+}
+
 func quoteIdent(value string) string {
 	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+}
+
+func quoteIdentList(values []string) string {
+	quoted := make([]string, 0, len(values))
+	for _, value := range values {
+		quoted = append(quoted, quoteIdent(value))
+	}
+	return strings.Join(quoted, ", ")
 }
 
 func quoteLiteral(value string) string {
@@ -568,6 +839,14 @@ func entitySource(entity catalog.LoadedEntity) string {
 
 func fieldSource(entity catalog.LoadedEntity, field schema.Field) string {
 	return fmt.Sprintf("app %s entity %s field %s at %s", entity.AppName, entity.Entity.Name, field.Name, entity.Path)
+}
+
+func indexSource(entity catalog.LoadedEntity, index schema.Index) string {
+	return fmt.Sprintf("app %s entity %s index %s at %s", entity.AppName, entity.Entity.Name, index.EffectiveName(entity.Entity), entity.Path)
+}
+
+func constraintSource(entity catalog.LoadedEntity, constraint schema.Constraint) string {
+	return fmt.Sprintf("app %s entity %s constraint %s at %s", entity.AppName, entity.Entity.Name, constraint.EffectiveName(entity.Entity), entity.Path)
 }
 
 func entitySchemaError(entity catalog.LoadedEntity, err error) error {

@@ -37,6 +37,18 @@ func TestDecode(t *testing.T) {
 	if !entity.Fields[2].Index {
 		t.Fatal("Decode().Fields[2].Index = false, want true")
 	}
+	if len(entity.Indexes) != 1 || entity.Indexes[0].EffectiveName(entity) != "by-company-status" {
+		t.Fatalf("Decode().Indexes = %+v, want named index", entity.Indexes)
+	}
+	if len(entity.Constraints) != 2 {
+		t.Fatalf("Decode().Constraints len = %d, want 2", len(entity.Constraints))
+	}
+	if entity.Constraints[0].EffectiveName(entity) != "leads-company-status-key" {
+		t.Fatalf("unique constraint name = %q, want leads-company-status-key", entity.Constraints[0].EffectiveName(entity))
+	}
+	if entity.Constraints[1].Value.Value != "Lost" {
+		t.Fatalf("check constraint value = %q, want Lost", entity.Constraints[1].Value.Value)
+	}
 }
 
 func TestLoadFile(t *testing.T) {
@@ -330,6 +342,276 @@ fields:
 `,
 			wantError: "cannot be indexed",
 		},
+		{
+			name: "invalid top-level index name",
+			body: `
+name: lead
+label: Lead
+plural-name: leads
+plural-label: Leads
+fields:
+  - name: status
+    label: Status
+    type: text
+indexes:
+  - name: BadName
+    fields: [status]
+`,
+			wantError: "index name",
+		},
+		{
+			name: "index missing fields",
+			body: `
+name: lead
+label: Lead
+plural-name: leads
+plural-label: Leads
+fields:
+  - name: status
+    label: Status
+    type: text
+indexes:
+  - name: by-status
+`,
+			wantError: "index fields are required",
+		},
+		{
+			name: "index duplicate field references",
+			body: `
+name: lead
+label: Lead
+plural-name: leads
+plural-label: Leads
+fields:
+  - name: status
+    label: Status
+    type: text
+indexes:
+  - fields: [status, status]
+`,
+			wantError: "duplicate field",
+		},
+		{
+			name: "index unknown field",
+			body: `
+name: lead
+label: Lead
+plural-name: leads
+plural-label: Leads
+fields:
+  - name: status
+    label: Status
+    type: text
+indexes:
+  - fields: [missing]
+`,
+			wantError: "references unknown field",
+		},
+		{
+			name: "index unsupported field type",
+			body: `
+name: lead
+label: Lead
+plural-name: leads
+plural-label: Leads
+fields:
+  - name: details
+    label: Details
+    type: long-text
+indexes:
+  - fields: [details]
+`,
+			wantError: "cannot be indexed",
+		},
+		{
+			name: "duplicate generated index names",
+			body: `
+name: lead
+label: Lead
+plural-name: leads
+plural-label: Leads
+fields:
+  - name: status
+    label: Status
+    type: text
+indexes:
+  - fields: [status]
+  - fields: [status]
+`,
+			wantError: "duplicate index name",
+		},
+		{
+			name: "unique constraint requires two fields",
+			body: `
+name: user-role
+label: User Role
+plural-name: user-roles
+plural-label: User Roles
+fields:
+  - name: user
+    label: User
+    type: link
+    options:
+      entity: user
+constraints:
+  - type: unique
+    fields: [user]
+`,
+			wantError: "at least two fields",
+		},
+		{
+			name: "unique constraint unknown field",
+			body: `
+name: user-role
+label: User Role
+plural-name: user-roles
+plural-label: User Roles
+fields:
+  - name: user
+    label: User
+    type: text
+  - name: role
+    label: Role
+    type: text
+constraints:
+  - type: unique
+    fields: [user, missing]
+`,
+			wantError: "references unknown field",
+		},
+		{
+			name: "unique constraint unsupported field type",
+			body: `
+name: report
+label: Report
+plural-name: reports
+plural-label: Reports
+fields:
+  - name: payload
+    label: Payload
+    type: json
+  - name: status
+    label: Status
+    type: text
+constraints:
+  - type: unique
+    fields: [payload, status]
+`,
+			wantError: "cannot be unique",
+		},
+		{
+			name: "check constraint unknown operator",
+			body: `
+name: invoice
+label: Invoice
+plural-name: invoices
+plural-label: Invoices
+fields:
+  - name: amount
+    label: Amount
+    type: currency
+constraints:
+  - type: check
+    field: amount
+    operator: between
+    value: 0
+`,
+			wantError: "operator",
+		},
+		{
+			name: "check constraint missing value",
+			body: `
+name: invoice
+label: Invoice
+plural-name: invoices
+plural-label: Invoices
+fields:
+  - name: amount
+    label: Amount
+    type: currency
+constraints:
+  - type: check
+    field: amount
+    operator: gte
+`,
+			wantError: "value is required",
+		},
+		{
+			name: "check constraint in requires list",
+			body: `
+name: lead
+label: Lead
+plural-name: leads
+plural-label: Leads
+fields:
+  - name: status
+    label: Status
+    type: text
+constraints:
+  - type: check
+    field: status
+    operator: in
+    value: New
+`,
+			wantError: "non-empty list",
+		},
+		{
+			name: "check constraint unsupported field type",
+			body: `
+name: event
+label: Event
+plural-name: events
+plural-label: Events
+fields:
+  - name: payload
+    label: Payload
+    type: json
+constraints:
+  - type: check
+    field: payload
+    operator: eq
+    value: {}
+`,
+			wantError: "not supported",
+		},
+		{
+			name: "invalid constraint name",
+			body: `
+name: lead
+label: Lead
+plural-name: leads
+plural-label: Leads
+fields:
+  - name: status
+    label: Status
+    type: text
+  - name: source
+    label: Source
+    type: text
+constraints:
+  - name: BadName
+    type: unique
+    fields: [status, source]
+`,
+			wantError: "constraint name",
+		},
+		{
+			name: "unknown constraint type",
+			body: `
+name: lead
+label: Lead
+plural-name: leads
+plural-label: Leads
+fields:
+  - name: status
+    label: Status
+    type: text
+constraints:
+  - type: foreign-key
+    fields: [status]
+`,
+			wantError: "not supported",
+		},
 	}
 
 	for _, tt := range tests {
@@ -380,5 +662,15 @@ fields:
     type: child-table
     options:
       entity: lead-contact
+indexes:
+  - name: by-company-status
+    fields: [company, status]
+constraints:
+  - type: unique
+    fields: [company, status]
+  - type: check
+    field: status
+    operator: neq
+    value: Lost
 `) + "\n"
 }

@@ -12,15 +12,19 @@ import (
 )
 
 type metadataPersistResult struct {
-	Apps     int
-	Entities int
-	Fields   int
+	Apps        int
+	Entities    int
+	Fields      int
+	Indexes     int
+	Constraints int
 }
 
 type metadataRecordSet struct {
-	Apps     []appRecord
-	Entities []entityRecord
-	Fields   []fieldRecord
+	Apps        []appRecord
+	Entities    []entityRecord
+	Fields      []fieldRecord
+	Indexes     []indexRecord
+	Constraints []constraintRecord
 }
 
 type appRecord struct {
@@ -51,6 +55,26 @@ type fieldRecord struct {
 	Default       []byte
 	Position      int
 	Options       []byte
+}
+
+type indexRecord struct {
+	EntityAppName string
+	EntityName    string
+	Name          string
+	Fields        []byte
+	Position      int
+}
+
+type constraintRecord struct {
+	EntityAppName string
+	EntityName    string
+	Name          string
+	Type          string
+	Fields        []byte
+	Field         string
+	Operator      string
+	Value         []byte
+	Position      int
 }
 
 func persistMetadataRecords(ctx context.Context, tx pgx.Tx, metadata metadataCatalog) (metadataPersistResult, error) {
@@ -109,7 +133,33 @@ RETURNING id`, appID, entity.Name, entity.Label, entity.PluralName, entity.Plura
 		}
 	}
 
-	return metadataPersistResult{Apps: len(records.Apps), Entities: len(records.Entities), Fields: len(records.Fields)}, nil
+	for _, index := range records.Indexes {
+		entityID, ok := entityIDs[entityKey(index.EntityAppName, index.EntityName)]
+		if !ok {
+			return metadataPersistResult{}, fmt.Errorf("persist index metadata %s/%s.%s: entity was not persisted", index.EntityAppName, index.EntityName, index.Name)
+		}
+		if err := persistIndexRecord(ctx, tx, entityID, index); err != nil {
+			return metadataPersistResult{}, err
+		}
+	}
+
+	for _, constraint := range records.Constraints {
+		entityID, ok := entityIDs[entityKey(constraint.EntityAppName, constraint.EntityName)]
+		if !ok {
+			return metadataPersistResult{}, fmt.Errorf("persist constraint metadata %s/%s.%s: entity was not persisted", constraint.EntityAppName, constraint.EntityName, constraint.Name)
+		}
+		if err := persistConstraintRecord(ctx, tx, entityID, constraint); err != nil {
+			return metadataPersistResult{}, err
+		}
+	}
+
+	return metadataPersistResult{
+		Apps:        len(records.Apps),
+		Entities:    len(records.Entities),
+		Fields:      len(records.Fields),
+		Indexes:     len(records.Indexes),
+		Constraints: len(records.Constraints),
+	}, nil
 }
 
 func persistFieldRecord(ctx context.Context, tx pgx.Tx, entityID int64, field fieldRecord) error {
@@ -139,6 +189,60 @@ SET label = $2,
 	updated_at = now()
 WHERE id = $1`, id, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Position, field.Options); err != nil {
 		return fmt.Errorf("persist field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
+	}
+	return nil
+}
+
+func persistIndexRecord(ctx context.Context, tx pgx.Tx, entityID int64, index indexRecord) error {
+	var id int64
+	err := tx.QueryRow(ctx, `SELECT id FROM indexes WHERE entity_id = $1 AND name = $2`, entityID, index.Name).Scan(&id)
+	if err != nil && err != pgx.ErrNoRows {
+		return fmt.Errorf("find index metadata %s/%s.%s: %w", index.EntityAppName, index.EntityName, index.Name, err)
+	}
+	if err == pgx.ErrNoRows {
+		if _, err := tx.Exec(ctx, `
+INSERT INTO indexes (entity_id, name, fields, position)
+VALUES ($1, $2, $3, $4)`, entityID, index.Name, index.Fields, index.Position); err != nil {
+			return fmt.Errorf("persist index metadata %s/%s.%s: %w", index.EntityAppName, index.EntityName, index.Name, err)
+		}
+		return nil
+	}
+	if _, err := tx.Exec(ctx, `
+UPDATE indexes
+SET fields = $2,
+	position = $3,
+	updated_at = now()
+WHERE id = $1`, id, index.Fields, index.Position); err != nil {
+		return fmt.Errorf("persist index metadata %s/%s.%s: %w", index.EntityAppName, index.EntityName, index.Name, err)
+	}
+	return nil
+}
+
+func persistConstraintRecord(ctx context.Context, tx pgx.Tx, entityID int64, constraint constraintRecord) error {
+	var id int64
+	err := tx.QueryRow(ctx, `SELECT id FROM constraints WHERE entity_id = $1 AND name = $2`, entityID, constraint.Name).Scan(&id)
+	if err != nil && err != pgx.ErrNoRows {
+		return fmt.Errorf("find constraint metadata %s/%s.%s: %w", constraint.EntityAppName, constraint.EntityName, constraint.Name, err)
+	}
+	if err == pgx.ErrNoRows {
+		if _, err := tx.Exec(ctx, `
+INSERT INTO constraints (entity_id, name, type, fields, field, operator, value, position)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, entityID, constraint.Name, constraint.Type, constraint.Fields, nullIfEmpty(constraint.Field), nullIfEmpty(constraint.Operator), constraint.Value, constraint.Position); err != nil {
+			return fmt.Errorf("persist constraint metadata %s/%s.%s: %w", constraint.EntityAppName, constraint.EntityName, constraint.Name, err)
+		}
+		return nil
+	}
+	if _, err := tx.Exec(ctx, `
+UPDATE constraints
+SET type = $2,
+	fields = $3,
+	field = $4,
+	operator = $5,
+	value = $6,
+	position = $7,
+	updated_at = now()
+WHERE id = $1`, id, constraint.Type, constraint.Fields, nullIfEmpty(constraint.Field), nullIfEmpty(constraint.Operator), constraint.Value, constraint.Position); err != nil {
+		return fmt.Errorf("persist constraint metadata %s/%s.%s: %w", constraint.EntityAppName, constraint.EntityName, constraint.Name, err)
 	}
 	return nil
 }
@@ -185,6 +289,40 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 				Options:       optionsJSON,
 			})
 		}
+		for indexPosition, index := range loaded.Entity.Indexes {
+			fieldsJSON, err := json.Marshal(index.Fields)
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build index metadata %s/%s.%s fields: %w", loaded.AppName, loaded.Entity.Name, index.EffectiveName(loaded.Entity), err)
+			}
+			records.Indexes = append(records.Indexes, indexRecord{
+				EntityAppName: loaded.AppName,
+				EntityName:    loaded.Entity.Name,
+				Name:          index.EffectiveName(loaded.Entity),
+				Fields:        fieldsJSON,
+				Position:      indexPosition + 1,
+			})
+		}
+		for constraintPosition, constraint := range loaded.Entity.Constraints {
+			fieldsJSON, err := json.Marshal(constraint.Fields)
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build constraint metadata %s/%s.%s fields: %w", loaded.AppName, loaded.Entity.Name, constraint.EffectiveName(loaded.Entity), err)
+			}
+			valueJSON, err := constraintValueJSON(constraint.Value)
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build constraint metadata %s/%s.%s value: %w", loaded.AppName, loaded.Entity.Name, constraint.EffectiveName(loaded.Entity), err)
+			}
+			records.Constraints = append(records.Constraints, constraintRecord{
+				EntityAppName: loaded.AppName,
+				EntityName:    loaded.Entity.Name,
+				Name:          constraint.EffectiveName(loaded.Entity),
+				Type:          constraint.Type,
+				Fields:        fieldsJSON,
+				Field:         constraint.Field,
+				Operator:      constraint.Operator,
+				Value:         valueJSON,
+				Position:      constraintPosition + 1,
+			})
+		}
 	}
 	return records, nil
 }
@@ -207,35 +345,75 @@ func fieldDefaultJSON(node yaml.Node) ([]byte, error) {
 	if node.Kind == 0 {
 		return nil, nil
 	}
+	return scalarNodeJSON(node, "default")
+}
+
+func constraintValueJSON(node yaml.Node) ([]byte, error) {
+	if node.Kind == 0 {
+		return nil, nil
+	}
+	if node.Kind == yaml.SequenceNode {
+		values := make([]any, 0, len(node.Content))
+		for _, item := range node.Content {
+			value, err := scalarNodeAny(*item, "value")
+			if err != nil {
+				return nil, err
+			}
+			values = append(values, value)
+		}
+		return json.Marshal(values)
+	}
+	return scalarNodeJSON(node, "value")
+}
+
+func scalarNodeJSON(node yaml.Node, name string) ([]byte, error) {
 	if node.Kind != yaml.ScalarNode {
-		return nil, fmt.Errorf("default must be a scalar value")
+		return nil, fmt.Errorf("%s must be a scalar value", name)
+	}
+	value, err := scalarNodeAny(node, name)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(value)
+}
+
+func scalarNodeAny(node yaml.Node, name string) (any, error) {
+	if node.Kind != yaml.ScalarNode {
+		return nil, fmt.Errorf("%s must be a scalar value", name)
 	}
 	switch node.Tag {
 	case "!!bool":
 		value, err := strconv.ParseBool(node.Value)
 		if err != nil {
-			return nil, fmt.Errorf("invalid boolean default %q", node.Value)
+			return nil, fmt.Errorf("invalid boolean %s %q", name, node.Value)
 		}
-		return json.Marshal(value)
+		return value, nil
 	case "!!int":
 		value, err := strconv.ParseInt(node.Value, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid integer default %q", node.Value)
+			return nil, fmt.Errorf("invalid integer %s %q", name, node.Value)
 		}
-		return json.Marshal(value)
+		return value, nil
 	case "!!float":
 		value, err := strconv.ParseFloat(node.Value, 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid float default %q", node.Value)
+			return nil, fmt.Errorf("invalid float %s %q", name, node.Value)
 		}
-		return json.Marshal(value)
+		return value, nil
 	case "!!null":
-		return json.Marshal(nil)
+		return nil, nil
 	default:
-		return json.Marshal(node.Value)
+		return node.Value, nil
 	}
 }
 
 func entityKey(appName string, entityName string) string {
 	return appName + "\x00" + entityName
+}
+
+func nullIfEmpty(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }

@@ -90,7 +90,7 @@ apps/*/entities/*.yml
   desired table schema
 ```
 
-During `dygo migrate` and `dygo db prepare`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/*.yml` is the source for Core tables such as `apps`, `entities`, `fields`, `users`, `roles`, `permissions`, and `sessions`.
+During `dygo migrate` and `dygo db prepare`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/*.yml` is the source for Core tables such as `apps`, `entities`, `fields`, `indexes`, `constraints`, `users`, `roles`, `permissions`, and `sessions`.
 
 Preview metadata sync:
 
@@ -108,9 +108,9 @@ go run ./cmd/dygo migrate
 
 Before applying changes, dygo builds a schema plan from metadata and compares it with the live PostgreSQL `public` schema. The plan classifies safe operations separately from unsafe or unsupported drift.
 
-Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
+Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Composite indexes, composite unique constraints, and structured check constraints come from top-level Entity metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
 
-After the schema plan succeeds, `dygo migrate` upserts discovered Apps, Entities, and Fields into the Core `apps`, `entities`, and `fields` tables. This gives later runtime APIs and Studio a database-backed metadata registry while the YAML files remain the source of truth.
+After the schema plan succeeds, `dygo migrate` upserts discovered Apps, Entities, Fields, Indexes, and Constraints into the Core metadata tables. This gives later runtime APIs and Studio a database-backed metadata registry while the YAML files remain the source of truth.
 
 The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check/foreign-key changes are not inferred automatically. Those cases need an explicit app patch or a future explicit prune command.
 
