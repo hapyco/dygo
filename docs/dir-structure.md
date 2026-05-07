@@ -86,6 +86,7 @@ dygo/
     dir-structure.md
     app-model.md
     app-manifest.md
+    patches.md
     studio.md
     secrets.md
     docs-strategy.md

@@ -601,6 +601,7 @@ func TestMigratePlanCommandUsesEnvironmentAndReportsBlockers(t *testing.T) {
 		"unsafe diagnostics: 1\n",
 		"unsupported diagnostics: 0\n",
 		"- unsafe: users.legacy: column exists in database but not metadata\n",
+		"resolve blockers with metadata changes or explicit app patches; see docs/patches.md\n",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("migrate plan stdout = %q, want substring %q", stdout.String(), want)

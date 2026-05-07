@@ -17,6 +17,8 @@ const (
 
 	SchemaDiagnosticUnsafe      = "unsafe"
 	SchemaDiagnosticUnsupported = "unsupported"
+
+	SchemaBlockerHelp = "resolve blockers with metadata changes or explicit app patches; see docs/patches.md"
 )
 
 // SchemaPlan describes the safe operations and blocking diagnostics for metadata schema sync.
@@ -69,6 +71,8 @@ func (p SchemaPlan) BlockerError() error {
 		b.WriteString("\n")
 		b.WriteString(diagnostic.String())
 	}
+	b.WriteString("\n")
+	b.WriteString(SchemaBlockerHelp)
 	return errors.New(b.String())
 }
 

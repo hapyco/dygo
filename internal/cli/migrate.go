@@ -102,6 +102,9 @@ func writeSchemaPlan(stdout io.Writer, env secrets.Environment, plan db.SchemaPl
 				return err
 			}
 		}
+		if _, err := fmt.Fprintf(stdout, "\n%s\n", db.SchemaBlockerHelp); err != nil {
+			return err
+		}
 	}
 	return nil
 }

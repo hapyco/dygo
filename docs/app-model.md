@@ -92,6 +92,8 @@ Entity files live in the app's manifest-defined `entities` directory. Entity nam
 
 Entity metadata stores explicit singular and plural names. Runtime code uses `plural-name` as the source for storage naming; it does not auto-pluralize Entity names.
 
+Patches are app-owned lifecycle changes for unsafe transitions that metadata cannot infer, such as renames, drops, destructive type changes, and data backfills. See [Explicit Patches](patches.md) for the current design model. The patch runner is not implemented yet.
+
 ## Install Locations
 
 Framework repo `apps/` contains first-party apps shipped by dygo.

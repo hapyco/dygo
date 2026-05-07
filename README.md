@@ -95,6 +95,7 @@ docs/              project doctrine, thesis, and structure notes
 - [Entity Metadata](docs/entity-metadata.md)
 - [Config](docs/config.md)
 - [Database](docs/database.md)
+- [Explicit Patches](docs/patches.md)
 - [Server](docs/server.md)
 - [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)

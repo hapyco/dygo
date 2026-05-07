@@ -352,6 +352,7 @@ func TestApplyMetadataSchemaPlanRejectsBlockersBeforeExecution(t *testing.T) {
 	}
 	assertContains(t, err.Error(), "schema plan has 1 blocker")
 	assertContains(t, err.Error(), "users.legacy")
+	assertContains(t, err.Error(), SchemaBlockerHelp)
 }
 
 func coreSchemaEntities() []catalog.LoadedEntity {

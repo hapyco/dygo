@@ -16,6 +16,7 @@ These docs live in the repository so they are versioned with code, reviewed in P
 - [Entity Metadata](entity-metadata.md) defines the Entity YAML schema, explicit plural metadata, field types, indexes, and constraints.
 - [Config](config.md) explains required project config and current runtime settings.
 - [Database](database.md) explains PostgreSQL config, secrets, metadata schema plans, schema sync, schema snapshots, and `dygo db check`.
+- [Explicit Patches](patches.md) explains how unsafe metadata changes are handled without reintroducing SQL migrations.
 - [Server](server.md) explains `dygo serve` and the health endpoint.
 - [Studio](studio.md) explains the first-party global UI app.
 - [Encrypted Secrets](secrets.md) explains repo-stored encrypted secrets and the `dygo secrets` CLI.

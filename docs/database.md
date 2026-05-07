@@ -114,6 +114,8 @@ After the schema plan succeeds, `dygo migrate` upserts discovered Apps, Entities
 
 The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check/foreign-key changes are not inferred automatically. Those cases need an explicit app patch or a future explicit prune command.
 
+See [Explicit Patches](patches.md) for the design model that maps unsafe planner diagnostics to app-owned patch work.
+
 There is no SQL migration file path or `migrations` table in this model. dygo compares metadata intent with the database shape and moves the database forward through metadata.
 
 ## Schema Snapshot
