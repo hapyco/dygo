@@ -13,7 +13,7 @@ import (
 
 const version = "dev"
 
-type serveRunner func(context.Context, string) error
+type serveRunner func(context.Context, server.Options) error
 type databaseChecker func(context.Context, string) error
 type databaseRunner interface {
 	Check(context.Context, string) error
@@ -162,12 +162,14 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 }
 
 func newServeCommand(ctx context.Context, stdout io.Writer, serve serveRunner) *cobra.Command {
-	return &cobra.Command{
+	envName := "development"
+
+	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the dygo server",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			root, err := workingRootPath()
+			_, root, databaseURL, err := databaseInputs(envName)
 			if err != nil {
 				return err
 			}
@@ -176,13 +178,23 @@ func newServeCommand(ctx context.Context, stdout io.Writer, serve serveRunner) *
 				return fmt.Errorf("load config: %w", err)
 			}
 			address := cfg.Server.Address()
-			if _, err := fmt.Fprintf(stdout, "dygo serving on %s\n", address); err != nil {
-				return fmt.Errorf("write serve output: %w", err)
-			}
-			if err := serve(ctx, address); err != nil {
+			if err := serve(ctx, server.Options{
+				Address:     address,
+				DatabaseURL: databaseURL,
+				OnReady: func(address string) error {
+					if _, err := fmt.Fprintf(stdout, "dygo serving on %s\n", address); err != nil {
+						return fmt.Errorf("write serve output: %w", err)
+					}
+					return nil
+				},
+			}); err != nil {
 				return fmt.Errorf("serve dygo: %w", err)
 			}
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+
+	return cmd
 }

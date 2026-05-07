@@ -198,6 +198,28 @@ func connectMetadataPool(ctx context.Context, databaseURL string) (*pgxpool.Pool
 	return pool, nil
 }
 
+// OpenRuntimePool opens and pings the PostgreSQL pool used by runtime services.
+func OpenRuntimePool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	connectCtx, cancel := context.WithTimeout(ctx, defaultPingTimeout)
+	defer cancel()
+
+	pool, err := connectMetadataPool(connectCtx, databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := pool.Ping(connectCtx); err != nil {
+		pool.Close()
+		return nil, sanitizeError("ping postgres", databaseURL, err)
+	}
+	return pool, nil
+}
+
 func findPGDump() (string, error) {
 	if path, err := exec.LookPath("pg_dump"); err == nil {
 		return path, nil

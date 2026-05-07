@@ -25,6 +25,7 @@ go run ./cmd/dygo
 go run ./cmd/dygo version
 go run ./cmd/dygo doctor
 go run ./cmd/dygo serve
+go run ./cmd/dygo serve --env staging
 go run ./cmd/dygo db check
 go run ./cmd/dygo db create
 go run ./cmd/dygo db prepare
@@ -50,11 +51,17 @@ The default server address is:
 127.0.0.1:6790
 ```
 
-The first health endpoint is:
+The first HTTP endpoints are:
 
 ```txt
 GET /health
+GET /api/v1/apps
+GET /api/v1/apps/{app}
+GET /api/v1/entities
+GET /api/v1/entities/{entity}/meta
 ```
+
+The API endpoints are generic and metadata-powered; dygo does not create separate handlers for each Entity.
 
 Project-aware commands discover the dygo root by walking upward from the current directory. Generated projects use `dygo.yml` as the root marker; the framework repository is also recognized during development.
 

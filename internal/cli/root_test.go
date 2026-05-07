@@ -11,6 +11,7 @@ import (
 
 	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/dygo-dev/dygo/internal/secrets"
+	"github.com/dygo-dev/dygo/internal/server"
 )
 
 func TestRun(t *testing.T) {
@@ -127,6 +128,8 @@ database:
   url:
     secret: DATABASE_URL
 `)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
 	nested := filepath.Join(root, "apps", "sales")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatalf("MkdirAll(nested) error = %v", err)
@@ -135,9 +138,12 @@ database:
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	var gotAddress string
-	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, address string) error {
-		gotAddress = address
+	var gotOptions server.Options
+	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, options server.Options) error {
+		gotOptions = options
+		if options.OnReady != nil {
+			return options.OnReady(options.Address)
+		}
 		return nil
 	}, noopDatabaseChecker)
 	if err != nil {
@@ -146,8 +152,56 @@ database:
 	if !strings.Contains(stdout.String(), "dygo serving on 0.0.0.0:7777") {
 		t.Fatalf("serve stdout = %q, want configured address", stdout.String())
 	}
-	if gotAddress != "0.0.0.0:7777" {
-		t.Fatalf("serve address = %q, want configured address", gotAddress)
+	if gotOptions.Address != "0.0.0.0:7777" {
+		t.Fatalf("serve address = %q, want configured address", gotOptions.Address)
+	}
+	if gotOptions.DatabaseURL != databaseURL {
+		t.Fatalf("serve database URL = %q, want %q", gotOptions.DatabaseURL, databaseURL)
+	}
+}
+
+func TestServeCommandUsesEnvironment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var gotOptions server.Options
+	err := run(context.Background(), []string{"serve", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, options server.Options) error {
+		gotOptions = options
+		if options.OnReady != nil {
+			return options.OnReady(options.Address)
+		}
+		return nil
+	}, noopDatabaseChecker)
+	if err != nil {
+		t.Fatalf("Run(serve --env staging) error = %v, want nil", err)
+	}
+	if gotOptions.DatabaseURL != databaseURL {
+		t.Fatalf("serve database URL = %q, want staging URL %q", gotOptions.DatabaseURL, databaseURL)
+	}
+}
+
+func TestServeHelpIncludesEnvironmentFlag(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"serve", "--help"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(serve --help) error = %v, want nil", err)
+	}
+	for _, want := range []string{"--env", "Environment: development, staging, or production"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("serve help stdout = %q, want substring %q", stdout.String(), want)
+		}
 	}
 }
 
@@ -159,7 +213,7 @@ func TestServeCommandRequiresProjectConfig(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	called := false
-	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, _ string) error {
+	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, _ server.Options) error {
 		called = true
 		return nil
 	}, noopDatabaseChecker)
@@ -176,15 +230,43 @@ func TestServeCommandRequiresProjectConfig(t *testing.T) {
 	}
 }
 
-func TestServeCommandReturnsRunnerError(t *testing.T) {
+func TestServeCommandRequiresDatabaseSecret(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
+	writeCLISecretsLayout(t, root)
 	t.Chdir(root)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, _ string) error {
+	called := false
+	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, _ server.Options) error {
+		called = true
+		return nil
+	}, noopDatabaseChecker)
+	if err == nil {
+		t.Fatal("Run(serve) error = nil, want missing secret error")
+	}
+	for _, want := range []string{`read database secret "DATABASE_URL" for development`, `secret "DATABASE_URL" is not defined`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(serve) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+	if called {
+		t.Fatal("serve runner was called for missing secret")
+	}
+}
+
+func TestServeCommandReturnsRunnerError(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, _ server.Options) error {
 		return errors.New("listen failed")
 	}, noopDatabaseChecker)
 	if err == nil {
@@ -194,6 +276,9 @@ func TestServeCommandReturnsRunnerError(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(serve) error = %q, want substring %q", err.Error(), want)
 		}
+	}
+	if strings.Contains(stdout.String(), "dygo serving on") {
+		t.Fatalf("serve stdout = %q, want no ready message when runner fails before startup", stdout.String())
 	}
 }
 
@@ -1464,7 +1549,7 @@ func writeCLIDatabaseSecret(t *testing.T, root string, env secrets.Environment, 
 	}
 }
 
-func noopServeRunner(context.Context, string) error {
+func noopServeRunner(context.Context, server.Options) error {
 	return nil
 }
 

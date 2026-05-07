@@ -17,7 +17,7 @@ These docs live in the repository so they are versioned with code, reviewed in P
 - [Config](config.md) explains required project config and current runtime settings.
 - [Database](database.md) explains PostgreSQL config, secrets, metadata schema plans, schema sync, explicit schema prune, schema snapshots, and `dygo db check`.
 - [Explicit Patches](patches.md) explains how unsafe metadata changes are handled without reintroducing SQL migrations, and where patches differ from schema prune.
-- [Server](server.md) explains `dygo serve` and the health endpoint.
+- [Server](server.md) explains `dygo serve`, the health endpoint, and the read-only metadata API.
 - [Studio](studio.md) explains the first-party global UI app.
 - [Encrypted Secrets](secrets.md) explains repo-stored encrypted secrets and the `dygo secrets` CLI.
 - [Directory Structure](dir-structure.md) describes the intended repository layout.
