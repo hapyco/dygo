@@ -44,6 +44,18 @@ ok
 
 This endpoint is intentionally small. It only confirms that the HTTP process is accepting requests.
 
+## Auth API
+
+Studio-oriented auth uses an HttpOnly `dygo_session` cookie:
+
+```txt
+POST /api/v1/auth/login
+POST /api/v1/auth/logout
+GET  /api/v1/auth/me
+```
+
+`POST /api/v1/auth/login` is public. Metadata and Record API routes require a valid session.
+
 ## Metadata API
 
 The first runtime API is read-only and powered by persisted Core metadata records:
@@ -113,4 +125,4 @@ The CLI listens for interrupt and termination signals and asks the HTTP server t
 
 ## Boundaries
 
-The current server includes health, read-only metadata APIs, and generic Record CRUD APIs. The internal permission engine exists, but the server does not include authentication, permission enforcement, Studio rendering, per-Entity controllers, child table storage, workflow hooks, or audit logging yet.
+The current server includes health, session auth, read-only metadata APIs, and generic Record CRUD APIs. The internal permission engine exists, but the server does not include Record permission enforcement, Studio rendering, per-Entity controllers, child table storage, workflow hooks, or audit logging yet.

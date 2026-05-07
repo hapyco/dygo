@@ -22,3 +22,9 @@ fields:
     type: boolean
     index: true
     default: true
+
+  - name: administrator
+    label: Administrator
+    type: boolean
+    index: true
+    default: false

@@ -12,19 +12,29 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/go-chi/chi/v5"
 )
 
 const shutdownTimeout = 5 * time.Second
+const sessionCookieName = "dygo_session"
 
 // Options configures the dygo HTTP server.
 type Options struct {
 	Address     string
 	DatabaseURL string
+	Auth        AuthStore
 	Metadata    MetadataStore
 	Records     RecordStore
 	OnReady     func(string) error
+}
+
+// AuthStore is the runtime auth behavior used by HTTP handlers.
+type AuthStore interface {
+	Login(context.Context, auth.LoginRequest) (auth.LoginResult, error)
+	CurrentUser(context.Context, string) (auth.User, error)
+	Logout(context.Context, string) error
 }
 
 // MetadataStore is the runtime metadata behavior used by HTTP handlers.
@@ -52,8 +62,14 @@ func NewRouter(options ...Options) http.Handler {
 	}
 	router := chi.NewRouter()
 	router.Get("/health", healthHandler)
-	registerMetadataRoutes(router, opts.Metadata)
-	registerRecordRoutes(router, opts.Records)
+	router.Route("/api/v1", func(api chi.Router) {
+		registerAuthRoutes(api, opts.Auth)
+		api.Group(func(protected chi.Router) {
+			protected.Use(authMiddleware(opts.Auth))
+			registerMetadataRoutes(protected, opts.Metadata)
+			registerRecordRoutes(protected, opts.Records)
+		})
+	})
 	return router
 }
 
@@ -78,6 +94,7 @@ func Serve(ctx context.Context, options Options) error {
 			return fmt.Errorf("open runtime database: %w", err)
 		}
 		defer pool.Close()
+		options.Auth = auth.NewService(pool)
 		options.Metadata = db.NewMetadataReader(pool)
 		options.Records = db.NewRecordStore(pool)
 	}
@@ -150,6 +167,198 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok\n"))
 }
 
+type authContextKey struct{}
+type authTokenContextKey struct{}
+
+type authHandler struct {
+	store AuthStore
+}
+
+func registerAuthRoutes(router chi.Router, store AuthStore) {
+	handler := authHandler{store: store}
+	router.Post("/auth/login", handler.login)
+	router.Group(func(protected chi.Router) {
+		protected.Use(authMiddleware(store))
+		protected.Post("/auth/logout", handler.logout)
+		protected.Get("/auth/me", handler.me)
+	})
+}
+
+func authMiddleware(store AuthStore) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if store == nil {
+				writeJSON(w, http.StatusServiceUnavailable, errorEnvelope{Error: apiError{
+					Code:    "service_unavailable",
+					Message: "auth store is unavailable",
+				}})
+				return
+			}
+			cookie, err := r.Cookie(sessionCookieName)
+			if err != nil || strings.TrimSpace(cookie.Value) == "" {
+				writeAuthError(w, auth.Error{Code: auth.ErrorUnauthenticated, Message: "authentication required"})
+				return
+			}
+			user, err := store.CurrentUser(r.Context(), cookie.Value)
+			if err != nil {
+				writeAuthError(w, err)
+				return
+			}
+			ctx := context.WithValue(r.Context(), authContextKey{}, user)
+			ctx = context.WithValue(ctx, authTokenContextKey{}, cookie.Value)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
+	if h.requireStore(w) {
+		return
+	}
+	input, err := decodeLoginInput(r)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	result, err := h.store.Login(r.Context(), input)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	http.SetCookie(w, sessionCookie(result.Token, result.ExpiresAt, isHTTPS(r)))
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: result.User})
+}
+
+func (h authHandler) logout(w http.ResponseWriter, r *http.Request) {
+	if h.requireStore(w) {
+		return
+	}
+	token, ok := sessionTokenFromContext(r.Context())
+	if !ok {
+		writeAuthError(w, auth.Error{Code: auth.ErrorUnauthenticated, Message: "authentication required"})
+		return
+	}
+	if err := h.store.Logout(r.Context(), token); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	http.SetCookie(w, expiredSessionCookie(isHTTPS(r)))
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: map[string]any{"logged-out": true}})
+}
+
+func (h authHandler) me(w http.ResponseWriter, r *http.Request) {
+	user, ok := CurrentUserFromContext(r.Context())
+	if !ok {
+		writeAuthError(w, auth.Error{Code: auth.ErrorUnauthenticated, Message: "authentication required"})
+		return
+	}
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: user})
+}
+
+func (h authHandler) requireStore(w http.ResponseWriter) bool {
+	if h.store != nil {
+		return false
+	}
+	writeJSON(w, http.StatusServiceUnavailable, errorEnvelope{Error: apiError{
+		Code:    "service_unavailable",
+		Message: "auth store is unavailable",
+	}})
+	return true
+}
+
+// CurrentUserFromContext returns the authenticated user stored by auth middleware.
+func CurrentUserFromContext(ctx context.Context) (auth.User, bool) {
+	user, ok := ctx.Value(authContextKey{}).(auth.User)
+	return user, ok
+}
+
+func sessionTokenFromContext(ctx context.Context) (string, bool) {
+	token, ok := ctx.Value(authTokenContextKey{}).(string)
+	return token, ok
+}
+
+func decodeLoginInput(r *http.Request) (auth.LoginRequest, error) {
+	var envelope struct {
+		Data auth.LoginRequest `json:"data"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil {
+		if errors.Is(err, io.EOF) {
+			return auth.LoginRequest{}, auth.Error{Code: auth.ErrorInvalidRequest, Message: "request body is required"}
+		}
+		return auth.LoginRequest{}, auth.Error{Code: auth.ErrorInvalidRequest, Message: "request body must be valid JSON", Err: err}
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return auth.LoginRequest{}, auth.Error{Code: auth.ErrorInvalidRequest, Message: "request body must contain one JSON object", Err: err}
+	}
+	if strings.TrimSpace(envelope.Data.Email) == "" || strings.TrimSpace(envelope.Data.Password) == "" {
+		return auth.LoginRequest{}, auth.Error{Code: auth.ErrorInvalidRequest, Message: "email and password are required"}
+	}
+	return envelope.Data, nil
+}
+
+func sessionCookie(token string, expiresAt time.Time, secure bool) *http.Cookie {
+	return &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    token,
+		Path:     "/",
+		Expires:  expiresAt,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	}
+}
+
+func expiredSessionCookie(secure bool) *http.Cookie {
+	return &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	}
+}
+
+func isHTTPS(r *http.Request) bool {
+	return r.TLS != nil
+}
+
+func writeAuthError(w http.ResponseWriter, err error) {
+	var authErr auth.Error
+	if !errors.As(err, &authErr) {
+		writeJSON(w, http.StatusInternalServerError, errorEnvelope{Error: apiError{
+			Code:    "internal_error",
+			Message: "auth request failed",
+		}})
+		return
+	}
+	status := http.StatusInternalServerError
+	message := authErr.Message
+	details := authErr.Details
+	switch authErr.Code {
+	case auth.ErrorInvalidRequest:
+		status = http.StatusBadRequest
+	case auth.ErrorInvalidCredentials, auth.ErrorUnauthenticated:
+		status = http.StatusUnauthorized
+	case auth.ErrorSchemaNotReady:
+		status = http.StatusConflict
+	case auth.ErrorAlreadyExists:
+		status = http.StatusConflict
+	case auth.ErrorInternal:
+		status = http.StatusInternalServerError
+		message = "auth request failed"
+		details = nil
+	}
+	writeJSON(w, status, errorEnvelope{Error: apiError{
+		Code:    authErr.Code,
+		Message: message,
+		Details: details,
+	}})
+}
+
 type dataEnvelope struct {
 	Data any `json:"data"`
 }
@@ -181,12 +390,10 @@ type metadataHandler struct {
 
 func registerMetadataRoutes(router chi.Router, store MetadataStore) {
 	handler := metadataHandler{store: store}
-	router.Route("/api/v1", func(api chi.Router) {
-		api.Get("/apps", handler.listApps)
-		api.Get("/apps/{app}", handler.getApp)
-		api.Get("/entities", handler.listEntities)
-		api.Get("/entities/{entity}/meta", handler.getEntityMeta)
-	})
+	router.Get("/apps", handler.listApps)
+	router.Get("/apps/{app}", handler.getApp)
+	router.Get("/entities", handler.listEntities)
+	router.Get("/entities/{entity}/meta", handler.getEntityMeta)
 }
 
 func (h metadataHandler) listApps(w http.ResponseWriter, r *http.Request) {
@@ -275,7 +482,7 @@ type recordHandler struct {
 
 func registerRecordRoutes(router chi.Router, store RecordStore) {
 	handler := recordHandler{store: store}
-	router.Route("/api/v1/records/{entity}", func(records chi.Router) {
+	router.Route("/records/{entity}", func(records chi.Router) {
 		records.Get("/", handler.listRecords)
 		records.Post("/", handler.createRecord)
 		records.Get("/{id}", handler.getRecord)

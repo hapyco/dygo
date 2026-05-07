@@ -10,6 +10,12 @@ fields:
     options:
       entity: user
 
+  - name: token-digest
+    label: Token Digest
+    type: text
+    required: true
+    unique: true
+
   - name: status
     label: Status
     type: select

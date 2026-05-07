@@ -256,6 +256,7 @@ CREATE TABLE public.session (
     started_at timestamp with time zone NOT NULL,
     expires_at timestamp with time zone,
     last_seen_at timestamp with time zone,
+    token_digest text NOT NULL,
     CONSTRAINT session_status_check CHECK ((status = ANY (ARRAY['active'::text, 'expired'::text, 'revoked'::text])))
 );
 
@@ -284,7 +285,9 @@ CREATE TABLE public."user" (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     email text NOT NULL,
     full_name text NOT NULL,
-    enabled boolean DEFAULT true
+    enabled boolean DEFAULT true,
+    password_hash text,
+    administrator boolean DEFAULT false
 );
 
 
@@ -450,6 +453,14 @@ ALTER TABLE ONLY public.session
 
 
 --
+-- Name: session session_token_digest_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.session
+    ADD CONSTRAINT session_token_digest_key UNIQUE (token_digest);
+
+
+--
 -- Name: user user_email_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -584,6 +595,13 @@ CREATE INDEX session_status_idx ON public.session USING btree (status);
 --
 
 CREATE INDEX session_user_id_idx ON public.session USING btree (user_id);
+
+
+--
+-- Name: user_administrator_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX user_administrator_idx ON public."user" USING btree (administrator);
 
 
 --

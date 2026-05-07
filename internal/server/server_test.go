@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/db"
 )
 
@@ -95,6 +96,7 @@ func TestServeListener(t *testing.T) {
 }
 
 func TestMetadataRoutes(t *testing.T) {
+	authStore := validFakeAuthStore()
 	store := &fakeMetadataStore{
 		apps: []db.MetadataApp{{Name: "core", Label: "Core", Version: "0.1.0", Status: "active"}},
 		app:  db.MetadataApp{Name: "core", Label: "Core", Version: "0.1.0", Status: "active"},
@@ -137,10 +139,10 @@ func TestMetadataRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			request := authenticatedRequest(http.MethodGet, tt.path, "")
 			recorder := httptest.NewRecorder()
 
-			NewRouter(Options{Metadata: store}).ServeHTTP(recorder, request)
+			NewRouter(Options{Auth: authStore, Metadata: store}).ServeHTTP(recorder, request)
 
 			response := recorder.Result()
 			defer response.Body.Close()
@@ -163,10 +165,10 @@ func TestMetadataRoutes(t *testing.T) {
 
 func TestMetadataRouteNotFound(t *testing.T) {
 	store := &fakeMetadataStore{appErr: db.MetadataNotFoundError{Kind: "app", Name: "missing"}}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/apps/missing", nil)
+	request := authenticatedRequest(http.MethodGet, "/api/v1/apps/missing", "")
 	recorder := httptest.NewRecorder()
 
-	NewRouter(Options{Metadata: store}).ServeHTTP(recorder, request)
+	NewRouter(Options{Auth: validFakeAuthStore(), Metadata: store}).ServeHTTP(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -185,10 +187,10 @@ func TestMetadataRouteNotFound(t *testing.T) {
 
 func TestMetadataRouteFailureIsRedacted(t *testing.T) {
 	store := &fakeMetadataStore{appsErr: errors.New("postgres://user:secret@localhost:5432/dygo failed")}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/apps", nil)
+	request := authenticatedRequest(http.MethodGet, "/api/v1/apps", "")
 	recorder := httptest.NewRecorder()
 
-	NewRouter(Options{Metadata: store}).ServeHTTP(recorder, request)
+	NewRouter(Options{Auth: validFakeAuthStore(), Metadata: store}).ServeHTTP(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -211,16 +213,159 @@ func TestMetadataRouteFailureIsRedacted(t *testing.T) {
 
 func TestMetadataRouteWithoutStore(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/apps", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-token"})
 	recorder := httptest.NewRecorder()
 
-	NewRouter().ServeHTTP(recorder, request)
+	NewRouter(Options{Auth: validFakeAuthStore()}).ServeHTTP(recorder, request)
 
 	if recorder.Result().StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("metadata without store status = %d, want 503", recorder.Result().StatusCode)
 	}
 }
 
+func TestAuthRoutes(t *testing.T) {
+	authStore := validFakeAuthStore()
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		body       string
+		cookie     bool
+		status     int
+		want       string
+		wantCookie bool
+	}{
+		{
+			name:       "login",
+			method:     http.MethodPost,
+			path:       "/api/v1/auth/login",
+			body:       `{"data":{"email":"admin@example.com","password":"secret"}}`,
+			status:     http.StatusOK,
+			want:       `"administrator":true`,
+			wantCookie: true,
+		},
+		{
+			name:   "me",
+			method: http.MethodGet,
+			path:   "/api/v1/auth/me",
+			cookie: true,
+			status: http.StatusOK,
+			want:   `"email":"admin@example.com"`,
+		},
+		{
+			name:   "logout",
+			method: http.MethodPost,
+			path:   "/api/v1/auth/logout",
+			cookie: true,
+			status: http.StatusOK,
+			want:   `"logged-out":true`,
+		},
+		{
+			name:   "protected route without cookie",
+			method: http.MethodGet,
+			path:   "/api/v1/entities",
+			status: http.StatusUnauthorized,
+			want:   `"code":"unauthenticated"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			if tt.cookie {
+				request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-token"})
+			}
+			recorder := httptest.NewRecorder()
+
+			NewRouter(Options{Auth: authStore, Metadata: &fakeMetadataStore{}}).ServeHTTP(recorder, request)
+
+			response := recorder.Result()
+			defer response.Body.Close()
+			if response.StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", response.StatusCode, tt.status)
+			}
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("ReadAll(auth body) error = %v", err)
+			}
+			if !contains(string(body), tt.want) {
+				t.Fatalf("body = %s, want %q", string(body), tt.want)
+			}
+			if tt.wantCookie && len(response.Cookies()) == 0 {
+				t.Fatal("login response cookies = none, want session cookie")
+			}
+			if tt.wantCookie {
+				cookie := response.Cookies()[0]
+				if cookie.Name != sessionCookieName || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Value != "issued-token" {
+					t.Fatalf("login cookie = %+v, want HttpOnly dygo session", cookie)
+				}
+			}
+		})
+	}
+	if authStore.logoutToken != "valid-token" {
+		t.Fatalf("logout token = %q, want valid-token", authStore.logoutToken)
+	}
+}
+
+func TestAuthRouteErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		store  *fakeAuthStore
+		body   string
+		status int
+		want   string
+	}{
+		{
+			name:   "bad body",
+			store:  validFakeAuthStore(),
+			body:   `{"data":`,
+			status: http.StatusBadRequest,
+			want:   `"code":"invalid_request"`,
+		},
+		{
+			name:   "invalid credentials",
+			store:  &fakeAuthStore{loginErr: auth.Error{Code: auth.ErrorInvalidCredentials, Message: "invalid email or password"}},
+			body:   `{"data":{"email":"admin@example.com","password":"wrong"}}`,
+			status: http.StatusUnauthorized,
+			want:   `"code":"invalid_credentials"`,
+		},
+		{
+			name:   "schema not ready",
+			store:  &fakeAuthStore{loginErr: auth.Error{Code: auth.ErrorSchemaNotReady, Message: "auth schema is not ready; run dygo migrate", Err: errors.New("postgres://secret")}},
+			body:   `{"data":{"email":"admin@example.com","password":"secret"}}`,
+			status: http.StatusConflict,
+			want:   `"code":"schema_not_ready"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(tt.body))
+			recorder := httptest.NewRecorder()
+
+			NewRouter(Options{Auth: tt.store}).ServeHTTP(recorder, request)
+
+			response := recorder.Result()
+			defer response.Body.Close()
+			if response.StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", response.StatusCode, tt.status)
+			}
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("ReadAll(auth error body) error = %v", err)
+			}
+			if !contains(string(body), tt.want) {
+				t.Fatalf("body = %s, want %q", string(body), tt.want)
+			}
+			if contains(string(body), "postgres://") || contains(string(body), "secret") {
+				t.Fatalf("body leaked auth detail: %s", string(body))
+			}
+		})
+	}
+}
+
 func TestRecordRoutes(t *testing.T) {
+	authStore := validFakeAuthStore()
 	store := &fakeRecordStore{
 		list: db.RecordListResult{
 			Records: []db.Record{{"id": int64(1), "email": "a@example.com"}},
@@ -247,10 +392,10 @@ func TestRecordRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
-			request := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			request := authenticatedRequest(tt.method, tt.path, tt.body)
 			recorder := httptest.NewRecorder()
 
-			NewRouter(Options{Records: store}).ServeHTTP(recorder, request)
+			NewRouter(Options{Auth: authStore, Records: store}).ServeHTTP(recorder, request)
 
 			response := recorder.Result()
 			defer response.Body.Close()
@@ -346,9 +491,10 @@ func TestRecordRouteErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-token"})
 			recorder := httptest.NewRecorder()
 
-			NewRouter(Options{Records: tt.store}).ServeHTTP(recorder, request)
+			NewRouter(Options{Auth: validFakeAuthStore(), Records: tt.store}).ServeHTTP(recorder, request)
 
 			response := recorder.Result()
 			defer response.Body.Close()
@@ -441,6 +587,46 @@ func (s *fakeRecordStore) UpdateRecord(_ context.Context, _ string, _ int64, inp
 func (s *fakeRecordStore) DeleteRecord(_ context.Context, _ string, id int64) error {
 	s.deletedID = id
 	return s.deleteErr
+}
+
+type fakeAuthStore struct {
+	user        auth.User
+	loginResult auth.LoginResult
+	loginErr    error
+	currentErr  error
+	logoutErr   error
+	logoutToken string
+}
+
+func validFakeAuthStore() *fakeAuthStore {
+	user := auth.User{ID: 7, Email: "admin@example.com", FullName: "Admin User", Enabled: true, Administrator: true}
+	return &fakeAuthStore{
+		user: user,
+		loginResult: auth.LoginResult{
+			User:      user,
+			Token:     "issued-token",
+			ExpiresAt: time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC),
+		},
+	}
+}
+
+func (s *fakeAuthStore) Login(context.Context, auth.LoginRequest) (auth.LoginResult, error) {
+	return s.loginResult, s.loginErr
+}
+
+func (s *fakeAuthStore) CurrentUser(context.Context, string) (auth.User, error) {
+	return s.user, s.currentErr
+}
+
+func (s *fakeAuthStore) Logout(_ context.Context, token string) error {
+	s.logoutToken = token
+	return s.logoutErr
+}
+
+func authenticatedRequest(method string, path string, body string) *http.Request {
+	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-token"})
+	return request
 }
 
 func contains(value string, want string) bool {

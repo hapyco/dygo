@@ -16,7 +16,7 @@ The goal is speed with structure: builders should focus on business logic while 
 
 dygo is in early framework development.
 
-The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server, encrypted credentials, app/entity metadata validation, PostgreSQL schema sync, Core metadata registry, metadata API, generic Record API foundation, and internal permission engine foundation. The framework APIs are not stable yet.
+The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server, encrypted credentials, app/entity metadata validation, PostgreSQL schema sync, Core metadata registry, metadata API, session auth, generic Record API foundation, and internal permission engine foundation. The framework APIs are not stable yet.
 
 ## Current CLI
 
@@ -26,6 +26,7 @@ go run ./cmd/dygo version
 go run ./cmd/dygo doctor
 go run ./cmd/dygo serve
 go run ./cmd/dygo serve --env staging
+go run ./cmd/dygo setup admin
 go run ./cmd/dygo db check
 go run ./cmd/dygo db create
 go run ./cmd/dygo db prepare
@@ -55,6 +56,9 @@ The first HTTP endpoints are:
 
 ```txt
 GET /health
+POST /api/v1/auth/login
+POST /api/v1/auth/logout
+GET /api/v1/auth/me
 GET /api/v1/apps
 GET /api/v1/apps/{app}
 GET /api/v1/entities
@@ -110,6 +114,7 @@ docs/              project doctrine, thesis, and structure notes
 - [Database](docs/database.md)
 - [Explicit Patches](docs/patches.md)
 - [Server](docs/server.md)
+- [Auth](docs/auth.md)
 - [Records](docs/records.md)
 - [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)

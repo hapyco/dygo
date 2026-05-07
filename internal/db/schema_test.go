@@ -147,6 +147,33 @@ func TestBuildMetadataSchemaPlanRejectsMissingRequiredColumnWithoutDefault(t *te
 	assertContains(t, plan.BlockerError().Error(), "required column is missing and has no safe default")
 }
 
+func TestBuildMetadataSchemaPlanAddsRequiredColumnForKnownEmptyTable(t *testing.T) {
+	entity := catalog.LoadedEntity{
+		AppName: "core",
+		Path:    "apps/core/entities/session.yml",
+		Entity: schema.Entity{
+			Name: "session",
+			Fields: []schema.Field{
+				{Name: "token-digest", Type: "text", Required: true, Unique: true},
+			},
+		},
+	}
+	live := liveSchemaTable("session", systemColumns(), map[string]liveConstraint{"session_pkey": {Name: "session_pkey", Type: "primary-key"}}, nil)
+	live.RowStateKnown = true
+	live.HasRows = false
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{
+		"session": live,
+	}})
+	if err != nil {
+		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
+	}
+	if plan.HasBlockers() {
+		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
+	}
+	assertContains(t, operationDescriptions(plan), "add column session.token_digest")
+	assertContains(t, operationDescriptions(plan), "add unique constraint session_token_digest_key on session.token_digest")
+}
+
 func TestBuildMetadataSchemaPlanAddsMissingIndexAndConstraint(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "crm",

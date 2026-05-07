@@ -15,10 +15,12 @@ type LiveSchema struct {
 }
 
 type liveTable struct {
-	Name        string
-	Columns     map[string]liveColumn
-	Indexes     map[string]liveIndex
-	Constraints map[string]liveConstraint
+	Name          string
+	RowStateKnown bool
+	HasRows       bool
+	Columns       map[string]liveColumn
+	Indexes       map[string]liveIndex
+	Constraints   map[string]liveConstraint
 }
 
 func (t liveTable) HasIndex(name string) bool {
@@ -50,6 +52,9 @@ func InspectLiveSchema(ctx context.Context, pool *pgxpool.Pool) (LiveSchema, err
 		return LiveSchema{}, err
 	}
 	if err := inspectColumns(ctx, pool, &live); err != nil {
+		return LiveSchema{}, err
+	}
+	if err := inspectTableRows(ctx, pool, &live); err != nil {
 		return LiveSchema{}, err
 	}
 	if err := inspectIndexes(ctx, pool, &live); err != nil {
@@ -117,6 +122,21 @@ ORDER BY c.relname, a.attnum`)
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("inspect schema columns: %w", err)
+	}
+	return nil
+}
+
+func inspectTableRows(ctx context.Context, pool *pgxpool.Pool, live *LiveSchema) error {
+	for _, name := range sortedTableNames(live.Tables) {
+		var hasRows bool
+		sql := fmt.Sprintf("SELECT EXISTS (SELECT 1 FROM %s LIMIT 1)", quoteIdent(name))
+		if err := pool.QueryRow(ctx, sql).Scan(&hasRows); err != nil {
+			return fmt.Errorf("inspect schema table rows %s: %w", name, err)
+		}
+		table := ensureLiveTable(live, name)
+		table.RowStateKnown = true
+		table.HasRows = hasRows
+		live.Tables[name] = table
 	}
 	return nil
 }

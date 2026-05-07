@@ -11,6 +11,8 @@ go run ./cmd/dygo migrate
 go run ./cmd/dygo serve
 ```
 
+Record API routes require a valid `dygo_session` cookie from the auth API.
+
 ## API
 
 ```txt
@@ -100,4 +102,4 @@ json
 
 `DELETE` performs a hard delete in v1.
 
-This layer does not enforce permissions yet. The internal permission engine exists, but guarding these APIs is a follow-up task.
+This layer requires authentication but does not enforce Entity permissions yet. The internal permission engine exists, but guarding these APIs is a follow-up task.

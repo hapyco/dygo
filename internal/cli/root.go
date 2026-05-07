@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/config"
 	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/dygo-dev/dygo/internal/server"
@@ -15,6 +16,9 @@ const version = "dev"
 
 type serveRunner func(context.Context, server.Options) error
 type databaseChecker func(context.Context, string) error
+type adminSetupRunner interface {
+	SetupAdmin(context.Context, string, auth.SetupAdminInput) (auth.User, error)
+}
 type databaseRunner interface {
 	Check(context.Context, string) error
 	Create(context.Context, string) (db.DatabaseResult, error)
@@ -33,7 +37,7 @@ type schemaSyncRunner interface {
 // Run executes the dygo command-line interface.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	migrator := db.NewMigrator()
-	return runWithServices(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator)
+	return runWithServicesAndSetup(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{})
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker) error {
@@ -42,7 +46,11 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 }
 
 func runWithServices(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner) error {
-	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync)
+	return runWithServicesAndSetup(ctx, args, stdin, stdout, stderr, serve, database, sync, defaultAdminSetupRunner{})
+}
+
+func runWithServicesAndSetup(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner) error {
+	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup)
 	if err != nil {
 		return err
 	}
@@ -59,10 +67,10 @@ func runWithServices(ctx context.Context, args []string, stdin io.Reader, stdout
 // NewRootCommand creates the root dygo CLI command.
 func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, error) {
 	migrator := db.NewMigrator()
-	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator)
+	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{})
 }
 
-func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner) (*cobra.Command, error) {
+func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
 	}
@@ -83,6 +91,9 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	}
 	if sync == nil {
 		return nil, fmt.Errorf("schema sync runner is required")
+	}
+	if setup == nil {
+		return nil, fmt.Errorf("admin setup runner is required")
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -108,6 +119,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newDBCommand(ctx, stdout, database))
 	root.AddCommand(newMigrateCommand(ctx, stdout, sync))
 	root.AddCommand(newSchemaCommand(ctx, stdout, sync))
+	root.AddCommand(newSetupCommand(ctx, stdin, stdout, stderr, setup))
 	root.AddCommand(newAppsCommand(stdout))
 	root.AddCommand(newEntitiesCommand(stdout))
 	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))

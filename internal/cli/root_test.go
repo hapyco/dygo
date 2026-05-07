@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/dygo-dev/dygo/internal/secrets"
 	"github.com/dygo-dev/dygo/internal/server"
@@ -110,9 +111,135 @@ func TestRootHelpIncludesServeAndDB(t *testing.T) {
 		"Sync dygo metadata to the database",
 		"schema",
 		"Manage explicit schema cleanup",
+		"setup",
+		"Set up dygo runtime accounts",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("help stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestSetupAdminCommand(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeAdminSetupRunner{
+		user: auth.User{ID: 7, Email: "admin@example.com", FullName: "Admin User", Enabled: true, Administrator: true},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetup(context.Background(), []string{"setup", "admin", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
+	if err != nil {
+		t.Fatalf("Run(setup admin) error = %v, want nil", err)
+	}
+	if stdout.String() != "administrator account ready: admin@example.com (development)\n" {
+		t.Fatalf("setup admin stdout = %q, want ready output", stdout.String())
+	}
+	if fake.databaseURL != databaseURL {
+		t.Fatalf("setup admin database URL = %q, want %q", fake.databaseURL, databaseURL)
+	}
+	if fake.input.Email != "admin@example.com" || fake.input.FullName != "Admin User" || fake.input.Password != "secret" {
+		t.Fatalf("setup admin input = %+v, want flag/stdin values", fake.input)
+	}
+}
+
+func TestSetupAdminCommandUsesSelectedEnvironment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeAdminSetupRunner{
+		user: auth.User{ID: 7, Email: "admin@example.com", FullName: "Admin User", Enabled: true, Administrator: true},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetup(context.Background(), []string{"setup", "admin", "--env", "staging", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
+	if err != nil {
+		t.Fatalf("Run(setup admin --env staging) error = %v, want nil", err)
+	}
+	if stdout.String() != "administrator account ready: admin@example.com (staging)\n" {
+		t.Fatalf("setup admin stdout = %q, want staging output", stdout.String())
+	}
+	if fake.databaseURL != databaseURL {
+		t.Fatalf("setup admin database URL = %q, want %q", fake.databaseURL, databaseURL)
+	}
+}
+
+func TestSetupAdminCommandPromptsForMissingValues(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeAdminSetupRunner{
+		user: auth.User{ID: 7, Email: "admin@example.com", FullName: "Admin User", Enabled: true, Administrator: true},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetup(context.Background(), []string{"setup", "admin"}, strings.NewReader("admin@example.com\nAdmin User\nsecret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
+	if err != nil {
+		t.Fatalf("Run(setup admin prompts) error = %v, want nil", err)
+	}
+	for _, want := range []string{"Admin email:", "Admin full name:", "Admin password:"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("setup admin stderr = %q, want prompt %q", stderr.String(), want)
+		}
+	}
+	if fake.input.Password != "secret" {
+		t.Fatalf("setup admin password = %q, want stdin password", fake.input.Password)
+	}
+}
+
+func TestSetupAdminCommandRequiresDatabaseSecret(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLISecretsLayout(t, root)
+	t.Chdir(root)
+
+	fake := &fakeAdminSetupRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetup(context.Background(), []string{"setup", "admin", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
+	if err == nil {
+		t.Fatal("Run(setup admin) error = nil, want missing secret error")
+	}
+	for _, want := range []string{`read database secret "DATABASE_URL" for development`, `secret "DATABASE_URL" is not defined`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(setup admin) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+	if fake.calls != 0 {
+		t.Fatalf("setup runner calls = %d, want 0", fake.calls)
+	}
+}
+
+func TestSetupAdminCommandReturnsRunnerError(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeAdminSetupRunner{err: auth.Error{Code: auth.ErrorSchemaNotReady, Message: "auth schema is not ready; run dygo migrate"}}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetup(context.Background(), []string{"setup", "admin", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
+	if err == nil {
+		t.Fatal("Run(setup admin) error = nil, want runner error")
+	}
+	for _, want := range []string{"setup administrator account", "auth schema is not ready"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(setup admin) error = %q, want substring %q", err.Error(), want)
 		}
 	}
 }
@@ -1559,6 +1686,21 @@ func noopDatabaseChecker(context.Context, string) error {
 
 func noopDatabaseRunner() *fakeDatabaseRunner {
 	return &fakeDatabaseRunner{}
+}
+
+type fakeAdminSetupRunner struct {
+	user        auth.User
+	err         error
+	input       auth.SetupAdminInput
+	databaseURL string
+	calls       int
+}
+
+func (r *fakeAdminSetupRunner) SetupAdmin(_ context.Context, databaseURL string, input auth.SetupAdminInput) (auth.User, error) {
+	r.calls++
+	r.databaseURL = databaseURL
+	r.input = input
+	return r.user, r.err
 }
 
 type fakeDatabaseRunner struct {

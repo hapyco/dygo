@@ -150,7 +150,7 @@ func BuildMetadataSchemaPlan(entities []catalog.LoadedEntity, live LiveSchema) (
 		for _, column := range table.Columns {
 			liveColumn, columnExists := liveTable.Columns[column.Name]
 			if !tableExists || !columnExists {
-				if tableExists && column.Required && !column.HasSafeDefault {
+				if tableExists && column.Required && !column.HasSafeDefault && !canAddRequiredColumnWithoutDefault(liveTable) {
 					plan.Diagnostics = append(plan.Diagnostics, unsafeDiagnostic("missing-required-column", table.Name, column.Name, "", "required column is missing and has no safe default", column.Source))
 					continue
 				}
@@ -241,6 +241,10 @@ func BuildMetadataSchemaPlan(entities []catalog.LoadedEntity, live LiveSchema) (
 	plan.Operations = append(plan.Operations, indexes...)
 	plan.Operations = append(plan.Operations, constraints...)
 	return plan, nil
+}
+
+func canAddRequiredColumnWithoutDefault(live liveTable) bool {
+	return live.RowStateKnown && !live.HasRows
 }
 
 type desiredSchema struct {
