@@ -1,7 +1,5 @@
 name: role
 label: Role
-plural-name: roles
-plural-label: Roles
 description: Named permission group.
 fields:
   - name: name

@@ -43,8 +43,8 @@ func TestDecode(t *testing.T) {
 	if len(entity.Constraints) != 2 {
 		t.Fatalf("Decode().Constraints len = %d, want 2", len(entity.Constraints))
 	}
-	if entity.Constraints[0].EffectiveName(entity) != "leads-company-status-key" {
-		t.Fatalf("unique constraint name = %q, want leads-company-status-key", entity.Constraints[0].EffectiveName(entity))
+	if entity.Constraints[0].EffectiveName(entity) != "lead-company-status-key" {
+		t.Fatalf("unique constraint name = %q, want lead-company-status-key", entity.Constraints[0].EffectiveName(entity))
 	}
 	if entity.Constraints[1].Value.Value != "Lost" {
 		t.Fatalf("check constraint value = %q, want Lost", entity.Constraints[1].Value.Value)
@@ -85,8 +85,6 @@ func TestDecodeWithCustomFieldType(t *testing.T) {
 	entity, err := Decode([]byte(`
 name: review
 label: Review
-plural-name: reviews
-plural-label: Reviews
 fields:
   - name: score
     label: Score
@@ -116,52 +114,10 @@ description: Missing required fields
 			wantError: "name is required",
 		},
 		{
-			name: "missing plural name",
-			body: `
-name: lead
-label: Lead
-plural-label: Leads
-fields:
-  - name: title
-    label: Title
-    type: text
-`,
-			wantError: "plural-name is required",
-		},
-		{
-			name: "invalid plural name",
-			body: `
-name: lead
-label: Lead
-plural-name: LeadRecords
-plural-label: Leads
-fields:
-  - name: title
-    label: Title
-    type: text
-`,
-			wantError: "plural-name",
-		},
-		{
-			name: "missing plural label",
-			body: `
-name: lead
-label: Lead
-plural-name: leads
-fields:
-  - name: title
-    label: Title
-    type: text
-`,
-			wantError: "plural-label is required",
-		},
-		{
 			name: "invalid entity name",
 			body: `
 name: BadName
 label: Bad
-plural-name: bads
-plural-label: Bads
 fields:
   - name: title
     label: Title
@@ -174,8 +130,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 `,
 			wantError: "at least one field",
 		},
@@ -184,8 +138,6 @@ plural-label: Leads
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: title
     label: Title
@@ -201,21 +153,17 @@ fields:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: title
     type: text
 `,
-			wantError: "line 6",
+			wantError: "line 4",
 		},
 		{
 			name: "unknown field type",
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: title
     label: Title
@@ -228,8 +176,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 unknown: true
 fields:
   - name: title
@@ -244,8 +190,6 @@ fields:
 name: lead
 name: duplicate
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: title
     label: Title
@@ -258,8 +202,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: status
     label: Status
@@ -272,8 +214,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: company
     label: Company
@@ -286,8 +226,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: contacts
     label: Contacts
@@ -302,8 +240,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: details
     label: Details
@@ -317,8 +253,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: payload
     label: Payload
@@ -332,8 +266,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: details
     label: Details
@@ -347,8 +279,6 @@ fields:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: status
     label: Status
@@ -364,8 +294,6 @@ indexes:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: status
     label: Status
@@ -380,8 +308,6 @@ indexes:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: status
     label: Status
@@ -396,8 +322,6 @@ indexes:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: status
     label: Status
@@ -412,8 +336,6 @@ indexes:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: details
     label: Details
@@ -428,8 +350,6 @@ indexes:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: status
     label: Status
@@ -445,8 +365,6 @@ indexes:
 			body: `
 name: user-role
 label: User Role
-plural-name: user-roles
-plural-label: User Roles
 fields:
   - name: user
     label: User
@@ -464,8 +382,6 @@ constraints:
 			body: `
 name: user-role
 label: User Role
-plural-name: user-roles
-plural-label: User Roles
 fields:
   - name: user
     label: User
@@ -484,8 +400,6 @@ constraints:
 			body: `
 name: report
 label: Report
-plural-name: reports
-plural-label: Reports
 fields:
   - name: payload
     label: Payload
@@ -504,8 +418,6 @@ constraints:
 			body: `
 name: invoice
 label: Invoice
-plural-name: invoices
-plural-label: Invoices
 fields:
   - name: amount
     label: Amount
@@ -523,8 +435,6 @@ constraints:
 			body: `
 name: invoice
 label: Invoice
-plural-name: invoices
-plural-label: Invoices
 fields:
   - name: amount
     label: Amount
@@ -541,8 +451,6 @@ constraints:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: status
     label: Status
@@ -560,8 +468,6 @@ constraints:
 			body: `
 name: event
 label: Event
-plural-name: events
-plural-label: Events
 fields:
   - name: payload
     label: Payload
@@ -579,8 +485,6 @@ constraints:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: status
     label: Status
@@ -600,8 +504,6 @@ constraints:
 			body: `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: status
     label: Status
@@ -634,8 +536,6 @@ func validEntityYAML() string {
 	return strings.TrimSpace(`
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 description: Sales lead
 fields:
   - name: full-name

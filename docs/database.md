@@ -90,7 +90,7 @@ apps/*/entities/*.yml
   desired table schema
 ```
 
-During `dygo migrate` and `dygo db prepare`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/*.yml` is the source for Core tables such as `apps`, `entities`, `fields`, `indexes`, `constraints`, `users`, `roles`, `permissions`, and `sessions`.
+During `dygo migrate` and `dygo db prepare`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/*.yml` is the source for Core tables such as `app`, `entity`, `field`, `index`, `constraint`, `user`, `role`, `permission`, and `session`.
 
 Preview metadata sync:
 

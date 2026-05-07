@@ -1,7 +1,5 @@
 name: constraint
 label: Constraint
-plural-name: constraints
-plural-label: Constraints
 description: Top-level unique or check constraint definition belonging to an Entity.
 fields:
   - name: entity

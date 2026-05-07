@@ -38,8 +38,6 @@ type entityRecord struct {
 	AppName     string
 	Name        string
 	Label       string
-	PluralName  string
-	PluralLabel string
 	Description string
 }
 
@@ -87,7 +85,7 @@ func persistMetadataRecords(ctx context.Context, tx pgx.Tx, metadata metadataCat
 	for _, app := range records.Apps {
 		var id int64
 		if err := tx.QueryRow(ctx, `
-INSERT INTO apps (name, label, version, status)
+INSERT INTO "app" (name, label, version, status)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (name) DO UPDATE
 SET label = EXCLUDED.label,
@@ -108,16 +106,14 @@ RETURNING id`, app.Name, app.Label, app.Version, app.Status).Scan(&id); err != n
 		}
 		var id int64
 		if err := tx.QueryRow(ctx, `
-INSERT INTO entities (app_id, name, label, plural_name, plural_label, description)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO "entity" (app_id, name, label, description)
+VALUES ($1, $2, $3, $4)
 ON CONFLICT (name) DO UPDATE
 SET app_id = EXCLUDED.app_id,
 	label = EXCLUDED.label,
-	plural_name = EXCLUDED.plural_name,
-	plural_label = EXCLUDED.plural_label,
 	description = EXCLUDED.description,
 	updated_at = now()
-RETURNING id`, appID, entity.Name, entity.Label, entity.PluralName, entity.PluralLabel, entity.Description).Scan(&id); err != nil {
+RETURNING id`, appID, entity.Name, entity.Label, entity.Description).Scan(&id); err != nil {
 			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %s/%s: %w", entity.AppName, entity.Name, err)
 		}
 		entityIDs[entityKey(entity.AppName, entity.Name)] = id
@@ -164,20 +160,20 @@ RETURNING id`, appID, entity.Name, entity.Label, entity.PluralName, entity.Plura
 
 func persistFieldRecord(ctx context.Context, tx pgx.Tx, entityID int64, field fieldRecord) error {
 	var id int64
-	err := tx.QueryRow(ctx, `SELECT id FROM fields WHERE entity_id = $1 AND name = $2`, entityID, field.Name).Scan(&id)
+	err := tx.QueryRow(ctx, `SELECT id FROM "field" WHERE entity_id = $1 AND name = $2`, entityID, field.Name).Scan(&id)
 	if err != nil && err != pgx.ErrNoRows {
 		return fmt.Errorf("find field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO fields (entity_id, name, label, type, required, "unique", "index", "default", position, options)
+INSERT INTO "field" (entity_id, name, label, type, required, "unique", "index", "default", position, options)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, entityID, field.Name, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Position, field.Options); err != nil {
 			return fmt.Errorf("persist field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
 		}
 		return nil
 	}
 	if _, err := tx.Exec(ctx, `
-UPDATE fields
+UPDATE "field"
 SET label = $2,
 	type = $3,
 	required = $4,
@@ -195,20 +191,20 @@ WHERE id = $1`, id, field.Label, field.Type, field.Required, field.Unique, field
 
 func persistIndexRecord(ctx context.Context, tx pgx.Tx, entityID int64, index indexRecord) error {
 	var id int64
-	err := tx.QueryRow(ctx, `SELECT id FROM indexes WHERE entity_id = $1 AND name = $2`, entityID, index.Name).Scan(&id)
+	err := tx.QueryRow(ctx, `SELECT id FROM "index" WHERE entity_id = $1 AND name = $2`, entityID, index.Name).Scan(&id)
 	if err != nil && err != pgx.ErrNoRows {
 		return fmt.Errorf("find index metadata %s/%s.%s: %w", index.EntityAppName, index.EntityName, index.Name, err)
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO indexes (entity_id, name, fields, position)
+INSERT INTO "index" (entity_id, name, fields, position)
 VALUES ($1, $2, $3, $4)`, entityID, index.Name, index.Fields, index.Position); err != nil {
 			return fmt.Errorf("persist index metadata %s/%s.%s: %w", index.EntityAppName, index.EntityName, index.Name, err)
 		}
 		return nil
 	}
 	if _, err := tx.Exec(ctx, `
-UPDATE indexes
+UPDATE "index"
 SET fields = $2,
 	position = $3,
 	updated_at = now()
@@ -220,20 +216,20 @@ WHERE id = $1`, id, index.Fields, index.Position); err != nil {
 
 func persistConstraintRecord(ctx context.Context, tx pgx.Tx, entityID int64, constraint constraintRecord) error {
 	var id int64
-	err := tx.QueryRow(ctx, `SELECT id FROM constraints WHERE entity_id = $1 AND name = $2`, entityID, constraint.Name).Scan(&id)
+	err := tx.QueryRow(ctx, `SELECT id FROM "constraint" WHERE entity_id = $1 AND name = $2`, entityID, constraint.Name).Scan(&id)
 	if err != nil && err != pgx.ErrNoRows {
 		return fmt.Errorf("find constraint metadata %s/%s.%s: %w", constraint.EntityAppName, constraint.EntityName, constraint.Name, err)
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO constraints (entity_id, name, type, fields, field, operator, value, position)
+INSERT INTO "constraint" (entity_id, name, type, fields, field, operator, value, position)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, entityID, constraint.Name, constraint.Type, constraint.Fields, nullIfEmpty(constraint.Field), nullIfEmpty(constraint.Operator), constraint.Value, constraint.Position); err != nil {
 			return fmt.Errorf("persist constraint metadata %s/%s.%s: %w", constraint.EntityAppName, constraint.EntityName, constraint.Name, err)
 		}
 		return nil
 	}
 	if _, err := tx.Exec(ctx, `
-UPDATE constraints
+UPDATE "constraint"
 SET type = $2,
 	fields = $3,
 	field = $4,
@@ -262,8 +258,6 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			AppName:     loaded.AppName,
 			Name:        loaded.Entity.Name,
 			Label:       loaded.Entity.Label,
-			PluralName:  loaded.Entity.PluralName,
-			PluralLabel: loaded.Entity.PluralLabel,
 			Description: loaded.Entity.Description,
 		})
 		for index, field := range loaded.Entity.Fields {

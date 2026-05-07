@@ -22,28 +22,28 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 
 	descriptions := operationDescriptions(plan)
 	for _, want := range []string{
-		"create table apps",
-		"create table entities",
-		"add column apps.name",
-		"add column entities.app_id",
-		"create index entities_app_id_idx on entities.app_id",
-		"add unique constraint apps_name_key on apps.name",
-		"add check constraint apps_status_check on apps.status",
-		"add foreign-key constraint entities_app_id_fkey on entities.app_id",
+		"create table app",
+		"create table entity",
+		"add column app.name",
+		"add column entity.app_id",
+		"create index entity_app_id_idx on entity.app_id",
+		"add unique constraint app_name_key on app.name",
+		"add check constraint app_status_check on app.status",
+		"add foreign-key constraint entity_app_id_fkey on entity.app_id",
 	} {
 		assertContains(t, descriptions, want)
 	}
 
 	sql := operationSQL(plan)
-	assertContains(t, sql, `CREATE TABLE "apps"`)
-	assertContains(t, sql, `ALTER TABLE "apps" ADD COLUMN "name" text NOT NULL`)
-	assertContains(t, sql, `CREATE INDEX "entities_app_id_idx" ON "entities" ("app_id")`)
-	assertContains(t, sql, `ALTER TABLE "entities" ADD CONSTRAINT "entities_app_id_fkey" FOREIGN KEY ("app_id") REFERENCES "apps"("id") ON DELETE CASCADE`)
+	assertContains(t, sql, `CREATE TABLE "app"`)
+	assertContains(t, sql, `ALTER TABLE "app" ADD COLUMN "name" text NOT NULL`)
+	assertContains(t, sql, `CREATE INDEX "entity_app_id_idx" ON "entity" ("app_id")`)
+	assertContains(t, sql, `ALTER TABLE "entity" ADD CONSTRAINT "entity_app_id_fkey" FOREIGN KEY ("app_id") REFERENCES "app"("id") ON DELETE CASCADE`)
 }
 
 func TestBuildMetadataSchemaPlanForMatchingDatabase(t *testing.T) {
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{appEntity()}, LiveSchema{Tables: map[string]liveTable{
-		"apps": liveSchemaTable("apps",
+		"app": liveSchemaTable("app",
 			map[string]liveColumn{
 				"id":         {Name: "id", Type: "bigint", Nullable: false},
 				"created_at": {Name: "created_at", Type: "timestamptz", Nullable: false},
@@ -52,10 +52,10 @@ func TestBuildMetadataSchemaPlanForMatchingDatabase(t *testing.T) {
 				"status":     {Name: "status", Type: "text", Nullable: false},
 			},
 			map[string]liveConstraint{
-				"apps_pkey":          {Name: "apps_pkey", Type: "primary-key"},
-				"apps_name_not_null": {Name: "apps_name_not_null", Type: "not-null"},
-				"apps_name_key":      {Name: "apps_name_key", Type: "unique"},
-				"apps_status_check":  {Name: "apps_status_check", Type: "check"},
+				"app_pkey":          {Name: "app_pkey", Type: "primary-key"},
+				"app_name_not_null": {Name: "app_name_not_null", Type: "not-null"},
+				"app_name_key":      {Name: "app_name_key", Type: "unique"},
+				"app_status_check":  {Name: "app_status_check", Type: "check"},
 			},
 			nil,
 		),
@@ -76,15 +76,14 @@ func TestBuildMetadataSchemaPlanAddsMissingNullableColumn(t *testing.T) {
 		AppName: "crm",
 		Path:    "apps/crm/entities/lead.yml",
 		Entity: schema.Entity{
-			Name:       "lead",
-			PluralName: "leads",
+			Name: "lead",
 			Fields: []schema.Field{
 				{Name: "note", Type: "text"},
 			},
 		},
 	}
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{
-		"leads": liveSchemaTable("leads", systemColumns(), map[string]liveConstraint{"leads_pkey": {Name: "leads_pkey", Type: "primary-key"}}, nil),
+		"lead": liveSchemaTable("lead", systemColumns(), map[string]liveConstraint{"lead_pkey": {Name: "lead_pkey", Type: "primary-key"}}, nil),
 	}})
 	if err != nil {
 		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
@@ -92,7 +91,7 @@ func TestBuildMetadataSchemaPlanAddsMissingNullableColumn(t *testing.T) {
 	if plan.HasBlockers() {
 		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
 	}
-	assertContains(t, operationDescriptions(plan), "add column leads.note")
+	assertContains(t, operationDescriptions(plan), "add column lead.note")
 }
 
 func TestBuildMetadataSchemaPlanRejectsMissingRequiredColumnWithoutDefault(t *testing.T) {
@@ -100,15 +99,14 @@ func TestBuildMetadataSchemaPlanRejectsMissingRequiredColumnWithoutDefault(t *te
 		AppName: "crm",
 		Path:    "apps/crm/entities/lead.yml",
 		Entity: schema.Entity{
-			Name:       "lead",
-			PluralName: "leads",
+			Name: "lead",
 			Fields: []schema.Field{
 				{Name: "full-name", Type: "text", Required: true},
 			},
 		},
 	}
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{
-		"leads": liveSchemaTable("leads", systemColumns(), map[string]liveConstraint{"leads_pkey": {Name: "leads_pkey", Type: "primary-key"}}, nil),
+		"lead": liveSchemaTable("lead", systemColumns(), map[string]liveConstraint{"lead_pkey": {Name: "lead_pkey", Type: "primary-key"}}, nil),
 	}})
 	if err != nil {
 		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
@@ -124,8 +122,7 @@ func TestBuildMetadataSchemaPlanAddsMissingIndexAndConstraint(t *testing.T) {
 		AppName: "crm",
 		Path:    "apps/crm/entities/lead.yml",
 		Entity: schema.Entity{
-			Name:       "lead",
-			PluralName: "leads",
+			Name: "lead",
 			Fields: []schema.Field{
 				{Name: "email", Type: "email", Unique: true, Index: true},
 			},
@@ -134,7 +131,7 @@ func TestBuildMetadataSchemaPlanAddsMissingIndexAndConstraint(t *testing.T) {
 	columns := systemColumns()
 	columns["email"] = liveColumn{Name: "email", Type: "text", Nullable: true}
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{
-		"leads": liveSchemaTable("leads", columns, map[string]liveConstraint{"leads_pkey": {Name: "leads_pkey", Type: "primary-key"}}, nil),
+		"lead": liveSchemaTable("lead", columns, map[string]liveConstraint{"lead_pkey": {Name: "lead_pkey", Type: "primary-key"}}, nil),
 	}})
 	if err != nil {
 		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
@@ -142,8 +139,8 @@ func TestBuildMetadataSchemaPlanAddsMissingIndexAndConstraint(t *testing.T) {
 	if plan.HasBlockers() {
 		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
 	}
-	assertContains(t, operationDescriptions(plan), "create index leads_email_idx on leads.email")
-	assertContains(t, operationDescriptions(plan), "add unique constraint leads_email_key on leads.email")
+	assertContains(t, operationDescriptions(plan), "create index lead_email_idx on lead.email")
+	assertContains(t, operationDescriptions(plan), "add unique constraint lead_email_key on lead.email")
 }
 
 func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) {
@@ -151,8 +148,7 @@ func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) 
 		AppName: "sales",
 		Path:    "apps/sales/entities/deal.yml",
 		Entity: schema.Entity{
-			Name:       "deal",
-			PluralName: "deals",
+			Name: "deal",
 			Fields: []schema.Field{
 				{Name: "company", Type: "link", Options: entityOption("company")},
 				{Name: "status", Type: "text"},
@@ -171,9 +167,8 @@ func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) 
 		AppName: "sales",
 		Path:    "apps/sales/entities/company.yml",
 		Entity: schema.Entity{
-			Name:       "company",
-			PluralName: "companies",
-			Fields:     []schema.Field{{Name: "name", Type: "text"}},
+			Name:   "company",
+			Fields: []schema.Field{{Name: "name", Type: "text"}},
 		},
 	}
 	columns := systemColumns()
@@ -181,8 +176,8 @@ func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) 
 	columns["status"] = liveColumn{Name: "status", Type: "text", Nullable: true}
 	columns["amount"] = liveColumn{Name: "amount", Type: "numeric", Nullable: true}
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity, company}, LiveSchema{Tables: map[string]liveTable{
-		"deals":     liveSchemaTable("deals", columns, map[string]liveConstraint{"deals_pkey": {Name: "deals_pkey", Type: "primary-key"}}, nil),
-		"companies": liveSchemaTable("companies", systemColumns(), map[string]liveConstraint{"companies_pkey": {Name: "companies_pkey", Type: "primary-key"}}, nil),
+		"deal":    liveSchemaTable("deal", columns, map[string]liveConstraint{"deal_pkey": {Name: "deal_pkey", Type: "primary-key"}}, nil),
+		"company": liveSchemaTable("company", systemColumns(), map[string]liveConstraint{"company_pkey": {Name: "company_pkey", Type: "primary-key"}}, nil),
 	}})
 	if err != nil {
 		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
@@ -192,14 +187,14 @@ func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) 
 	}
 
 	descriptions := operationDescriptions(plan)
-	assertContains(t, descriptions, "create index by_company_status on deals(company_id, status)")
-	assertContains(t, descriptions, "add unique constraint deals_company_status_key on deals(company_id, status)")
-	assertContains(t, descriptions, "add check constraint deals_amount_gte_check on deals.amount")
+	assertContains(t, descriptions, "create index by_company_status on deal(company_id, status)")
+	assertContains(t, descriptions, "add unique constraint deal_company_status_key on deal(company_id, status)")
+	assertContains(t, descriptions, "add check constraint deal_amount_gte_check on deal.amount")
 
 	sql := operationSQL(plan)
-	assertContains(t, sql, `CREATE INDEX "by_company_status" ON "deals" ("company_id", "status")`)
-	assertContains(t, sql, `ALTER TABLE "deals" ADD CONSTRAINT "deals_company_status_key" UNIQUE ("company_id", "status")`)
-	assertContains(t, sql, `ALTER TABLE "deals" ADD CONSTRAINT "deals_amount_gte_check" CHECK ("amount" >= 0)`)
+	assertContains(t, sql, `CREATE INDEX "by_company_status" ON "deal" ("company_id", "status")`)
+	assertContains(t, sql, `ALTER TABLE "deal" ADD CONSTRAINT "deal_company_status_key" UNIQUE ("company_id", "status")`)
+	assertContains(t, sql, `ALTER TABLE "deal" ADD CONSTRAINT "deal_amount_gte_check" CHECK ("amount" >= 0)`)
 }
 
 func TestBuildMetadataSchemaPlanReportsChangedIndexAndConstraintDefinition(t *testing.T) {
@@ -207,8 +202,7 @@ func TestBuildMetadataSchemaPlanReportsChangedIndexAndConstraintDefinition(t *te
 		AppName: "sales",
 		Path:    "apps/sales/entities/deal.yml",
 		Entity: schema.Entity{
-			Name:       "deal",
-			PluralName: "deals",
+			Name: "deal",
 			Fields: []schema.Field{
 				{Name: "status", Type: "text"},
 				{Name: "source", Type: "text"},
@@ -225,9 +219,9 @@ func TestBuildMetadataSchemaPlanReportsChangedIndexAndConstraintDefinition(t *te
 	columns["status"] = liveColumn{Name: "status", Type: "text", Nullable: true}
 	columns["source"] = liveColumn{Name: "source", Type: "text", Nullable: true}
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{
-		"deals": liveSchemaTable("deals", columns, map[string]liveConstraint{
-			"deals_pkey":              {Name: "deals_pkey", Type: "primary-key"},
-			"deals_status_source_key": {Name: "deals_status_source_key", Type: "unique", Definition: "UNIQUE (status)"},
+		"deal": liveSchemaTable("deal", columns, map[string]liveConstraint{
+			"deal_pkey":              {Name: "deal_pkey", Type: "primary-key"},
+			"deal_status_source_key": {Name: "deal_status_source_key", Type: "unique", Definition: "UNIQUE (status)"},
 		}, map[string]liveIndex{
 			"by_status_source": {Name: "by_status_source", Definition: "CREATE INDEX by_status_source ON public.deals USING btree (status)"},
 		}),
@@ -240,7 +234,7 @@ func TestBuildMetadataSchemaPlanReportsChangedIndexAndConstraintDefinition(t *te
 	}
 	errText := plan.BlockerError().Error()
 	assertContains(t, errText, "index \"by_status_source\" exists in database but differs from metadata")
-	assertContains(t, errText, "constraint \"deals_status_source_key\" exists in database but differs from metadata")
+	assertContains(t, errText, "constraint \"deal_status_source_key\" exists in database but differs from metadata")
 }
 
 func TestBuildMetadataSchemaPlanRejectsDuplicateDesiredObjectNames(t *testing.T) {
@@ -248,13 +242,12 @@ func TestBuildMetadataSchemaPlanRejectsDuplicateDesiredObjectNames(t *testing.T)
 		AppName: "crm",
 		Path:    "apps/crm/entities/lead.yml",
 		Entity: schema.Entity{
-			Name:       "lead",
-			PluralName: "leads",
+			Name: "lead",
 			Fields: []schema.Field{
 				{Name: "status", Type: "text", Index: true},
 			},
 			Indexes: []schema.Index{
-				{Name: "leads-status-idx", Fields: []string{"status"}},
+				{Name: "lead-status-idx", Fields: []string{"status"}},
 			},
 		},
 	}}, LiveSchema{Tables: map[string]liveTable{}})
@@ -266,7 +259,7 @@ func TestBuildMetadataSchemaPlanRejectsDuplicateDesiredObjectNames(t *testing.T)
 
 func TestBuildMetadataSchemaPlanReportsExtraTableAndColumn(t *testing.T) {
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{appEntity()}, LiveSchema{Tables: map[string]liveTable{
-		"apps": liveSchemaTable("apps",
+		"app": liveSchemaTable("app",
 			map[string]liveColumn{
 				"id":         {Name: "id", Type: "bigint", Nullable: false},
 				"created_at": {Name: "created_at", Type: "timestamptz", Nullable: false},
@@ -276,9 +269,9 @@ func TestBuildMetadataSchemaPlanReportsExtraTableAndColumn(t *testing.T) {
 				"legacy":     {Name: "legacy", Type: "text", Nullable: true},
 			},
 			map[string]liveConstraint{
-				"apps_pkey":         {Name: "apps_pkey", Type: "primary-key"},
-				"apps_name_key":     {Name: "apps_name_key", Type: "unique"},
-				"apps_status_check": {Name: "apps_status_check", Type: "check"},
+				"app_pkey":         {Name: "app_pkey", Type: "primary-key"},
+				"app_name_key":     {Name: "app_name_key", Type: "unique"},
+				"app_status_check": {Name: "app_status_check", Type: "check"},
 			},
 			nil,
 		),
@@ -288,7 +281,7 @@ func TestBuildMetadataSchemaPlanReportsExtraTableAndColumn(t *testing.T) {
 		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
 	}
 	errText := plan.BlockerError().Error()
-	assertContains(t, errText, "apps.legacy")
+	assertContains(t, errText, "app.legacy")
 	assertContains(t, errText, "legacy_tables")
 }
 
@@ -298,10 +291,10 @@ func TestBuildMetadataSchemaPlanReportsTypeDrift(t *testing.T) {
 	columns["status"] = liveColumn{Name: "status", Type: "text", Nullable: false}
 
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{appEntity()}, LiveSchema{Tables: map[string]liveTable{
-		"apps": liveSchemaTable("apps", columns, map[string]liveConstraint{
-			"apps_pkey":         {Name: "apps_pkey", Type: "primary-key"},
-			"apps_name_key":     {Name: "apps_name_key", Type: "unique"},
-			"apps_status_check": {Name: "apps_status_check", Type: "check"},
+		"app": liveSchemaTable("app", columns, map[string]liveConstraint{
+			"app_pkey":         {Name: "app_pkey", Type: "primary-key"},
+			"app_name_key":     {Name: "app_name_key", Type: "unique"},
+			"app_status_check": {Name: "app_status_check", Type: "check"},
 		}, nil),
 	}})
 	if err != nil {
@@ -315,8 +308,7 @@ func TestBuildMetadataSchemaPlanReportsChildTableUnsupported(t *testing.T) {
 		AppName: "crm",
 		Path:    "apps/crm/entities/lead.yml",
 		Entity: schema.Entity{
-			Name:       "lead",
-			PluralName: "leads",
+			Name: "lead",
 			Fields: []schema.Field{
 				{Name: "contacts", Type: "child-table", Options: entityOption("lead-contact")},
 			},
@@ -330,8 +322,8 @@ func TestBuildMetadataSchemaPlanReportsChildTableUnsupported(t *testing.T) {
 
 func TestBuildMetadataSchemaPlanRejectsDuplicateTableNames(t *testing.T) {
 	_, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{
-		{AppName: "one", Path: "apps/one/entities/user.yml", Entity: schema.Entity{Name: "user", PluralName: "users"}},
-		{AppName: "two", Path: "apps/two/entities/user.yml", Entity: schema.Entity{Name: "user", PluralName: "users"}},
+		{AppName: "one", Path: "apps/one/entities/user.yml", Entity: schema.Entity{Name: "user"}},
+		{AppName: "two", Path: "apps/two/entities/user.yml", Entity: schema.Entity{Name: "user"}},
 	}, LiveSchema{Tables: map[string]liveTable{}})
 	if err == nil {
 		t.Fatal("BuildMetadataSchemaPlan() error = nil, want duplicate table error")
@@ -362,11 +354,10 @@ func coreSchemaEntities() []catalog.LoadedEntity {
 			AppName: "core",
 			Path:    "apps/core/entities/entity.yml",
 			Entity: schema.Entity{
-				Name:       "entity",
-				PluralName: "entities",
+				Name: "entity",
 				Fields: []schema.Field{
 					{Name: "app", Type: "link", Required: true, Index: true, Options: entityOption("app")},
-					{Name: "plural-name", Type: "text", Required: true, Unique: true},
+					{Name: "name", Type: "text", Required: true, Unique: true},
 				},
 			},
 		},
@@ -378,8 +369,7 @@ func appEntity() catalog.LoadedEntity {
 		AppName: "core",
 		Path:    "apps/core/entities/app.yml",
 		Entity: schema.Entity{
-			Name:       "app",
-			PluralName: "apps",
+			Name: "app",
 			Fields: []schema.Field{
 				{Name: "name", Type: "text", Required: true, Unique: true},
 				{Name: "status", Type: "select", Required: true, Default: stringDefault("active"), Options: options("installed", "active")},

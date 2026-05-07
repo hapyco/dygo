@@ -24,10 +24,10 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: apps; Type: TABLE; Schema: public; Owner: -
+-- Name: app; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.apps (
+CREATE TABLE public.app (
     id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -35,16 +35,16 @@ CREATE TABLE public.apps (
     label text NOT NULL,
     version text NOT NULL,
     status text DEFAULT 'active'::text NOT NULL,
-    CONSTRAINT apps_status_check CHECK ((status = ANY (ARRAY['installed'::text, 'active'::text, 'disabled'::text, 'pending-install'::text, 'pending-upgrade'::text, 'failed'::text])))
+    CONSTRAINT app_status_check CHECK ((status = ANY (ARRAY['installed'::text, 'active'::text, 'disabled'::text, 'pending-install'::text, 'pending-upgrade'::text, 'failed'::text])))
 );
 
 
 --
--- Name: apps_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: app_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-ALTER TABLE public.apps ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.apps_id_seq
+ALTER TABLE public.app ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.app_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -54,10 +54,10 @@ ALTER TABLE public.apps ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- Name: constraints; Type: TABLE; Schema: public; Owner: -
+-- Name: constraint; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.constraints (
+CREATE TABLE public."constraint" (
     id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -69,17 +69,17 @@ CREATE TABLE public.constraints (
     operator text,
     value jsonb,
     "position" integer,
-    CONSTRAINT constraints_operator_check CHECK ((operator = ANY (ARRAY['eq'::text, 'neq'::text, 'gt'::text, 'gte'::text, 'lt'::text, 'lte'::text, 'in'::text, 'not-in'::text]))),
-    CONSTRAINT constraints_type_check CHECK ((type = ANY (ARRAY['unique'::text, 'check'::text])))
+    CONSTRAINT constraint_operator_check CHECK ((operator = ANY (ARRAY['eq'::text, 'neq'::text, 'gt'::text, 'gte'::text, 'lt'::text, 'lte'::text, 'in'::text, 'not-in'::text]))),
+    CONSTRAINT constraint_type_check CHECK ((type = ANY (ARRAY['unique'::text, 'check'::text])))
 );
 
 
 --
--- Name: constraints_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: constraint_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-ALTER TABLE public.constraints ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.constraints_id_seq
+ALTER TABLE public."constraint" ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.constraint_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -89,28 +89,26 @@ ALTER TABLE public.constraints ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY 
 
 
 --
--- Name: entities; Type: TABLE; Schema: public; Owner: -
+-- Name: entity; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.entities (
+CREATE TABLE public.entity (
     id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     app_id bigint NOT NULL,
     name text NOT NULL,
     label text NOT NULL,
-    plural_name text NOT NULL,
-    plural_label text NOT NULL,
     description text
 );
 
 
 --
--- Name: entities_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: entity_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-ALTER TABLE public.entities ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.entities_id_seq
+ALTER TABLE public.entity ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.entity_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -120,10 +118,10 @@ ALTER TABLE public.entities ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- Name: fields; Type: TABLE; Schema: public; Owner: -
+-- Name: field; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.fields (
+CREATE TABLE public.field (
     id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -133,19 +131,19 @@ CREATE TABLE public.fields (
     type text NOT NULL,
     required boolean DEFAULT false,
     "unique" boolean DEFAULT false,
-    "position" integer,
-    options jsonb,
     index boolean DEFAULT false,
-    "default" jsonb
+    "default" jsonb,
+    "position" integer,
+    options jsonb
 );
 
 
 --
--- Name: fields_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: field_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-ALTER TABLE public.fields ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.fields_id_seq
+ALTER TABLE public.field ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.field_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -155,10 +153,10 @@ ALTER TABLE public.fields ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- Name: indexes; Type: TABLE; Schema: public; Owner: -
+-- Name: index; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.indexes (
+CREATE TABLE public.index (
     id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -170,11 +168,11 @@ CREATE TABLE public.indexes (
 
 
 --
--- Name: indexes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: index_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-ALTER TABLE public.indexes ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.indexes_id_seq
+ALTER TABLE public.index ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.index_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -184,10 +182,10 @@ ALTER TABLE public.indexes ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- Name: permissions; Type: TABLE; Schema: public; Owner: -
+-- Name: permission; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.permissions (
+CREATE TABLE public.permission (
     id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -203,11 +201,11 @@ CREATE TABLE public.permissions (
 
 
 --
--- Name: permissions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: permission_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-ALTER TABLE public.permissions ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.permissions_id_seq
+ALTER TABLE public.permission ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.permission_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -217,10 +215,10 @@ ALTER TABLE public.permissions ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY 
 
 
 --
--- Name: roles; Type: TABLE; Schema: public; Owner: -
+-- Name: role; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.roles (
+CREATE TABLE public.role (
     id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -232,11 +230,11 @@ CREATE TABLE public.roles (
 
 
 --
--- Name: roles_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: role_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-ALTER TABLE public.roles ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.roles_id_seq
+ALTER TABLE public.role ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.role_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -246,10 +244,10 @@ ALTER TABLE public.roles ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- Name: sessions; Type: TABLE; Schema: public; Owner: -
+-- Name: session; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.sessions (
+CREATE TABLE public.session (
     id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -258,16 +256,16 @@ CREATE TABLE public.sessions (
     started_at timestamp with time zone NOT NULL,
     expires_at timestamp with time zone,
     last_seen_at timestamp with time zone,
-    CONSTRAINT sessions_status_check CHECK ((status = ANY (ARRAY['active'::text, 'expired'::text, 'revoked'::text])))
+    CONSTRAINT session_status_check CHECK ((status = ANY (ARRAY['active'::text, 'expired'::text, 'revoked'::text])))
 );
 
 
 --
--- Name: sessions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: session_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-ALTER TABLE public.sessions ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.sessions_id_seq
+ALTER TABLE public.session ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.session_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -277,37 +275,10 @@ ALTER TABLE public.sessions ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- Name: user_roles; Type: TABLE; Schema: public; Owner: -
+-- Name: user; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.user_roles (
-    id bigint NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    user_id bigint NOT NULL,
-    role_id bigint NOT NULL
-);
-
-
---
--- Name: user_roles_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-ALTER TABLE public.user_roles ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.user_roles_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
-
---
--- Name: users; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.users (
+CREATE TABLE public."user" (
     id bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -318,11 +289,11 @@ CREATE TABLE public.users (
 
 
 --
--- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: user_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-ALTER TABLE public.users ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME public.users_id_seq
+ALTER TABLE public."user" ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.user_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -332,361 +303,380 @@ ALTER TABLE public.users ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- Name: apps apps_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: user_role; Type: TABLE; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.apps
-    ADD CONSTRAINT apps_name_key UNIQUE (name);
+CREATE TABLE public.user_role (
+    id bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    user_id bigint NOT NULL,
+    role_id bigint NOT NULL
+);
 
 
 --
--- Name: apps apps_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: user_role_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.apps
-    ADD CONSTRAINT apps_pkey PRIMARY KEY (id);
+ALTER TABLE public.user_role ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.user_role_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
 
 
 --
--- Name: constraints constraints_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: app app_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.constraints
-    ADD CONSTRAINT constraints_entity_name_key UNIQUE (entity_id, name);
+ALTER TABLE ONLY public.app
+    ADD CONSTRAINT app_name_key UNIQUE (name);
 
 
 --
--- Name: constraints constraints_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: app app_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.constraints
-    ADD CONSTRAINT constraints_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.app
+    ADD CONSTRAINT app_pkey PRIMARY KEY (id);
 
 
 --
--- Name: entities entities_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: constraint constraint_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.entities
-    ADD CONSTRAINT entities_name_key UNIQUE (name);
+ALTER TABLE ONLY public."constraint"
+    ADD CONSTRAINT constraint_entity_name_key UNIQUE (entity_id, name);
 
 
 --
--- Name: entities entities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: constraint constraint_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.entities
-    ADD CONSTRAINT entities_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public."constraint"
+    ADD CONSTRAINT constraint_pkey PRIMARY KEY (id);
 
 
 --
--- Name: entities entities_plural_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: entity entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.entities
-    ADD CONSTRAINT entities_plural_name_key UNIQUE (plural_name);
+ALTER TABLE ONLY public.entity
+    ADD CONSTRAINT entity_name_key UNIQUE (name);
 
 
 --
--- Name: fields fields_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: entity entity_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.fields
-    ADD CONSTRAINT fields_entity_name_key UNIQUE (entity_id, name);
+ALTER TABLE ONLY public.entity
+    ADD CONSTRAINT entity_pkey PRIMARY KEY (id);
 
 
 --
--- Name: fields fields_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: field field_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.fields
-    ADD CONSTRAINT fields_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.field
+    ADD CONSTRAINT field_entity_name_key UNIQUE (entity_id, name);
 
 
 --
--- Name: indexes indexes_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: field field_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.indexes
-    ADD CONSTRAINT indexes_entity_name_key UNIQUE (entity_id, name);
+ALTER TABLE ONLY public.field
+    ADD CONSTRAINT field_pkey PRIMARY KEY (id);
 
 
 --
--- Name: indexes indexes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: index index_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.indexes
-    ADD CONSTRAINT indexes_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.index
+    ADD CONSTRAINT index_entity_name_key UNIQUE (entity_id, name);
 
 
 --
--- Name: permissions permissions_entity_role_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: index index_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.permissions
-    ADD CONSTRAINT permissions_entity_role_key UNIQUE (entity_id, role_id);
+ALTER TABLE ONLY public.index
+    ADD CONSTRAINT index_pkey PRIMARY KEY (id);
 
 
 --
--- Name: permissions permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: permission permission_entity_role_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.permissions
-    ADD CONSTRAINT permissions_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.permission
+    ADD CONSTRAINT permission_entity_role_key UNIQUE (entity_id, role_id);
 
 
 --
--- Name: roles roles_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: permission permission_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.roles
-    ADD CONSTRAINT roles_name_key UNIQUE (name);
+ALTER TABLE ONLY public.permission
+    ADD CONSTRAINT permission_pkey PRIMARY KEY (id);
 
 
 --
--- Name: roles roles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: role role_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.roles
-    ADD CONSTRAINT roles_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.role
+    ADD CONSTRAINT role_name_key UNIQUE (name);
 
 
 --
--- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: role role_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.sessions
-    ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.role
+    ADD CONSTRAINT role_pkey PRIMARY KEY (id);
 
 
 --
--- Name: user_roles user_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: session session_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.user_roles
-    ADD CONSTRAINT user_roles_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.session
+    ADD CONSTRAINT session_pkey PRIMARY KEY (id);
 
 
 --
--- Name: user_roles user_roles_user_role_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: user user_email_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.user_roles
-    ADD CONSTRAINT user_roles_user_role_key UNIQUE (user_id, role_id);
+ALTER TABLE ONLY public."user"
+    ADD CONSTRAINT user_email_key UNIQUE (email);
 
 
 --
--- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: user user_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_email_key UNIQUE (email);
+ALTER TABLE ONLY public."user"
+    ADD CONSTRAINT user_pkey PRIMARY KEY (id);
 
 
 --
--- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: user_role user_role_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.user_role
+    ADD CONSTRAINT user_role_pkey PRIMARY KEY (id);
 
 
 --
--- Name: constraints_entity_id_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: user_role user_role_user_role_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-CREATE INDEX constraints_entity_id_idx ON public.constraints USING btree (entity_id);
+ALTER TABLE ONLY public.user_role
+    ADD CONSTRAINT user_role_user_role_key UNIQUE (user_id, role_id);
 
 
 --
--- Name: constraints_name_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: constraint_entity_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX constraints_name_idx ON public.constraints USING btree (name);
+CREATE INDEX constraint_entity_id_idx ON public."constraint" USING btree (entity_id);
 
 
 --
--- Name: constraints_type_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: constraint_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX constraints_type_idx ON public.constraints USING btree (type);
+CREATE INDEX constraint_name_idx ON public."constraint" USING btree (name);
 
 
 --
--- Name: entities_app_id_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: constraint_type_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX entities_app_id_idx ON public.entities USING btree (app_id);
+CREATE INDEX constraint_type_idx ON public."constraint" USING btree (type);
 
 
 --
--- Name: entities_name_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: entity_app_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX entities_name_idx ON public.entities USING btree (name);
+CREATE INDEX entity_app_id_idx ON public.entity USING btree (app_id);
 
 
 --
--- Name: fields_entity_id_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: entity_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX fields_entity_id_idx ON public.fields USING btree (entity_id);
+CREATE INDEX entity_name_idx ON public.entity USING btree (name);
 
 
 --
--- Name: fields_name_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: field_entity_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX fields_name_idx ON public.fields USING btree (name);
+CREATE INDEX field_entity_id_idx ON public.field USING btree (entity_id);
 
 
 --
--- Name: fields_type_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: field_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX fields_type_idx ON public.fields USING btree (type);
+CREATE INDEX field_name_idx ON public.field USING btree (name);
 
 
 --
--- Name: indexes_entity_id_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: field_type_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX indexes_entity_id_idx ON public.indexes USING btree (entity_id);
+CREATE INDEX field_type_idx ON public.field USING btree (type);
 
 
 --
--- Name: indexes_name_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: index_entity_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX indexes_name_idx ON public.indexes USING btree (name);
+CREATE INDEX index_entity_id_idx ON public.index USING btree (entity_id);
 
 
 --
--- Name: permissions_entity_id_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: index_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX permissions_entity_id_idx ON public.permissions USING btree (entity_id);
+CREATE INDEX index_name_idx ON public.index USING btree (name);
 
 
 --
--- Name: permissions_role_id_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: permission_entity_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX permissions_role_id_idx ON public.permissions USING btree (role_id);
+CREATE INDEX permission_entity_id_idx ON public.permission USING btree (entity_id);
 
 
 --
--- Name: roles_enabled_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: permission_role_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX roles_enabled_idx ON public.roles USING btree (enabled);
+CREATE INDEX permission_role_id_idx ON public.permission USING btree (role_id);
 
 
 --
--- Name: sessions_status_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: role_enabled_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX sessions_status_idx ON public.sessions USING btree (status);
+CREATE INDEX role_enabled_idx ON public.role USING btree (enabled);
 
 
 --
--- Name: sessions_user_id_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: session_status_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX sessions_user_id_idx ON public.sessions USING btree (user_id);
+CREATE INDEX session_status_idx ON public.session USING btree (status);
 
 
 --
--- Name: user_roles_role_id_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: session_user_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX user_roles_role_id_idx ON public.user_roles USING btree (role_id);
+CREATE INDEX session_user_id_idx ON public.session USING btree (user_id);
 
 
 --
--- Name: user_roles_user_id_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: user_enabled_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX user_roles_user_id_idx ON public.user_roles USING btree (user_id);
+CREATE INDEX user_enabled_idx ON public."user" USING btree (enabled);
 
 
 --
--- Name: users_enabled_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: user_role_role_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX users_enabled_idx ON public.users USING btree (enabled);
+CREATE INDEX user_role_role_id_idx ON public.user_role USING btree (role_id);
 
 
 --
--- Name: constraints constraints_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: user_role_user_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.constraints
-    ADD CONSTRAINT constraints_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entities(id) ON DELETE CASCADE;
+CREATE INDEX user_role_user_id_idx ON public.user_role USING btree (user_id);
 
 
 --
--- Name: entities entities_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: constraint constraint_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.entities
-    ADD CONSTRAINT entities_app_id_fkey FOREIGN KEY (app_id) REFERENCES public.apps(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public."constraint"
+    ADD CONSTRAINT constraint_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id) ON DELETE CASCADE;
 
 
 --
--- Name: fields fields_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: entity entity_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.fields
-    ADD CONSTRAINT fields_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entities(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.entity
+    ADD CONSTRAINT entity_app_id_fkey FOREIGN KEY (app_id) REFERENCES public.app(id) ON DELETE CASCADE;
 
 
 --
--- Name: indexes indexes_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: field field_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.indexes
-    ADD CONSTRAINT indexes_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entities(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.field
+    ADD CONSTRAINT field_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id) ON DELETE CASCADE;
 
 
 --
--- Name: permissions permissions_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: index index_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.permissions
-    ADD CONSTRAINT permissions_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entities(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.index
+    ADD CONSTRAINT index_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id) ON DELETE CASCADE;
 
 
 --
--- Name: permissions permissions_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: permission permission_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.permissions
-    ADD CONSTRAINT permissions_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.permission
+    ADD CONSTRAINT permission_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id) ON DELETE CASCADE;
 
 
 --
--- Name: sessions sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: permission permission_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.sessions
-    ADD CONSTRAINT sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.permission
+    ADD CONSTRAINT permission_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.role(id) ON DELETE CASCADE;
 
 
 --
--- Name: user_roles user_roles_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: session session_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.user_roles
-    ADD CONSTRAINT user_roles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.session
+    ADD CONSTRAINT session_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id) ON DELETE CASCADE;
 
 
 --
--- Name: user_roles user_roles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: user_role user_role_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.user_roles
-    ADD CONSTRAINT user_roles_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.user_role
+    ADD CONSTRAINT user_role_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.role(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_role user_role_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_role
+    ADD CONSTRAINT user_role_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id) ON DELETE CASCADE;
 
 
 --

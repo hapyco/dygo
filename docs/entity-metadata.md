@@ -11,8 +11,6 @@ Entity metadata is still the contract layer. Record CRUD, permission enforcement
 ```yaml
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 description: Sales lead
 fields:
   - name: full-name
@@ -66,13 +64,13 @@ constraints:
 
 ## Rules
 
-Entity `name`, `label`, `plural-name`, `plural-label`, and at least one field are required.
+Entity `name`, `label`, and at least one field are required.
 
-Entity names, plural names, field names, and field type names use kebab-case.
+Entity names, field names, and field type names use kebab-case.
 
-`plural-name` is explicit. dygo does not auto-pluralize Entity names in runtime code because English pluralization is too fragile for schema decisions. Future generators may suggest a default, but the YAML must store the chosen plural name.
+dygo uses singular Entity names only. There is no separate required metadata for display plurals or storage plurals.
 
-When dygo needs a SQL table name from Entity metadata, it converts `plural-name` from kebab-case to snake_case. For example, `user-roles` maps to `user_roles`.
+When dygo needs a SQL table name from Entity metadata, it converts Entity `name` from kebab-case to snake_case. For example, `user-role` maps to `user_role`.
 
 Current metadata-driven schema sync supports scalar fields, `select`, and `link` fields. `child-table` parsing is supported, but child table storage is deferred until the record model is designed.
 
@@ -110,13 +108,13 @@ constraints:
 
 Unique constraints require at least two fields. Single-field uniqueness should stay on the Field with `unique: true`.
 
-Index and constraint names are optional. If omitted, dygo derives deterministic names from the Entity plural name, type, and fields. Provided names must use kebab-case and are converted to snake_case for PostgreSQL.
+Index and constraint names are optional. If omitted, dygo derives deterministic names from the Entity name, type, and fields. Provided names must use kebab-case and are converted to snake_case for PostgreSQL.
 
 Supported check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, and `not-in`. Checks are single-field only in v1 and must use structured metadata, not raw SQL.
 
 Check fields must be DB-backed scalar fields. `child-table`, `json`, `attachment`, and `link` checks are not supported in v1.
 
-During `dygo migrate`, Field metadata is upserted into the Core `fields` table with name, label, type, required, unique, index, default, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `indexes` and `constraints` tables.
+During `dygo migrate`, Field metadata is upserted into the Core `field` table with name, label, type, required, unique, index, default, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
 
 Type-specific settings live under `options`.
 

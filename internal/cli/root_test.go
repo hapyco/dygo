@@ -760,8 +760,6 @@ func TestDoctorCommand(t *testing.T) {
 	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company.yml"), `
 name: company
 label: Company
-plural-name: companies
-plural-label: Companies
 fields:
   - name: title
     label: Title
@@ -873,8 +871,6 @@ func TestEntitiesValidateCommand(t *testing.T) {
 	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company.yml"), `
 name: company
 label: Company
-plural-name: companies
-plural-label: Companies
 fields:
   - name: title
     label: Title
@@ -883,8 +879,6 @@ fields:
 	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead.yml"), `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: company
     label: Company
@@ -913,8 +907,6 @@ func TestEntitiesListCommand(t *testing.T) {
 	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company.yml"), `
 name: company
 label: Company
-plural-name: companies
-plural-label: Companies
 fields:
   - name: title
     label: Title
@@ -923,8 +915,6 @@ fields:
 	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead.yml"), `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: company
     label: Company
@@ -958,8 +948,6 @@ func TestEntitiesValidateCommandRejectsInvalidTargets(t *testing.T) {
 	writeCLIEntity(t, entityPath, `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: company
     label: Company
@@ -974,7 +962,7 @@ fields:
 	if err == nil {
 		t.Fatal("Run(entities validate) error = nil, want missing target error")
 	}
-	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "lead.yml")) + ":6"
+	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "lead.yml")) + ":4"
 	for _, want := range []string{wantPath, `field "company"`, `unknown entity target "company"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)

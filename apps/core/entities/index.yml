@@ -1,7 +1,5 @@
 name: index
 label: Index
-plural-name: indexes
-plural-label: Indexes
 description: Top-level non-unique index definition belonging to an Entity.
 fields:
   - name: entity

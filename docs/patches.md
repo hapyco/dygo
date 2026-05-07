@@ -40,7 +40,7 @@ Use a patch when the change cannot be proven safe from metadata alone.
 |---|---|---|
 | Field rename | Removing one field and adding another could be a rename or two unrelated changes. | Rename the storage column or copy data, then update metadata. |
 | Field removal | Dropping a column destroys data. | Archive, copy, or intentionally drop the old storage. |
-| Entity/table rename | A new `plural-name` could be a new table or a renamed table. | Rename the table or move data, then update metadata. |
+| Entity/table rename | A new Entity `name` could be a new table or a renamed table. | Rename the table or move data, then update metadata. |
 | Type change | Existing values may not cast cleanly. | Validate, clean, cast, or backfill data before metadata expects the new type. |
 | Required field without safe default | Existing Records may not have a value. | Backfill values, then mark the field required. |
 | New unique constraint | Existing Records may contain duplicates. | Deduplicate or merge Records, then add uniqueness metadata. |
@@ -142,4 +142,3 @@ The patch runner is not implemented yet. Future tasks should define:
 - patch run tracking in Core metadata
 - rollback policy
 - `dygo patches` or app lifecycle CLI shape
-

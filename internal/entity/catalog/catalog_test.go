@@ -85,8 +85,6 @@ func TestValidateRejectsInvalidEntityWithAppAndPathContext(t *testing.T) {
 	badPath := filepath.Join(app.Dir, "entities", "bad.yml")
 	writeFile(t, badPath, `
 name: bad
-plural-name: bads
-plural-label: Bads
 fields:
   - name: title
     label: Title
@@ -149,8 +147,6 @@ func TestValidateAcceptsResolvedFieldTargets(t *testing.T) {
 	writeFile(t, filepath.Join(app.Dir, "entities", "lead.yml"), `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: company
     label: Company
@@ -182,8 +178,6 @@ func TestValidateRejectsMissingFieldTarget(t *testing.T) {
 	writeFile(t, entityPath, `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: company
     label: Company
@@ -196,7 +190,7 @@ fields:
 	if err == nil {
 		t.Fatal("Validate() error = nil, want missing target error")
 	}
-	for _, want := range []string{entityPath + ":6", `app "sales"`, `entity "lead"`, `field "company"`, `unknown entity target "company"`} {
+	for _, want := range []string{entityPath + ":4", `app "sales"`, `entity "lead"`, `field "company"`, `unknown entity target "company"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 		}
@@ -215,8 +209,6 @@ func TestValidateRejectsAmbiguousFieldTarget(t *testing.T) {
 	writeFile(t, entityPath, `
 name: lead
 label: Lead
-plural-name: leads
-plural-label: Leads
 fields:
   - name: customer
     label: Customer
@@ -229,7 +221,7 @@ fields:
 	if err == nil {
 		t.Fatal("Validate() error = nil, want ambiguous target error")
 	}
-	for _, want := range []string{entityPath + ":6", `field "customer"`, `ambiguous entity target "customer"`, "sales/customer", "support/customer"} {
+	for _, want := range []string{entityPath + ":4", `field "customer"`, `ambiguous entity target "customer"`, "sales/customer", "support/customer"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 		}
@@ -275,8 +267,6 @@ func writeEntity(t *testing.T, path string, name string) {
 	writeFile(t, path, `
 name: `+name+`
 label: `+labelForName(name)+`
-plural-name: `+name+`s
-plural-label: `+labelForName(name)+`s
 fields:
   - name: title
     label: Title

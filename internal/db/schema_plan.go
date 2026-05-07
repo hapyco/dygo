@@ -290,8 +290,8 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 		if ordered[i].AppName != ordered[j].AppName {
 			return ordered[i].AppName < ordered[j].AppName
 		}
-		if ordered[i].Entity.PluralName != ordered[j].Entity.PluralName {
-			return ordered[i].Entity.PluralName < ordered[j].Entity.PluralName
+		if ordered[i].Entity.Name != ordered[j].Entity.Name {
+			return ordered[i].Entity.Name < ordered[j].Entity.Name
 		}
 		return ordered[i].Path < ordered[j].Path
 	})
@@ -655,10 +655,10 @@ func createTableSQL(table string) string {
 }
 
 func tableName(entity schema.Entity) (string, error) {
-	if strings.TrimSpace(entity.PluralName) == "" {
-		return "", fmt.Errorf("plural-name is required")
+	if strings.TrimSpace(entity.Name) == "" {
+		return "", fmt.Errorf("name is required")
 	}
-	return storageName(entity.PluralName), nil
+	return storageName(entity.Name), nil
 }
 
 func columnForField(field schema.Field) (string, error) {

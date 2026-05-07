@@ -1,7 +1,5 @@
 name: app
 label: App
-plural-name: apps
-plural-label: Apps
 description: Runtime state for an installed App.
 fields:
   - name: name

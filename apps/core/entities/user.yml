@@ -1,7 +1,5 @@
 name: user
 label: User
-plural-name: users
-plural-label: Users
 description: User account identity.
 fields:
   - name: email

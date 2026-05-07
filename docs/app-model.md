@@ -90,7 +90,7 @@ Each app is described by an `app.yml` manifest. See [App Manifest](app-manifest.
 
 Entity files live in the app's manifest-defined `entities` directory. Entity names are unique within the owning app for v1.
 
-Entity metadata stores explicit singular and plural names. Runtime code uses `plural-name` as the source for storage naming; it does not auto-pluralize Entity names.
+Entity metadata uses singular names only. Runtime code uses Entity `name` as the source for storage naming by converting kebab-case to snake_case.
 
 Patches are app-owned lifecycle changes for unsafe transitions that metadata cannot infer, such as renames, drops, destructive type changes, and data backfills. See [Explicit Patches](patches.md) for the current design model. The patch runner is not implemented yet.
 

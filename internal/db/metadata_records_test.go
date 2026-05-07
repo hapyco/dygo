@@ -23,8 +23,6 @@ func TestBuildMetadataRecords(t *testing.T) {
 				Entity: schema.Entity{
 					Name:        "user",
 					Label:       "User",
-					PluralName:  "users",
-					PluralLabel: "Users",
 					Description: "User identity",
 					Fields: []schema.Field{
 						{Name: "email", Label: "Email", Type: "email", Required: true, Unique: true, Index: true},
@@ -76,11 +74,11 @@ func TestBuildMetadataRecords(t *testing.T) {
 		t.Fatalf("constraint records count = %d, want 2", len(records.Constraints))
 	}
 	unique := records.Constraints[0]
-	if unique.Name != "users-email-status-key" || unique.Type != "unique" || string(unique.Fields) != `["email","status"]` {
+	if unique.Name != "user-email-status-key" || unique.Type != "unique" || string(unique.Fields) != `["email","status"]` {
 		t.Fatalf("unique constraint record = %+v, want email/status unique", unique)
 	}
 	check := records.Constraints[1]
-	if check.Name != "users-status-in-check" || check.Type != "check" || check.Field != "status" || !strings.Contains(string(check.Value), `"Active"`) {
+	if check.Name != "user-status-in-check" || check.Type != "check" || check.Field != "status" || !strings.Contains(string(check.Value), `"Active"`) {
 		t.Fatalf("check constraint record = %+v, want status check", check)
 	}
 }

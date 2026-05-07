@@ -16,8 +16,6 @@ type Entity struct {
 	Line        int          `yaml:"-"`
 	Name        string       `yaml:"name"`
 	Label       string       `yaml:"label"`
-	PluralName  string       `yaml:"plural-name"`
-	PluralLabel string       `yaml:"plural-label"`
 	Description string       `yaml:"description,omitempty"`
 	Fields      []Field      `yaml:"fields"`
 	Indexes     []Index      `yaml:"indexes,omitempty"`
@@ -49,7 +47,7 @@ func (i Index) EffectiveName(entity Entity) string {
 	if strings.TrimSpace(i.Name) != "" {
 		return i.Name
 	}
-	parts := []string{entity.PluralName}
+	parts := []string{entity.Name}
 	parts = append(parts, i.Fields...)
 	parts = append(parts, "idx")
 	return strings.Join(parts, "-")
@@ -73,14 +71,14 @@ func (c Constraint) EffectiveName(entity Entity) string {
 	}
 	switch c.Type {
 	case "unique":
-		parts := []string{entity.PluralName}
+		parts := []string{entity.Name}
 		parts = append(parts, c.Fields...)
 		parts = append(parts, "key")
 		return strings.Join(parts, "-")
 	case "check":
-		return strings.Join([]string{entity.PluralName, c.Field, c.Operator, "check"}, "-")
+		return strings.Join([]string{entity.Name, c.Field, c.Operator, "check"}, "-")
 	default:
-		return strings.Join([]string{entity.PluralName, "constraint"}, "-")
+		return strings.Join([]string{entity.Name, "constraint"}, "-")
 	}
 }
 
@@ -137,14 +135,6 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	}
 	if strings.TrimSpace(e.Label) == "" {
 		problems = append(problems, withLine(e.Line, "label is required"))
-	}
-	if strings.TrimSpace(e.PluralName) == "" {
-		problems = append(problems, withLine(e.Line, "plural-name is required"))
-	} else if !fieldtype.IsName(e.PluralName) {
-		problems = append(problems, withLine(e.Line, fmt.Sprintf("plural-name %q must be kebab-case", e.PluralName)))
-	}
-	if strings.TrimSpace(e.PluralLabel) == "" {
-		problems = append(problems, withLine(e.Line, "plural-label is required"))
 	}
 	if len(e.Fields) == 0 {
 		problems = append(problems, withLine(e.Line, "at least one field is required"))
