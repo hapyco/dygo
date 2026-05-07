@@ -97,4 +97,4 @@ json
 
 `DELETE` performs a hard delete in v1.
 
-This layer does not enforce permissions yet. The permission engine should guard these APIs in a follow-up task.
+This layer does not enforce permissions yet. The internal permission engine exists, but guarding these APIs is a follow-up task.

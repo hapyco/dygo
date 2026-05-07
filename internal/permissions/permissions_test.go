@@ -1,0 +1,219 @@
+package permissions
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/jackc/pgx/v5"
+)
+
+func TestCheckerAllowsEnabledUserWithEnabledRolePermission(t *testing.T) {
+	queryer := &fakePermissionQueryer{row: fakePermissionRow{allowed: true}}
+
+	decision, err := NewChecker(queryer).Check(context.Background(), Request{
+		UserID: 7,
+		Entity: "user",
+		Action: ActionRead,
+	})
+	if err != nil {
+		t.Fatalf("Check() error = %v, want nil", err)
+	}
+	if !decision.Allowed || decision.Reason != ReasonAllowed || decision.UserID != 7 || decision.Entity != "user" || decision.Action != ActionRead {
+		t.Fatalf("Check() decision = %+v, want allowed read on user", decision)
+	}
+	if err := NewChecker(queryer).Can(context.Background(), Request{UserID: 7, Entity: "user", Action: ActionRead}); err != nil {
+		t.Fatalf("Can() error = %v, want nil", err)
+	}
+	sql := queryer.sql[0]
+	for _, want := range []string{
+		`FROM "user" u`,
+		`JOIN user_role ur ON ur.user_id = u.id`,
+		`JOIN "role" r ON r.id = ur.role_id AND COALESCE(r.enabled, false) = true`,
+		`JOIN "permission" p ON p.role_id = r.id`,
+		`JOIN entity e ON e.id = p.entity_id`,
+		`COALESCE(u.enabled, false) = true`,
+		`e.name = $2`,
+		`COALESCE(p."read", false) = true`,
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("Check() SQL = %q, want %q", sql, want)
+		}
+	}
+	if !reflect.DeepEqual(queryer.args[0], []any{int64(7), "user"}) {
+		t.Fatalf("Check() args = %#v, want user id and entity", queryer.args[0])
+	}
+}
+
+func TestCheckerDenyCases(t *testing.T) {
+	tests := []struct {
+		name string
+	}{
+		{name: "no permission row"},
+		{name: "action column false"},
+		{name: "user disabled or missing"},
+		{name: "entity missing"},
+		{name: "no enabled roles"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checker := NewChecker(&fakePermissionQueryer{row: fakePermissionRow{allowed: false}})
+
+			decision, err := checker.Check(context.Background(), Request{
+				UserID: 7,
+				Entity: "user",
+				Action: ActionUpdate,
+			})
+			if err != nil {
+				t.Fatalf("Check() error = %v, want nil", err)
+			}
+			if decision.Allowed || decision.Reason != ReasonDenied {
+				t.Fatalf("Check() decision = %+v, want denied", decision)
+			}
+
+			err = checker.Can(context.Background(), Request{UserID: 7, Entity: "user", Action: ActionUpdate})
+			assertPermissionError(t, err, ErrorDenied)
+			if !IsDenied(err) {
+				t.Fatalf("IsDenied(%v) = false, want true", err)
+			}
+		})
+	}
+}
+
+func TestCheckerMultipleRolesAreORCombined(t *testing.T) {
+	queryer := &fakePermissionQueryer{row: fakePermissionRow{allowed: true}}
+
+	decision, err := NewChecker(queryer).Check(context.Background(), Request{
+		UserID: 7,
+		Entity: "user",
+		Action: ActionDelete,
+	})
+	if err != nil {
+		t.Fatalf("Check() error = %v, want nil", err)
+	}
+	if !decision.Allowed {
+		t.Fatalf("Check() decision = %+v, want allowed", decision)
+	}
+	if !strings.Contains(queryer.sql[0], `SELECT EXISTS`) || !strings.Contains(queryer.sql[0], `COALESCE(p."delete", false) = true`) {
+		t.Fatalf("Check() SQL = %q, want EXISTS over role permissions", queryer.sql[0])
+	}
+}
+
+func TestCheckerValidatesRequest(t *testing.T) {
+	tests := []struct {
+		name    string
+		request Request
+	}{
+		{name: "invalid user id", request: Request{UserID: 0, Entity: "user", Action: ActionRead}},
+		{name: "empty entity", request: Request{UserID: 7, Entity: " ", Action: ActionRead}},
+		{name: "unsupported action", request: Request{UserID: 7, Entity: "user", Action: Action("drop-table")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queryer := &fakePermissionQueryer{row: fakePermissionRow{allowed: true}}
+
+			_, err := NewChecker(queryer).Check(context.Background(), tt.request)
+			assertPermissionError(t, err, ErrorInvalidRequest)
+			if len(queryer.sql) != 0 {
+				t.Fatalf("Check() executed SQL for invalid request: %q", queryer.sql[0])
+			}
+		})
+	}
+}
+
+func TestCheckerRequiresQueryer(t *testing.T) {
+	_, err := NewChecker(nil).Check(context.Background(), Request{UserID: 7, Entity: "user", Action: ActionRead})
+	assertPermissionError(t, err, ErrorInternal)
+}
+
+func TestCheckerDatabaseFailureDoesNotLeakSensitiveDetails(t *testing.T) {
+	queryer := &fakePermissionQueryer{
+		row: fakePermissionRow{err: errors.New(`SELECT failed for postgres://secret@localhost/dygo`)},
+	}
+
+	_, err := NewChecker(queryer).Check(context.Background(), Request{
+		UserID: 7,
+		Entity: "user",
+		Action: ActionPrint,
+	})
+	assertPermissionError(t, err, ErrorInternal)
+	if strings.Contains(err.Error(), "postgres://") || strings.Contains(err.Error(), "SELECT") {
+		t.Fatalf("Check() error = %q, want no raw database details", err.Error())
+	}
+	if !errors.Is(err, queryer.row.err) {
+		t.Fatalf("Check() error does not unwrap database failure")
+	}
+}
+
+func TestActionColumns(t *testing.T) {
+	tests := []struct {
+		action Action
+		column string
+	}{
+		{action: ActionRead, column: `"read"`},
+		{action: ActionCreate, column: `"create"`},
+		{action: ActionUpdate, column: `"update"`},
+		{action: ActionDelete, column: `"delete"`},
+		{action: ActionExport, column: `"export"`},
+		{action: ActionPrint, column: `"print"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.action), func(t *testing.T) {
+			column, ok := actionColumn(tt.action)
+			if !ok || column != tt.column {
+				t.Fatalf("actionColumn(%q) = %q, %v; want %q, true", tt.action, column, ok, tt.column)
+			}
+		})
+	}
+}
+
+type fakePermissionQueryer struct {
+	row  fakePermissionRow
+	sql  []string
+	args [][]any
+}
+
+func (q *fakePermissionQueryer) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
+	q.sql = append(q.sql, sql)
+	q.args = append(q.args, args)
+	return q.row
+}
+
+type fakePermissionRow struct {
+	allowed bool
+	err     error
+}
+
+func (r fakePermissionRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	if len(dest) != 1 {
+		return errors.New("expected one scan destination")
+	}
+	value, ok := dest[0].(*bool)
+	if !ok {
+		return errors.New("scan destination must be *bool")
+	}
+	*value = r.allowed
+	return nil
+}
+
+func assertPermissionError(t *testing.T, err error, code string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("error = nil, want permission error %q", code)
+	}
+	var permissionErr Error
+	if !errors.As(err, &permissionErr) {
+		t.Fatalf("error = %T %v, want permissions.Error", err, err)
+	}
+	if permissionErr.Code != code {
+		t.Fatalf("permission error code = %q, want %q", permissionErr.Code, code)
+	}
+}

@@ -111,4 +111,4 @@ The CLI listens for interrupt and termination signals and asks the HTTP server t
 
 ## Boundaries
 
-The current server includes health, read-only metadata APIs, and generic Record CRUD APIs. It does not include authentication, permission enforcement, Studio rendering, per-Entity controllers, child table storage, workflow hooks, or audit logging yet.
+The current server includes health, read-only metadata APIs, and generic Record CRUD APIs. The internal permission engine exists, but the server does not include authentication, permission enforcement, Studio rendering, per-Entity controllers, child table storage, workflow hooks, or audit logging yet.
