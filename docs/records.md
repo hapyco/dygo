@@ -75,6 +75,7 @@ Record runtime v1 supports DB-backed fields:
 text
 email
 phone
+password
 long-text
 int
 decimal
@@ -88,6 +89,8 @@ link
 attachment
 json
 ```
+
+`password` fields accept plaintext strings in create and update requests, hash them before storage, and are never returned in list or detail responses.
 
 `child-table` is not writable through Record APIs yet.
 

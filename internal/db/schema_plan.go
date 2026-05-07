@@ -686,15 +686,18 @@ func columnForField(field schema.Field) (string, error) {
 		return "", fmt.Errorf("child-table storage is not supported by metadata schema sync yet")
 	}
 	name := strings.ReplaceAll(field.Name, "-", "_")
-	if field.Type == "link" {
+	switch field.Type {
+	case "link":
 		name += "_id"
+	case "password":
+		name += "_hash"
 	}
 	return name, nil
 }
 
 func columnType(field schema.Field, targets map[string]catalog.LoadedEntity) (string, error) {
 	switch field.Type {
-	case "text", "email", "phone", "long-text", "select", "attachment":
+	case "text", "email", "phone", "password", "long-text", "select", "attachment":
 		return "text", nil
 	case "int":
 		return "integer", nil

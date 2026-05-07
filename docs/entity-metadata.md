@@ -72,7 +72,7 @@ dygo uses singular Entity names only. There is no separate required metadata for
 
 When dygo needs a SQL table name from Entity metadata, it converts Entity `name` from kebab-case to snake_case. For example, `user-role` maps to `user_role`.
 
-Current metadata-driven schema sync supports scalar fields, `select`, and `link` fields. `child-table` parsing is supported, but child table storage is deferred until the record model is designed.
+Current metadata-driven schema sync supports scalar fields, `select`, `link`, and `password` fields. `child-table` parsing is supported, but child table storage is deferred until the record model is designed.
 
 Field `name`, `label`, and `type` are required.
 
@@ -112,7 +112,7 @@ Index and constraint names are optional. If omitted, dygo derives deterministic 
 
 Supported check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, and `not-in`. Checks are single-field only in v1 and must use structured metadata, not raw SQL.
 
-Check fields must be DB-backed scalar fields. `child-table`, `json`, `attachment`, and `link` checks are not supported in v1.
+Check fields must be DB-backed scalar fields. `password`, `child-table`, `json`, `attachment`, and `link` checks are not supported in v1.
 
 During `dygo migrate`, Field metadata is upserted into the Core `field` table with name, label, type, required, unique, index, default, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
 
@@ -128,6 +128,7 @@ Type-specific settings live under `options`.
 text
 email
 phone
+password
 long-text
 int
 decimal
@@ -144,6 +145,8 @@ json
 ```
 
 Field types are registered in Go. App-defined field types in YAML are out of scope for v1.
+
+`password` fields are write-only Record fields. Metadata uses the clean field name, such as `password`, while storage uses a hash column, such as `password_hash`. Password fields cannot be indexed, unique, defaulted, or used in top-level indexes or constraints.
 
 ## App Discovery
 

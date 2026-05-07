@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -291,6 +293,7 @@ type recordField struct {
 	Options     recordFieldOptions
 	Column      string
 	Storage     bool
+	WriteOnly   bool
 	SelectOrder int
 }
 
@@ -313,11 +316,12 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 	}
 	for _, metadataField := range meta.Fields {
 		field := recordField{
-			Name:     metadataField.Name,
-			Type:     metadataField.Type,
-			Required: metadataField.Required,
-			Default:  metadataField.Default,
-			Storage:  metadataField.Type != "child-table",
+			Name:      metadataField.Name,
+			Type:      metadataField.Type,
+			Required:  metadataField.Required,
+			Default:   metadataField.Default,
+			Storage:   metadataField.Type != "child-table",
+			WriteOnly: metadataField.Type == "password",
 		}
 		if len(metadataField.Options) > 0 {
 			if err := json.Unmarshal(metadataField.Options, &field.Options); err != nil {
@@ -337,7 +341,7 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 func (l recordLayout) selectList() string {
 	columns := []string{quoteIdent("id"), quoteIdent("created_at"), quoteIdent("updated_at")}
 	for _, field := range l.Fields {
-		if field.Storage {
+		if field.Storage && !field.WriteOnly {
 			columns = append(columns, quoteIdent(field.Column))
 		}
 	}
@@ -347,7 +351,7 @@ func (l recordLayout) selectList() string {
 func (l recordLayout) recordFromValues(values []any) (Record, error) {
 	expected := 3
 	for _, field := range l.Fields {
-		if field.Storage {
+		if field.Storage && !field.WriteOnly {
 			expected++
 		}
 	}
@@ -361,7 +365,7 @@ func (l recordLayout) recordFromValues(values []any) (Record, error) {
 	}
 	index := 3
 	for _, field := range l.Fields {
-		if !field.Storage {
+		if !field.Storage || field.WriteOnly {
 			continue
 		}
 		record[field.Name] = normalizeRecordValue(field.Type, values[index])
@@ -459,6 +463,8 @@ func recordDBValue(field recordField, raw json.RawMessage) (any, error) {
 	switch field.Type {
 	case "text", "email", "phone", "long-text", "attachment":
 		return jsonStringValue(field, raw)
+	case "password":
+		return passwordHashValue(field, raw)
 	case "select":
 		value, err := jsonStringValue(field, raw)
 		if err != nil {
@@ -496,6 +502,24 @@ func jsonStringValue(field recordField, raw json.RawMessage) (string, error) {
 		return "", recordError(RecordErrorValidation, "field must be a string", map[string]any{"field": field.Name}, err)
 	}
 	return value, nil
+}
+
+func passwordHashValue(field recordField, raw json.RawMessage) (string, error) {
+	value, err := jsonStringValue(field, raw)
+	if err != nil {
+		return "", err
+	}
+	hash, err := auth.HashPassword(value)
+	if err != nil {
+		message := "password is invalid"
+		if errors.Is(err, auth.ErrPasswordEmpty) {
+			message = "password must not be empty"
+		} else if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			message = "password is too long"
+		}
+		return "", recordError(RecordErrorValidation, message, map[string]any{"field": field.Name}, err)
+	}
+	return hash, nil
 }
 
 func jsonIntValue(field recordField, raw json.RawMessage) (int64, error) {
@@ -561,8 +585,11 @@ func recordPlaceholder(index int, field recordField) string {
 
 func recordColumnForField(name string, fieldType string) string {
 	column := storageName(name)
-	if fieldType == "link" {
+	switch fieldType {
+	case "link":
 		column += "_id"
+	case "password":
+		column += "_hash"
 	}
 	return column
 }

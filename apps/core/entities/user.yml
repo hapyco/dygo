@@ -13,6 +13,10 @@ fields:
     type: text
     required: true
 
+  - name: password
+    label: Password
+    type: password
+
   - name: enabled
     label: Enabled
     type: boolean

@@ -94,6 +94,36 @@ func TestBuildMetadataSchemaPlanAddsMissingNullableColumn(t *testing.T) {
 	assertContains(t, operationDescriptions(plan), "add column lead.note")
 }
 
+func TestBuildMetadataSchemaPlanAddsPasswordHashColumn(t *testing.T) {
+	entity := catalog.LoadedEntity{
+		AppName: "core",
+		Path:    "apps/core/entities/user.yml",
+		Entity: schema.Entity{
+			Name: "user",
+			Fields: []schema.Field{
+				{Name: "email", Type: "email", Required: true, Unique: true},
+				{Name: "password", Type: "password"},
+			},
+		},
+	}
+	columns := systemColumns()
+	columns["email"] = liveColumn{Name: "email", Type: "text", Nullable: false}
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{
+		"user": liveSchemaTable("user", columns, map[string]liveConstraint{
+			"user_pkey":      {Name: "user_pkey", Type: "primary-key"},
+			"user_email_key": {Name: "user_email_key", Type: "unique"},
+		}, nil),
+	}})
+	if err != nil {
+		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
+	}
+	if plan.HasBlockers() {
+		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
+	}
+	assertContains(t, operationDescriptions(plan), "add column user.password_hash")
+	assertContains(t, operationSQL(plan), `ALTER TABLE "user" ADD COLUMN "password_hash" text`)
+}
+
 func TestBuildMetadataSchemaPlanRejectsMissingRequiredColumnWithoutDefault(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "crm",

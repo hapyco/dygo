@@ -155,6 +155,7 @@ func builtIns() []Definition {
 		scalar("text", "Text", true, true, true, true),
 		scalar("email", "Email", true, true, true, true),
 		scalar("phone", "Phone", true, true, true, true),
+		scalar("password", "Password", true, false, false, false),
 		scalar("long-text", "Long Text", true, false, true, false),
 		scalar("int", "Integer", true, true, true, true),
 		scalar("decimal", "Decimal", true, true, true, true),

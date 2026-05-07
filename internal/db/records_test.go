@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -29,6 +30,9 @@ func TestRecordStoreListRecords(t *testing.T) {
 	}
 	if result.Records[0]["email"] != "a@example.com" || result.Records[0]["full-name"] != "A User" {
 		t.Fatalf("ListRecords() first record = %+v, want metadata field names", result.Records[0])
+	}
+	if _, ok := result.Records[0]["password"]; ok {
+		t.Fatalf("ListRecords() returned password field: %+v", result.Records[0])
 	}
 	lastQuery := queryer.queries[len(queryer.queries)-1]
 	if !strings.Contains(lastQuery, `FROM "user"`) || !strings.Contains(lastQuery, `ORDER BY "id" ASC LIMIT $1 OFFSET $2`) {
@@ -52,6 +56,9 @@ func TestRecordStoreGetRecord(t *testing.T) {
 	}
 	if record["id"] != int64(7) || record["email"] != "a@example.com" {
 		t.Fatalf("GetRecord() = %+v, want record by id", record)
+	}
+	if _, ok := record["password"]; ok {
+		t.Fatalf("GetRecord() returned password field: %+v", record)
 	}
 	lastQuery := queryer.queries[len(queryer.queries)-1]
 	if !strings.Contains(lastQuery, `WHERE "id" = $1`) {
@@ -105,6 +112,76 @@ func TestRecordStoreUpdateRecord(t *testing.T) {
 		if !strings.Contains(lastQuery, want) {
 			t.Fatalf("update query = %q, want %q", lastQuery, want)
 		}
+	}
+}
+
+func TestRecordStoreHashesPasswordOnCreate(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
+
+	record, err := NewRecordStore(queryer).CreateRecord(context.Background(), "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"A User"`,
+		"password":  `"super-secret"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v, want nil", err)
+	}
+	if _, ok := record["password"]; ok {
+		t.Fatalf("CreateRecord() returned password field: %+v", record)
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	for _, want := range []string{`"password_hash"`, `RETURNING "id", "created_at", "updated_at", "email", "full_name", "enabled"`} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("create query = %q, want %q", lastQuery, want)
+		}
+	}
+	if strings.Contains(lastQuery, `RETURNING "id", "created_at", "updated_at", "email", "full_name", "password_hash"`) {
+		t.Fatalf("create query = %q, returned password_hash", lastQuery)
+	}
+	args := queryer.args[len(queryer.args)-1]
+	hash, ok := args[len(args)-1].(string)
+	if !ok {
+		t.Fatalf("password arg type = %T, want string", args[len(args)-1])
+	}
+	if hash == "super-secret" {
+		t.Fatal("password arg is plaintext, want bcrypt hash")
+	}
+	if err := auth.ComparePassword(hash, "super-secret"); err != nil {
+		t.Fatalf("stored password hash did not verify: %v", err)
+	}
+}
+
+func TestRecordStoreHashesPasswordOnUpdate(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
+
+	_, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{
+		"password": `"changed-secret"`,
+	}))
+	if err != nil {
+		t.Fatalf("UpdateRecord() error = %v, want nil", err)
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	if !strings.Contains(lastQuery, `UPDATE "user" SET "password_hash" = $1`) {
+		t.Fatalf("update query = %q, want password_hash update", lastQuery)
+	}
+	args := queryer.args[len(queryer.args)-1]
+	hash, ok := args[0].(string)
+	if !ok {
+		t.Fatalf("password arg type = %T, want string", args[0])
+	}
+	if hash == "changed-secret" {
+		t.Fatal("password arg is plaintext, want bcrypt hash")
+	}
+	if err := auth.ComparePassword(hash, "changed-secret"); err != nil {
+		t.Fatalf("stored password hash did not verify: %v", err)
 	}
 }
 
@@ -167,6 +244,20 @@ func TestRecordStoreValidationErrors(t *testing.T) {
 			wantCode:  RecordErrorValidation,
 			wantField: "contacts",
 		},
+		{
+			name:      "empty password",
+			queryer:   newUserRecordQueryer(),
+			input:     recordInput(map[string]string{"email": `"a@example.com"`, "full-name": `"A User"`, "password": `""`}),
+			wantCode:  RecordErrorValidation,
+			wantField: "password",
+		},
+		{
+			name:      "too long password",
+			queryer:   newUserRecordQueryer(),
+			input:     RecordInput{"email": json.RawMessage(`"a@example.com"`), "full-name": json.RawMessage(`"A User"`), "password": json.RawMessage(`"secret-` + strings.Repeat("x", 80) + `"`)},
+			wantCode:  RecordErrorValidation,
+			wantField: "password",
+		},
 	}
 
 	for _, tt := range tests {
@@ -228,7 +319,8 @@ func newUserRecordQueryer() *fakeRecordQueryer {
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, 1, nil},
 				{"full-name", "Full Name", "text", true, false, false, nil, 2, nil},
-				{"enabled", "Enabled", "boolean", false, false, true, []byte("true"), 3, nil},
+				{"password", "Password", "password", false, false, false, nil, 3, nil},
+				{"enabled", "Enabled", "boolean", false, false, true, []byte("true"), 4, nil},
 			}),
 			newFakeRows(nil),
 			newFakeRows(nil),

@@ -249,6 +249,19 @@ fields:
 			wantError: "cannot be unique",
 		},
 		{
+			name: "password unique unsupported",
+			body: `
+name: user
+label: User
+fields:
+  - name: password
+    label: Password
+    type: password
+    unique: true
+`,
+			wantError: "cannot be unique",
+		},
+		{
 			name: "default unsupported",
 			body: `
 name: lead
@@ -258,6 +271,19 @@ fields:
     label: Payload
     type: json
     default: {}
+`,
+			wantError: "does not support default",
+		},
+		{
+			name: "password default unsupported",
+			body: `
+name: user
+label: User
+fields:
+  - name: password
+    label: Password
+    type: password
+    default: secret
 `,
 			wantError: "does not support default",
 		},
@@ -273,6 +299,65 @@ fields:
     index: true
 `,
 			wantError: "cannot be indexed",
+		},
+		{
+			name: "password index unsupported",
+			body: `
+name: user
+label: User
+fields:
+  - name: password
+    label: Password
+    type: password
+    index: true
+`,
+			wantError: "cannot be indexed",
+		},
+		{
+			name: "password options unsupported",
+			body: `
+name: user
+label: User
+fields:
+  - name: password
+    label: Password
+    type: password
+    options:
+      values: [A]
+`,
+			wantError: "values are not supported",
+		},
+		{
+			name: "top-level index password unsupported",
+			body: `
+name: user
+label: User
+fields:
+  - name: password
+    label: Password
+    type: password
+indexes:
+  - fields: [password]
+`,
+			wantError: "cannot be indexed",
+		},
+		{
+			name: "top-level unique password unsupported",
+			body: `
+name: user
+label: User
+fields:
+  - name: password
+    label: Password
+    type: password
+  - name: email
+    label: Email
+    type: email
+constraints:
+  - type: unique
+    fields: [password, email]
+`,
+			wantError: "cannot be unique",
 		},
 		{
 			name: "invalid top-level index name",
@@ -477,6 +562,23 @@ constraints:
     field: payload
     operator: eq
     value: {}
+`,
+			wantError: "not supported",
+		},
+		{
+			name: "check constraint password unsupported",
+			body: `
+name: user
+label: User
+fields:
+  - name: password
+    label: Password
+    type: password
+constraints:
+  - type: check
+    field: password
+    operator: neq
+    value: ""
 `,
 			wantError: "not supported",
 		},

@@ -13,6 +13,7 @@ func TestDefaultRegistryContainsBuiltIns(t *testing.T) {
 		"text",
 		"email",
 		"phone",
+		"password",
 		"long-text",
 		"int",
 		"decimal",
