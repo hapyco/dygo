@@ -70,6 +70,42 @@ func (m Migrator) Plan(ctx context.Context, root string, databaseURL string) (Sc
 	return plan, nil
 }
 
+// PrunePlan compares app Entity metadata with the live database for explicit destructive cleanup.
+func (m Migrator) PrunePlan(ctx context.Context, root string, databaseURL string) (SchemaPrunePlan, error) {
+	pool, err := connectMetadataPool(ctx, databaseURL)
+	if err != nil {
+		return SchemaPrunePlan{}, err
+	}
+	defer pool.Close()
+
+	plan, err := PlanSchemaPrune(ctx, pool, root)
+	if err != nil {
+		return SchemaPrunePlan{}, fmt.Errorf("plan schema prune: %w", err)
+	}
+	return plan, nil
+}
+
+// Prune applies explicit destructive cleanup and regenerates the schema snapshot when changed.
+func (m Migrator) Prune(ctx context.Context, root string, databaseURL string) (SchemaPruneResult, error) {
+	pool, err := connectMetadataPool(ctx, databaseURL)
+	if err != nil {
+		return SchemaPruneResult{}, err
+	}
+	defer pool.Close()
+
+	result, err := PruneMetadataSchema(ctx, pool, root)
+	if err != nil {
+		return SchemaPruneResult{}, fmt.Errorf("prune schema: %w", err)
+	}
+	if result.Operations == 0 {
+		return result, nil
+	}
+	if err := m.dumpSchema(ctx, root, databaseURL); err != nil {
+		return SchemaPruneResult{}, err
+	}
+	return result, nil
+}
+
 // DumpSchema writes db/schema.sql using the configured snapshotter.
 func (m Migrator) DumpSchema(ctx context.Context, root string, databaseURL string) error {
 	return m.dumpSchema(ctx, root, databaseURL)

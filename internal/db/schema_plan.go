@@ -230,6 +230,7 @@ func BuildMetadataSchemaPlan(entities []catalog.LoadedEntity, live LiveSchema) (
 
 		if tableExists {
 			reportExtraConstraints(&plan, table, liveTable)
+			reportExtraIndexes(&plan, table, liveTable)
 		}
 	}
 
@@ -517,6 +518,25 @@ func reportExtraConstraints(plan *SchemaPlan, desired desiredTable, live liveTab
 		}
 		plan.Diagnostics = append(plan.Diagnostics, unsafeDiagnostic("extra-constraint", desired.Name, "", name, fmt.Sprintf("constraint %q exists in database but not metadata", name), desired.Source))
 	}
+}
+
+func reportExtraIndexes(plan *SchemaPlan, desired desiredTable, live liveTable) {
+	expected := map[string]bool{}
+	for _, index := range desired.Indexes {
+		expected[index.Name] = true
+	}
+	names := sortedIndexNames(live.Indexes)
+	for _, name := range names {
+		if expected[name] || liveIndexBacksConstraint(name, live) {
+			continue
+		}
+		plan.Diagnostics = append(plan.Diagnostics, unsafeDiagnostic("extra-index", desired.Name, "", name, fmt.Sprintf("index %q exists in database but not metadata", name), desired.Source))
+	}
+}
+
+func liveIndexBacksConstraint(name string, live liveTable) bool {
+	_, ok := live.Constraints[name]
+	return ok
 }
 
 func reportExtraTables(plan *SchemaPlan, desired map[string]desiredTable, live LiveSchema) {

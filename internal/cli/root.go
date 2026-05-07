@@ -25,6 +25,8 @@ type databaseRunner interface {
 }
 type schemaSyncRunner interface {
 	Plan(context.Context, string, string) (db.SchemaPlan, error)
+	Prune(context.Context, string, string) (db.SchemaPruneResult, error)
+	PrunePlan(context.Context, string, string) (db.SchemaPrunePlan, error)
 	Sync(context.Context, string, string) (db.SchemaSyncResult, error)
 }
 
@@ -105,6 +107,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newServeCommand(ctx, stdout, serve))
 	root.AddCommand(newDBCommand(ctx, stdout, database))
 	root.AddCommand(newMigrateCommand(ctx, stdout, sync))
+	root.AddCommand(newSchemaCommand(ctx, stdout, sync))
 	root.AddCommand(newAppsCommand(stdout))
 	root.AddCommand(newEntitiesCommand(stdout))
 	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))

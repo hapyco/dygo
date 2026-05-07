@@ -262,3 +262,12 @@ func sortedConstraintNames(constraints map[string]liveConstraint) []string {
 	sort.Strings(names)
 	return names
 }
+
+func sortedIndexNames(indexes map[string]liveIndex) []string {
+	names := make([]string, 0, len(indexes))
+	for name := range indexes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}

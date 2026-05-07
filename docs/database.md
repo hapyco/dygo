@@ -112,15 +112,39 @@ Safe operations include creating missing metadata tables, adding safe metadata c
 
 After the schema plan succeeds, `dygo migrate` upserts discovered Apps, Entities, Fields, Indexes, and Constraints into the Core metadata tables. This gives later runtime APIs and Studio a database-backed metadata registry while the YAML files remain the source of truth.
 
-The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check/foreign-key changes are not inferred automatically. Those cases need an explicit app patch or a future explicit prune command.
+The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check/foreign-key changes are not inferred automatically. Those cases need an explicit app patch or, for plain metadata-orphaned objects, an explicit schema prune.
 
 See [Explicit Patches](patches.md) for the design model that maps unsafe planner diagnostics to app-owned patch work.
 
 There is no SQL migration file path or `migrations` table in this model. dygo compares metadata intent with the database shape and moves the database forward through metadata.
 
+## Schema Prune
+
+`dygo schema prune` is the explicit destructive cleanup command. It removes database objects that are present in PostgreSQL but no longer represented by loaded Entity metadata.
+
+Preview the prune plan:
+
+```sh
+go run ./cmd/dygo schema prune
+```
+
+Apply the prune plan:
+
+```sh
+go run ./cmd/dygo schema prune --force
+```
+
+`dygo schema prune` defaults to `development` and supports `--env staging` or `--env production`.
+
+Preview mode is the default and exits after printing the destructive plan. `--force` applies the plan in one transaction and updates `db/schema.sql` only after a successful prune.
+
+Prune can drop extra constraints, extra non-constraint indexes, extra columns, and extra tables. It skips primary keys, not-null constraints, system columns, and indexes that back constraints. Generated SQL uses quoted identifiers and does not use `CASCADE`; hidden dependencies should fail instead of widening the blast radius.
+
+Prune still refuses non-prunable blockers such as type drift, required drift, unsupported storage, missing system columns, and changed index or constraint definitions. Use app-owned patches for renames, backfills, type changes, and other unsafe transitions that need intent.
+
 ## Schema Snapshot
 
-After a successful `dygo migrate`, `db prepare`, or `db reset`, dygo writes a Postgres-native schema snapshot:
+After a successful `dygo migrate`, `dygo schema prune --force`, `db prepare`, or `db reset`, dygo writes a Postgres-native schema snapshot:
 
 ```txt
 db/schema.sql

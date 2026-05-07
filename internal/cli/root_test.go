@@ -107,6 +107,8 @@ func TestRootHelpIncludesServeAndDB(t *testing.T) {
 		"Manage dygo database lifecycle",
 		"migrate",
 		"Sync dygo metadata to the database",
+		"schema",
+		"Manage explicit schema cleanup",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("help stdout = %q, want substring %q", stdout.String(), want)
@@ -636,6 +638,159 @@ func TestMigrateCommandRequiresSecret(t *testing.T) {
 	}
 	if fake.calls != 0 {
 		t.Fatalf("schema sync runner calls = %d, want 0", fake.calls)
+	}
+}
+
+func TestSchemaPruneCommandPreviewsDestructivePlan(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{
+		prunePlan: db.SchemaPrunePlan{
+			Operations: []db.SchemaPruneOperation{
+				{Description: "drop column lead.legacy"},
+				{Description: "drop table old_import"},
+			},
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"schema", "prune"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(schema prune) error = %v, want nil", err)
+	}
+	for _, want := range []string{
+		"schema prune plan (development)\n",
+		"destructive operations: 2\n",
+		"- drop column lead.legacy\n",
+		"- drop table old_import\n",
+		"rerun with --force to apply\n",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("schema prune stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if fake.prunePlanCalls != 1 || fake.pruneCalls != 0 {
+		t.Fatalf("schema prune calls = plan %d apply %d, want preview only", fake.prunePlanCalls, fake.pruneCalls)
+	}
+	if fake.prunePlanRoot != root || fake.prunePlanDatabaseURL != databaseURL {
+		t.Fatalf("schema prune plan inputs = root %q URL %q, want root %q URL %q", fake.prunePlanRoot, fake.prunePlanDatabaseURL, root, databaseURL)
+	}
+}
+
+func TestSchemaPruneCommandForceAppliesPlan(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{
+		pruneResult: db.SchemaPruneResult{Operations: 2},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"schema", "prune", "--force"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(schema prune --force) error = %v, want nil", err)
+	}
+	if stdout.String() != "schema pruned: 2 destructive operations (development)\n" {
+		t.Fatalf("schema prune stdout = %q, want applied output", stdout.String())
+	}
+	if fake.pruneCalls != 1 || fake.prunePlanCalls != 0 {
+		t.Fatalf("schema prune calls = apply %d plan %d, want force apply only", fake.pruneCalls, fake.prunePlanCalls)
+	}
+	if fake.pruneRoot != root || fake.pruneDatabaseURL != databaseURL {
+		t.Fatalf("schema prune inputs = root %q URL %q, want root %q URL %q", fake.pruneRoot, fake.pruneDatabaseURL, root, databaseURL)
+	}
+}
+
+func TestSchemaPruneCommandUsesEnvironment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"schema", "prune", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(schema prune --env staging) error = %v, want nil", err)
+	}
+	if stdout.String() != "no schema objects to prune (staging)\n" {
+		t.Fatalf("schema prune stdout = %q, want no-op staging output", stdout.String())
+	}
+	if fake.prunePlanDatabaseURL != databaseURL {
+		t.Fatalf("schema prune database URL = %q, want %q", fake.prunePlanDatabaseURL, databaseURL)
+	}
+}
+
+func TestSchemaPruneCommandReportsBlockers(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{
+		prunePlan: db.SchemaPrunePlan{
+			Operations: []db.SchemaPruneOperation{
+				{Description: "drop column lead.legacy"},
+			},
+			Diagnostics: []db.SchemaDiagnostic{
+				{Classification: db.SchemaDiagnosticUnsafe, Table: "lead", Column: "amount", Message: "column type differs"},
+			},
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"schema", "prune"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err == nil {
+		t.Fatal("Run(schema prune) error = nil, want blocker error")
+	}
+	for _, want := range []string{
+		"schema prune plan (development)\n",
+		"destructive operations: 1\n",
+		"blockers: 1\n",
+		"- drop column lead.legacy\n",
+		"- unsafe: lead.amount: column type differs\n",
+		db.SchemaPruneBlockerHelp,
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("schema prune stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if !strings.Contains(err.Error(), "schema prune plan has 1 blocker") {
+		t.Fatalf("schema prune error = %q, want blocker context", err.Error())
+	}
+}
+
+func TestSchemaPruneForceNoopOutput(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"schema", "prune", "--force"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(schema prune --force) error = %v, want nil", err)
+	}
+	if stdout.String() != "no schema objects to prune (development)\n" {
+		t.Fatalf("schema prune stdout = %q, want no-op output", stdout.String())
 	}
 }
 
@@ -1384,16 +1539,26 @@ func (r *fakeDatabaseRunner) SchemaDump(_ context.Context, root string, database
 }
 
 type fakeSchemaSyncRunner struct {
-	result          db.SchemaSyncResult
-	err             error
-	plan            db.SchemaPlan
-	planErr         error
-	root            string
-	databaseURL     string
-	planRoot        string
-	planDatabaseURL string
-	calls           int
-	planCalls       int
+	result               db.SchemaSyncResult
+	err                  error
+	plan                 db.SchemaPlan
+	planErr              error
+	pruneResult          db.SchemaPruneResult
+	pruneErr             error
+	prunePlan            db.SchemaPrunePlan
+	prunePlanErr         error
+	root                 string
+	databaseURL          string
+	planRoot             string
+	planDatabaseURL      string
+	pruneRoot            string
+	pruneDatabaseURL     string
+	prunePlanRoot        string
+	prunePlanDatabaseURL string
+	calls                int
+	planCalls            int
+	pruneCalls           int
+	prunePlanCalls       int
 }
 
 func (r *fakeSchemaSyncRunner) Plan(_ context.Context, root string, databaseURL string) (db.SchemaPlan, error) {
@@ -1401,6 +1566,20 @@ func (r *fakeSchemaSyncRunner) Plan(_ context.Context, root string, databaseURL 
 	r.planRoot = root
 	r.planDatabaseURL = databaseURL
 	return r.plan, r.planErr
+}
+
+func (r *fakeSchemaSyncRunner) Prune(_ context.Context, root string, databaseURL string) (db.SchemaPruneResult, error) {
+	r.pruneCalls++
+	r.pruneRoot = root
+	r.pruneDatabaseURL = databaseURL
+	return r.pruneResult, r.pruneErr
+}
+
+func (r *fakeSchemaSyncRunner) PrunePlan(_ context.Context, root string, databaseURL string) (db.SchemaPrunePlan, error) {
+	r.prunePlanCalls++
+	r.prunePlanRoot = root
+	r.prunePlanDatabaseURL = databaseURL
+	return r.prunePlan, r.prunePlanErr
 }
 
 func (r *fakeSchemaSyncRunner) Sync(_ context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {

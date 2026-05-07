@@ -31,6 +31,7 @@ go run ./cmd/dygo db prepare
 go run ./cmd/dygo db schema dump
 go run ./cmd/dygo migrate plan
 go run ./cmd/dygo migrate
+go run ./cmd/dygo schema prune
 go run ./cmd/dygo apps list
 go run ./cmd/dygo apps validate
 go run ./cmd/dygo entities list

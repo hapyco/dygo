@@ -257,7 +257,7 @@ func TestBuildMetadataSchemaPlanRejectsDuplicateDesiredObjectNames(t *testing.T)
 	assertContains(t, err.Error(), "duplicate index name")
 }
 
-func TestBuildMetadataSchemaPlanReportsExtraTableAndColumn(t *testing.T) {
+func TestBuildMetadataSchemaPlanReportsExtraTableColumnAndIndex(t *testing.T) {
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{appEntity()}, LiveSchema{Tables: map[string]liveTable{
 		"app": liveSchemaTable("app",
 			map[string]liveColumn{
@@ -273,7 +273,10 @@ func TestBuildMetadataSchemaPlanReportsExtraTableAndColumn(t *testing.T) {
 				"app_name_key":     {Name: "app_name_key", Type: "unique"},
 				"app_status_check": {Name: "app_status_check", Type: "check"},
 			},
-			nil,
+			map[string]liveIndex{
+				"app_name_key":   {Name: "app_name_key"},
+				"app_legacy_idx": {Name: "app_legacy_idx"},
+			},
 		),
 		"legacy_tables": liveSchemaTable("legacy_tables", systemColumns(), nil, nil),
 	}})
@@ -282,6 +285,7 @@ func TestBuildMetadataSchemaPlanReportsExtraTableAndColumn(t *testing.T) {
 	}
 	errText := plan.BlockerError().Error()
 	assertContains(t, errText, "app.legacy")
+	assertContains(t, errText, `index "app_legacy_idx" exists in database but not metadata`)
 	assertContains(t, errText, "legacy_tables")
 }
 
