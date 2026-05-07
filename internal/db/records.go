@@ -1,0 +1,672 @@
+package db
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+const (
+	RecordErrorInvalidRequest      = "invalid_request"
+	RecordErrorValidation          = "validation_error"
+	RecordErrorNotFound            = "not_found"
+	RecordErrorConstraintViolation = "constraint_violation"
+	RecordErrorSchemaNotReady      = "schema_not_ready"
+	RecordErrorInternal            = "internal_error"
+)
+
+const (
+	defaultRecordLimit = 50
+	maxRecordLimit     = 100
+)
+
+// RecordQueryer is the database behavior needed by the Record store.
+type RecordQueryer interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+// RecordStore reads and mutates Records through persisted Entity metadata.
+type RecordStore struct {
+	queryer  RecordQueryer
+	metadata MetadataReader
+}
+
+// Record is one metadata-backed saved Entity instance.
+type Record map[string]any
+
+// RecordInput is the decoded request data for creating or updating a Record.
+type RecordInput map[string]json.RawMessage
+
+// RecordListParams controls Record list pagination.
+type RecordListParams struct {
+	Limit  int
+	Offset int
+}
+
+// RecordListResult is a page of Records.
+type RecordListResult struct {
+	Records []Record
+	Limit   int
+	Offset  int
+	Count   int
+}
+
+// RecordError reports stable Record runtime failures for API mapping.
+type RecordError struct {
+	Code    string
+	Message string
+	Details map[string]any
+	Err     error
+}
+
+func (e RecordError) Error() string {
+	if e.Err == nil {
+		return e.Message
+	}
+	return e.Message + ": " + e.Err.Error()
+}
+
+func (e RecordError) Unwrap() error {
+	return e.Err
+}
+
+// IsRecordError reports whether err is a RecordError.
+func IsRecordError(err error) bool {
+	var recordErr RecordError
+	return errors.As(err, &recordErr)
+}
+
+// NewRecordStore returns a Record store backed by queryer.
+func NewRecordStore(queryer RecordQueryer) RecordStore {
+	return RecordStore{queryer: queryer, metadata: NewMetadataReader(queryer)}
+}
+
+// ListRecords returns one deterministic page of Records for entity.
+func (s RecordStore) ListRecords(ctx context.Context, entity string, params RecordListParams) (RecordListResult, error) {
+	if err := s.requireQueryer(); err != nil {
+		return RecordListResult{}, err
+	}
+	params, err := normalizeRecordListParams(params)
+	if err != nil {
+		return RecordListResult{}, err
+	}
+	layout, err := s.recordLayout(ctx, entity)
+	if err != nil {
+		return RecordListResult{}, err
+	}
+
+	sql := fmt.Sprintf("SELECT %s FROM %s ORDER BY %s ASC LIMIT $1 OFFSET $2", layout.selectList(), quoteIdent(layout.Table), quoteIdent("id"))
+	rows, err := s.queryer.Query(ctx, sql, params.Limit, params.Offset)
+	if err != nil {
+		return RecordListResult{}, classifyRecordDBError(err, entity)
+	}
+	defer rows.Close()
+
+	records := []Record{}
+	for rows.Next() {
+		values, err := rows.Values()
+		if err != nil {
+			return RecordListResult{}, recordError(RecordErrorInternal, "read record row failed", map[string]any{"entity": entity}, err)
+		}
+		record, err := layout.recordFromValues(values)
+		if err != nil {
+			return RecordListResult{}, err
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return RecordListResult{}, classifyRecordDBError(err, entity)
+	}
+	return RecordListResult{Records: records, Limit: params.Limit, Offset: params.Offset, Count: len(records)}, nil
+}
+
+// GetRecord returns one Record by id.
+func (s RecordStore) GetRecord(ctx context.Context, entity string, id int64) (Record, error) {
+	if err := s.requireQueryer(); err != nil {
+		return nil, err
+	}
+	if id <= 0 {
+		return nil, invalidRecordIDError(entity)
+	}
+	layout, err := s.recordLayout(ctx, entity)
+	if err != nil {
+		return nil, err
+	}
+	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent("id"))
+	return s.queryOneRecord(ctx, layout, sql, id)
+}
+
+// CreateRecord inserts one Record using Entity metadata.
+func (s RecordStore) CreateRecord(ctx context.Context, entity string, input RecordInput) (Record, error) {
+	if err := s.requireQueryer(); err != nil {
+		return nil, err
+	}
+	layout, err := s.recordLayout(ctx, entity)
+	if err != nil {
+		return nil, err
+	}
+	mutation, err := layout.createMutation(input)
+	if err != nil {
+		return nil, err
+	}
+
+	var sql string
+	if len(mutation.Columns) == 0 {
+		sql = fmt.Sprintf("INSERT INTO %s DEFAULT VALUES RETURNING %s", quoteIdent(layout.Table), layout.selectList())
+	} else {
+		sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING %s", quoteIdent(layout.Table), quoteIdentList(mutation.Columns), strings.Join(mutation.Placeholders, ", "), layout.selectList())
+	}
+	return s.queryReturningRecord(ctx, layout, sql, mutation.Values, false)
+}
+
+// UpdateRecord partially updates one Record by id.
+func (s RecordStore) UpdateRecord(ctx context.Context, entity string, id int64, input RecordInput) (Record, error) {
+	if err := s.requireQueryer(); err != nil {
+		return nil, err
+	}
+	if id <= 0 {
+		return nil, invalidRecordIDError(entity)
+	}
+	layout, err := s.recordLayout(ctx, entity)
+	if err != nil {
+		return nil, err
+	}
+	mutation, err := layout.updateMutation(input)
+	if err != nil {
+		return nil, err
+	}
+
+	setClauses := make([]string, 0, len(mutation.Columns)+1)
+	for i, column := range mutation.Columns {
+		setClauses = append(setClauses, fmt.Sprintf("%s = %s", quoteIdent(column), mutation.Placeholders[i]))
+	}
+	setClauses = append(setClauses, fmt.Sprintf("%s = now()", quoteIdent("updated_at")))
+	args := append([]any(nil), mutation.Values...)
+	args = append(args, id)
+	sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s = $%d RETURNING %s", quoteIdent(layout.Table), strings.Join(setClauses, ", "), quoteIdent("id"), len(args), layout.selectList())
+	return s.queryReturningRecord(ctx, layout, sql, args, true)
+}
+
+// DeleteRecord hard-deletes one Record by id.
+func (s RecordStore) DeleteRecord(ctx context.Context, entity string, id int64) error {
+	if err := s.requireQueryer(); err != nil {
+		return err
+	}
+	if id <= 0 {
+		return invalidRecordIDError(entity)
+	}
+	layout, err := s.recordLayout(ctx, entity)
+	if err != nil {
+		return err
+	}
+	tag, err := s.queryer.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE %s = $1", quoteIdent(layout.Table), quoteIdent("id")), id)
+	if err != nil {
+		return classifyRecordDBError(err, entity)
+	}
+	if tag.RowsAffected() == 0 {
+		return recordError(RecordErrorNotFound, "record not found", map[string]any{"entity": entity, "id": id}, nil)
+	}
+	return nil
+}
+
+func (s RecordStore) queryOneRecord(ctx context.Context, layout recordLayout, sql string, args ...any) (Record, error) {
+	return s.queryReturningRecord(ctx, layout, sql, args, true)
+}
+
+func (s RecordStore) queryReturningRecord(ctx context.Context, layout recordLayout, sql string, args []any, notFoundWhenEmpty bool) (Record, error) {
+	rows, err := s.queryer.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, classifyRecordDBError(err, layout.Entity)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, classifyRecordDBError(err, layout.Entity)
+		}
+		if notFoundWhenEmpty {
+			return nil, recordError(RecordErrorNotFound, "record not found", map[string]any{"entity": layout.Entity}, nil)
+		}
+		return nil, recordError(RecordErrorInternal, "record query returned no rows", map[string]any{"entity": layout.Entity}, nil)
+	}
+	values, err := rows.Values()
+	if err != nil {
+		return nil, recordError(RecordErrorInternal, "read record row failed", map[string]any{"entity": layout.Entity}, err)
+	}
+	record, err := layout.recordFromValues(values)
+	if err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, classifyRecordDBError(err, layout.Entity)
+	}
+	return record, nil
+}
+
+func (s RecordStore) recordLayout(ctx context.Context, entity string) (recordLayout, error) {
+	meta, err := s.metadata.GetEntityMeta(ctx, entity)
+	if err != nil {
+		if IsMetadataNotFound(err) {
+			return recordLayout{}, recordError(RecordErrorNotFound, "entity not found", map[string]any{"entity": entity}, err)
+		}
+		var classified RecordError
+		if errors.As(classifyRecordDBError(err, entity), &classified) && classified.Code == RecordErrorSchemaNotReady {
+			return recordLayout{}, classified
+		}
+		return recordLayout{}, recordError(RecordErrorInternal, "load entity metadata failed", map[string]any{"entity": entity}, err)
+	}
+	return newRecordLayout(meta)
+}
+
+func (s RecordStore) requireQueryer() error {
+	if s.queryer == nil {
+		return recordError(RecordErrorInternal, "record queryer is required", nil, nil)
+	}
+	return nil
+}
+
+type recordLayout struct {
+	Entity      string
+	Table       string
+	Fields      []recordField
+	FieldByName map[string]recordField
+}
+
+type recordField struct {
+	Name        string
+	Type        string
+	Required    bool
+	Default     json.RawMessage
+	Options     recordFieldOptions
+	Column      string
+	Storage     bool
+	SelectOrder int
+}
+
+type recordFieldOptions struct {
+	Values []string `json:"values,omitempty"`
+	Entity string   `json:"entity,omitempty"`
+}
+
+type recordMutation struct {
+	Columns      []string
+	Placeholders []string
+	Values       []any
+}
+
+func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
+	layout := recordLayout{
+		Entity:      meta.Name,
+		Table:       storageName(meta.Name),
+		FieldByName: map[string]recordField{},
+	}
+	for _, metadataField := range meta.Fields {
+		field := recordField{
+			Name:     metadataField.Name,
+			Type:     metadataField.Type,
+			Required: metadataField.Required,
+			Default:  metadataField.Default,
+			Storage:  metadataField.Type != "child-table",
+		}
+		if len(metadataField.Options) > 0 {
+			if err := json.Unmarshal(metadataField.Options, &field.Options); err != nil {
+				return recordLayout{}, recordError(RecordErrorInternal, "field options metadata is invalid", map[string]any{"entity": meta.Name, "field": metadataField.Name}, err)
+			}
+		}
+		if field.Storage {
+			field.Column = recordColumnForField(field.Name, field.Type)
+			field.SelectOrder = len(layout.Fields) + 3
+		}
+		layout.Fields = append(layout.Fields, field)
+		layout.FieldByName[field.Name] = field
+	}
+	return layout, nil
+}
+
+func (l recordLayout) selectList() string {
+	columns := []string{quoteIdent("id"), quoteIdent("created_at"), quoteIdent("updated_at")}
+	for _, field := range l.Fields {
+		if field.Storage {
+			columns = append(columns, quoteIdent(field.Column))
+		}
+	}
+	return strings.Join(columns, ", ")
+}
+
+func (l recordLayout) recordFromValues(values []any) (Record, error) {
+	expected := 3
+	for _, field := range l.Fields {
+		if field.Storage {
+			expected++
+		}
+	}
+	if len(values) != expected {
+		return nil, recordError(RecordErrorInternal, "record column count did not match metadata", map[string]any{"entity": l.Entity, "expected": expected, "actual": len(values)}, nil)
+	}
+	record := Record{
+		"id":         normalizeRecordValue("", values[0]),
+		"created-at": normalizeRecordValue("datetime", values[1]),
+		"updated-at": normalizeRecordValue("datetime", values[2]),
+	}
+	index := 3
+	for _, field := range l.Fields {
+		if !field.Storage {
+			continue
+		}
+		record[field.Name] = normalizeRecordValue(field.Type, values[index])
+		index++
+	}
+	return record, nil
+}
+
+func (l recordLayout) createMutation(input RecordInput) (recordMutation, error) {
+	input = normalizeRecordInput(input)
+	if err := l.validateInputFields(input, true); err != nil {
+		return recordMutation{}, err
+	}
+	for _, field := range l.Fields {
+		if !field.Required || len(field.Default) > 0 {
+			continue
+		}
+		if _, ok := input[field.Name]; !ok {
+			return recordMutation{}, recordError(RecordErrorValidation, "required field is missing", map[string]any{"entity": l.Entity, "field": field.Name}, nil)
+		}
+	}
+	return l.mutationFromInput(input)
+}
+
+func (l recordLayout) updateMutation(input RecordInput) (recordMutation, error) {
+	input = normalizeRecordInput(input)
+	if len(input) == 0 {
+		return recordMutation{}, recordError(RecordErrorValidation, "at least one field is required", map[string]any{"entity": l.Entity}, nil)
+	}
+	if err := l.validateInputFields(input, false); err != nil {
+		return recordMutation{}, err
+	}
+	return l.mutationFromInput(input)
+}
+
+func (l recordLayout) validateInputFields(input RecordInput, _ bool) error {
+	for name, raw := range input {
+		if isSystemRecordField(name) {
+			return recordError(RecordErrorValidation, "system fields cannot be written", map[string]any{"entity": l.Entity, "field": name}, nil)
+		}
+		field, ok := l.FieldByName[name]
+		if !ok {
+			return recordError(RecordErrorValidation, "unknown field", map[string]any{"entity": l.Entity, "field": name}, nil)
+		}
+		if !field.Storage {
+			return recordError(RecordErrorValidation, "field is not supported by record runtime", map[string]any{"entity": l.Entity, "field": name}, nil)
+		}
+		if rawIsNull(raw) && field.Required {
+			return recordError(RecordErrorValidation, "required field cannot be null", map[string]any{"entity": l.Entity, "field": name}, nil)
+		}
+	}
+	return nil
+}
+
+func (l recordLayout) mutationFromInput(input RecordInput) (recordMutation, error) {
+	mutation := recordMutation{}
+	names := sortedRecordInputNames(input)
+	for _, name := range names {
+		field := l.FieldByName[name]
+		value, err := recordDBValue(field, input[name])
+		if err != nil {
+			return recordMutation{}, err
+		}
+		mutation.Columns = append(mutation.Columns, field.Column)
+		mutation.Placeholders = append(mutation.Placeholders, recordPlaceholder(len(mutation.Values)+1, field))
+		mutation.Values = append(mutation.Values, value)
+	}
+	return mutation, nil
+}
+
+func normalizeRecordListParams(params RecordListParams) (RecordListParams, error) {
+	if params.Limit == 0 {
+		params.Limit = defaultRecordLimit
+	}
+	if params.Limit < 0 || params.Limit > maxRecordLimit {
+		return RecordListParams{}, recordError(RecordErrorInvalidRequest, "limit must be between 1 and 100", map[string]any{"limit": params.Limit}, nil)
+	}
+	if params.Offset < 0 {
+		return RecordListParams{}, recordError(RecordErrorInvalidRequest, "offset must be greater than or equal to 0", map[string]any{"offset": params.Offset}, nil)
+	}
+	return params, nil
+}
+
+func normalizeRecordInput(input RecordInput) RecordInput {
+	if input == nil {
+		return RecordInput{}
+	}
+	return input
+}
+
+func recordDBValue(field recordField, raw json.RawMessage) (any, error) {
+	if rawIsNull(raw) {
+		return nil, nil
+	}
+	switch field.Type {
+	case "text", "email", "phone", "long-text", "attachment":
+		return jsonStringValue(field, raw)
+	case "select":
+		value, err := jsonStringValue(field, raw)
+		if err != nil {
+			return nil, err
+		}
+		if len(field.Options.Values) > 0 && !stringInSlice(value, field.Options.Values) {
+			return nil, recordError(RecordErrorValidation, "select value is not allowed", map[string]any{"field": field.Name, "value": value}, nil)
+		}
+		return value, nil
+	case "int", "link":
+		return jsonIntValue(field, raw)
+	case "decimal", "currency":
+		return jsonNumberStringValue(field, raw)
+	case "boolean":
+		var value bool
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return nil, recordError(RecordErrorValidation, "field must be a boolean", map[string]any{"field": field.Name}, err)
+		}
+		return value, nil
+	case "date", "datetime", "time":
+		return jsonStringValue(field, raw)
+	case "json":
+		if !json.Valid(raw) {
+			return nil, recordError(RecordErrorValidation, "field must be valid JSON", map[string]any{"field": field.Name}, nil)
+		}
+		return string(raw), nil
+	default:
+		return nil, recordError(RecordErrorValidation, "field type is not supported by record runtime", map[string]any{"field": field.Name, "type": field.Type}, nil)
+	}
+}
+
+func jsonStringValue(field recordField, raw json.RawMessage) (string, error) {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", recordError(RecordErrorValidation, "field must be a string", map[string]any{"field": field.Name}, err)
+	}
+	return value, nil
+}
+
+func jsonIntValue(field recordField, raw json.RawMessage) (int64, error) {
+	number, err := jsonNumberValue(field, raw)
+	if err != nil {
+		return 0, err
+	}
+	value, err := strconv.ParseInt(number.String(), 10, 64)
+	if err != nil {
+		return 0, recordError(RecordErrorValidation, "field must be an integer", map[string]any{"field": field.Name}, err)
+	}
+	return value, nil
+}
+
+func jsonNumberStringValue(field recordField, raw json.RawMessage) (string, error) {
+	number, err := jsonNumberValue(field, raw)
+	if err != nil {
+		return "", err
+	}
+	return number.String(), nil
+}
+
+func jsonNumberValue(field recordField, raw json.RawMessage) (json.Number, error) {
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return "", recordError(RecordErrorValidation, "field must be a number", map[string]any{"field": field.Name}, err)
+	}
+	number, ok := value.(json.Number)
+	if !ok {
+		return "", recordError(RecordErrorValidation, "field must be a number", map[string]any{"field": field.Name}, nil)
+	}
+	if _, err := strconv.ParseFloat(number.String(), 64); err != nil {
+		return "", recordError(RecordErrorValidation, "field must be a number", map[string]any{"field": field.Name}, err)
+	}
+	return number, nil
+}
+
+func recordPlaceholder(index int, field recordField) string {
+	placeholder := "$" + strconv.Itoa(index)
+	switch field.Type {
+	case "int":
+		return placeholder + "::integer"
+	case "link":
+		return placeholder + "::bigint"
+	case "decimal", "currency":
+		return placeholder + "::numeric"
+	case "boolean":
+		return placeholder + "::boolean"
+	case "date":
+		return placeholder + "::date"
+	case "datetime":
+		return placeholder + "::timestamptz"
+	case "time":
+		return placeholder + "::time"
+	case "json":
+		return placeholder + "::jsonb"
+	default:
+		return placeholder
+	}
+}
+
+func recordColumnForField(name string, fieldType string) string {
+	column := storageName(name)
+	if fieldType == "link" {
+		column += "_id"
+	}
+	return column
+}
+
+func normalizeRecordValue(fieldType string, value any) any {
+	if value == nil {
+		return nil
+	}
+	switch typed := value.(type) {
+	case []byte:
+		if fieldType == "json" {
+			var decoded any
+			if err := json.Unmarshal(typed, &decoded); err == nil {
+				return decoded
+			}
+		}
+		return string(typed)
+	case string:
+		if fieldType == "json" {
+			var decoded any
+			if err := json.Unmarshal([]byte(typed), &decoded); err == nil {
+				return decoded
+			}
+		}
+		return typed
+	case time.Time:
+		switch fieldType {
+		case "date":
+			return typed.Format("2006-01-02")
+		case "time":
+			return typed.Format("15:04:05")
+		default:
+			return typed
+		}
+	case float64:
+		if math.Trunc(typed) == typed {
+			return typed
+		}
+		return typed
+	default:
+		return typed
+	}
+}
+
+func sortedRecordInputNames(input RecordInput) []string {
+	names := make([]string, 0, len(input))
+	for name := range input {
+		names = append(names, name)
+	}
+	sortStrings(names)
+	return names
+}
+
+func sortStrings(values []string) {
+	for i := 1; i < len(values); i++ {
+		for j := i; j > 0 && values[j] < values[j-1]; j-- {
+			values[j], values[j-1] = values[j-1], values[j]
+		}
+	}
+}
+
+func rawIsNull(raw json.RawMessage) bool {
+	return len(raw) == 0 || string(raw) == "null"
+}
+
+func stringInSlice(value string, values []string) bool {
+	for _, candidate := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func isSystemRecordField(name string) bool {
+	switch name {
+	case "id", "created-at", "updated-at":
+		return true
+	default:
+		return false
+	}
+}
+
+func invalidRecordIDError(entity string) error {
+	return recordError(RecordErrorInvalidRequest, "record id must be a positive integer", map[string]any{"entity": entity}, nil)
+}
+
+func classifyRecordDBError(err error, entity string) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "42P01", "42703":
+			return recordError(RecordErrorSchemaNotReady, "schema is not ready; run dygo migrate", map[string]any{"entity": entity}, err)
+		case "23505", "23503", "23514", "23502":
+			details := map[string]any{"entity": entity}
+			if pgErr.ConstraintName != "" {
+				details["constraint"] = pgErr.ConstraintName
+			}
+			return recordError(RecordErrorConstraintViolation, "record violates a database constraint", details, err)
+		}
+	}
+	return recordError(RecordErrorInternal, "record query failed", map[string]any{"entity": entity}, err)
+}
+
+func recordError(code string, message string, details map[string]any, err error) RecordError {
+	return RecordError{Code: code, Message: message, Details: details, Err: err}
+}

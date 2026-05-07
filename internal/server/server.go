@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dygo-dev/dygo/internal/db"
@@ -20,6 +23,7 @@ type Options struct {
 	Address     string
 	DatabaseURL string
 	Metadata    MetadataStore
+	Records     RecordStore
 	OnReady     func(string) error
 }
 
@@ -31,6 +35,15 @@ type MetadataStore interface {
 	GetEntityMeta(context.Context, string) (db.MetadataEntityMeta, error)
 }
 
+// RecordStore is the runtime Record behavior used by HTTP handlers.
+type RecordStore interface {
+	ListRecords(context.Context, string, db.RecordListParams) (db.RecordListResult, error)
+	GetRecord(context.Context, string, int64) (db.Record, error)
+	CreateRecord(context.Context, string, db.RecordInput) (db.Record, error)
+	UpdateRecord(context.Context, string, int64, db.RecordInput) (db.Record, error)
+	DeleteRecord(context.Context, string, int64) error
+}
+
 // NewRouter creates the dygo HTTP router.
 func NewRouter(options ...Options) http.Handler {
 	var opts Options
@@ -40,6 +53,7 @@ func NewRouter(options ...Options) http.Handler {
 	router := chi.NewRouter()
 	router.Get("/health", healthHandler)
 	registerMetadataRoutes(router, opts.Metadata)
+	registerRecordRoutes(router, opts.Records)
 	return router
 }
 
@@ -65,6 +79,7 @@ func Serve(ctx context.Context, options Options) error {
 		}
 		defer pool.Close()
 		options.Metadata = db.NewMetadataReader(pool)
+		options.Records = db.NewRecordStore(pool)
 	}
 
 	listener, err := net.Listen("tcp", options.Address)
@@ -137,6 +152,17 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 
 type dataEnvelope struct {
 	Data any `json:"data"`
+}
+
+type listEnvelope struct {
+	Data any `json:"data"`
+	Meta any `json:"meta"`
+}
+
+type recordListMeta struct {
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+	Count  int `json:"count"`
 }
 
 type errorEnvelope struct {
@@ -240,6 +266,213 @@ func writeAPIError(w http.ResponseWriter, err error, detailKey string, detailVal
 	writeJSON(w, http.StatusInternalServerError, errorEnvelope{Error: apiError{
 		Code:    "internal_error",
 		Message: "metadata query failed",
+	}})
+}
+
+type recordHandler struct {
+	store RecordStore
+}
+
+func registerRecordRoutes(router chi.Router, store RecordStore) {
+	handler := recordHandler{store: store}
+	router.Route("/api/v1/records/{entity}", func(records chi.Router) {
+		records.Get("/", handler.listRecords)
+		records.Post("/", handler.createRecord)
+		records.Get("/{id}", handler.getRecord)
+		records.Patch("/{id}", handler.updateRecord)
+		records.Delete("/{id}", handler.deleteRecord)
+	})
+}
+
+func (h recordHandler) listRecords(w http.ResponseWriter, r *http.Request) {
+	if h.requireStore(w) {
+		return
+	}
+	params, err := recordListParams(r)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	entity := chi.URLParam(r, "entity")
+	result, err := h.store.ListRecords(r.Context(), entity, params)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, listEnvelope{
+		Data: result.Records,
+		Meta: recordListMeta{Limit: result.Limit, Offset: result.Offset, Count: result.Count},
+	})
+}
+
+func (h recordHandler) getRecord(w http.ResponseWriter, r *http.Request) {
+	if h.requireStore(w) {
+		return
+	}
+	entity := chi.URLParam(r, "entity")
+	id, err := recordIDParam(entity, chi.URLParam(r, "id"))
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	record, err := h.store.GetRecord(r.Context(), entity, id)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: record})
+}
+
+func (h recordHandler) createRecord(w http.ResponseWriter, r *http.Request) {
+	if h.requireStore(w) {
+		return
+	}
+	entity := chi.URLParam(r, "entity")
+	input, err := decodeRecordInput(r)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	record, err := h.store.CreateRecord(r.Context(), entity, input)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, dataEnvelope{Data: record})
+}
+
+func (h recordHandler) updateRecord(w http.ResponseWriter, r *http.Request) {
+	if h.requireStore(w) {
+		return
+	}
+	entity := chi.URLParam(r, "entity")
+	id, err := recordIDParam(entity, chi.URLParam(r, "id"))
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	input, err := decodeRecordInput(r)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	record, err := h.store.UpdateRecord(r.Context(), entity, id, input)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: record})
+}
+
+func (h recordHandler) deleteRecord(w http.ResponseWriter, r *http.Request) {
+	if h.requireStore(w) {
+		return
+	}
+	entity := chi.URLParam(r, "entity")
+	id, err := recordIDParam(entity, chi.URLParam(r, "id"))
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	if err := h.store.DeleteRecord(r.Context(), entity, id); err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: map[string]any{"deleted": true}})
+}
+
+func (h recordHandler) requireStore(w http.ResponseWriter) bool {
+	if h.store != nil {
+		return false
+	}
+	writeJSON(w, http.StatusServiceUnavailable, errorEnvelope{Error: apiError{
+		Code:    "service_unavailable",
+		Message: "record store is unavailable",
+	}})
+	return true
+}
+
+func recordListParams(r *http.Request) (db.RecordListParams, error) {
+	params := db.RecordListParams{}
+	if value := strings.TrimSpace(r.URL.Query().Get("limit")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "limit must be an integer", Details: map[string]any{"limit": value}, Err: err}
+		}
+		if parsed <= 0 {
+			return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "limit must be between 1 and 100", Details: map[string]any{"limit": parsed}}
+		}
+		params.Limit = parsed
+	}
+	if value := strings.TrimSpace(r.URL.Query().Get("offset")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "offset must be an integer", Details: map[string]any{"offset": value}, Err: err}
+		}
+		params.Offset = parsed
+	}
+	return params, nil
+}
+
+func recordIDParam(entity string, raw string) (int64, error) {
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "record id must be a positive integer", Details: map[string]any{"entity": entity, "id": raw}, Err: err}
+	}
+	return id, nil
+}
+
+func decodeRecordInput(r *http.Request) (db.RecordInput, error) {
+	var envelope struct {
+		Data db.RecordInput `json:"data"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "request body is required"}
+		}
+		return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "request body must be valid JSON", Err: err}
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "request body must contain one JSON object", Err: err}
+	}
+	if envelope.Data == nil {
+		return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "request data is required"}
+	}
+	return envelope.Data, nil
+}
+
+func writeRecordError(w http.ResponseWriter, err error) {
+	var recordErr db.RecordError
+	if !errors.As(err, &recordErr) {
+		writeJSON(w, http.StatusInternalServerError, errorEnvelope{Error: apiError{
+			Code:    "internal_error",
+			Message: "record request failed",
+		}})
+		return
+	}
+	status := http.StatusInternalServerError
+	message := recordErr.Message
+	details := recordErr.Details
+	switch recordErr.Code {
+	case db.RecordErrorInvalidRequest:
+		status = http.StatusBadRequest
+	case db.RecordErrorValidation:
+		status = http.StatusUnprocessableEntity
+	case db.RecordErrorNotFound:
+		status = http.StatusNotFound
+	case db.RecordErrorConstraintViolation, db.RecordErrorSchemaNotReady:
+		status = http.StatusConflict
+	case db.RecordErrorInternal:
+		status = http.StatusInternalServerError
+		message = "record request failed"
+		details = nil
+	}
+	writeJSON(w, status, errorEnvelope{Error: apiError{
+		Code:    recordErr.Code,
+		Message: message,
+		Details: details,
 	}})
 }
 

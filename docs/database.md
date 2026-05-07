@@ -162,4 +162,4 @@ go run ./cmd/dygo db schema dump
 
 ## Boundaries
 
-The schema sync foundation creates platform schema only. It does not store Records, resolve permissions, run app lifecycle patches, or perform authentication yet.
+The schema sync foundation creates tables and persists metadata. The generic Record API can read and write DB-backed fields through that metadata. Permission resolution, app lifecycle patches, authentication, child table storage, and destructive metadata transitions are still separate layers.

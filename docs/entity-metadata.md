@@ -4,7 +4,7 @@ Entities define business object structure in dygo.
 
 The Entity catalog loads Entity files from discovered apps. During `dygo migrate` and `dygo db prepare`, dygo uses this metadata to create or update PostgreSQL tables. Core is not a separate schema path; Core tables come from `apps/core/entities/*.yml` the same way business app tables come from their Entity files.
 
-Entity metadata is still the contract layer. Record CRUD, permission enforcement, Studio views, and runtime behavior are handled by later framework layers.
+Entity metadata is still the contract layer. The generic Record API reads persisted metadata and uses it to operate saved Records. Permission enforcement, Studio views, child table storage, and richer runtime behavior are handled by later framework layers.
 
 ## Example
 

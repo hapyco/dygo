@@ -67,7 +67,41 @@ Errors use:
 {"error":{"code":"not_found","message":"entity not found","details":{"entity":"lead"}}}
 ```
 
-These endpoints are generic. dygo does not create per-Entity routes such as `/api/users` or `/api/leads`. Future Record APIs should use one metadata-powered runtime surface such as `/api/v1/records/{entity}`.
+These endpoints are generic. dygo does not create per-Entity routes such as `/api/users` or `/api/leads`.
+
+## Record API
+
+The first Record API is also generic and metadata-powered:
+
+```txt
+GET    /api/v1/records/{entity}?limit=50&offset=0
+GET    /api/v1/records/{entity}/{id}
+POST   /api/v1/records/{entity}
+PATCH  /api/v1/records/{entity}/{id}
+DELETE /api/v1/records/{entity}/{id}
+```
+
+Record APIs read persisted Core metadata to map Entity names, Field names, and storage columns. Run `dygo migrate` before serving Records so metadata tables and Entity storage tables are in sync.
+
+Record request bodies use a `data` envelope:
+
+```json
+{"data":{"email":"a@example.com","full-name":"A User"}}
+```
+
+Record responses use dygo metadata names, including system fields:
+
+```json
+{"data":{"id":1,"created-at":"2026-05-07T12:00:00Z","updated-at":"2026-05-07T12:00:00Z","email":"a@example.com"}}
+```
+
+List responses include pagination metadata:
+
+```json
+{"data":[],"meta":{"limit":50,"offset":0,"count":0}}
+```
+
+`PATCH` is the update operation and only changes fields provided in the request body. `DELETE` performs a hard delete in v1.
 
 ## Shutdown
 
@@ -77,4 +111,4 @@ The CLI listens for interrupt and termination signals and asks the HTTP server t
 
 ## Boundaries
 
-The current server includes health and read-only metadata APIs. It does not include authentication, permission enforcement, Studio rendering, Record CRUD, or per-Entity controllers yet.
+The current server includes health, read-only metadata APIs, and generic Record CRUD APIs. It does not include authentication, permission enforcement, Studio rendering, per-Entity controllers, child table storage, workflow hooks, or audit logging yet.

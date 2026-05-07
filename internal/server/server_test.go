@@ -220,6 +220,166 @@ func TestMetadataRouteWithoutStore(t *testing.T) {
 	}
 }
 
+func TestRecordRoutes(t *testing.T) {
+	store := &fakeRecordStore{
+		list: db.RecordListResult{
+			Records: []db.Record{{"id": int64(1), "email": "a@example.com"}},
+			Limit:   50,
+			Offset:  0,
+			Count:   1,
+		},
+		record: db.Record{"id": int64(1), "email": "a@example.com"},
+	}
+
+	tests := []struct {
+		method string
+		path   string
+		body   string
+		status int
+		want   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/records/user", status: http.StatusOK, want: `"meta":{"limit":50,"offset":0,"count":1}`},
+		{method: http.MethodGet, path: "/api/v1/records/user/1", status: http.StatusOK, want: `"email":"a@example.com"`},
+		{method: http.MethodPost, path: "/api/v1/records/user", body: `{"data":{"email":"a@example.com"}}`, status: http.StatusCreated, want: `"data":`},
+		{method: http.MethodPatch, path: "/api/v1/records/user/1", body: `{"data":{"email":"b@example.com"}}`, status: http.StatusOK, want: `"data":`},
+		{method: http.MethodDelete, path: "/api/v1/records/user/1", status: http.StatusOK, want: `"deleted":true`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			request := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			recorder := httptest.NewRecorder()
+
+			NewRouter(Options{Records: store}).ServeHTTP(recorder, request)
+
+			response := recorder.Result()
+			defer response.Body.Close()
+			if response.StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", response.StatusCode, tt.status)
+			}
+			if got := response.Header.Get("Content-Type"); got != "application/json" {
+				t.Fatalf("content type = %q, want application/json", got)
+			}
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("ReadAll(record body) error = %v", err)
+			}
+			if !contains(string(body), tt.want) {
+				t.Fatalf("body = %s, want %q", string(body), tt.want)
+			}
+		})
+	}
+	if string(store.created["email"]) != `"a@example.com"` {
+		t.Fatalf("created input = %#v, want email", store.created)
+	}
+	if string(store.updated["email"]) != `"b@example.com"` {
+		t.Fatalf("updated input = %#v, want email", store.updated)
+	}
+	if store.deletedID != 1 {
+		t.Fatalf("deleted id = %d, want 1", store.deletedID)
+	}
+}
+
+func TestRecordRouteErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		store  *fakeRecordStore
+		method string
+		path   string
+		body   string
+		status int
+		want   string
+	}{
+		{
+			name:   "invalid id",
+			store:  &fakeRecordStore{},
+			method: http.MethodGet,
+			path:   "/api/v1/records/user/nope",
+			status: http.StatusBadRequest,
+			want:   `"code":"invalid_request"`,
+		},
+		{
+			name:   "invalid body",
+			store:  &fakeRecordStore{},
+			method: http.MethodPost,
+			path:   "/api/v1/records/user",
+			body:   `{"data":`,
+			status: http.StatusBadRequest,
+			want:   `"code":"invalid_request"`,
+		},
+		{
+			name:   "validation error",
+			store:  &fakeRecordStore{createErr: db.RecordError{Code: db.RecordErrorValidation, Message: "required field is missing", Details: map[string]any{"field": "email"}}},
+			method: http.MethodPost,
+			path:   "/api/v1/records/user",
+			body:   `{"data":{}}`,
+			status: http.StatusUnprocessableEntity,
+			want:   `"code":"validation_error"`,
+		},
+		{
+			name:   "not found",
+			store:  &fakeRecordStore{getErr: db.RecordError{Code: db.RecordErrorNotFound, Message: "record not found", Details: map[string]any{"entity": "user", "id": 1}}},
+			method: http.MethodGet,
+			path:   "/api/v1/records/user/1",
+			status: http.StatusNotFound,
+			want:   `"code":"not_found"`,
+		},
+		{
+			name:   "constraint violation",
+			store:  &fakeRecordStore{createErr: db.RecordError{Code: db.RecordErrorConstraintViolation, Message: "record violates a database constraint", Details: map[string]any{"constraint": "user_email_key"}}},
+			method: http.MethodPost,
+			path:   "/api/v1/records/user",
+			body:   `{"data":{"email":"a@example.com"}}`,
+			status: http.StatusConflict,
+			want:   `"code":"constraint_violation"`,
+		},
+		{
+			name:   "internal error redacted",
+			store:  &fakeRecordStore{listErr: db.RecordError{Code: db.RecordErrorInternal, Message: "postgres://user:secret@localhost failed"}},
+			method: http.MethodGet,
+			path:   "/api/v1/records/user",
+			status: http.StatusInternalServerError,
+			want:   `"message":"record request failed"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			recorder := httptest.NewRecorder()
+
+			NewRouter(Options{Records: tt.store}).ServeHTTP(recorder, request)
+
+			response := recorder.Result()
+			defer response.Body.Close()
+			if response.StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", response.StatusCode, tt.status)
+			}
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("ReadAll(record error body) error = %v", err)
+			}
+			if !contains(string(body), tt.want) {
+				t.Fatalf("body = %s, want %q", string(body), tt.want)
+			}
+			if contains(string(body), "postgres://") || contains(string(body), "secret") {
+				t.Fatalf("body leaked internal detail: %s", string(body))
+			}
+		})
+	}
+}
+
+func TestRecordRouteWithoutStore(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/user", nil)
+	recorder := httptest.NewRecorder()
+
+	NewRouter().ServeHTTP(recorder, request)
+
+	if recorder.Result().StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("record without store status = %d, want 503", recorder.Result().StatusCode)
+	}
+}
+
 type fakeMetadataStore struct {
 	apps      []db.MetadataApp
 	appsErr   error
@@ -245,6 +405,42 @@ func (s *fakeMetadataStore) ListEntities(context.Context) ([]db.MetadataEntity, 
 
 func (s *fakeMetadataStore) GetEntityMeta(context.Context, string) (db.MetadataEntityMeta, error) {
 	return s.meta, s.metaErr
+}
+
+type fakeRecordStore struct {
+	list      db.RecordListResult
+	listErr   error
+	record    db.Record
+	getErr    error
+	createErr error
+	updateErr error
+	deleteErr error
+	created   db.RecordInput
+	updated   db.RecordInput
+	deletedID int64
+}
+
+func (s *fakeRecordStore) ListRecords(context.Context, string, db.RecordListParams) (db.RecordListResult, error) {
+	return s.list, s.listErr
+}
+
+func (s *fakeRecordStore) GetRecord(context.Context, string, int64) (db.Record, error) {
+	return s.record, s.getErr
+}
+
+func (s *fakeRecordStore) CreateRecord(_ context.Context, _ string, input db.RecordInput) (db.Record, error) {
+	s.created = input
+	return s.record, s.createErr
+}
+
+func (s *fakeRecordStore) UpdateRecord(_ context.Context, _ string, _ int64, input db.RecordInput) (db.Record, error) {
+	s.updated = input
+	return s.record, s.updateErr
+}
+
+func (s *fakeRecordStore) DeleteRecord(_ context.Context, _ string, id int64) error {
+	s.deletedID = id
+	return s.deleteErr
 }
 
 func contains(value string, want string) bool {
