@@ -1,16 +1,20 @@
 # dygo
 
 [![Go](https://img.shields.io/badge/go-1.26.2-00ADD8?logo=go&logoColor=white)](https://go.dev/)
-[![License](https://img.shields.io/github/license/dygo-dev/dygo)](https://github.com/dygo-dev/dygo/blob/develop/LICENSE)
+[![License](https://img.shields.io/badge/license-O%27Saasy-blue)](LICENSE)
 [![Status](https://img.shields.io/badge/status-early%20framework%20development-f2cc60)](https://github.com/dygo-dev/dygo/commits/develop)
 [![Contributions](https://img.shields.io/badge/contributions-paused-lightgrey)](CONTRIBUTING.md)
 [![Roadmap](https://img.shields.io/badge/roadmap-GitHub%20Projects-6f42c1)](https://github.com/orgs/dygo-dev/projects/2/views/1)
 
-dygo is an open-source framework for building serious business software in Go.
+dygo is a source-available framework for building serious business software in Go.
 
 It is designed for business processes, internal operating systems, enterprise applications, and workflow-heavy products where permissions, metadata-driven schema, audit trails, observability, background jobs, secure configuration, and a consistent Studio UI matter from day one.
 
 The goal is speed with structure: builders should focus on business logic while dygo handles the platform foundation.
+
+## License
+
+dygo is released under the [O'Saasy License](LICENSE). It is free to use, modify, self-host, and build with, but competing hosted, managed, SaaS, or cloud services where dygo itself is the primary value are reserved for the original licensor.
 
 ## Status
 

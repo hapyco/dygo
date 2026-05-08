@@ -1,6 +1,6 @@
 # Contributing
 
-dygo is open source, but external contributions are not accepted yet.
+dygo is an open source framework, but external contributions are not accepted yet.
 
 The project is still in early framework development. Core concepts, metadata formats, CLI behavior, app structure, and runtime boundaries are still changing quickly. Until that foundation settles, dygo is maintainer-led so the architecture can stay coherent.
 
