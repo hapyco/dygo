@@ -11,6 +11,7 @@ import (
 
 	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/db"
+	"github.com/dygo-dev/dygo/internal/fixtures"
 	"github.com/dygo-dev/dygo/internal/secrets"
 	"github.com/dygo-dev/dygo/internal/server"
 )
@@ -241,6 +242,95 @@ func TestSetupAdminCommandReturnsRunnerError(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(setup admin) error = %q, want substring %q", err.Error(), want)
 		}
+	}
+}
+
+func TestFixturesApplyCommandDefaultsToDevelopment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeFixtureRunner{result: fixtures.Result{Created: 3, Updated: 2}}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"fixtures", "apply"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, &fakeAdminSetupRunner{}, fake)
+	if err != nil {
+		t.Fatalf("Run(fixtures apply) error = %v, want nil", err)
+	}
+	if stdout.String() != "fixtures applied: 3 created, 2 updated (development)\n" {
+		t.Fatalf("fixtures apply stdout = %q, want success output", stdout.String())
+	}
+	if fake.root != root || fake.databaseURL != databaseURL {
+		t.Fatalf("fixture runner root/url = %q/%q, want %q/%q", fake.root, fake.databaseURL, root, databaseURL)
+	}
+}
+
+func TestFixturesApplyCommandUsesSelectedEnvironment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeFixtureRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"fixtures", "apply", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, &fakeAdminSetupRunner{}, fake)
+	if err != nil {
+		t.Fatalf("Run(fixtures apply --env staging) error = %v, want nil", err)
+	}
+	if stdout.String() != "fixtures applied: 0 created, 0 updated (staging)\n" {
+		t.Fatalf("fixtures apply stdout = %q, want staging output", stdout.String())
+	}
+	if fake.databaseURL != databaseURL {
+		t.Fatalf("fixture runner URL = %q, want staging URL %q", fake.databaseURL, databaseURL)
+	}
+}
+
+func TestFixturesApplyCommandRequiresDatabaseSecret(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLISecretsLayout(t, root)
+	t.Chdir(root)
+
+	fake := &fakeFixtureRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"fixtures", "apply"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, &fakeAdminSetupRunner{}, fake)
+	if err == nil {
+		t.Fatal("Run(fixtures apply) error = nil, want missing secret error")
+	}
+	for _, want := range []string{`read database secret "DATABASE_URL" for development`, `secret "DATABASE_URL" is not defined`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(fixtures apply) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+	if fake.calls != 0 {
+		t.Fatalf("fixture runner calls = %d, want 0", fake.calls)
+	}
+}
+
+func TestFixturesApplyCommandReturnsRunnerError(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeFixtureRunner{err: errors.New("invalid fixtures")}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"fixtures", "apply"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, &fakeAdminSetupRunner{}, fake)
+	if err == nil {
+		t.Fatal("Run(fixtures apply) error = nil, want runner error")
+	}
+	if !strings.Contains(err.Error(), "apply fixtures: invalid fixtures") {
+		t.Fatalf("Run(fixtures apply) error = %q, want apply context", err.Error())
 	}
 }
 
@@ -1701,6 +1791,21 @@ func (r *fakeAdminSetupRunner) SetupAdmin(_ context.Context, databaseURL string,
 	r.databaseURL = databaseURL
 	r.input = input
 	return r.user, r.err
+}
+
+type fakeFixtureRunner struct {
+	result      fixtures.Result
+	err         error
+	root        string
+	databaseURL string
+	calls       int
+}
+
+func (r *fakeFixtureRunner) Apply(_ context.Context, root string, databaseURL string) (fixtures.Result, error) {
+	r.calls++
+	r.root = root
+	r.databaseURL = databaseURL
+	return r.result, r.err
 }
 
 type fakeDatabaseRunner struct {

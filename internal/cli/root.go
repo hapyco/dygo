@@ -8,6 +8,7 @@ import (
 	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/config"
 	"github.com/dygo-dev/dygo/internal/db"
+	"github.com/dygo-dev/dygo/internal/fixtures"
 	"github.com/dygo-dev/dygo/internal/server"
 	"github.com/spf13/cobra"
 )
@@ -18,6 +19,9 @@ type serveRunner func(context.Context, server.Options) error
 type databaseChecker func(context.Context, string) error
 type adminSetupRunner interface {
 	SetupAdmin(context.Context, string, auth.SetupAdminInput) (auth.User, error)
+}
+type fixtureRunner interface {
+	Apply(context.Context, string, string) (fixtures.Result, error)
 }
 type databaseRunner interface {
 	Check(context.Context, string) error
@@ -37,7 +41,7 @@ type schemaSyncRunner interface {
 // Run executes the dygo command-line interface.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	migrator := db.NewMigrator()
-	return runWithServicesAndSetup(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{})
+	return runWithServicesAndSetupAndFixtures(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{})
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker) error {
@@ -50,7 +54,11 @@ func runWithServices(ctx context.Context, args []string, stdin io.Reader, stdout
 }
 
 func runWithServicesAndSetup(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner) error {
-	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup)
+	return runWithServicesAndSetupAndFixtures(ctx, args, stdin, stdout, stderr, serve, database, sync, setup, defaultFixtureRunner{})
+}
+
+func runWithServicesAndSetupAndFixtures(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner) error {
+	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup, fixture)
 	if err != nil {
 		return err
 	}
@@ -67,10 +75,10 @@ func runWithServicesAndSetup(ctx context.Context, args []string, stdin io.Reader
 // NewRootCommand creates the root dygo CLI command.
 func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, error) {
 	migrator := db.NewMigrator()
-	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{})
+	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{})
 }
 
-func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner) (*cobra.Command, error) {
+func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
 	}
@@ -94,6 +102,9 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	}
 	if setup == nil {
 		return nil, fmt.Errorf("admin setup runner is required")
+	}
+	if fixture == nil {
+		return nil, fmt.Errorf("fixture runner is required")
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -120,6 +131,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newMigrateCommand(ctx, stdout, sync))
 	root.AddCommand(newSchemaCommand(ctx, stdout, sync))
 	root.AddCommand(newSetupCommand(ctx, stdin, stdout, stderr, setup))
+	root.AddCommand(newFixturesCommand(ctx, stdout, fixture))
 	root.AddCommand(newAppsCommand(stdout))
 	root.AddCommand(newEntitiesCommand(stdout))
 	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))
@@ -130,6 +142,12 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 type checkBackedDatabaseRunner struct {
 	check   databaseChecker
 	manager databaseRunner
+}
+
+type defaultFixtureRunner struct{}
+
+func (r defaultFixtureRunner) Apply(ctx context.Context, root string, databaseURL string) (fixtures.Result, error) {
+	return fixtures.NewRunner().Apply(ctx, root, databaseURL)
 }
 
 func (r checkBackedDatabaseRunner) Check(ctx context.Context, databaseURL string) error {

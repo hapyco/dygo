@@ -17,6 +17,7 @@ These docs live in the repository so they are versioned with code, reviewed in P
 - [Config](config.md) explains required project config and current runtime settings.
 - [Database](database.md) explains PostgreSQL config, secrets, metadata schema plans, schema sync, explicit schema prune, schema snapshots, and `dygo db check`.
 - [Explicit Patches](patches.md) explains how unsafe metadata changes are handled without reintroducing SQL migrations, and where patches differ from schema prune.
+- [Fixtures](fixtures.md) explains app-owned seed Records and the `dygo fixtures apply` command.
 - [Server](server.md) explains `dygo serve`, the health endpoint, and runtime APIs.
 - [Auth](auth.md) explains Administrator bootstrap, session login, and authenticated API identity.
 - [Records](records.md) explains the first metadata-powered Record CRUD API.

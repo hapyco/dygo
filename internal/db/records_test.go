@@ -66,6 +66,44 @@ func TestRecordStoreGetRecord(t *testing.T) {
 	}
 }
 
+func TestRecordStoreFindRecord(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
+
+	record, err := NewRecordStore(queryer).FindRecord(context.Background(), "user", recordInput(map[string]string{
+		"email": `"a@example.com"`,
+	}))
+	if err != nil {
+		t.Fatalf("FindRecord() error = %v, want nil", err)
+	}
+	if record["id"] != int64(7) || record["email"] != "a@example.com" {
+		t.Fatalf("FindRecord() = %+v, want matched record", record)
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	for _, want := range []string{`FROM "user"`, `WHERE "email" = $1`, `ORDER BY "id" ASC LIMIT 2`} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("find query = %q, want %q", lastQuery, want)
+		}
+	}
+}
+
+func TestRecordStoreFindRecordAmbiguous(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(8), now, now, "a@example.com", "Another User", true},
+	}))
+
+	_, err := NewRecordStore(queryer).FindRecord(context.Background(), "user", recordInput(map[string]string{
+		"email": `"a@example.com"`,
+	}))
+	assertRecordError(t, err, RecordErrorValidation, "")
+}
+
 func TestRecordStoreCreateRecord(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()

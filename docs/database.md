@@ -70,6 +70,12 @@ go run ./cmd/dygo db prepare
 
 `db prepare` creates the database if needed, syncs metadata schema, and updates `db/schema.sql`.
 
+`db prepare` does not apply fixtures in v1. Apply seed Records explicitly after metadata sync:
+
+```sh
+go run ./cmd/dygo fixtures apply
+```
+
 Drop or reset the configured database only with explicit confirmation:
 
 ```sh
@@ -111,6 +117,8 @@ Before applying changes, dygo builds a schema plan from metadata and compares it
 Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Composite indexes, composite unique constraints, and structured check constraints come from top-level Entity metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
 
 After the schema plan succeeds, `dygo migrate` upserts discovered Apps, Entities, Fields, Indexes, and Constraints into the Core metadata tables. This gives later runtime APIs and Studio a database-backed metadata registry while the YAML files remain the source of truth.
+
+App-owned fixtures can be applied after metadata sync. See [Fixtures](fixtures.md) for the `dygo fixtures apply` command and fixture file shape.
 
 The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check/foreign-key changes are not inferred automatically. Those cases need an explicit app patch or, for plain metadata-orphaned objects, an explicit schema prune.
 
@@ -162,4 +170,4 @@ go run ./cmd/dygo db schema dump
 
 ## Boundaries
 
-The schema sync foundation creates tables and persists metadata. The generic Record API and session auth can read and write DB-backed fields through that metadata. Permission enforcement, app lifecycle patches, child table storage, and destructive metadata transitions are still separate layers.
+The schema sync foundation creates tables and persists metadata. The generic Record API, fixture runner, and session auth can read and write DB-backed fields through that metadata. App lifecycle patches, child table storage, and destructive metadata transitions are still separate layers.

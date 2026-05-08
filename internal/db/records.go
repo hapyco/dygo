@@ -149,6 +149,60 @@ func (s RecordStore) GetRecord(ctx context.Context, entity string, id int64) (Re
 	return s.queryOneRecord(ctx, layout, sql, id)
 }
 
+// FindRecord returns one Record matching metadata field values.
+func (s RecordStore) FindRecord(ctx context.Context, entity string, match RecordInput) (Record, error) {
+	if err := s.requireQueryer(); err != nil {
+		return nil, err
+	}
+	match = normalizeRecordInput(match)
+	if len(match) == 0 {
+		return nil, recordError(RecordErrorInvalidRequest, "at least one match field is required", map[string]any{"entity": entity}, nil)
+	}
+	layout, err := s.recordLayout(ctx, entity)
+	if err != nil {
+		return nil, err
+	}
+	if err := layout.validateInputFields(match, false); err != nil {
+		return nil, err
+	}
+	mutation, err := layout.mutationFromInput(match)
+	if err != nil {
+		return nil, err
+	}
+	clauses := make([]string, 0, len(mutation.Columns))
+	for i, column := range mutation.Columns {
+		clauses = append(clauses, fmt.Sprintf("%s = %s", quoteIdent(column), mutation.Placeholders[i]))
+	}
+	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s ORDER BY %s ASC LIMIT 2", layout.selectList(), quoteIdent(layout.Table), strings.Join(clauses, " AND "), quoteIdent("id"))
+	rows, err := s.queryer.Query(ctx, sql, mutation.Values...)
+	if err != nil {
+		return nil, classifyRecordDBError(err, entity)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, classifyRecordDBError(err, entity)
+		}
+		return nil, recordError(RecordErrorNotFound, "record not found", map[string]any{"entity": entity}, nil)
+	}
+	values, err := rows.Values()
+	if err != nil {
+		return nil, recordError(RecordErrorInternal, "read record row failed", map[string]any{"entity": entity}, err)
+	}
+	record, err := layout.recordFromValues(values)
+	if err != nil {
+		return nil, err
+	}
+	if rows.Next() {
+		return nil, recordError(RecordErrorValidation, "record match is ambiguous", map[string]any{"entity": entity}, nil)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, classifyRecordDBError(err, entity)
+	}
+	return record, nil
+}
+
 // CreateRecord inserts one Record using Entity metadata.
 func (s RecordStore) CreateRecord(ctx context.Context, entity string, input RecordInput) (Record, error) {
 	if err := s.requireQueryer(); err != nil {
