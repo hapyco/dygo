@@ -16,6 +16,7 @@ func TestDefaultRegistryContainsBuiltIns(t *testing.T) {
 		"password",
 		"long-text",
 		"int",
+		"bigint",
 		"decimal",
 		"currency",
 		"boolean",

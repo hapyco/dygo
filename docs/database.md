@@ -170,4 +170,4 @@ go run ./cmd/dygo db schema dump
 
 ## Boundaries
 
-The schema sync foundation creates tables and persists metadata. The generic Record API, fixture runner, and session auth can read and write DB-backed fields through that metadata. Activity writing, app lifecycle patches, child table storage, and destructive metadata transitions are still separate layers.
+The schema sync foundation creates tables and persists metadata. The generic Record API, fixture runner, session auth, and Activity writer can read and write DB-backed fields through that metadata. Activity is append-only Record history for product timelines; compliance-grade audit logging, app lifecycle patches, child table storage, and destructive metadata transitions are still separate layers.

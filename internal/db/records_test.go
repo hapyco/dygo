@@ -133,6 +133,9 @@ func TestRecordStoreUpdateRecord(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), now, now, "a@example.com", "Renamed User", true},
 	}))
 
@@ -199,6 +202,9 @@ func TestRecordStoreHashesPasswordOnUpdate(t *testing.T) {
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), now, now, "a@example.com", "A User", true},
 	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
 
 	_, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{
 		"password": `"changed-secret"`,
@@ -224,7 +230,11 @@ func TestRecordStoreHashesPasswordOnUpdate(t *testing.T) {
 }
 
 func TestRecordStoreDeleteRecord(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
 	queryer.execTags = []pgconn.CommandTag{pgconn.NewCommandTag("DELETE 1")}
 
 	err := NewRecordStore(queryer).DeleteRecord(context.Background(), "user", 7)
@@ -233,6 +243,161 @@ func TestRecordStoreDeleteRecord(t *testing.T) {
 	}
 	if !strings.Contains(queryer.execSQL[0], `DELETE FROM "user" WHERE "id" = $1`) {
 		t.Fatalf("delete SQL = %q, want hard delete by id", queryer.execSQL[0])
+	}
+}
+
+func TestRecordStoreCreateRecordWritesActivity(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
+
+	ctx := WithActivityActor(WithActivitySource(context.Background(), ActivitySourceAPI), 99)
+	record, err := NewRecordStore(queryer).CreateRecord(ctx, "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"A User"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v, want nil", err)
+	}
+	if record["id"] != int64(7) {
+		t.Fatalf("CreateRecord() id = %v, want 7", record["id"])
+	}
+	args := activityArgs(t, queryer)
+	if args[1] != activityOperationCreate || args[3] != int64(10) || args[4] != int64(7) || args[5] != int64(99) {
+		t.Fatalf("activity args = %#v, want create for user entity and actor", args)
+	}
+	snapshot := decodeActivityObject(t, args[9])
+	if snapshot["email"] != "a@example.com" || snapshot["password"] != nil {
+		t.Fatalf("activity snapshot = %#v, want visible record without password", snapshot)
+	}
+	details := decodeActivityObject(t, args[10])
+	if details["source"] != ActivitySourceAPI {
+		t.Fatalf("activity details = %#v, want api source", details)
+	}
+}
+
+func TestRecordStoreUpdateRecordWritesActivityDiffsAndRedactsPassword(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "Renamed User", true},
+	}))
+
+	_, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{
+		"full-name": `"Renamed User"`,
+		"password":  `"changed-secret"`,
+	}))
+	if err != nil {
+		t.Fatalf("UpdateRecord() error = %v, want nil", err)
+	}
+	args := activityArgs(t, queryer)
+	if args[1] != activityOperationUpdate || args[4] != int64(7) {
+		t.Fatalf("activity args = %#v, want update for record 7", args)
+	}
+	encodedChanges, ok := args[8].(string)
+	if !ok {
+		t.Fatalf("activity changes arg type = %T, want string", args[8])
+	}
+	if strings.Contains(encodedChanges, "changed-secret") {
+		t.Fatalf("activity changes leaked plaintext password: %s", encodedChanges)
+	}
+	changes := decodeActivityList(t, args[8])
+	if len(changes) != 2 {
+		t.Fatalf("activity changes = %#v, want full-name and password changes", changes)
+	}
+	if changes[0]["field"] != "full-name" || changes[0]["old"] != "A User" || changes[0]["new"] != "Renamed User" {
+		t.Fatalf("first activity change = %#v, want full-name diff", changes[0])
+	}
+	if changes[1]["field"] != "password" || changes[1]["redacted"] != true {
+		t.Fatalf("second activity change = %#v, want redacted password", changes[1])
+	}
+}
+
+func TestRecordStoreUpdateRecordSkipsActivityWithoutChanges(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
+
+	_, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{
+		"full-name": `"A User"`,
+	}))
+	if err != nil {
+		t.Fatalf("UpdateRecord() error = %v, want nil", err)
+	}
+	if len(queryer.execSQL) != 0 {
+		t.Fatalf("exec SQL = %#v, want no activity insert for unchanged update", queryer.execSQL)
+	}
+}
+
+func TestRecordStoreDeleteRecordWritesActivitySnapshot(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
+	queryer.execTags = []pgconn.CommandTag{pgconn.NewCommandTag("DELETE 1")}
+
+	err := NewRecordStore(queryer).DeleteRecord(context.Background(), "user", 7)
+	if err != nil {
+		t.Fatalf("DeleteRecord() error = %v, want nil", err)
+	}
+	args := activityArgs(t, queryer)
+	if args[1] != activityOperationDelete || args[4] != int64(7) {
+		t.Fatalf("activity args = %#v, want delete for record 7", args)
+	}
+	snapshot := decodeActivityObject(t, args[9])
+	if snapshot["email"] != "a@example.com" {
+		t.Fatalf("activity snapshot = %#v, want deleted record snapshot", snapshot)
+	}
+}
+
+func TestRecordStoreSkipsActivityForActivityEntity(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newActivityRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(1), now, now, "record", "create", "success", "Created User"},
+	}))
+
+	_, err := NewRecordStore(queryer).CreateRecord(context.Background(), "activity", recordInput(map[string]string{
+		"kind":      `"record"`,
+		"operation": `"create"`,
+		"status":    `"success"`,
+		"title":     `"Created User"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord(activity) error = %v, want nil", err)
+	}
+	if len(queryer.execSQL) != 0 {
+		t.Fatalf("exec SQL = %#v, want no recursive activity insert", queryer.execSQL)
+	}
+}
+
+func TestRecordStoreActivityFailureRollsBackTransactionalMutation(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), now, now, "a@example.com", "A User", true},
+	}))
+	queryer.execErrs = []error{errors.New("activity insert failed")}
+	transactional := &fakeTransactionalRecordQueryer{fakeRecordQueryer: queryer}
+
+	_, err := NewRecordStore(transactional).CreateRecord(context.Background(), "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"A User"`,
+	}))
+	assertRecordError(t, err, RecordErrorInternal, "")
+	if transactional.tx == nil || !transactional.tx.rolledBack || transactional.tx.committed {
+		t.Fatalf("transaction state = %+v, want rollback without commit", transactional.tx)
 	}
 }
 
@@ -380,6 +545,22 @@ func newLeadRecordQueryer() *fakeRecordQueryer {
 	}
 }
 
+func newActivityRecordQueryer() *fakeRecordQueryer {
+	return &fakeRecordQueryer{
+		row: newFakeRow(int64(1), "activity", "Activity", "Timeline entry", "core", "Core"),
+		rows: []pgx.Rows{
+			newFakeRows([][]any{
+				{"kind", "Kind", "select", true, false, true, nil, 1, []byte(`{"values":["record"]}`)},
+				{"operation", "Operation", "select", true, false, true, nil, 2, []byte(`{"values":["create"]}`)},
+				{"status", "Status", "select", true, false, true, nil, 3, []byte(`{"values":["success"]}`)},
+				{"title", "Title", "text", true, false, false, nil, 4, nil},
+			}),
+			newFakeRows(nil),
+			newFakeRows(nil),
+		},
+	}
+}
+
 type fakeRecordQueryer struct {
 	row       pgx.Row
 	rows      []pgx.Rows
@@ -440,12 +621,100 @@ func (q *fakeRecordQueryer) Exec(_ context.Context, sql string, args ...any) (pg
 	return tag, nil
 }
 
+type fakeTransactionalRecordQueryer struct {
+	*fakeRecordQueryer
+	tx *fakeRecordTx
+}
+
+func (q *fakeTransactionalRecordQueryer) Begin(context.Context) (pgx.Tx, error) {
+	q.tx = &fakeRecordTx{fakeRecordQueryer: q.fakeRecordQueryer}
+	return q.tx, nil
+}
+
+type fakeRecordTx struct {
+	*fakeRecordQueryer
+	committed  bool
+	rolledBack bool
+}
+
+func (tx *fakeRecordTx) Begin(context.Context) (pgx.Tx, error) {
+	return &fakeRecordTx{fakeRecordQueryer: tx.fakeRecordQueryer}, nil
+}
+
+func (tx *fakeRecordTx) Commit(context.Context) error {
+	tx.committed = true
+	return nil
+}
+
+func (tx *fakeRecordTx) Rollback(context.Context) error {
+	tx.rolledBack = true
+	return nil
+}
+
+func (tx *fakeRecordTx) CopyFrom(context.Context, pgx.Identifier, []string, pgx.CopyFromSource) (int64, error) {
+	return 0, nil
+}
+
+func (tx *fakeRecordTx) SendBatch(context.Context, *pgx.Batch) pgx.BatchResults {
+	return nil
+}
+
+func (tx *fakeRecordTx) LargeObjects() pgx.LargeObjects {
+	return pgx.LargeObjects{}
+}
+
+func (tx *fakeRecordTx) Prepare(context.Context, string, string) (*pgconn.StatementDescription, error) {
+	return nil, nil
+}
+
+func (tx *fakeRecordTx) Conn() *pgx.Conn {
+	return nil
+}
+
 func recordInput(values map[string]string) RecordInput {
 	input := RecordInput{}
 	for key, value := range values {
 		input[key] = json.RawMessage(value)
 	}
 	return input
+}
+
+func activityArgs(t *testing.T, queryer *fakeRecordQueryer) []any {
+	t.Helper()
+	if len(queryer.execSQL) == 0 {
+		t.Fatal("activity insert was not executed")
+	}
+	index := len(queryer.execSQL) - 1
+	if !strings.Contains(queryer.execSQL[index], `INSERT INTO "activity"`) {
+		t.Fatalf("last exec SQL = %q, want activity insert", queryer.execSQL[index])
+	}
+	return queryer.execArg[index]
+}
+
+func decodeActivityObject(t *testing.T, value any) map[string]any {
+	t.Helper()
+	encoded, ok := value.(string)
+	if !ok {
+		t.Fatalf("activity JSON arg type = %T, want string", value)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(encoded), &decoded); err != nil {
+		t.Fatalf("Unmarshal(activity object) error = %v", err)
+	}
+	return decoded
+}
+
+func decodeActivityList(t *testing.T, value any) []map[string]any {
+	t.Helper()
+	encoded, ok := value.(string)
+	if !ok {
+		t.Fatalf("activity JSON arg type = %T, want string", value)
+	}
+	var decoded []map[string]any
+	if err := json.Unmarshal([]byte(encoded), &decoded); err != nil {
+		t.Fatalf("Unmarshal(activity list) error = %v", err)
+	}
+	return decoded
 }
 
 func assertRecordError(t *testing.T, err error, code string, field string) {

@@ -18,6 +18,6 @@ permission
 session
 ```
 
-These contracts create Core database tables through dygo's metadata-driven schema sync. The `activity` contract is the storage shape for future Record history and timeline events; runtime activity writing is still a follow-up layer.
+These contracts create Core database tables through dygo's metadata-driven schema sync. The `activity` contract is the append-only storage shape for Record history and product timeline events.
 
 Lifecycle records such as patch runs and ledger-style app change history are deferred until patches and app lifecycle behavior are designed.

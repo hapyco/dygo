@@ -208,6 +208,12 @@ func (s RecordStore) CreateRecord(ctx context.Context, entity string, input Reco
 	if err := s.requireQueryer(); err != nil {
 		return nil, err
 	}
+	return s.withRecordMutation(ctx, func(store RecordStore) (Record, error) {
+		return store.createRecord(ctx, entity, input)
+	})
+}
+
+func (s RecordStore) createRecord(ctx context.Context, entity string, input RecordInput) (Record, error) {
 	layout, err := s.recordLayout(ctx, entity)
 	if err != nil {
 		return nil, err
@@ -223,7 +229,18 @@ func (s RecordStore) CreateRecord(ctx context.Context, entity string, input Reco
 	} else {
 		sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING %s", quoteIdent(layout.Table), quoteIdentList(mutation.Columns), strings.Join(mutation.Placeholders, ", "), layout.selectList())
 	}
-	return s.queryReturningRecord(ctx, layout, sql, mutation.Values, false)
+	record, err := s.queryReturningRecord(ctx, layout, sql, mutation.Values, false)
+	if err != nil {
+		return nil, err
+	}
+	recordID, err := activityRecordID(record)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.writeRecordActivity(ctx, layout, activityOperationCreate, recordID, nil, record); err != nil {
+		return nil, err
+	}
+	return record, nil
 }
 
 // UpdateRecord partially updates one Record by id.
@@ -234,7 +251,17 @@ func (s RecordStore) UpdateRecord(ctx context.Context, entity string, id int64, 
 	if id <= 0 {
 		return nil, invalidRecordIDError(entity)
 	}
+	return s.withRecordMutation(ctx, func(store RecordStore) (Record, error) {
+		return store.updateRecord(ctx, entity, id, input)
+	})
+}
+
+func (s RecordStore) updateRecord(ctx context.Context, entity string, id int64, input RecordInput) (Record, error) {
 	layout, err := s.recordLayout(ctx, entity)
+	if err != nil {
+		return nil, err
+	}
+	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +278,22 @@ func (s RecordStore) UpdateRecord(ctx context.Context, entity string, id int64, 
 	args := append([]any(nil), mutation.Values...)
 	args = append(args, id)
 	sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s = $%d RETURNING %s", quoteIdent(layout.Table), strings.Join(setClauses, ", "), quoteIdent("id"), len(args), layout.selectList())
-	return s.queryReturningRecord(ctx, layout, sql, args, true)
+	record, err := s.queryReturningRecord(ctx, layout, sql, args, true)
+	if err != nil {
+		return nil, err
+	}
+	changes := layout.activityChanges(input, oldRecord, record)
+	if len(changes) == 0 {
+		return record, nil
+	}
+	recordID, err := activityRecordID(record)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.writeRecordActivity(ctx, layout, activityOperationUpdate, recordID, changes, nil); err != nil {
+		return nil, err
+	}
+	return record, nil
 }
 
 // DeleteRecord hard-deletes one Record by id.
@@ -262,7 +304,18 @@ func (s RecordStore) DeleteRecord(ctx context.Context, entity string, id int64) 
 	if id <= 0 {
 		return invalidRecordIDError(entity)
 	}
+	_, err := s.withRecordMutation(ctx, func(store RecordStore) (Record, error) {
+		return nil, store.deleteRecord(ctx, entity, id)
+	})
+	return err
+}
+
+func (s RecordStore) deleteRecord(ctx context.Context, entity string, id int64) error {
 	layout, err := s.recordLayout(ctx, entity)
+	if err != nil {
+		return err
+	}
+	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
 	if err != nil {
 		return err
 	}
@@ -273,11 +326,32 @@ func (s RecordStore) DeleteRecord(ctx context.Context, entity string, id int64) 
 	if tag.RowsAffected() == 0 {
 		return recordError(RecordErrorNotFound, "record not found", map[string]any{"entity": entity, "id": id}, nil)
 	}
+	recordID, err := activityRecordID(oldRecord)
+	if err != nil {
+		return err
+	}
+	if err := s.writeRecordActivity(ctx, layout, activityOperationDelete, recordID, nil, oldRecord); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s RecordStore) queryOneRecord(ctx context.Context, layout recordLayout, sql string, args ...any) (Record, error) {
 	return s.queryReturningRecord(ctx, layout, sql, args, true)
+}
+
+func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayout, id int64) (Record, error) {
+	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent("id"))
+	record, err := s.queryOneRecord(ctx, layout, sql, id)
+	if err != nil {
+		var recordErr RecordError
+		if errors.As(err, &recordErr) && recordErr.Code == RecordErrorNotFound {
+			recordErr.Details = map[string]any{"entity": layout.Entity, "id": id}
+			return nil, recordErr
+		}
+		return nil, err
+	}
+	return record, nil
 }
 
 func (s RecordStore) queryReturningRecord(ctx context.Context, layout recordLayout, sql string, args []any, notFoundWhenEmpty bool) (Record, error) {
@@ -333,7 +407,9 @@ func (s RecordStore) requireQueryer() error {
 }
 
 type recordLayout struct {
+	EntityID    int64
 	Entity      string
+	Label       string
 	Table       string
 	Fields      []recordField
 	FieldByName map[string]recordField
@@ -364,7 +440,9 @@ type recordMutation struct {
 
 func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 	layout := recordLayout{
+		EntityID:    meta.ID,
 		Entity:      meta.Name,
+		Label:       meta.Label,
 		Table:       storageName(meta.Name),
 		FieldByName: map[string]recordField{},
 	}
@@ -528,7 +606,7 @@ func recordDBValue(field recordField, raw json.RawMessage) (any, error) {
 			return nil, recordError(RecordErrorValidation, "select value is not allowed", map[string]any{"field": field.Name, "value": value}, nil)
 		}
 		return value, nil
-	case "int", "link":
+	case "int", "bigint", "link":
 		return jsonIntValue(field, raw)
 	case "decimal", "currency":
 		return jsonNumberStringValue(field, raw)
@@ -618,7 +696,7 @@ func recordPlaceholder(index int, field recordField) string {
 	switch field.Type {
 	case "int":
 		return placeholder + "::integer"
-	case "link":
+	case "bigint", "link":
 		return placeholder + "::bigint"
 	case "decimal", "currency":
 		return placeholder + "::numeric"

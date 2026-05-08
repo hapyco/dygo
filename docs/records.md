@@ -80,6 +80,7 @@ phone
 password
 long-text
 int
+bigint
 decimal
 currency
 boolean
@@ -95,6 +96,18 @@ json
 `password` fields accept plaintext strings in create and update requests, hash them before storage, and are never returned in list or detail responses.
 
 `child-table` is not writable through Record APIs yet.
+
+## Activity History
+
+Generic Record mutations write append-only `activity` Records in the same transaction:
+
+```txt
+create -> Activity with a visible Record snapshot
+update -> Activity with field-level changes
+delete -> Activity with the deleted visible Record snapshot
+```
+
+Write-only fields such as `password` are recorded by field name only with `redacted: true`; their values are not stored in Activity. Activity is the product timeline/history stream for v1, not a compliance-grade audit log.
 
 ## Boundaries
 

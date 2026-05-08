@@ -558,7 +558,7 @@ func (h recordHandler) createRecord(w http.ResponseWriter, r *http.Request) {
 		writeRecordError(w, err)
 		return
 	}
-	record, err := h.store.CreateRecord(r.Context(), entity, input)
+	record, err := h.store.CreateRecord(activityRequestContext(r), entity, input)
 	if err != nil {
 		writeRecordError(w, err)
 		return
@@ -584,7 +584,7 @@ func (h recordHandler) updateRecord(w http.ResponseWriter, r *http.Request) {
 		writeRecordError(w, err)
 		return
 	}
-	record, err := h.store.UpdateRecord(r.Context(), entity, id, input)
+	record, err := h.store.UpdateRecord(activityRequestContext(r), entity, id, input)
 	if err != nil {
 		writeRecordError(w, err)
 		return
@@ -605,7 +605,7 @@ func (h recordHandler) deleteRecord(w http.ResponseWriter, r *http.Request) {
 	if !h.authorize(w, r, entity, permissions.ActionDelete, id) {
 		return
 	}
-	if err := h.store.DeleteRecord(r.Context(), entity, id); err != nil {
+	if err := h.store.DeleteRecord(activityRequestContext(r), entity, id); err != nil {
 		writeRecordError(w, err)
 		return
 	}
@@ -647,6 +647,14 @@ func (h recordHandler) authorize(w http.ResponseWriter, r *http.Request, entity 
 		return false
 	}
 	return true
+}
+
+func activityRequestContext(r *http.Request) context.Context {
+	ctx := db.WithActivitySource(r.Context(), db.ActivitySourceAPI)
+	if user, ok := CurrentUserFromContext(r.Context()); ok {
+		ctx = db.WithActivityActor(ctx, user.ID)
+	}
+	return ctx
 }
 
 func recordListParams(r *http.Request) (db.RecordListParams, error) {

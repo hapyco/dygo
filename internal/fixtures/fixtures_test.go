@@ -172,6 +172,12 @@ records:
 	if store.records["role"][0]["label"] != "System Manager" {
 		t.Fatalf("updated role = %+v, want new label", store.records["role"][0])
 	}
+	if len(store.createSources) != 1 || store.createSources[0] != db.ActivitySourceFixtures {
+		t.Fatalf("create activity sources = %#v, want fixtures source", store.createSources)
+	}
+	if len(store.updateSources) != 1 || store.updateSources[0] != db.ActivitySourceFixtures {
+		t.Fatalf("update activity sources = %#v, want fixtures source", store.updateSources)
+	}
 }
 
 func TestApplyFilesRejectsNonUniqueMatch(t *testing.T) {
@@ -375,10 +381,12 @@ records:
 }
 
 type fakeStore struct {
-	metadata  map[string]db.MetadataEntityMeta
-	records   map[string][]db.Record
-	createErr error
-	nextID    int64
+	metadata      map[string]db.MetadataEntityMeta
+	records       map[string][]db.Record
+	createErr     error
+	nextID        int64
+	createSources []string
+	updateSources []string
 }
 
 func newFakeStore() *fakeStore {
@@ -462,10 +470,12 @@ func (s *fakeStore) FindRecord(_ context.Context, entity string, match db.Record
 	return found[0], nil
 }
 
-func (s *fakeStore) CreateRecord(_ context.Context, entity string, input db.RecordInput) (db.Record, error) {
+func (s *fakeStore) CreateRecord(ctx context.Context, entity string, input db.RecordInput) (db.Record, error) {
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
+	source, _ := db.ActivitySourceFromContext(ctx)
+	s.createSources = append(s.createSources, source)
 	s.nextID++
 	record := recordFromInput(input)
 	record["id"] = s.nextID
@@ -473,9 +483,11 @@ func (s *fakeStore) CreateRecord(_ context.Context, entity string, input db.Reco
 	return record, nil
 }
 
-func (s *fakeStore) UpdateRecord(_ context.Context, entity string, id int64, input db.RecordInput) (db.Record, error) {
+func (s *fakeStore) UpdateRecord(ctx context.Context, entity string, id int64, input db.RecordInput) (db.Record, error) {
 	for _, record := range s.records[entity] {
 		if record["id"] == id {
+			source, _ := db.ActivitySourceFromContext(ctx)
+			s.updateSources = append(s.updateSources, source)
 			for key, value := range recordFromInput(input) {
 				record[key] = value
 			}

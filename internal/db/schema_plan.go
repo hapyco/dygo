@@ -727,6 +727,8 @@ func columnType(field schema.Field, targets map[string]catalog.LoadedEntity) (st
 		return "text", nil
 	case "int":
 		return "integer", nil
+	case "bigint":
+		return "bigint", nil
 	case "decimal", "currency":
 		return "numeric", nil
 	case "boolean":

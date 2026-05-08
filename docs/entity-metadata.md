@@ -133,6 +133,7 @@ phone
 password
 long-text
 int
+bigint
 decimal
 currency
 boolean

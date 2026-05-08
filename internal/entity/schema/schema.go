@@ -354,7 +354,7 @@ func validateCheckValue(constraint Constraint, problems *[]string) {
 
 func isCheckFieldType(fieldType string) bool {
 	switch fieldType {
-	case "text", "email", "phone", "long-text", "int", "decimal", "currency", "boolean", "date", "datetime", "time", "select":
+	case "text", "email", "phone", "long-text", "int", "bigint", "decimal", "currency", "boolean", "date", "datetime", "time", "select":
 		return true
 	default:
 		return false

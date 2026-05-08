@@ -181,6 +181,30 @@ func TestBuildMetadataSchemaPlanAddsMissingNullableColumn(t *testing.T) {
 	assertContains(t, operationDescriptions(plan), "add column lead.note")
 }
 
+func TestBuildMetadataSchemaPlanAddsBigintColumn(t *testing.T) {
+	entity := catalog.LoadedEntity{
+		AppName: "core",
+		Path:    "apps/core/entities/activity.yml",
+		Entity: schema.Entity{
+			Name: "activity",
+			Fields: []schema.Field{
+				{Name: "record-id", Type: "bigint"},
+			},
+		},
+	}
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{
+		"activity": liveSchemaTable("activity", systemColumns(), map[string]liveConstraint{"activity_pkey": {Name: "activity_pkey", Type: "primary-key"}}, nil),
+	}})
+	if err != nil {
+		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
+	}
+	if plan.HasBlockers() {
+		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
+	}
+	assertContains(t, operationDescriptions(plan), "add column activity.record_id")
+	assertContains(t, operationSQL(plan), `ALTER TABLE "activity" ADD COLUMN "record_id" bigint`)
+}
+
 func TestBuildMetadataSchemaPlanAddsPasswordHashColumn(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "core",

@@ -59,7 +59,7 @@ fields:
 
   - name: record-id
     label: Record ID
-    type: int
+    type: bigint
     index: true
 
   - name: actor

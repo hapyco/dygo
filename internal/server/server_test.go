@@ -425,6 +425,12 @@ func TestRecordRoutes(t *testing.T) {
 	if store.deletedID != 1 {
 		t.Fatalf("deleted id = %d, want 1", store.deletedID)
 	}
+	if store.createActor != 7 || store.updateActor != 7 || store.deleteActor != 7 {
+		t.Fatalf("activity actors create/update/delete = %d/%d/%d, want authenticated user 7", store.createActor, store.updateActor, store.deleteActor)
+	}
+	if store.createSource != db.ActivitySourceAPI || store.updateSource != db.ActivitySourceAPI || store.deleteSource != db.ActivitySourceAPI {
+		t.Fatalf("activity sources create/update/delete = %q/%q/%q, want api", store.createSource, store.updateSource, store.deleteSource)
+	}
 	wantPermissions := []permissions.Request{
 		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead},
 		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead, RecordID: 1},
@@ -674,17 +680,23 @@ func (s *fakeMetadataStore) GetEntityMeta(context.Context, string) (db.MetadataE
 }
 
 type fakeRecordStore struct {
-	list      db.RecordListResult
-	listErr   error
-	record    db.Record
-	getErr    error
-	createErr error
-	updateErr error
-	deleteErr error
-	created   db.RecordInput
-	updated   db.RecordInput
-	deletedID int64
-	calls     []string
+	list         db.RecordListResult
+	listErr      error
+	record       db.Record
+	getErr       error
+	createErr    error
+	updateErr    error
+	deleteErr    error
+	created      db.RecordInput
+	updated      db.RecordInput
+	deletedID    int64
+	createActor  int64
+	updateActor  int64
+	deleteActor  int64
+	createSource string
+	updateSource string
+	deleteSource string
+	calls        []string
 }
 
 func (s *fakeRecordStore) ListRecords(context.Context, string, db.RecordListParams) (db.RecordListResult, error) {
@@ -697,21 +709,27 @@ func (s *fakeRecordStore) GetRecord(context.Context, string, int64) (db.Record, 
 	return s.record, s.getErr
 }
 
-func (s *fakeRecordStore) CreateRecord(_ context.Context, _ string, input db.RecordInput) (db.Record, error) {
+func (s *fakeRecordStore) CreateRecord(ctx context.Context, _ string, input db.RecordInput) (db.Record, error) {
 	s.calls = append(s.calls, "create")
 	s.created = input
+	s.createActor, _ = db.ActivityActorFromContext(ctx)
+	s.createSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.record, s.createErr
 }
 
-func (s *fakeRecordStore) UpdateRecord(_ context.Context, _ string, _ int64, input db.RecordInput) (db.Record, error) {
+func (s *fakeRecordStore) UpdateRecord(ctx context.Context, _ string, _ int64, input db.RecordInput) (db.Record, error) {
 	s.calls = append(s.calls, "update")
 	s.updated = input
+	s.updateActor, _ = db.ActivityActorFromContext(ctx)
+	s.updateSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.record, s.updateErr
 }
 
-func (s *fakeRecordStore) DeleteRecord(_ context.Context, _ string, id int64) error {
+func (s *fakeRecordStore) DeleteRecord(ctx context.Context, _ string, id int64) error {
 	s.calls = append(s.calls, "delete")
 	s.deletedID = id
+	s.deleteActor, _ = db.ActivityActorFromContext(ctx)
+	s.deleteSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.deleteErr
 }
 

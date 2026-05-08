@@ -35,7 +35,7 @@ CREATE TABLE public.activity (
     operation text NOT NULL,
     status text DEFAULT 'success'::text NOT NULL,
     entity_id bigint,
-    record_id integer,
+    record_id bigint,
     actor_id bigint,
     title text NOT NULL,
     message text,

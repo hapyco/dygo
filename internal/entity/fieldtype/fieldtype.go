@@ -158,6 +158,7 @@ func builtIns() []Definition {
 		scalar("password", "Password", true, false, false, false),
 		scalar("long-text", "Long Text", true, false, true, false),
 		scalar("int", "Integer", true, true, true, true),
+		scalar("bigint", "Big Integer", true, true, true, true),
 		scalar("decimal", "Decimal", true, true, true, true),
 		scalar("currency", "Currency", true, true, true, true),
 		scalar("boolean", "Boolean", true, true, true, true),
