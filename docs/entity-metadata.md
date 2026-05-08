@@ -122,6 +122,8 @@ Type-specific settings live under `options`.
 
 `link` and `child-table` fields require `options.entity`.
 
+`link` fields are framework-level relationships. They create indexed storage columns and dygo validates linked Records at runtime, but v1 does not create database foreign key constraints for links.
+
 ## Built-In Field Types
 
 ```txt

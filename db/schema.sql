@@ -24,6 +24,45 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: activity; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.activity (
+    id bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    kind text DEFAULT 'record'::text NOT NULL,
+    operation text NOT NULL,
+    status text DEFAULT 'success'::text NOT NULL,
+    entity_id bigint,
+    record_id integer,
+    actor_id bigint,
+    title text NOT NULL,
+    message text,
+    changes jsonb,
+    snapshot jsonb,
+    details jsonb,
+    CONSTRAINT activity_kind_check CHECK ((kind = ANY (ARRAY['record'::text, 'comment'::text, 'workflow'::text, 'job'::text, 'email'::text, 'attachment'::text, 'auth'::text, 'system'::text]))),
+    CONSTRAINT activity_operation_check CHECK ((operation = ANY (ARRAY['create'::text, 'update'::text, 'delete'::text, 'restore'::text, 'comment'::text, 'workflow-transition'::text, 'job-completed'::text, 'email-sent'::text, 'attachment-added'::text, 'login'::text, 'logout'::text, 'system'::text]))),
+    CONSTRAINT activity_status_check CHECK ((status = ANY (ARRAY['success'::text, 'failed'::text])))
+);
+
+
+--
+-- Name: activity_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.activity ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.activity_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: app; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -252,11 +291,11 @@ CREATE TABLE public.session (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     user_id bigint NOT NULL,
+    token_digest text NOT NULL,
     status text DEFAULT 'active'::text NOT NULL,
     started_at timestamp with time zone NOT NULL,
     expires_at timestamp with time zone,
     last_seen_at timestamp with time zone,
-    token_digest text NOT NULL,
     CONSTRAINT session_status_check CHECK ((status = ANY (ARRAY['active'::text, 'expired'::text, 'revoked'::text])))
 );
 
@@ -285,8 +324,8 @@ CREATE TABLE public."user" (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     email text NOT NULL,
     full_name text NOT NULL,
-    enabled boolean DEFAULT true,
     password_hash text,
+    enabled boolean DEFAULT true,
     administrator boolean DEFAULT false
 );
 
@@ -330,6 +369,14 @@ ALTER TABLE public.user_role ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
+
+--
+-- Name: activity activity_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.activity
+    ADD CONSTRAINT activity_pkey PRIMARY KEY (id);
 
 
 --
@@ -493,6 +540,62 @@ ALTER TABLE ONLY public.user_role
 
 
 --
+-- Name: activity_actor_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX activity_actor_id_idx ON public.activity USING btree (actor_id);
+
+
+--
+-- Name: activity_entity_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX activity_entity_id_idx ON public.activity USING btree (entity_id);
+
+
+--
+-- Name: activity_kind_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX activity_kind_idx ON public.activity USING btree (kind);
+
+
+--
+-- Name: activity_operation_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX activity_operation_idx ON public.activity USING btree (operation);
+
+
+--
+-- Name: activity_record_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX activity_record_id_idx ON public.activity USING btree (record_id);
+
+
+--
+-- Name: activity_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX activity_status_idx ON public.activity USING btree (status);
+
+
+--
+-- Name: by_kind_operation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX by_kind_operation ON public.activity USING btree (kind, operation);
+
+
+--
+-- Name: by_record; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX by_record ON public.activity USING btree (entity_id, record_id);
+
+
+--
 -- Name: constraint_entity_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -623,78 +726,6 @@ CREATE INDEX user_role_role_id_idx ON public.user_role USING btree (role_id);
 --
 
 CREATE INDEX user_role_user_id_idx ON public.user_role USING btree (user_id);
-
-
---
--- Name: constraint constraint_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public."constraint"
-    ADD CONSTRAINT constraint_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id) ON DELETE CASCADE;
-
-
---
--- Name: entity entity_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.entity
-    ADD CONSTRAINT entity_app_id_fkey FOREIGN KEY (app_id) REFERENCES public.app(id) ON DELETE CASCADE;
-
-
---
--- Name: field field_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.field
-    ADD CONSTRAINT field_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id) ON DELETE CASCADE;
-
-
---
--- Name: index index_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.index
-    ADD CONSTRAINT index_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id) ON DELETE CASCADE;
-
-
---
--- Name: permission permission_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.permission
-    ADD CONSTRAINT permission_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id) ON DELETE CASCADE;
-
-
---
--- Name: permission permission_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.permission
-    ADD CONSTRAINT permission_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.role(id) ON DELETE CASCADE;
-
-
---
--- Name: session session_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.session
-    ADD CONSTRAINT session_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id) ON DELETE CASCADE;
-
-
---
--- Name: user_role user_role_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.user_role
-    ADD CONSTRAINT user_role_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.role(id) ON DELETE CASCADE;
-
-
---
--- Name: user_role user_role_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.user_role
-    ADD CONSTRAINT user_role_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id) ON DELETE CASCADE;
 
 
 --

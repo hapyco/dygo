@@ -96,7 +96,7 @@ apps/*/entities/*.yml
   desired table schema
 ```
 
-During `dygo migrate` and `dygo db prepare`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/*.yml` is the source for Core tables such as `app`, `entity`, `field`, `index`, `constraint`, `user`, `role`, `permission`, and `session`.
+During `dygo migrate` and `dygo db prepare`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/*.yml` is the source for Core tables such as `app`, `activity`, `entity`, `field`, `index`, `constraint`, `user`, `role`, `permission`, and `session`.
 
 Preview metadata sync:
 
@@ -120,7 +120,7 @@ After the schema plan succeeds, `dygo migrate` upserts discovered Apps, Entities
 
 App-owned fixtures can be applied after metadata sync. See [Fixtures](fixtures.md) for the `dygo fixtures apply` command and fixture file shape.
 
-The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check/foreign-key changes are not inferred automatically. Those cases need an explicit app patch or, for plain metadata-orphaned objects, an explicit schema prune.
+The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check changes are not inferred automatically. Those cases need an explicit app patch or, for plain metadata-orphaned objects, an explicit schema prune.
 
 See [Explicit Patches](patches.md) for the design model that maps unsafe planner diagnostics to app-owned patch work.
 
@@ -170,4 +170,4 @@ go run ./cmd/dygo db schema dump
 
 ## Boundaries
 
-The schema sync foundation creates tables and persists metadata. The generic Record API, fixture runner, and session auth can read and write DB-backed fields through that metadata. App lifecycle patches, child table storage, and destructive metadata transitions are still separate layers.
+The schema sync foundation creates tables and persists metadata. The generic Record API, fixture runner, and session auth can read and write DB-backed fields through that metadata. Activity writing, app lifecycle patches, child table storage, and destructive metadata transitions are still separate layers.

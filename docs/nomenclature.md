@@ -38,7 +38,7 @@ Technical implementation details may still use words such as document when they 
 | Recurring job definition | Schedule |
 | Business state process | Workflow |
 | App install/change history | Ledger |
-| Human-friendly timeline | Activity Log |
+| Human-friendly timeline and Record history | Activity |
 | Compliance/security-grade history | Audit Log |
 | File attached to a Record | Attachment |
 | Generated print/PDF design | Print Format |

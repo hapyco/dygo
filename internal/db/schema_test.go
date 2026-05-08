@@ -29,7 +29,6 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 		"create index entity_app_id_idx on entity.app_id",
 		"add unique constraint app_name_key on app.name",
 		"add check constraint app_status_check on app.status",
-		"add foreign-key constraint entity_app_id_fkey on entity.app_id",
 	} {
 		assertContains(t, descriptions, want)
 	}
@@ -38,7 +37,9 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 	assertContains(t, sql, `CREATE TABLE "app"`)
 	assertContains(t, sql, `ALTER TABLE "app" ADD COLUMN "name" text NOT NULL`)
 	assertContains(t, sql, `CREATE INDEX "entity_app_id_idx" ON "entity" ("app_id")`)
-	assertContains(t, sql, `ALTER TABLE "entity" ADD CONSTRAINT "entity_app_id_fkey" FOREIGN KEY ("app_id") REFERENCES "app"("id") ON DELETE CASCADE`)
+	if strings.Contains(sql, "FOREIGN KEY") {
+		t.Fatalf("operationSQL() contains database foreign key, want framework-level links only:\n%s", sql)
+	}
 }
 
 func TestBuildMetadataSchemaPlanForMatchingDatabase(t *testing.T) {
@@ -49,7 +50,7 @@ func TestBuildMetadataSchemaPlanForMatchingDatabase(t *testing.T) {
 				"created_at": {Name: "created_at", Type: "timestamptz", Nullable: false},
 				"updated_at": {Name: "updated_at", Type: "timestamptz", Nullable: false},
 				"name":       {Name: "name", Type: "text", Nullable: false},
-				"status":     {Name: "status", Type: "text", Nullable: false},
+				"status":     {Name: "status", Type: "text", Nullable: false, HasDefault: true, DefaultSQL: "'active'::text"},
 			},
 			map[string]liveConstraint{
 				"app_pkey":          {Name: "app_pkey", Type: "primary-key"},
@@ -68,6 +69,92 @@ func TestBuildMetadataSchemaPlanForMatchingDatabase(t *testing.T) {
 	}
 	if plan.HasBlockers() {
 		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
+	}
+}
+
+func TestBuildMetadataSchemaPlanUpdatesColumnDefaults(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		columns    map[string]liveColumn
+		entity     catalog.LoadedEntity
+		wantSQL    string
+		wantAbsent string
+	}{
+		{
+			name: "sets missing default",
+			columns: map[string]liveColumn{
+				"id":         {Name: "id", Type: "bigint", Nullable: false},
+				"created_at": {Name: "created_at", Type: "timestamptz", Nullable: false},
+				"updated_at": {Name: "updated_at", Type: "timestamptz", Nullable: false},
+				"name":       {Name: "name", Type: "text", Nullable: false},
+				"status":     {Name: "status", Type: "text", Nullable: false},
+			},
+			entity:  appEntity(),
+			wantSQL: `ALTER TABLE "app" ALTER COLUMN "status" SET DEFAULT 'active'`,
+		},
+		{
+			name: "changes drifted default",
+			columns: map[string]liveColumn{
+				"id":         {Name: "id", Type: "bigint", Nullable: false},
+				"created_at": {Name: "created_at", Type: "timestamptz", Nullable: false},
+				"updated_at": {Name: "updated_at", Type: "timestamptz", Nullable: false},
+				"name":       {Name: "name", Type: "text", Nullable: false},
+				"status":     {Name: "status", Type: "text", Nullable: false, HasDefault: true, DefaultSQL: "'installed'::text"},
+			},
+			entity:  appEntity(),
+			wantSQL: `ALTER TABLE "app" ALTER COLUMN "status" SET DEFAULT 'active'`,
+		},
+		{
+			name: "drops extra default",
+			columns: map[string]liveColumn{
+				"id":         {Name: "id", Type: "bigint", Nullable: false},
+				"created_at": {Name: "created_at", Type: "timestamptz", Nullable: false},
+				"updated_at": {Name: "updated_at", Type: "timestamptz", Nullable: false},
+				"note":       {Name: "note", Type: "text", Nullable: true, HasDefault: true, DefaultSQL: "'draft'::text"},
+			},
+			entity: catalog.LoadedEntity{
+				AppName: "crm",
+				Path:    "apps/crm/entities/lead.yml",
+				Entity: schema.Entity{
+					Name: "lead",
+					Fields: []schema.Field{
+						{Name: "note", Type: "text"},
+					},
+				},
+			},
+			wantSQL: `ALTER TABLE "lead" ALTER COLUMN "note" DROP DEFAULT`,
+		},
+		{
+			name: "ignores matching default",
+			columns: map[string]liveColumn{
+				"id":         {Name: "id", Type: "bigint", Nullable: false},
+				"created_at": {Name: "created_at", Type: "timestamptz", Nullable: false},
+				"updated_at": {Name: "updated_at", Type: "timestamptz", Nullable: false},
+				"name":       {Name: "name", Type: "text", Nullable: false},
+				"status":     {Name: "status", Type: "text", Nullable: false, HasDefault: true, DefaultSQL: "'active'::text"},
+			},
+			entity:     appEntity(),
+			wantAbsent: `ALTER COLUMN "status"`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{tt.entity}, LiveSchema{Tables: map[string]liveTable{
+				tt.entity.Entity.Name: liveSchemaTable(tt.entity.Entity.Name, tt.columns, map[string]liveConstraint{tt.entity.Entity.Name + "_pkey": {Name: tt.entity.Entity.Name + "_pkey", Type: "primary-key"}}, nil),
+			}})
+			if err != nil {
+				t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
+			}
+			if plan.HasBlockers() {
+				t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
+			}
+			sql := operationSQL(plan)
+			if tt.wantSQL != "" {
+				assertContains(t, sql, tt.wantSQL)
+			}
+			if tt.wantAbsent != "" && strings.Contains(sql, tt.wantAbsent) {
+				t.Fatalf("operationSQL() contains %q, want absent:\n%s", tt.wantAbsent, sql)
+			}
+		})
 	}
 }
 
@@ -252,6 +339,43 @@ func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) 
 	assertContains(t, sql, `CREATE INDEX "by_company_status" ON "deal" ("company_id", "status")`)
 	assertContains(t, sql, `ALTER TABLE "deal" ADD CONSTRAINT "deal_company_status_key" UNIQUE ("company_id", "status")`)
 	assertContains(t, sql, `ALTER TABLE "deal" ADD CONSTRAINT "deal_amount_gte_check" CHECK ("amount" >= 0)`)
+}
+
+func TestBuildMetadataSchemaPlanDoesNotCreateLinkForeignKeys(t *testing.T) {
+	entity := catalog.LoadedEntity{
+		AppName: "core",
+		Path:    "apps/core/entities/activity.yml",
+		Entity: schema.Entity{
+			Name: "activity",
+			Fields: []schema.Field{
+				{Name: "actor", Type: "link", Options: entityOption("user")},
+			},
+		},
+	}
+	user := catalog.LoadedEntity{
+		AppName: "core",
+		Path:    "apps/core/entities/user.yml",
+		Entity: schema.Entity{
+			Name:   "user",
+			Fields: []schema.Field{{Name: "email", Type: "email"}},
+		},
+	}
+	columns := systemColumns()
+	columns["actor_id"] = liveColumn{Name: "actor_id", Type: "bigint", Nullable: true}
+
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity, user}, LiveSchema{Tables: map[string]liveTable{
+		"activity": liveSchemaTable("activity", columns, map[string]liveConstraint{"activity_pkey": {Name: "activity_pkey", Type: "primary-key"}}, nil),
+		"user":     liveSchemaTable("user", systemColumns(), map[string]liveConstraint{"user_pkey": {Name: "user_pkey", Type: "primary-key"}}, nil),
+	}})
+	if err != nil {
+		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
+	}
+	if plan.HasBlockers() {
+		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
+	}
+	if strings.Contains(operationDescriptions(plan), "foreign-key") || strings.Contains(operationSQL(plan), "FOREIGN KEY") {
+		t.Fatalf("BuildMetadataSchemaPlan() created database foreign key for link field: %#v", plan.Operations)
+	}
 }
 
 func TestBuildMetadataSchemaPlanReportsChangedIndexAndConstraintDefinition(t *testing.T) {

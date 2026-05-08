@@ -112,6 +112,7 @@ func BuildMetadataSchemaPlan(entities []catalog.LoadedEntity, live LiveSchema) (
 
 	var creates []SchemaOperation
 	var columns []SchemaOperation
+	var defaults []SchemaOperation
 	var indexes []SchemaOperation
 	var constraints []SchemaOperation
 
@@ -168,6 +169,7 @@ func BuildMetadataSchemaPlan(entities []catalog.LoadedEntity, live LiveSchema) (
 			}
 			availableColumns[column.Name] = true
 			compareColumn(&plan, table.Name, column, liveColumn)
+			defaults = append(defaults, compareColumnDefault(table.Name, column, liveColumn)...)
 		}
 
 		if tableExists {
@@ -238,6 +240,7 @@ func BuildMetadataSchemaPlan(entities []catalog.LoadedEntity, live LiveSchema) (
 
 	plan.Operations = append(plan.Operations, creates...)
 	plan.Operations = append(plan.Operations, columns...)
+	plan.Operations = append(plan.Operations, defaults...)
 	plan.Operations = append(plan.Operations, indexes...)
 	plan.Operations = append(plan.Operations, constraints...)
 	return plan, nil
@@ -266,6 +269,7 @@ type desiredColumn struct {
 	Type           string
 	Required       bool
 	HasSafeDefault bool
+	DefaultSQL     string
 	Definition     string
 	Source         string
 }
@@ -345,12 +349,16 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 			definition := quoteIdent(column) + " " + sqlType
 			hasDefault := false
 			hasSafeDefault := false
-			if defaultSQL, ok, err := defaultClause(field.Default); err != nil {
+			defaultSQL := ""
+			if value, ok, err := defaultClause(field.Default); err != nil {
 				return desiredSchema{}, fieldSchemaError(loaded, field, err)
 			} else if ok {
 				hasDefault = true
-				hasSafeDefault = defaultSQL != "NULL"
-				definition += " DEFAULT " + defaultSQL
+				hasSafeDefault = value != "NULL"
+				if value != "NULL" {
+					defaultSQL = value
+					definition += " DEFAULT " + value
+				}
 			}
 			if field.Required {
 				definition += " NOT NULL"
@@ -360,6 +368,7 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 				Type:           sqlType,
 				Required:       field.Required,
 				HasSafeDefault: !field.Required || hasDefault && hasSafeDefault,
+				DefaultSQL:     defaultSQL,
 				Definition:     definition,
 				Source:         fieldSource(loaded, field),
 			})
@@ -389,24 +398,6 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 					Type:       "check",
 					Columns:    []string{column},
 					Definition: selectCheck(column, field.Options.Values),
-					Source:     fieldSource(loaded, field),
-				})
-			}
-			if field.Type == "link" {
-				target, ok := targets[field.Options.Entity]
-				if !ok {
-					return desiredSchema{}, fieldSchemaError(loaded, field, fmt.Errorf("link target %q is not loaded", field.Options.Entity))
-				}
-				targetTable, err := tableName(target.Entity)
-				if err != nil {
-					return desiredSchema{}, fieldSchemaError(loaded, field, fmt.Errorf("invalid link target table: %w", err))
-				}
-				constraint := constraintName(table, column, "fkey")
-				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
-					Name:       constraint,
-					Type:       "foreign-key",
-					Columns:    []string{column},
-					Definition: fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s) ON DELETE CASCADE", quoteIdent(column), quoteIdent(targetTable), quoteIdent("id")),
 					Source:     fieldSource(loaded, field),
 				})
 			}
@@ -490,6 +481,37 @@ func compareColumn(plan *SchemaPlan, table string, desired desiredColumn, live l
 	if !desired.Required && !live.Nullable {
 		plan.Diagnostics = append(plan.Diagnostics, unsafeDiagnostic("column-required-drift", table, desired.Name, "", "column is NOT NULL in database but not required in metadata", desired.Source))
 	}
+}
+
+func compareColumnDefault(table string, desired desiredColumn, live liveColumn) []SchemaOperation {
+	if columnDefaultMatches(desired, live) {
+		return nil
+	}
+	operation := SchemaOperation{
+		Classification: SchemaOperationSafe,
+		Kind:           "alter-column-default",
+		Table:          table,
+		Column:         desired.Name,
+		Source:         desired.Source,
+	}
+	if desired.DefaultSQL == "" {
+		operation.Description = "drop default " + table + "." + desired.Name
+		operation.SQL = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP DEFAULT", quoteIdent(table), quoteIdent(desired.Name))
+		return []SchemaOperation{operation}
+	}
+	operation.Description = "set default " + table + "." + desired.Name
+	operation.SQL = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s", quoteIdent(table), quoteIdent(desired.Name), desired.DefaultSQL)
+	return []SchemaOperation{operation}
+}
+
+func columnDefaultMatches(desired desiredColumn, live liveColumn) bool {
+	if desired.DefaultSQL == "" {
+		return !live.HasDefault
+	}
+	if !live.HasDefault {
+		return false
+	}
+	return compactDefinition(normalizeDefinition(live.DefaultSQL)) == compactDefinition(normalizeDefinition(desired.DefaultSQL))
 }
 
 func reportExtraColumns(plan *SchemaPlan, desired desiredTable, live liveTable) {

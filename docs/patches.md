@@ -45,7 +45,7 @@ Use a patch when the change cannot be proven safe from metadata alone.
 | Required field without safe default | Existing Records may not have a value. | Backfill values, then mark the field required. |
 | New unique constraint | Existing Records may contain duplicates. | Deduplicate or merge Records, then add uniqueness metadata. |
 | New check constraint | Existing Records may violate the rule. | Clean or normalize values, then add the check metadata. |
-| New foreign key | Existing Records may point at missing targets. | Repair references, create missing targets, or clear invalid values. |
+| New strict relationship rule | Existing Records may point at missing targets. | Repair references, create missing targets, or clear invalid values before enabling the rule. |
 
 ## Planner Diagnostics
 

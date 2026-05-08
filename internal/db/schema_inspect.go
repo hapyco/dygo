@@ -29,9 +29,11 @@ func (t liveTable) HasIndex(name string) bool {
 }
 
 type liveColumn struct {
-	Name     string
-	Type     string
-	Nullable bool
+	Name       string
+	Type       string
+	Nullable   bool
+	HasDefault bool
+	DefaultSQL string
 }
 
 type liveIndex struct {
@@ -94,10 +96,17 @@ ORDER BY c.relname`)
 
 func inspectColumns(ctx context.Context, pool *pgxpool.Pool, live *LiveSchema) error {
 	rows, err := pool.Query(ctx, `
-SELECT c.relname, a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull
+SELECT
+	c.relname,
+	a.attname,
+	format_type(a.atttypid, a.atttypmod),
+	a.attnotnull,
+	ad.oid IS NOT NULL,
+	COALESCE(pg_get_expr(ad.adbin, ad.adrelid), '')
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 JOIN pg_attribute a ON a.attrelid = c.oid
+LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
 WHERE n.nspname = 'public'
 	AND c.relkind IN ('r', 'p')
 	AND a.attnum > 0
@@ -113,11 +122,13 @@ ORDER BY c.relname, a.attnum`)
 		var columnName string
 		var dataType string
 		var notNull bool
-		if err := rows.Scan(&tableName, &columnName, &dataType, &notNull); err != nil {
+		var hasDefault bool
+		var defaultSQL string
+		if err := rows.Scan(&tableName, &columnName, &dataType, &notNull, &hasDefault, &defaultSQL); err != nil {
 			return fmt.Errorf("scan schema column: %w", err)
 		}
 		table := ensureLiveTable(live, tableName)
-		table.Columns[columnName] = liveColumn{Name: columnName, Type: normalizeSQLType(dataType), Nullable: !notNull}
+		table.Columns[columnName] = liveColumn{Name: columnName, Type: normalizeSQLType(dataType), Nullable: !notNull, HasDefault: hasDefault, DefaultSQL: defaultSQL}
 		live.Tables[tableName] = table
 	}
 	if err := rows.Err(); err != nil {

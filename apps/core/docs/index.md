@@ -2,12 +2,13 @@
 
 Core is the required system App for dygo.
 
-It provides the foundation dygo needs before business apps can run: system metadata, users, roles, permissions, sessions, installed App state, fixtures, and patches.
+It provides the foundation dygo needs before business apps can run: system metadata, users, roles, permissions, sessions, activity history, installed App state, fixtures, and patches.
 
 The first Entity scaffold is metadata-only. It defines these Core system contracts:
 
 ```txt
 app
+activity
 entity
 field
 user
@@ -17,6 +18,6 @@ permission
 session
 ```
 
-These contracts create Core database tables through dygo's metadata-driven schema sync. They do not create authentication behavior, permission resolution, records, app lifecycle behavior, or Studio screens yet.
+These contracts create Core database tables through dygo's metadata-driven schema sync. The `activity` contract is the storage shape for future Record history and timeline events; runtime activity writing is still a follow-up layer.
 
-Lifecycle and history records such as patch runs and ledger-style change history are deferred until patches and app lifecycle behavior are designed.
+Lifecycle records such as patch runs and ledger-style app change history are deferred until patches and app lifecycle behavior are designed.

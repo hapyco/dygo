@@ -32,6 +32,7 @@ func TestRepositoryEntitiesValidate(t *testing.T) {
 	sort.Strings(coreEntities)
 
 	want := []string{
+		"activity",
 		"app",
 		"constraint",
 		"entity",
