@@ -14,6 +14,7 @@ import (
 
 	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/db"
+	"github.com/dygo-dev/dygo/internal/permissions"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -27,6 +28,7 @@ type Options struct {
 	Auth        AuthStore
 	Metadata    MetadataStore
 	Records     RecordStore
+	Permissions PermissionChecker
 	OnReady     func(string) error
 }
 
@@ -54,6 +56,11 @@ type RecordStore interface {
 	DeleteRecord(context.Context, string, int64) error
 }
 
+// PermissionChecker is the authorization behavior used by HTTP handlers.
+type PermissionChecker interface {
+	Can(context.Context, permissions.Request) error
+}
+
 // NewRouter creates the dygo HTTP router.
 func NewRouter(options ...Options) http.Handler {
 	var opts Options
@@ -67,7 +74,7 @@ func NewRouter(options ...Options) http.Handler {
 		api.Group(func(protected chi.Router) {
 			protected.Use(authMiddleware(opts.Auth))
 			registerMetadataRoutes(protected, opts.Metadata)
-			registerRecordRoutes(protected, opts.Records)
+			registerRecordRoutes(protected, opts.Records, opts.Permissions)
 		})
 	})
 	return router
@@ -97,6 +104,7 @@ func Serve(ctx context.Context, options Options) error {
 		options.Auth = auth.NewService(pool)
 		options.Metadata = db.NewMetadataReader(pool)
 		options.Records = db.NewRecordStore(pool)
+		options.Permissions = permissions.NewChecker(pool)
 	}
 
 	listener, err := net.Listen("tcp", options.Address)
@@ -477,11 +485,12 @@ func writeAPIError(w http.ResponseWriter, err error, detailKey string, detailVal
 }
 
 type recordHandler struct {
-	store RecordStore
+	store       RecordStore
+	permissions PermissionChecker
 }
 
-func registerRecordRoutes(router chi.Router, store RecordStore) {
-	handler := recordHandler{store: store}
+func registerRecordRoutes(router chi.Router, store RecordStore, checker PermissionChecker) {
+	handler := recordHandler{store: store, permissions: checker}
 	router.Route("/records/{entity}", func(records chi.Router) {
 		records.Get("/", handler.listRecords)
 		records.Post("/", handler.createRecord)
@@ -495,12 +504,15 @@ func (h recordHandler) listRecords(w http.ResponseWriter, r *http.Request) {
 	if h.requireStore(w) {
 		return
 	}
+	entity := chi.URLParam(r, "entity")
+	if !h.authorize(w, r, entity, permissions.ActionRead, 0) {
+		return
+	}
 	params, err := recordListParams(r)
 	if err != nil {
 		writeRecordError(w, err)
 		return
 	}
-	entity := chi.URLParam(r, "entity")
 	result, err := h.store.ListRecords(r.Context(), entity, params)
 	if err != nil {
 		writeRecordError(w, err)
@@ -522,6 +534,9 @@ func (h recordHandler) getRecord(w http.ResponseWriter, r *http.Request) {
 		writeRecordError(w, err)
 		return
 	}
+	if !h.authorize(w, r, entity, permissions.ActionRead, id) {
+		return
+	}
 	record, err := h.store.GetRecord(r.Context(), entity, id)
 	if err != nil {
 		writeRecordError(w, err)
@@ -535,6 +550,9 @@ func (h recordHandler) createRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entity := chi.URLParam(r, "entity")
+	if !h.authorize(w, r, entity, permissions.ActionCreate, 0) {
+		return
+	}
 	input, err := decodeRecordInput(r)
 	if err != nil {
 		writeRecordError(w, err)
@@ -556,6 +574,9 @@ func (h recordHandler) updateRecord(w http.ResponseWriter, r *http.Request) {
 	id, err := recordIDParam(entity, chi.URLParam(r, "id"))
 	if err != nil {
 		writeRecordError(w, err)
+		return
+	}
+	if !h.authorize(w, r, entity, permissions.ActionUpdate, id) {
 		return
 	}
 	input, err := decodeRecordInput(r)
@@ -581,6 +602,9 @@ func (h recordHandler) deleteRecord(w http.ResponseWriter, r *http.Request) {
 		writeRecordError(w, err)
 		return
 	}
+	if !h.authorize(w, r, entity, permissions.ActionDelete, id) {
+		return
+	}
 	if err := h.store.DeleteRecord(r.Context(), entity, id); err != nil {
 		writeRecordError(w, err)
 		return
@@ -596,6 +620,32 @@ func (h recordHandler) requireStore(w http.ResponseWriter) bool {
 		Code:    "service_unavailable",
 		Message: "record store is unavailable",
 	}})
+	return true
+}
+
+func (h recordHandler) authorize(w http.ResponseWriter, r *http.Request, entity string, action permissions.Action, recordID int64) bool {
+	if h.permissions == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope{Error: apiError{
+			Code:    "service_unavailable",
+			Message: "permission checker is unavailable",
+		}})
+		return false
+	}
+	user, ok := CurrentUserFromContext(r.Context())
+	if !ok {
+		writeAuthError(w, auth.Error{Code: auth.ErrorUnauthenticated, Message: "authentication required"})
+		return false
+	}
+	err := h.permissions.Can(r.Context(), permissions.Request{
+		Actor:    permissions.Actor{UserID: user.ID, Administrator: user.Administrator},
+		Entity:   entity,
+		Action:   action,
+		RecordID: recordID,
+	})
+	if err != nil {
+		writePermissionError(w, err)
+		return false
+	}
 	return true
 }
 
@@ -648,6 +698,38 @@ func decodeRecordInput(r *http.Request) (db.RecordInput, error) {
 		return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "request data is required"}
 	}
 	return envelope.Data, nil
+}
+
+func writePermissionError(w http.ResponseWriter, err error) {
+	var permissionErr permissions.Error
+	if !errors.As(err, &permissionErr) {
+		writeJSON(w, http.StatusInternalServerError, errorEnvelope{Error: apiError{
+			Code:    "internal_error",
+			Message: "permission check failed",
+		}})
+		return
+	}
+	status := http.StatusInternalServerError
+	code := permissionErr.Code
+	message := permissionErr.Message
+	details := permissionErr.Details
+	switch permissionErr.Code {
+	case permissions.ErrorInvalidRequest:
+		status = http.StatusBadRequest
+	case permissions.ErrorDenied:
+		status = http.StatusForbidden
+		code = "forbidden"
+	case permissions.ErrorInternal:
+		status = http.StatusInternalServerError
+		code = "internal_error"
+		message = "permission check failed"
+		details = nil
+	}
+	writeJSON(w, status, errorEnvelope{Error: apiError{
+		Code:    code,
+		Message: message,
+		Details: details,
+	}})
 }
 
 func writeRecordError(w http.ResponseWriter, err error) {

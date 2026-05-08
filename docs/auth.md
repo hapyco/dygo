@@ -19,7 +19,7 @@ For automation:
 printf 'change-me\n' | go run ./cmd/dygo setup admin --email admin@example.com --full-name "Admin User" --password-stdin
 ```
 
-The Administrator account is special. It is not a role and does not depend on role assignment. Future permission enforcement can treat `administrator=true` as privileged before regular role permissions are checked.
+The Administrator account is special. It is not a role and does not depend on role assignment. Record permission enforcement treats `administrator=true` as privileged inside the permission engine before regular role permissions are checked.
 
 ## API
 
@@ -47,4 +47,4 @@ Login returns the current user and sets the session cookie:
 
 `/health` and `POST /api/v1/auth/login` are public. Metadata and Record API routes require a valid session.
 
-This layer does not add API keys, OAuth, SSO, password reset, Studio login UI, or Record permission enforcement. Record permission enforcement is a separate task.
+This layer does not add API keys, OAuth, SSO, password reset, or Studio login UI. Record APIs are guarded separately through the permission engine.

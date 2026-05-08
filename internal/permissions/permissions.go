@@ -44,20 +44,28 @@ const (
 // Action is a supported permission action.
 type Action string
 
+// Actor identifies the user asking a permission question.
+type Actor struct {
+	UserID        int64
+	Administrator bool
+}
+
 // Request identifies the permission question being asked.
 type Request struct {
-	UserID int64
-	Entity string
-	Action Action
+	Actor    Actor
+	Entity   string
+	Action   Action
+	RecordID int64
 }
 
 // Decision is the result of a permission check.
 type Decision struct {
-	Allowed bool
-	UserID  int64
-	Entity  string
-	Action  Action
-	Reason  string
+	Allowed  bool
+	Actor    Actor
+	Entity   string
+	Action   Action
+	RecordID int64
+	Reason   string
 }
 
 // Error reports stable permission engine failures.
@@ -99,12 +107,22 @@ func NewChecker(queryer Queryer) Checker {
 
 // Check evaluates whether a user has an Entity permission action.
 func (c Checker) Check(ctx context.Context, request Request) (Decision, error) {
-	if c.queryer == nil {
-		return Decision{}, permissionError(ErrorInternal, "permission queryer is required", nil, nil)
-	}
 	normalized, column, err := normalizeRequest(request)
 	if err != nil {
 		return Decision{}, err
+	}
+	if normalized.Actor.Administrator {
+		return Decision{
+			Allowed:  true,
+			Actor:    normalized.Actor,
+			Entity:   normalized.Entity,
+			Action:   normalized.Action,
+			RecordID: normalized.RecordID,
+			Reason:   ReasonAllowed,
+		}, nil
+	}
+	if c.queryer == nil {
+		return Decision{}, permissionError(ErrorInternal, "permission queryer is required", nil, nil)
 	}
 
 	sql := fmt.Sprintf(`
@@ -123,24 +141,26 @@ SELECT EXISTS (
 )`, column)
 
 	var allowed bool
-	if err := c.queryer.QueryRow(ctx, sql, normalized.UserID, normalized.Entity).Scan(&allowed); err != nil {
+	if err := c.queryer.QueryRow(ctx, sql, normalized.Actor.UserID, normalized.Entity).Scan(&allowed); err != nil {
 		return Decision{}, permissionError(ErrorInternal, "permission check failed", decisionDetails(normalized), err)
 	}
 	if allowed {
 		return Decision{
-			Allowed: true,
-			UserID:  normalized.UserID,
-			Entity:  normalized.Entity,
-			Action:  normalized.Action,
-			Reason:  ReasonAllowed,
+			Allowed:  true,
+			Actor:    normalized.Actor,
+			Entity:   normalized.Entity,
+			Action:   normalized.Action,
+			RecordID: normalized.RecordID,
+			Reason:   ReasonAllowed,
 		}, nil
 	}
 	return Decision{
-		Allowed: false,
-		UserID:  normalized.UserID,
-		Entity:  normalized.Entity,
-		Action:  normalized.Action,
-		Reason:  ReasonDenied,
+		Allowed:  false,
+		Actor:    normalized.Actor,
+		Entity:   normalized.Entity,
+		Action:   normalized.Action,
+		RecordID: normalized.RecordID,
+		Reason:   ReasonDenied,
 	}, nil
 }
 
@@ -154,9 +174,10 @@ func (c Checker) Can(ctx context.Context, request Request) error {
 		return nil
 	}
 	return permissionError(ErrorDenied, "permission denied", decisionDetails(Request{
-		UserID: decision.UserID,
-		Entity: decision.Entity,
-		Action: decision.Action,
+		Actor:    decision.Actor,
+		Entity:   decision.Entity,
+		Action:   decision.Action,
+		RecordID: decision.RecordID,
 	}), nil)
 }
 
@@ -174,15 +195,19 @@ func IsDenied(err error) bool {
 
 func normalizeRequest(request Request) (Request, string, error) {
 	normalized := Request{
-		UserID: request.UserID,
-		Entity: strings.TrimSpace(request.Entity),
-		Action: Action(strings.TrimSpace(string(request.Action))),
+		Actor:    request.Actor,
+		Entity:   strings.TrimSpace(request.Entity),
+		Action:   Action(strings.TrimSpace(string(request.Action))),
+		RecordID: request.RecordID,
 	}
-	if normalized.UserID <= 0 {
-		return Request{}, "", permissionError(ErrorInvalidRequest, "user id must be a positive integer", map[string]any{"user-id": request.UserID}, nil)
+	if normalized.Actor.UserID <= 0 {
+		return Request{}, "", permissionError(ErrorInvalidRequest, "user id must be a positive integer", map[string]any{"user-id": request.Actor.UserID}, nil)
 	}
 	if normalized.Entity == "" {
 		return Request{}, "", permissionError(ErrorInvalidRequest, "entity is required", map[string]any{"entity": request.Entity}, nil)
+	}
+	if normalized.RecordID < 0 {
+		return Request{}, "", permissionError(ErrorInvalidRequest, "record id must be greater than or equal to zero", map[string]any{"record-id": request.RecordID}, nil)
 	}
 	column, ok := actionColumn(normalized.Action)
 	if !ok {
@@ -211,11 +236,15 @@ func actionColumn(action Action) (string, bool) {
 }
 
 func decisionDetails(request Request) map[string]any {
-	return map[string]any{
-		"user-id": request.UserID,
+	details := map[string]any{
+		"user-id": request.Actor.UserID,
 		"entity":  request.Entity,
 		"action":  request.Action,
 	}
+	if request.RecordID > 0 {
+		details["record-id"] = request.RecordID
+	}
+	return details
 }
 
 func permissionError(code string, message string, details map[string]any, err error) Error {

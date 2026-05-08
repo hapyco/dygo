@@ -14,6 +14,7 @@ import (
 
 	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/db"
+	"github.com/dygo-dev/dygo/internal/permissions"
 )
 
 func TestNewRouterHealth(t *testing.T) {
@@ -366,6 +367,7 @@ func TestAuthRouteErrors(t *testing.T) {
 
 func TestRecordRoutes(t *testing.T) {
 	authStore := validFakeAuthStore()
+	checker := &fakePermissionChecker{}
 	store := &fakeRecordStore{
 		list: db.RecordListResult{
 			Records: []db.Record{{"id": int64(1), "email": "a@example.com"}},
@@ -395,7 +397,7 @@ func TestRecordRoutes(t *testing.T) {
 			request := authenticatedRequest(tt.method, tt.path, tt.body)
 			recorder := httptest.NewRecorder()
 
-			NewRouter(Options{Auth: authStore, Records: store}).ServeHTTP(recorder, request)
+			NewRouter(Options{Auth: authStore, Records: store, Permissions: checker}).ServeHTTP(recorder, request)
 
 			response := recorder.Result()
 			defer response.Body.Close()
@@ -422,6 +424,21 @@ func TestRecordRoutes(t *testing.T) {
 	}
 	if store.deletedID != 1 {
 		t.Fatalf("deleted id = %d, want 1", store.deletedID)
+	}
+	wantPermissions := []permissions.Request{
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead},
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead, RecordID: 1},
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionCreate},
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionUpdate, RecordID: 1},
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionDelete, RecordID: 1},
+	}
+	if len(checker.requests) != len(wantPermissions) {
+		t.Fatalf("permission requests = %+v, want %d requests", checker.requests, len(wantPermissions))
+	}
+	for i, want := range wantPermissions {
+		if checker.requests[i] != want {
+			t.Fatalf("permission request %d = %+v, want %+v", i, checker.requests[i], want)
+		}
 	}
 }
 
@@ -494,7 +511,7 @@ func TestRecordRouteErrors(t *testing.T) {
 			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-token"})
 			recorder := httptest.NewRecorder()
 
-			NewRouter(Options{Auth: validFakeAuthStore(), Records: tt.store}).ServeHTTP(recorder, request)
+			NewRouter(Options{Auth: validFakeAuthStore(), Records: tt.store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
 
 			response := recorder.Result()
 			defer response.Body.Close()
@@ -517,12 +534,115 @@ func TestRecordRouteErrors(t *testing.T) {
 
 func TestRecordRouteWithoutStore(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/user", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-token"})
 	recorder := httptest.NewRecorder()
 
-	NewRouter().ServeHTTP(recorder, request)
+	NewRouter(Options{Auth: validFakeAuthStore(), Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
 
 	if recorder.Result().StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("record without store status = %d, want 503", recorder.Result().StatusCode)
+	}
+}
+
+func TestRecordRoutesFailClosedWithoutPermissionChecker(t *testing.T) {
+	store := &fakeRecordStore{}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Records: store}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("record without permission checker status = %d, want 503", response.StatusCode)
+	}
+	if len(store.calls) != 0 {
+		t.Fatalf("record store calls = %v, want none", store.calls)
+	}
+}
+
+func TestRecordRoutesDenyForbiddenBeforeStore(t *testing.T) {
+	store := &fakeRecordStore{}
+	checker := &fakePermissionChecker{err: permissions.Error{Code: permissions.ErrorDenied, Message: "permission denied", Details: map[string]any{"entity": "user", "action": permissions.ActionRead}}}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Records: store, Permissions: checker}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("permission denied status = %d, want 403", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(permission denied body) error = %v", err)
+	}
+	if !contains(string(body), `"code":"forbidden"`) {
+		t.Fatalf("permission denied body = %s, want forbidden", string(body))
+	}
+	if len(store.calls) != 0 {
+		t.Fatalf("record store calls = %v, want none", store.calls)
+	}
+}
+
+func TestRecordRoutesAdministratorUsesPermissionEngineBypass(t *testing.T) {
+	store := &fakeRecordStore{record: db.Record{"id": int64(1), "email": "a@example.com"}}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user/1", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Records: store, Permissions: permissions.NewChecker(nil)}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("administrator record status = %d, want 200", response.StatusCode)
+	}
+	if len(store.calls) != 1 || store.calls[0] != "get" {
+		t.Fatalf("record store calls = %v, want get", store.calls)
+	}
+}
+
+func TestRecordRoutesUnauthenticatedBeforePermissionCheck(t *testing.T) {
+	store := &fakeRecordStore{}
+	checker := &fakePermissionChecker{}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/user", nil)
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Records: store, Permissions: checker}).ServeHTTP(recorder, request)
+
+	if recorder.Result().StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated record status = %d, want 401", recorder.Result().StatusCode)
+	}
+	if len(checker.requests) != 0 {
+		t.Fatalf("permission requests = %+v, want none", checker.requests)
+	}
+	if len(store.calls) != 0 {
+		t.Fatalf("record store calls = %v, want none", store.calls)
+	}
+}
+
+func TestRecordRoutePermissionFailureIsRedacted(t *testing.T) {
+	checker := &fakePermissionChecker{err: permissions.Error{Code: permissions.ErrorInternal, Message: "postgres://user:secret@localhost permission failed", Err: errors.New("SELECT postgres://secret")}}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Records: &fakeRecordStore{}, Permissions: checker}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("permission failure status = %d, want 500", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(permission failure body) error = %v", err)
+	}
+	if !contains(string(body), `"code":"internal_error"`) || !contains(string(body), `"message":"permission check failed"`) {
+		t.Fatalf("permission failure body = %s, want internal_error", string(body))
+	}
+	if contains(string(body), "postgres://") || contains(string(body), "secret") || contains(string(body), "SELECT") {
+		t.Fatalf("permission failure body leaked internal detail: %s", string(body))
 	}
 }
 
@@ -564,29 +684,45 @@ type fakeRecordStore struct {
 	created   db.RecordInput
 	updated   db.RecordInput
 	deletedID int64
+	calls     []string
 }
 
 func (s *fakeRecordStore) ListRecords(context.Context, string, db.RecordListParams) (db.RecordListResult, error) {
+	s.calls = append(s.calls, "list")
 	return s.list, s.listErr
 }
 
 func (s *fakeRecordStore) GetRecord(context.Context, string, int64) (db.Record, error) {
+	s.calls = append(s.calls, "get")
 	return s.record, s.getErr
 }
 
 func (s *fakeRecordStore) CreateRecord(_ context.Context, _ string, input db.RecordInput) (db.Record, error) {
+	s.calls = append(s.calls, "create")
 	s.created = input
 	return s.record, s.createErr
 }
 
 func (s *fakeRecordStore) UpdateRecord(_ context.Context, _ string, _ int64, input db.RecordInput) (db.Record, error) {
+	s.calls = append(s.calls, "update")
 	s.updated = input
 	return s.record, s.updateErr
 }
 
 func (s *fakeRecordStore) DeleteRecord(_ context.Context, _ string, id int64) error {
+	s.calls = append(s.calls, "delete")
 	s.deletedID = id
 	return s.deleteErr
+}
+
+type fakePermissionChecker struct {
+	err      error
+	requests []permissions.Request
+}
+
+func (c *fakePermissionChecker) Can(_ context.Context, request permissions.Request) error {
+	c.requests = append(c.requests, request)
+	return c.err
 }
 
 type fakeAuthStore struct {

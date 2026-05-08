@@ -11,7 +11,7 @@ go run ./cmd/dygo migrate
 go run ./cmd/dygo serve
 ```
 
-Record API routes require a valid `dygo_session` cookie from the auth API.
+Record API routes require a valid `dygo_session` cookie from the auth API and an allowed Entity permission.
 
 ## API
 
@@ -102,4 +102,15 @@ json
 
 `DELETE` performs a hard delete in v1.
 
-This layer requires authentication but does not enforce Entity permissions yet. The internal permission engine exists, but guarding these APIs is a follow-up task.
+This layer requires authentication and checks Entity permissions through the single internal permission engine.
+
+Permission mapping:
+
+```txt
+list/detail -> read
+create -> create
+update -> update
+delete -> delete
+```
+
+Administrator users are privileged through the permission engine. Sharing, row-level filtering, owner rules, and field-level permissions are future layers on the same engine.

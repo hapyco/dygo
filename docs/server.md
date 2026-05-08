@@ -54,7 +54,7 @@ POST /api/v1/auth/logout
 GET  /api/v1/auth/me
 ```
 
-`POST /api/v1/auth/login` is public. Metadata and Record API routes require a valid session.
+`POST /api/v1/auth/login` is public. Metadata and Record API routes require a valid session. Record API routes also require an allowed Entity permission.
 
 ## Metadata API
 
@@ -117,6 +117,17 @@ List responses include pagination metadata:
 
 `PATCH` is the update operation and only changes fields provided in the request body. `DELETE` performs a hard delete in v1.
 
+Record API permissions are checked through the single internal permission engine:
+
+```txt
+GET list/detail -> read
+POST -> create
+PATCH -> update
+DELETE -> delete
+```
+
+Administrator users are allowed by the engine before flat role permissions are checked.
+
 ## Shutdown
 
 Stop the server with `Ctrl-C`.
@@ -125,4 +136,4 @@ The CLI listens for interrupt and termination signals and asks the HTTP server t
 
 ## Boundaries
 
-The current server includes health, session auth, read-only metadata APIs, and generic Record CRUD APIs. The internal permission engine exists, but the server does not include Record permission enforcement, Studio rendering, per-Entity controllers, child table storage, workflow hooks, or audit logging yet.
+The current server includes health, session auth, read-only metadata APIs, generic Record CRUD APIs, and Entity permission enforcement for Records. The server does not include Studio rendering, per-Entity controllers, child table storage, row-level sharing rules, workflow hooks, or audit logging yet.
