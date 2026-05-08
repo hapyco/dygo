@@ -136,6 +136,10 @@ func Discover(apps []manifest.LoadedApp) ([]LoadedFile, error) {
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", path, err)
 			}
+			expectedEntity := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+			if fixture.Entity != expectedEntity {
+				return nil, fmt.Errorf("%s: fixture entity %q must match file name %q", path, fixture.Entity, expectedEntity)
+			}
 			files = append(files, LoadedFile{
 				AppName: app.Manifest.Name,
 				AppDir:  app.Dir,
@@ -234,9 +238,13 @@ func ApplyFiles(ctx context.Context, store Store, files []LoadedFile) (Result, e
 		}
 		prepared = append(prepared, parsed)
 	}
+	ordered, err := orderPreparedFiles(prepared)
+	if err != nil {
+		return Result{}, err
+	}
 
 	var result Result
-	for _, file := range prepared {
+	for _, file := range ordered {
 		for _, record := range file.Fixture.Records {
 			input, match, err := resolveRecord(ctx, store, file, record)
 			if err != nil {
@@ -303,6 +311,76 @@ func prepareFile(ctx context.Context, store Store, file LoadedFile) (preparedFil
 		}
 	}
 	return preparedFile{LoadedFile: file, Meta: meta, Fields: fields}, nil
+}
+
+func orderPreparedFiles(files []preparedFile) ([]preparedFile, error) {
+	fixturesByEntity := map[string][]int{}
+	for i, file := range files {
+		fixturesByEntity[file.Fixture.Entity] = append(fixturesByEntity[file.Fixture.Entity], i)
+	}
+
+	dependencies := map[int]map[int]bool{}
+	for i, file := range files {
+		for _, record := range file.Fixture.Records {
+			for name := range record.Values {
+				field := file.Fields[name]
+				if field.Type != "link" {
+					continue
+				}
+				target, err := linkTarget(field)
+				if err != nil {
+					return nil, fmt.Errorf("%s: fixture field %q: %w", file.Path, name, err)
+				}
+				for _, targetIndex := range fixturesByEntity[target] {
+					if targetIndex == i {
+						continue
+					}
+					if dependencies[i] == nil {
+						dependencies[i] = map[int]bool{}
+					}
+					dependencies[i][targetIndex] = true
+				}
+			}
+		}
+	}
+
+	pending := map[int]bool{}
+	for i := range files {
+		pending[i] = true
+	}
+
+	ordered := make([]preparedFile, 0, len(files))
+	for len(pending) > 0 {
+		progressed := false
+		for i, file := range files {
+			if !pending[i] {
+				continue
+			}
+			blocked := false
+			for dependency := range dependencies[i] {
+				if pending[dependency] {
+					blocked = true
+					break
+				}
+			}
+			if blocked {
+				continue
+			}
+			ordered = append(ordered, file)
+			delete(pending, i)
+			progressed = true
+		}
+		if !progressed {
+			names := make([]string, 0, len(pending))
+			for i := range pending {
+				names = append(names, files[i].Fixture.Entity)
+			}
+			sort.Strings(names)
+			return nil, fmt.Errorf("fixture dependency cycle among entities: %s", strings.Join(names, ", "))
+		}
+	}
+
+	return ordered, nil
 }
 
 func validateRecord(file LoadedFile, fields map[string]db.MetadataField, record Record) error {

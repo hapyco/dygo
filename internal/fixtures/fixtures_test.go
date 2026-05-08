@@ -20,7 +20,7 @@ func TestDiscoverLoadsAppFixtureFiles(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(fixturesDir, "nested"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(fixtures) error = %v", err)
 	}
-	writeFixtureFile(t, filepath.Join(fixturesDir, "roles.yml"), `
+	writeFixtureFile(t, filepath.Join(fixturesDir, "role.yml"), `
 entity: role
 match: [name]
 records:
@@ -47,6 +47,35 @@ records:
 	}
 	if len(files) != 1 || files[0].AppName != "core" || files[0].Fixture.Entity != "role" {
 		t.Fatalf("Discover() files = %+v, want one core role fixture", files)
+	}
+}
+
+func TestDiscoverRequiresEntityNamedFixtureFiles(t *testing.T) {
+	root := t.TempDir()
+	appDir := filepath.Join(root, "apps", "core")
+	fixturesDir := filepath.Join(appDir, "fixtures")
+	if err := os.MkdirAll(fixturesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(fixtures) error = %v", err)
+	}
+	writeFixtureFile(t, filepath.Join(fixturesDir, "roles.yml"), `
+entity: role
+match: [name]
+records:
+  - name: system-manager
+`)
+
+	_, err := Discover([]manifest.LoadedApp{{
+		Dir: appDir,
+		Manifest: manifest.Manifest{
+			Name:  "core",
+			Paths: manifest.DefaultPaths(),
+		},
+	}})
+	if err == nil {
+		t.Fatal("Discover() error = nil, want file/entity mismatch error")
+	}
+	if !strings.Contains(err.Error(), `fixture entity "role" must match file name "roles"`) {
+		t.Fatalf("Discover() error = %q, want entity/file mismatch", err.Error())
 	}
 }
 
@@ -195,6 +224,77 @@ records:
 	}
 }
 
+func TestApplyFilesOrdersByLinkDependencies(t *testing.T) {
+	store := newFakeStore()
+	seedEntityRecords(store)
+	permission := loadedFixture(t, "permission.yml", `
+entity: permission
+match: [entity, role]
+records:
+  - entity:
+      match:
+        name: user
+    role:
+      match:
+        name: system-manager
+    read: true
+`)
+	role := loadedFixture(t, "role.yml", `
+entity: role
+match: [name]
+records:
+  - name: system-manager
+    label: System Manager
+`)
+
+	result, err := ApplyFiles(context.Background(), store, []LoadedFile{permission, role})
+	if err != nil {
+		t.Fatalf("ApplyFiles() error = %v, want nil", err)
+	}
+	if result.Created != 2 || result.Updated != 0 {
+		t.Fatalf("ApplyFiles() result = %+v, want role and permission created", result)
+	}
+}
+
+func TestRepositoryCoreFixturesApply(t *testing.T) {
+	store := newFakeStore()
+	seedEntityRecords(store)
+
+	fixtureDir := filepath.Join("..", "..", "apps", "core", "fixtures")
+	entries, err := os.ReadDir(fixtureDir)
+	if err != nil {
+		t.Fatalf("ReadDir(%s) error = %v", fixtureDir, err)
+	}
+	var files []LoadedFile
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
+			continue
+		}
+		path := filepath.Join(fixtureDir, entry.Name())
+		fixture, err := LoadFile(path)
+		if err != nil {
+			t.Fatalf("LoadFile(%s) error = %v", path, err)
+		}
+		files = append(files, LoadedFile{AppName: "core", AppDir: filepath.Join("..", "..", "apps", "core"), Path: path, Fixture: fixture})
+	}
+
+	result, err := ApplyFiles(context.Background(), store, files)
+	if err != nil {
+		t.Fatalf("ApplyFiles(core fixtures) error = %v, want nil", err)
+	}
+	if result.Created != 16 || result.Updated != 0 {
+		t.Fatalf("ApplyFiles(core fixtures) result = %+v, want 16 created", result)
+	}
+
+	result, err = ApplyFiles(context.Background(), store, files)
+	if err != nil {
+		t.Fatalf("ApplyFiles(core fixtures second run) error = %v, want nil", err)
+	}
+	if result.Created != 0 || result.Updated != 16 {
+		t.Fatalf("ApplyFiles(core fixtures second run) result = %+v, want 16 updated", result)
+	}
+}
+
 func TestApplyFilesRejectsInvalidFixtureRecord(t *testing.T) {
 	store := newFakeStore()
 	tests := []struct {
@@ -292,6 +392,7 @@ func newFakeStore() *fakeStore {
 		Fields: []db.MetadataField{
 			{Name: "name", Type: "text", Unique: true, Required: true},
 			{Name: "label", Type: "text", Required: true},
+			{Name: "description", Type: "long-text"},
 			{Name: "enabled", Type: "boolean"},
 		},
 	}
@@ -309,6 +410,10 @@ func newFakeStore() *fakeStore {
 			{Name: "role", Type: "link", Required: true, Options: json.RawMessage(`{"entity":"role"}`)},
 			{Name: "read", Type: "boolean"},
 			{Name: "create", Type: "boolean"},
+			{Name: "update", Type: "boolean"},
+			{Name: "delete", Type: "boolean"},
+			{Name: "export", Type: "boolean"},
+			{Name: "print", Type: "boolean"},
 		},
 		Constraints: []db.MetadataConstraint{{
 			Name:   "permission_entity_role_key",
@@ -324,6 +429,13 @@ func newFakeStore() *fakeStore {
 		},
 	}
 	return store
+}
+
+func seedEntityRecords(store *fakeStore) {
+	names := []string{"app", "constraint", "entity", "field", "index", "permission", "role", "session", "user", "user-role"}
+	for i, name := range names {
+		store.records["entity"] = append(store.records["entity"], db.Record{"id": int64(i + 1), "name": name})
+	}
 }
 
 func (s *fakeStore) GetEntityMeta(_ context.Context, entity string) (db.MetadataEntityMeta, error) {

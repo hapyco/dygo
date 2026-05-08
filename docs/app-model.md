@@ -94,7 +94,7 @@ Entity metadata uses singular names only. Runtime code uses Entity `name` as the
 
 Patches are app-owned lifecycle changes for unsafe transitions that metadata cannot infer, such as renames, drops, destructive type changes, and data backfills. See [Explicit Patches](patches.md) for the current design model. The patch runner is not implemented yet.
 
-Fixtures are app-owned seed Records for roles, permissions, and reference data. They live under the app's manifest-defined `fixtures` directory and are applied explicitly with `dygo fixtures apply`. See [Fixtures](fixtures.md) for the v1 file shape.
+Fixtures are app-owned seed Records for roles, permissions, and reference data. They live under the app's manifest-defined `fixtures` directory, with each fixture file named after its Entity, and are applied explicitly with `dygo fixtures apply`. See [Fixtures](fixtures.md) for the v1 file shape.
 
 ## Install Locations
 

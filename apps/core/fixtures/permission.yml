@@ -1,0 +1,184 @@
+entity: permission
+match: [entity, role]
+records:
+  - entity:
+      match:
+        name: app
+    role:
+      match:
+        name: studio-member
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: entity
+    role:
+      match:
+        name: studio-member
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: field
+    role:
+      match:
+        name: studio-member
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: index
+    role:
+      match:
+        name: studio-member
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: constraint
+    role:
+      match:
+        name: studio-member
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: app
+    role:
+      match:
+        name: system-manager
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: entity
+    role:
+      match:
+        name: system-manager
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: field
+    role:
+      match:
+        name: system-manager
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: index
+    role:
+      match:
+        name: system-manager
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: constraint
+    role:
+      match:
+        name: system-manager
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: user
+    role:
+      match:
+        name: system-manager
+    read: true
+    create: true
+    update: true
+    delete: true
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: role
+    role:
+      match:
+        name: system-manager
+    read: true
+    create: true
+    update: true
+    delete: true
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: user-role
+    role:
+      match:
+        name: system-manager
+    read: true
+    create: true
+    update: true
+    delete: true
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: permission
+    role:
+      match:
+        name: system-manager
+    read: true
+    create: true
+    update: true
+    delete: true
+    export: true
+    print: true
