@@ -28,6 +28,7 @@ type Options struct {
 	Auth        AuthStore
 	Metadata    MetadataStore
 	Records     RecordStore
+	Activity    ActivityStore
 	Permissions PermissionChecker
 	OnReady     func(string) error
 }
@@ -56,6 +57,11 @@ type RecordStore interface {
 	DeleteRecord(context.Context, string, int64) error
 }
 
+// ActivityStore is the runtime Activity behavior used by HTTP handlers.
+type ActivityStore interface {
+	ListRecordActivity(context.Context, string, int64, db.RecordListParams) (db.ActivityListResult, error)
+}
+
 // PermissionChecker is the authorization behavior used by HTTP handlers.
 type PermissionChecker interface {
 	Can(context.Context, permissions.Request) error
@@ -74,7 +80,7 @@ func NewRouter(options ...Options) http.Handler {
 		api.Group(func(protected chi.Router) {
 			protected.Use(authMiddleware(opts.Auth))
 			registerMetadataRoutes(protected, opts.Metadata)
-			registerRecordRoutes(protected, opts.Records, opts.Permissions)
+			registerRecordRoutes(protected, opts.Records, opts.Activity, opts.Permissions)
 		})
 	})
 	return router
@@ -104,6 +110,7 @@ func Serve(ctx context.Context, options Options) error {
 		options.Auth = auth.NewService(pool)
 		options.Metadata = db.NewMetadataReader(pool)
 		options.Records = db.NewRecordStore(pool)
+		options.Activity = db.NewActivityReader(pool)
 		options.Permissions = permissions.NewChecker(pool)
 	}
 
@@ -486,14 +493,16 @@ func writeAPIError(w http.ResponseWriter, err error, detailKey string, detailVal
 
 type recordHandler struct {
 	store       RecordStore
+	activity    ActivityStore
 	permissions PermissionChecker
 }
 
-func registerRecordRoutes(router chi.Router, store RecordStore, checker PermissionChecker) {
-	handler := recordHandler{store: store, permissions: checker}
+func registerRecordRoutes(router chi.Router, store RecordStore, activity ActivityStore, checker PermissionChecker) {
+	handler := recordHandler{store: store, activity: activity, permissions: checker}
 	router.Route("/records/{entity}", func(records chi.Router) {
 		records.Get("/", handler.listRecords)
 		records.Post("/", handler.createRecord)
+		records.Get("/{id}/activity", handler.listRecordActivity)
 		records.Get("/{id}", handler.getRecord)
 		records.Patch("/{id}", handler.updateRecord)
 		records.Delete("/{id}", handler.deleteRecord)
@@ -612,6 +621,35 @@ func (h recordHandler) deleteRecord(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dataEnvelope{Data: map[string]any{"deleted": true}})
 }
 
+func (h recordHandler) listRecordActivity(w http.ResponseWriter, r *http.Request) {
+	entity := chi.URLParam(r, "entity")
+	id, err := recordIDParam(entity, chi.URLParam(r, "id"))
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	if !h.authorize(w, r, entity, permissions.ActionRead, id) {
+		return
+	}
+	if h.requireActivityStore(w) {
+		return
+	}
+	params, err := recordListParams(r)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	result, err := h.activity.ListRecordActivity(r.Context(), entity, id, params)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, listEnvelope{
+		Data: result.Activities,
+		Meta: recordListMeta{Limit: result.Limit, Offset: result.Offset, Count: result.Count},
+	})
+}
+
 func (h recordHandler) requireStore(w http.ResponseWriter) bool {
 	if h.store != nil {
 		return false
@@ -619,6 +657,17 @@ func (h recordHandler) requireStore(w http.ResponseWriter) bool {
 	writeJSON(w, http.StatusServiceUnavailable, errorEnvelope{Error: apiError{
 		Code:    "service_unavailable",
 		Message: "record store is unavailable",
+	}})
+	return true
+}
+
+func (h recordHandler) requireActivityStore(w http.ResponseWriter) bool {
+	if h.activity != nil {
+		return false
+	}
+	writeJSON(w, http.StatusServiceUnavailable, errorEnvelope{Error: apiError{
+		Code:    "service_unavailable",
+		Message: "activity store is unavailable",
 	}})
 	return true
 }

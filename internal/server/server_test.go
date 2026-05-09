@@ -448,6 +448,185 @@ func TestRecordRoutes(t *testing.T) {
 	}
 }
 
+func TestRecordActivityRoute(t *testing.T) {
+	authStore := validFakeAuthStore()
+	checker := &fakePermissionChecker{}
+	created := time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)
+	activity := &fakeActivityStore{
+		result: db.ActivityListResult{
+			Activities: []db.ActivityEntry{{
+				ID:        9,
+				CreatedAt: created,
+				Entity:    "user",
+				RecordID:  1,
+				Kind:      "record",
+				Operation: "update",
+				Status:    "success",
+				Title:     "Updated User",
+				Actor:     &db.ActivityActor{ID: 7, Email: "admin@example.com", FullName: "Admin User"},
+				Changes:   []any{map[string]any{"field": "email", "old": "a@example.com", "new": "b@example.com"}},
+				Snapshot:  map[string]any{"id": int64(1), "email": "b@example.com"},
+				Details:   map[string]any{"source": db.ActivitySourceAPI},
+			}},
+			Limit:  25,
+			Offset: 5,
+			Count:  1,
+		},
+	}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user/1/activity?limit=25&offset=5", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: authStore, Activity: activity, Permissions: checker}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("activity status = %d, want 200", response.StatusCode)
+	}
+	if got := response.Header.Get("Content-Type"); got != "application/json" {
+		t.Fatalf("activity content type = %q, want application/json", got)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(activity body) error = %v", err)
+	}
+	for _, want := range []string{
+		`"operation":"update"`,
+		`"actor":{"id":7,"email":"admin@example.com","full-name":"Admin User"}`,
+		`"meta":{"limit":25,"offset":5,"count":1}`,
+	} {
+		if !contains(string(body), want) {
+			t.Fatalf("activity body = %s, want %q", string(body), want)
+		}
+	}
+	if activity.entity != "user" || activity.recordID != 1 || activity.params.Limit != 25 || activity.params.Offset != 5 {
+		t.Fatalf("activity request = entity %q id %d params %+v, want user/1 limit 25 offset 5", activity.entity, activity.recordID, activity.params)
+	}
+	wantPermission := permissions.Request{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead, RecordID: 1}
+	if len(checker.requests) != 1 || checker.requests[0] != wantPermission {
+		t.Fatalf("permission requests = %+v, want %+v", checker.requests, wantPermission)
+	}
+}
+
+func TestRecordActivityRouteForbiddenBeforeStore(t *testing.T) {
+	activity := &fakeActivityStore{}
+	checker := &fakePermissionChecker{err: permissions.Error{Code: permissions.ErrorDenied, Message: "permission denied", Details: map[string]any{"entity": "user", "action": permissions.ActionRead}}}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user/1/activity", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Activity: activity, Permissions: checker}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("activity forbidden status = %d, want 403", response.StatusCode)
+	}
+	if len(activity.calls) != 0 {
+		t.Fatalf("activity store calls = %v, want none", activity.calls)
+	}
+}
+
+func TestRecordActivityRouteUnauthenticatedBeforePermissionCheck(t *testing.T) {
+	activity := &fakeActivityStore{}
+	checker := &fakePermissionChecker{}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/user/1/activity", nil)
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Activity: activity, Permissions: checker}).ServeHTTP(recorder, request)
+
+	if recorder.Result().StatusCode != http.StatusUnauthorized {
+		t.Fatalf("activity unauthenticated status = %d, want 401", recorder.Result().StatusCode)
+	}
+	if len(checker.requests) != 0 {
+		t.Fatalf("permission requests = %+v, want none", checker.requests)
+	}
+	if len(activity.calls) != 0 {
+		t.Fatalf("activity store calls = %v, want none", activity.calls)
+	}
+}
+
+func TestRecordActivityRouteErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		store  *fakeActivityStore
+		path   string
+		status int
+		want   string
+	}{
+		{
+			name:   "invalid id",
+			store:  &fakeActivityStore{},
+			path:   "/api/v1/records/user/nope/activity",
+			status: http.StatusBadRequest,
+			want:   `"code":"invalid_request"`,
+		},
+		{
+			name:   "invalid pagination",
+			store:  &fakeActivityStore{},
+			path:   "/api/v1/records/user/1/activity?limit=nope",
+			status: http.StatusBadRequest,
+			want:   `"code":"invalid_request"`,
+		},
+		{
+			name:   "unknown entity",
+			store:  &fakeActivityStore{err: db.RecordError{Code: db.RecordErrorNotFound, Message: "entity not found", Details: map[string]any{"entity": "missing"}}},
+			path:   "/api/v1/records/missing/1/activity",
+			status: http.StatusNotFound,
+			want:   `"code":"not_found"`,
+		},
+		{
+			name:   "schema not ready",
+			store:  &fakeActivityStore{err: db.RecordError{Code: db.RecordErrorSchemaNotReady, Message: "schema is not ready; run dygo migrate", Details: map[string]any{"entity": "activity"}}},
+			path:   "/api/v1/records/user/1/activity",
+			status: http.StatusConflict,
+			want:   `"code":"schema_not_ready"`,
+		},
+		{
+			name:   "internal error redacted",
+			store:  &fakeActivityStore{err: db.RecordError{Code: db.RecordErrorInternal, Message: "postgres://user:secret@localhost failed"}},
+			path:   "/api/v1/records/user/1/activity",
+			status: http.StatusInternalServerError,
+			want:   `"message":"record request failed"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := authenticatedRequest(http.MethodGet, tt.path, "")
+			recorder := httptest.NewRecorder()
+
+			NewRouter(Options{Auth: validFakeAuthStore(), Activity: tt.store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
+
+			response := recorder.Result()
+			defer response.Body.Close()
+			if response.StatusCode != tt.status {
+				t.Fatalf("activity status = %d, want %d", response.StatusCode, tt.status)
+			}
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("ReadAll(activity error body) error = %v", err)
+			}
+			if !contains(string(body), tt.want) {
+				t.Fatalf("activity body = %s, want %q", string(body), tt.want)
+			}
+			if contains(string(body), "postgres://") || contains(string(body), "secret") {
+				t.Fatalf("activity body leaked internal detail: %s", string(body))
+			}
+		})
+	}
+}
+
+func TestRecordActivityRouteWithoutStore(t *testing.T) {
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user/1/activity", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
+
+	if recorder.Result().StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("activity without store status = %d, want 503", recorder.Result().StatusCode)
+	}
+}
+
 func TestRecordRouteErrors(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -731,6 +910,23 @@ func (s *fakeRecordStore) DeleteRecord(ctx context.Context, _ string, id int64) 
 	s.deleteActor, _ = db.ActivityActorFromContext(ctx)
 	s.deleteSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.deleteErr
+}
+
+type fakeActivityStore struct {
+	result   db.ActivityListResult
+	err      error
+	entity   string
+	recordID int64
+	params   db.RecordListParams
+	calls    []string
+}
+
+func (s *fakeActivityStore) ListRecordActivity(_ context.Context, entity string, recordID int64, params db.RecordListParams) (db.ActivityListResult, error) {
+	s.calls = append(s.calls, "list")
+	s.entity = entity
+	s.recordID = recordID
+	s.params = params
+	return s.result, s.err
 }
 
 type fakePermissionChecker struct {

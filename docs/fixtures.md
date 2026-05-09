@@ -74,7 +74,7 @@ Administrator remains a `user` flag, not a role. It is the only v1 bypass. `syst
 
 Core fixtures intentionally do not grant generic `session` Record access yet. Session management needs a dedicated surface that does not expose token digest fields through normal Record reads.
 
-Core fixtures also do not grant `studio-member` generic `activity` Record access. Activity rows can include snapshots and field diffs, so normal users should read them later through scoped per-Record activity APIs. `system-manager` receives read-only activity access for operational inspection.
+Core fixtures also do not grant `studio-member` generic `activity` Record access. Activity rows can include snapshots and field diffs, so normal users should read them through scoped per-Record Activity APIs. `system-manager` receives read-only activity access for operational inspection.
 
 ## Apply Behavior
 

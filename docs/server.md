@@ -88,6 +88,7 @@ The first Record API is also generic and metadata-powered:
 ```txt
 GET    /api/v1/records/{entity}?limit=50&offset=0
 GET    /api/v1/records/{entity}/{id}
+GET    /api/v1/records/{entity}/{id}/activity?limit=50&offset=0
 POST   /api/v1/records/{entity}
 PATCH  /api/v1/records/{entity}/{id}
 DELETE /api/v1/records/{entity}/{id}
@@ -117,10 +118,13 @@ List responses include pagination metadata:
 
 `PATCH` is the update operation and only changes fields provided in the request body. `DELETE` performs a hard delete in v1.
 
+Scoped Record Activity is read through `GET /api/v1/records/{entity}/{id}/activity`. It returns newest-first Activity for the target Entity/Record pair and does not require the live Record row to still exist.
+
 Record API permissions are checked through the single internal permission engine:
 
 ```txt
 GET list/detail -> read
+GET activity -> read
 POST -> create
 PATCH -> update
 DELETE -> delete

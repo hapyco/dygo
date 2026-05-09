@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -269,6 +270,12 @@ func assignScanValues(values []any, dest []any) error {
 			v, ok := value.(bool)
 			if !ok {
 				return fmt.Errorf("scan value %d has type %T, want bool", i, value)
+			}
+			*target = v
+		case *time.Time:
+			v, ok := value.(time.Time)
+			if !ok {
+				return fmt.Errorf("scan value %d has type %T, want time.Time", i, value)
 			}
 			*target = v
 		case *[]byte:

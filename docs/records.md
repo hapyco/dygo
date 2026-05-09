@@ -18,6 +18,7 @@ Record API routes require a valid `dygo_session` cookie from the auth API and an
 ```txt
 GET    /api/v1/records/{entity}?limit=50&offset=0
 GET    /api/v1/records/{entity}/{id}
+GET    /api/v1/records/{entity}/{id}/activity?limit=50&offset=0
 POST   /api/v1/records/{entity}
 PATCH  /api/v1/records/{entity}/{id}
 DELETE /api/v1/records/{entity}/{id}
@@ -108,6 +109,22 @@ delete -> Activity with the deleted visible Record snapshot
 ```
 
 Write-only fields such as `password` are recorded by field name only with `redacted: true`; their values are not stored in Activity. Activity is the product timeline/history stream for v1, not a compliance-grade audit log.
+
+Scoped Activity can be read for one Entity/Record pair:
+
+```txt
+GET /api/v1/records/{entity}/{id}/activity?limit=50&offset=0
+```
+
+The endpoint returns newest-first Activity ordered by `created-at DESC, id DESC`:
+
+```json
+{"data":[],"meta":{"limit":50,"offset":0,"count":0}}
+```
+
+Activity lookup uses the target Entity and Record ID, so history can still be read after the live Record row has been deleted. It requires authentication and `read` permission on the target Entity with the target Record ID. It does not require generic `activity` Entity permission.
+
+Activity items include `id`, `created-at`, `entity`, `record-id`, `kind`, `operation`, `status`, `title`, `message`, `actor`, `changes`, `snapshot`, and `details`. `actor` is `null` when no user caused the change, otherwise it contains `id`, `email`, and `full-name`.
 
 ## Boundaries
 
