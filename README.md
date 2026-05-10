@@ -49,7 +49,7 @@ go run ./cmd/dygo secrets validate
 go run ./cmd/dygo secrets rotate-key
 ```
 
-`go run ./cmd/dygo serve` starts the local HTTP server.
+`go run ./cmd/dygo serve` starts dygo on `127.0.0.1:6790`. In this source checkout it also starts the Studio development asset server internally and proxies Studio through the same dygo origin.
 
 The default server address is:
 

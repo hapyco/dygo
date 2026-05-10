@@ -2,8 +2,16 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/config"
@@ -14,8 +22,11 @@ import (
 )
 
 const version = "dev"
+const defaultStudioDevURL = "http://127.0.0.1:6791"
 
 type serveRunner func(context.Context, server.Options) error
+type studioDevStop func() error
+type studioDevStarter func(context.Context, string, io.Writer, io.Writer) (string, studioDevStop, error)
 type databaseChecker func(context.Context, string) error
 type adminSetupRunner interface {
 	SetupAdmin(context.Context, string, auth.SetupAdminInput) (auth.User, error)
@@ -37,6 +48,8 @@ type schemaSyncRunner interface {
 	PrunePlan(context.Context, string, string) (db.SchemaPrunePlan, error)
 	Sync(context.Context, string, string) (db.SchemaSyncResult, error)
 }
+
+var startStudioDevServer = startStudioDevServerProcess
 
 // Run executes the dygo command-line interface.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -126,7 +139,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDoctorCommand(ctx, stdout))
-	root.AddCommand(newServeCommand(ctx, stdout, serve))
+	root.AddCommand(newServeCommand(ctx, stdout, stderr, serve))
 	root.AddCommand(newDBCommand(ctx, stdout, database))
 	root.AddCommand(newMigrateCommand(ctx, stdout, sync))
 	root.AddCommand(newSchemaCommand(ctx, stdout, sync))
@@ -191,8 +204,9 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 	}
 }
 
-func newServeCommand(ctx context.Context, stdout io.Writer, serve serveRunner) *cobra.Command {
+func newServeCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRunner) *cobra.Command {
 	envName := "development"
+	studioDevURL := ""
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -207,10 +221,33 @@ func newServeCommand(ctx context.Context, stdout io.Writer, serve serveRunner) *
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+			studioURL := studioDevURL
+			var stopStudio studioDevStop
+			if studioURL == "" {
+				var err error
+				studioURL, stopStudio, err = startStudioDevServer(ctx, root, stdout, stderr)
+				if err != nil {
+					return err
+				}
+			}
+			if stopStudio != nil {
+				defer func() {
+					_ = stopStudio()
+				}()
+			}
+			var studioHandler http.Handler
+			if studioURL != "" {
+				handler, err := server.NewStudioDevProxy(studioURL)
+				if err != nil {
+					return err
+				}
+				studioHandler = handler
+			}
 			address := cfg.Server.Address()
 			if err := serve(ctx, server.Options{
 				Address:     address,
 				DatabaseURL: databaseURL,
+				Studio:      studioHandler,
 				OnReady: func(address string) error {
 					if _, err := fmt.Fprintf(stdout, "dygo serving on %s\n", address); err != nil {
 						return fmt.Errorf("write serve output: %w", err)
@@ -225,6 +262,133 @@ func newServeCommand(ctx context.Context, stdout io.Writer, serve serveRunner) *
 	}
 
 	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+	cmd.Flags().StringVar(&studioDevURL, "studio-dev-url", studioDevURL, "Proxy Studio UI requests to a frontend dev server")
 
 	return cmd
+}
+
+func startStudioDevServerProcess(ctx context.Context, root string, _ io.Writer, stderr io.Writer) (string, studioDevStop, error) {
+	studioDir := filepath.Join(root, "apps", "studio", "ui")
+	packagePath := filepath.Join(studioDir, "package.json")
+	if _, err := os.Stat(packagePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil, nil
+		}
+		return "", nil, fmt.Errorf("check Studio UI package: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "npm", "run", "--silent", "dev", "--", "--logLevel", "error", "--clearScreen", "false")
+	cmd.Dir = studioDir
+	output := newBoundedOutput(32 * 1024)
+	cmd.Stdout = io.MultiWriter(output, stderr)
+	cmd.Stderr = io.MultiWriter(output, stderr)
+	if err := cmd.Start(); err != nil {
+		return "", nil, fmt.Errorf("start Studio UI dev server: %w", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	if err := waitForStudioDevServer(ctx, defaultStudioDevURL, done, output); err != nil {
+		_ = stopStudioDevProcess(cmd, done)
+		return "", nil, err
+	}
+
+	stop := func() error {
+		return stopStudioDevProcess(cmd, done)
+	}
+	return defaultStudioDevURL, stop, nil
+}
+
+func waitForStudioDevServer(ctx context.Context, studioURL string, done chan error, output *boundedOutput) error {
+	client := &http.Client{Timeout: 200 * time.Millisecond}
+	timeout := time.NewTimer(10 * time.Second)
+	defer timeout.Stop()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, studioURL, nil)
+		if err != nil {
+			return fmt.Errorf("create Studio readiness request: %w", err)
+		}
+		resp, err := client.Do(req)
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode < http.StatusInternalServerError {
+				return nil
+			}
+		}
+
+		select {
+		case err := <-done:
+			done <- err
+			if err != nil {
+				return studioDevStartupError(err, output.String())
+			}
+			return studioDevStartupError(nil, output.String())
+		case <-ctx.Done():
+			return fmt.Errorf("start Studio UI dev server: %w", ctx.Err())
+		case <-timeout.C:
+			return fmt.Errorf("Studio UI dev server did not become ready on %s", studioURL)
+		case <-ticker.C:
+		}
+	}
+}
+
+func studioDevStartupError(err error, output string) error {
+	output = strings.TrimSpace(output)
+	if err != nil {
+		if output != "" {
+			return fmt.Errorf("start Studio UI dev server: %w\n%s", err, output)
+		}
+		return fmt.Errorf("start Studio UI dev server: %w", err)
+	}
+	if output != "" {
+		return fmt.Errorf("Studio UI dev server exited before dygo started\n%s", output)
+	}
+	return fmt.Errorf("Studio UI dev server exited before dygo started")
+}
+
+func stopStudioDevProcess(cmd *exec.Cmd, done <-chan error) error {
+	if cmd.Process != nil && cmd.ProcessState == nil {
+		_ = cmd.Process.Kill()
+	}
+	select {
+	case err := <-done:
+		if err != nil && !strings.Contains(err.Error(), "signal: killed") && !strings.Contains(err.Error(), "signal: interrupt") {
+			return fmt.Errorf("stop Studio UI dev server: %w", err)
+		}
+		return nil
+	case <-time.After(2 * time.Second):
+		return fmt.Errorf("stop Studio UI dev server: timed out")
+	}
+}
+
+type boundedOutput struct {
+	mu    sync.Mutex
+	limit int
+	data  []byte
+}
+
+func newBoundedOutput(limit int) *boundedOutput {
+	return &boundedOutput{limit: limit}
+}
+
+func (b *boundedOutput) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.data = append(b.data, p...)
+	if b.limit > 0 && len(b.data) > b.limit {
+		b.data = append([]byte(nil), b.data[len(b.data)-b.limit:]...)
+	}
+	return len(p), nil
+}
+
+func (b *boundedOutput) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.data)
 }

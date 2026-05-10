@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -403,6 +404,94 @@ func TestServeCommandUsesEnvironment(t *testing.T) {
 	}
 }
 
+func TestServeCommandConfiguresStudioDevProxy(t *testing.T) {
+	previousStarter := startStudioDevServer
+	startStudioDevServer = func(context.Context, string, io.Writer, io.Writer) (string, studioDevStop, error) {
+		return "", nil, errors.New("auto Studio starter should not run when --studio-dev-url is provided")
+	}
+	defer func() {
+		startStudioDevServer = previousStarter
+	}()
+
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var gotOptions server.Options
+	err := run(context.Background(), []string{"serve", "--studio-dev-url", "http://127.0.0.1:6791"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, options server.Options) error {
+		gotOptions = options
+		if options.OnReady != nil {
+			return options.OnReady(options.Address)
+		}
+		return nil
+	}, noopDatabaseChecker)
+	if err != nil {
+		t.Fatalf("Run(serve --studio-dev-url) error = %v, want nil", err)
+	}
+	if gotOptions.Studio == nil {
+		t.Fatal("serve Studio handler = nil, want dev proxy handler")
+	}
+}
+
+func TestServeCommandAutoStartsStudioDevServer(t *testing.T) {
+	previousStarter := startStudioDevServer
+	started := 0
+	stopped := 0
+	gotRoot := ""
+	startStudioDevServer = func(_ context.Context, root string, _ io.Writer, _ io.Writer) (string, studioDevStop, error) {
+		started++
+		gotRoot = root
+		return "http://127.0.0.1:6791", func() error {
+			stopped++
+			return nil
+		}, nil
+	}
+	defer func() {
+		startStudioDevServer = previousStarter
+	}()
+
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var gotOptions server.Options
+	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, options server.Options) error {
+		gotOptions = options
+		if options.OnReady != nil {
+			return options.OnReady(options.Address)
+		}
+		return nil
+	}, noopDatabaseChecker)
+	if err != nil {
+		t.Fatalf("Run(serve) error = %v, want nil", err)
+	}
+	if started != 1 {
+		t.Fatalf("Studio starter calls = %d, want 1", started)
+	}
+	if stopped != 1 {
+		t.Fatalf("Studio stop calls = %d, want 1", stopped)
+	}
+	if gotRoot != root {
+		t.Fatalf("Studio starter root = %q, want %q", gotRoot, root)
+	}
+	if gotOptions.Studio == nil {
+		t.Fatal("serve Studio handler = nil, want auto dev proxy handler")
+	}
+	if !strings.Contains(stdout.String(), "dygo serving on 127.0.0.1:6790") {
+		t.Fatalf("serve stdout = %q, want ready output", stdout.String())
+	}
+}
+
 func TestServeHelpIncludesEnvironmentFlag(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -415,7 +504,7 @@ func TestServeHelpIncludesEnvironmentFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(serve --help) error = %v, want nil", err)
 	}
-	for _, want := range []string{"--env", "Environment: development, staging, or production"} {
+	for _, want := range []string{"--env", "Environment: development, staging, or production", "--studio-dev-url"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("serve help stdout = %q, want substring %q", stdout.String(), want)
 		}

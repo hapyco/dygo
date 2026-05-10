@@ -64,8 +64,11 @@ type User struct {
 
 // LoginRequest contains user credentials.
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email      string `json:"email"`
+	Username   string `json:"username,omitempty"`
+	Identifier string `json:"identifier,omitempty"`
+	Password   string `json:"password"`
+	Remember   bool   `json:"remember,omitempty"`
 }
 
 // LoginResult contains the authenticated user and raw session token.
@@ -109,7 +112,8 @@ func (s Service) Login(ctx context.Context, request LoginRequest) (LoginResult, 
 	if err := s.requireQueryer(); err != nil {
 		return LoginResult{}, err
 	}
-	email, err := normalizeEmail(request.Email)
+	identifier := firstNonEmpty(request.Email, request.Username, request.Identifier)
+	email, err := normalizeEmail(identifier)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -149,6 +153,15 @@ VALUES ($1, $2, $3, now(), $4, now())`, user.ID, SessionTokenDigest(token), sess
 	}
 
 	return LoginResult{User: user, Token: token, ExpiresAt: expiresAt}, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // CurrentUser resolves a raw session token to an authenticated user.

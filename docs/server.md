@@ -20,10 +20,18 @@ The default address is:
 go run ./cmd/dygo serve
 ```
 
+In a source checkout with `apps/studio/ui/package.json`, the same command also starts Studio's development asset server internally and proxies Studio pages through dygo. The browser-facing address stays `http://127.0.0.1:6790/`, so Studio and `/api/v1/...` share one origin during development.
+
 Use another encrypted environment with `--env`:
 
 ```sh
 go run ./cmd/dygo serve --env staging
+```
+
+Use `--studio-dev-url` only when the Studio asset server is already running somewhere else:
+
+```sh
+go run ./cmd/dygo serve --studio-dev-url http://127.0.0.1:6791
 ```
 
 The server opens and pings PostgreSQL before it starts listening. It does not run `dygo migrate` automatically; run metadata sync before serving runtime metadata.
@@ -136,8 +144,8 @@ Administrator users are allowed by the engine before flat role permissions are c
 
 Stop the server with `Ctrl-C`.
 
-The CLI listens for interrupt and termination signals and asks the HTTP server to shut down cleanly.
+The CLI listens for interrupt and termination signals, asks the HTTP server to shut down cleanly, and stops the auto-started Studio dev server when one was started by `dygo serve`.
 
 ## Boundaries
 
-The current server includes health, session auth, read-only metadata APIs, generic Record CRUD APIs, and Entity permission enforcement for Records. The server does not include Studio rendering, per-Entity controllers, child table storage, row-level sharing rules, workflow hooks, or audit logging yet.
+The current server includes health, session auth, read-only metadata APIs, generic Record CRUD APIs, Entity permission enforcement for Records, and a development proxy for the Studio UI. The server does not include production Studio asset embedding, per-Entity controllers, child table storage, row-level sharing rules, workflow hooks, or audit logging yet.

@@ -52,6 +52,52 @@ func TestNewRouterNotFound(t *testing.T) {
 	}
 }
 
+func TestNewRouterStudioFallback(t *testing.T) {
+	studio := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("studio"))
+	})
+	request := httptest.NewRequest(http.MethodGet, "/login", nil)
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Studio: studio}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("studio fallback status = %d, want 200", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(studio body) error = %v", err)
+	}
+	if string(body) != "studio" {
+		t.Fatalf("studio fallback body = %q, want studio", string(body))
+	}
+}
+
+func TestNewRouterStudioFallbackDoesNotCatchAPI(t *testing.T) {
+	studio := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("studio"))
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/missing", nil)
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Studio: studio}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("api fallback status = %d, want 404", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(api fallback body) error = %v", err)
+	}
+	if contains(string(body), "studio") {
+		t.Fatalf("api fallback body = %q, should not proxy Studio", string(body))
+	}
+}
+
 func TestServeListener(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -246,6 +292,15 @@ func TestAuthRoutes(t *testing.T) {
 			wantCookie: true,
 		},
 		{
+			name:       "login with identifier and remember",
+			method:     http.MethodPost,
+			path:       "/api/v1/auth/login",
+			body:       `{"data":{"identifier":"admin@example.com","password":"secret","remember":true}}`,
+			status:     http.StatusOK,
+			want:       `"administrator":true`,
+			wantCookie: true,
+		},
+		{
 			name:   "me",
 			method: http.MethodGet,
 			path:   "/api/v1/auth/me",
@@ -299,6 +354,9 @@ func TestAuthRoutes(t *testing.T) {
 				cookie := response.Cookies()[0]
 				if cookie.Name != sessionCookieName || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Value != "issued-token" {
 					t.Fatalf("login cookie = %+v, want HttpOnly dygo session", cookie)
+				}
+				if strings.Contains(tt.body, `"remember":true`) && cookie.Expires.IsZero() {
+					t.Fatalf("remembered login cookie Expires is zero, want persistent cookie")
 				}
 			}
 		})

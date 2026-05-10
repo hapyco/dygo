@@ -8,6 +8,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +32,7 @@ type Options struct {
 	Records     RecordStore
 	Activity    ActivityStore
 	Permissions PermissionChecker
+	Studio      http.Handler
 	OnReady     func(string) error
 }
 
@@ -83,7 +86,32 @@ func NewRouter(options ...Options) http.Handler {
 			registerRecordRoutes(protected, opts.Records, opts.Activity, opts.Permissions)
 		})
 	})
+	if opts.Studio != nil {
+		router.NotFound(studioNotFoundHandler(opts.Studio))
+	}
 	return router
+}
+
+// NewStudioDevProxy proxies Studio UI requests to a frontend development server.
+func NewStudioDevProxy(target string) (http.Handler, error) {
+	studioURL, err := url.Parse(strings.TrimSpace(target))
+	if err != nil {
+		return nil, fmt.Errorf("parse studio dev url: %w", err)
+	}
+	if studioURL.Scheme == "" || studioURL.Host == "" {
+		return nil, fmt.Errorf("studio dev url must include scheme and host")
+	}
+	return httputil.NewSingleHostReverseProxy(studioURL), nil
+}
+
+func studioNotFoundHandler(studio http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		studio.ServeHTTP(w, r)
+	}
 }
 
 // Serve starts the dygo HTTP server on address and blocks until it exits.
@@ -240,7 +268,7 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, err)
 		return
 	}
-	http.SetCookie(w, sessionCookie(result.Token, result.ExpiresAt, isHTTPS(r)))
+	http.SetCookie(w, sessionCookie(result.Token, result.ExpiresAt, input.Remember, isHTTPS(r)))
 	writeJSON(w, http.StatusOK, dataEnvelope{Data: result.User})
 }
 
@@ -307,22 +335,34 @@ func decodeLoginInput(r *http.Request) (auth.LoginRequest, error) {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return auth.LoginRequest{}, auth.Error{Code: auth.ErrorInvalidRequest, Message: "request body must contain one JSON object", Err: err}
 	}
-	if strings.TrimSpace(envelope.Data.Email) == "" || strings.TrimSpace(envelope.Data.Password) == "" {
-		return auth.LoginRequest{}, auth.Error{Code: auth.ErrorInvalidRequest, Message: "email and password are required"}
+	if loginIdentifier(envelope.Data) == "" || strings.TrimSpace(envelope.Data.Password) == "" {
+		return auth.LoginRequest{}, auth.Error{Code: auth.ErrorInvalidRequest, Message: "email or username and password are required"}
 	}
 	return envelope.Data, nil
 }
 
-func sessionCookie(token string, expiresAt time.Time, secure bool) *http.Cookie {
-	return &http.Cookie{
+func loginIdentifier(input auth.LoginRequest) string {
+	for _, value := range []string{input.Email, input.Username, input.Identifier} {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func sessionCookie(token string, expiresAt time.Time, remember bool, secure bool) *http.Cookie {
+	cookie := &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
 		Path:     "/",
-		Expires:  expiresAt,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secure,
 	}
+	if remember {
+		cookie.Expires = expiresAt
+	}
+	return cookie
 }
 
 func expiredSessionCookie(secure bool) *http.Cookie {

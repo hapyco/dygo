@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  font-family:
+    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --studio-bg: oklch(0.972 0.006 246);
+  --studio-surface: oklch(0.995 0.004 246);
+  --studio-surface-raised: oklch(0.988 0.006 246);
+  --studio-sidebar: oklch(0.946 0.009 246);
+  --studio-border: oklch(0.872 0.014 246);
+  --studio-border-strong: oklch(0.72 0.022 246);
+  --studio-text: oklch(0.225 0.018 246);
+  --studio-text-muted: oklch(0.455 0.024 246);
+  --studio-text-subtle: oklch(0.61 0.022 246);
+  --studio-accent: oklch(0.49 0.118 248);
+  --studio-accent-strong: oklch(0.39 0.135 248);
+  --studio-focus: oklch(0.61 0.16 248);
+  --studio-danger: oklch(0.55 0.15 28);
+  --studio-warning: oklch(0.63 0.13 74);
+  --studio-success: oklch(0.52 0.105 156);
+  --studio-info: oklch(0.56 0.12 231);
+  --studio-shadow: 0 1px 2px oklch(0.225 0.018 246 / 0.08),
+    0 18px 46px oklch(0.225 0.018 246 / 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--studio-bg);
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--studio-bg);
+  color: var(--studio-text);
+  font-size: 14px;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

@@ -1,0 +1,88 @@
+<script setup lang="ts">
+import { CheckboxIndicator, CheckboxRoot } from 'reka-ui'
+
+withDefaults(
+  defineProps<{
+    id?: string
+    modelValue?: boolean
+    name?: string
+    disabled?: boolean
+  }>(),
+  {
+    modelValue: false,
+    disabled: false,
+  },
+)
+
+defineEmits<{
+  'update:modelValue': [value: boolean]
+}>()
+</script>
+
+<template>
+  <CheckboxRoot
+    :id="id"
+    class="d-checkbox"
+    :model-value="modelValue"
+    :name="name"
+    :disabled="disabled"
+    @update:model-value="$emit('update:modelValue', Boolean($event))"
+  >
+    <CheckboxIndicator class="d-checkbox__indicator">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M6.5 11.2 3.4 8.1l1.1-1.1 2 2 5-5 1.1 1.1-6.1 6.1Z" />
+      </svg>
+    </CheckboxIndicator>
+  </CheckboxRoot>
+</template>
+
+<style scoped>
+.d-checkbox {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--studio-border-strong);
+  border-radius: 5px;
+  background: var(--studio-surface);
+  color: oklch(0.99 0.004 246);
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.d-checkbox:hover:not([data-disabled]) {
+  border-color: var(--studio-accent);
+}
+
+.d-checkbox:focus-visible {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 2px;
+}
+
+.d-checkbox[data-state='checked'] {
+  border-color: var(--studio-accent);
+  background: var(--studio-accent);
+}
+
+.d-checkbox[data-disabled] {
+  opacity: 0.58;
+}
+
+.d-checkbox__indicator {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+}
+
+.d-checkbox__indicator svg {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+</style>
