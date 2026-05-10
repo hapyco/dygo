@@ -323,13 +323,27 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 			CreateSQL: createTableSQL(table),
 			SystemColumns: []desiredColumn{
 				{Name: "id", Type: "bigint", Required: true, Source: entitySource(loaded)},
+				{Name: "name", Type: "text", Required: true, Source: entitySource(loaded)},
 				{Name: "created_at", Type: "timestamptz", Required: true, Source: entitySource(loaded)},
 				{Name: "updated_at", Type: "timestamptz", Required: true, Source: entitySource(loaded)},
+			},
+			Constraints: []desiredConstraint{
+				{
+					Name:       constraintName(table, "name", "key"),
+					Type:       "unique",
+					Columns:    []string{"name"},
+					Definition: fmt.Sprintf("UNIQUE (%s)", quoteIdentList([]string{"name"})),
+					Source:     entitySource(loaded),
+				},
 			},
 		}
 
 		fieldColumns := map[string]string{}
 		for _, field := range loaded.Entity.Fields {
+			if field.Name == "name" {
+				fieldColumns[field.Name] = "name"
+				continue
+			}
 			column, err := columnForField(field)
 			if err != nil {
 				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
@@ -709,9 +723,10 @@ func setCheckDefinitionMatches(live string, expected string) bool {
 func createTableSQL(table string) string {
 	return fmt.Sprintf(`CREATE TABLE %s (
 	%s bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	%s text NOT NULL,
 	%s timestamptz NOT NULL DEFAULT now(),
 	%s timestamptz NOT NULL DEFAULT now()
-)`, quoteIdent(table), quoteIdent("id"), quoteIdent("created_at"), quoteIdent("updated_at"))
+)`, quoteIdent(table), quoteIdent("id"), quoteIdent("name"), quoteIdent("created_at"), quoteIdent("updated_at"))
 }
 
 func tableName(entity schema.Entity) (string, error) {

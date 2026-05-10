@@ -1,6 +1,8 @@
 name: field
 label: Field
 description: Field definition belonging to an Entity.
+naming:
+  strategy: random
 fields:
   - name: entity
     label: Entity
@@ -10,8 +12,8 @@ fields:
     options:
       entity: entity
 
-  - name: name
-    label: Name
+  - name: field-name
+    label: Field Name
     type: text
     required: true
     index: true
@@ -60,4 +62,4 @@ fields:
 
 constraints:
   - type: unique
-    fields: [entity, name]
+    fields: [entity, field-name]

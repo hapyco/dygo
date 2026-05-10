@@ -1,6 +1,8 @@
 name: constraint
 label: Constraint
 description: Top-level unique or check constraint definition belonging to an Entity.
+naming:
+  strategy: random
 fields:
   - name: entity
     label: Entity
@@ -10,8 +12,8 @@ fields:
     options:
       entity: entity
 
-  - name: name
-    label: Name
+  - name: constraint-name
+    label: Constraint Name
     type: text
     required: true
     index: true
@@ -58,4 +60,4 @@ fields:
 
 constraints:
   - type: unique
-    fields: [entity, name]
+    fields: [entity, constraint-name]

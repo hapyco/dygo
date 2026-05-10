@@ -1,6 +1,9 @@
 name: app
 label: App
 description: Runtime state for an installed App.
+naming:
+  strategy: field
+  field: name
 fields:
   - name: name
     label: Name

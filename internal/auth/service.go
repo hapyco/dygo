@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dygo-dev/dygo/internal/entity/schema"
+	"github.com/dygo-dev/dygo/internal/naming"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -145,10 +147,14 @@ LIMIT 1`, email).Scan(&user.ID, &user.Email, &user.FullName, &user.Enabled, &use
 	if err != nil {
 		return LoginResult{}, authError(ErrorInternal, "generate session token failed", nil, err)
 	}
+	sessionName, err := naming.Random(schema.DefaultRandomNameLength)
+	if err != nil {
+		return LoginResult{}, authError(ErrorInternal, "generate session name failed", nil, err)
+	}
 	expiresAt := s.now().Add(s.ttl())
 	if _, err := s.queryer.Exec(ctx, `
-INSERT INTO "session" (user_id, token_digest, status, started_at, expires_at, last_seen_at)
-VALUES ($1, $2, $3, now(), $4, now())`, user.ID, SessionTokenDigest(token), sessionStatusActive, expiresAt); err != nil {
+INSERT INTO "session" (name, user_id, token_digest, status, started_at, expires_at, last_seen_at)
+VALUES ($1, $2, $3, $4, now(), $5, now())`, sessionName, user.ID, SessionTokenDigest(token), sessionStatusActive, expiresAt); err != nil {
 		return LoginResult{}, classifyAuthDBError("create session", err)
 	}
 
@@ -243,8 +249,8 @@ func (s Service) SetupAdmin(ctx context.Context, input SetupAdminInput) (User, e
 
 	var user User
 	if err := s.queryer.QueryRow(ctx, `
-INSERT INTO "user" (email, full_name, password_hash, enabled, administrator)
-VALUES ($1, $2, $3, true, true)
+INSERT INTO "user" (name, email, full_name, password_hash, enabled, administrator)
+VALUES ($1, $1, $2, $3, true, true)
 ON CONFLICT (email) DO UPDATE
 SET full_name = EXCLUDED.full_name,
 	password_hash = EXCLUDED.password_hash,

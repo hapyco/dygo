@@ -68,6 +68,19 @@ records:
 
   - entity:
       match:
+        name: naming-series
+    role:
+      match:
+        name: studio-member
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
         name: app
     role:
       match:
@@ -134,6 +147,19 @@ records:
   - entity:
       match:
         name: activity
+    role:
+      match:
+        name: system-manager
+    read: true
+    create: false
+    update: false
+    delete: false
+    export: true
+    print: true
+
+  - entity:
+      match:
+        name: naming-series
     role:
       match:
         name: system-manager

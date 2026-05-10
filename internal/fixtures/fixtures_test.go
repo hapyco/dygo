@@ -288,16 +288,16 @@ func TestRepositoryCoreFixturesApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyFiles(core fixtures) error = %v, want nil", err)
 	}
-	if result.Created != 17 || result.Updated != 0 {
-		t.Fatalf("ApplyFiles(core fixtures) result = %+v, want 17 created", result)
+	if result.Created != 19 || result.Updated != 0 {
+		t.Fatalf("ApplyFiles(core fixtures) result = %+v, want 19 created", result)
 	}
 
 	result, err = ApplyFiles(context.Background(), store, files)
 	if err != nil {
 		t.Fatalf("ApplyFiles(core fixtures second run) error = %v, want nil", err)
 	}
-	if result.Created != 0 || result.Updated != 17 {
-		t.Fatalf("ApplyFiles(core fixtures second run) result = %+v, want 17 updated", result)
+	if result.Created != 0 || result.Updated != 19 {
+		t.Fatalf("ApplyFiles(core fixtures second run) result = %+v, want 19 updated", result)
 	}
 }
 
@@ -440,7 +440,7 @@ func newFakeStore() *fakeStore {
 }
 
 func seedEntityRecords(store *fakeStore) {
-	names := []string{"activity", "app", "constraint", "entity", "field", "index", "permission", "role", "session", "user", "user-role"}
+	names := []string{"activity", "app", "constraint", "entity", "field", "index", "naming-series", "permission", "role", "session", "user", "user-role"}
 	for i, name := range names {
 		store.records["entity"] = append(store.records["entity"], db.Record{"id": int64(i + 1), "name": name})
 	}

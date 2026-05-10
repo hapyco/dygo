@@ -324,7 +324,10 @@ func orderPreparedFiles(files []preparedFile) ([]preparedFile, error) {
 	for i, file := range files {
 		for _, record := range file.Fixture.Records {
 			for name := range record.Values {
-				field := file.Fields[name]
+				field, ok := fixtureField(file.Fields, name)
+				if !ok {
+					continue
+				}
 				if field.Type != "link" {
 					continue
 				}
@@ -395,7 +398,7 @@ func validateRecord(file LoadedFile, fields map[string]db.MetadataField, record 
 		}
 	}
 	for name, value := range record.Values {
-		field, ok := fields[name]
+		field, ok := fixtureField(fields, name)
 		if !ok {
 			return fmt.Errorf("%s:%d: unknown fixture field %q", file.Path, value.Line, name)
 		}
@@ -415,7 +418,10 @@ func resolveRecord(ctx context.Context, store Store, file preparedFile, record R
 	input := db.RecordInput{}
 	match := db.RecordInput{}
 	for name, value := range record.Values {
-		field := file.Fields[name]
+		field, ok := fixtureField(file.Fields, name)
+		if !ok {
+			return nil, nil, fmt.Errorf("%s:%d: unknown fixture field %q", file.Path, value.Line, name)
+		}
 		raw, err := resolveValue(ctx, store, field, value, 0)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s:%d: resolve fixture field %q: %w", file.Path, value.Line, name, err)
@@ -458,7 +464,10 @@ func resolveValue(ctx context.Context, store Store, field db.MetadataField, valu
 	}
 	match := db.RecordInput{}
 	for _, name := range matchNames {
-		targetField := targetFields[name]
+		targetField, ok := fixtureField(targetFields, name)
+		if !ok {
+			return nil, fmt.Errorf("link match field %q does not exist", name)
+		}
 		raw, err := resolveValue(ctx, store, targetField, reference.Match[name], depth+1)
 		if err != nil {
 			return nil, fmt.Errorf("resolve link match field %q: %w", name, err)
@@ -527,7 +536,7 @@ func validateMatchRule(match []string, meta db.MetadataEntityMeta, fields map[st
 			return fmt.Errorf("fixture match contains duplicate field %q", name)
 		}
 		seen[name] = true
-		field, ok := fields[name]
+		field, ok := fixtureField(fields, name)
 		if !ok {
 			return fmt.Errorf("fixture match field %q does not exist on Entity %q", name, meta.Name)
 		}
@@ -535,7 +544,13 @@ func validateMatchRule(match []string, meta db.MetadataEntityMeta, fields map[st
 			return fmt.Errorf("fixture match field %q uses unsupported child-table storage", name)
 		}
 	}
-	if len(match) == 1 && fields[match[0]].Unique {
+	if len(match) == 1 {
+		field, _ := fixtureField(fields, match[0])
+		if field.Unique {
+			return nil
+		}
+	}
+	if len(match) == 1 && match[0] == "name" {
 		return nil
 	}
 	for _, constraint := range meta.Constraints {
@@ -559,6 +574,16 @@ func fieldsByName(meta db.MetadataEntityMeta) map[string]db.MetadataField {
 		fields[field.Name] = field
 	}
 	return fields
+}
+
+func fixtureField(fields map[string]db.MetadataField, name string) (db.MetadataField, bool) {
+	if field, ok := fields[name]; ok {
+		return field, true
+	}
+	if name == "name" {
+		return db.MetadataField{Name: "name", Label: "Name", Type: "text", Required: true, Unique: true}, true
+	}
+	return db.MetadataField{}, false
 }
 
 func linkTarget(field db.MetadataField) (string, error) {

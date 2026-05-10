@@ -35,7 +35,7 @@ Create and update bodies use a `data` envelope:
 Responses also use envelopes:
 
 ```json
-{"data":{"id":1,"email":"a@example.com"}}
+{"data":{"id":1,"name":"a@example.com","email":"a@example.com"}}
 ```
 
 ```json
@@ -64,11 +64,12 @@ System fields are returned as:
 
 ```txt
 id
+name
 created-at
 updated-at
 ```
 
-System fields cannot be written in create or update request bodies.
+`id` is dygo's internal numeric identity. `name` is the stable Record identifier generated from Entity `naming` metadata. System fields cannot be written in update request bodies. Create request bodies may include `name` only when the Entity explicitly uses `naming.strategy: field` with `field: name`; otherwise dygo generates `name` during create.
 
 ## Supported Fields
 

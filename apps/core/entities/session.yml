@@ -1,6 +1,8 @@
 name: session
 label: Session
 description: Login session metadata.
+naming:
+  strategy: random
 fields:
   - name: user
     label: User

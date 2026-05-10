@@ -29,6 +29,7 @@ const (
 const (
 	defaultRecordLimit = 50
 	maxRecordLimit     = 100
+	randomNameRetries  = 5
 )
 
 // RecordQueryer is the database behavior needed by the Record store.
@@ -162,10 +163,10 @@ func (s RecordStore) FindRecord(ctx context.Context, entity string, match Record
 	if err != nil {
 		return nil, err
 	}
-	if err := layout.validateInputFields(match, false); err != nil {
+	if err := layout.validateMatchFields(match); err != nil {
 		return nil, err
 	}
-	mutation, err := layout.mutationFromInput(match)
+	mutation, err := layout.matchMutation(match)
 	if err != nil {
 		return nil, err
 	}
@@ -218,20 +219,26 @@ func (s RecordStore) createRecord(ctx context.Context, entity string, input Reco
 	if err != nil {
 		return nil, err
 	}
-	mutation, err := layout.createMutation(input)
-	if err != nil {
-		return nil, err
-	}
 
-	var sql string
-	if len(mutation.Columns) == 0 {
-		sql = fmt.Sprintf("INSERT INTO %s DEFAULT VALUES RETURNING %s", quoteIdent(layout.Table), layout.selectList())
-	} else {
-		sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING %s", quoteIdent(layout.Table), quoteIdentList(mutation.Columns), strings.Join(mutation.Placeholders, ", "), layout.selectList())
-	}
-	record, err := s.queryReturningRecord(ctx, layout, sql, mutation.Values, false)
-	if err != nil {
-		return nil, err
+	var record Record
+	for attempt := 0; attempt <= randomNameRetries; attempt++ {
+		mutation, err := s.createMutation(ctx, layout, input)
+		if err != nil {
+			return nil, err
+		}
+		var sql string
+		if len(mutation.Columns) == 0 {
+			sql = fmt.Sprintf("INSERT INTO %s DEFAULT VALUES RETURNING %s", quoteIdent(layout.Table), layout.selectList())
+		} else {
+			sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING %s", quoteIdent(layout.Table), quoteIdentList(mutation.Columns), strings.Join(mutation.Placeholders, ", "), layout.selectList())
+		}
+		record, err = s.queryReturningRecord(ctx, layout, sql, mutation.Values, false)
+		if err == nil {
+			break
+		}
+		if layout.Naming.Strategy != "random" || !isRecordNameCollision(err, layout) || attempt == randomNameRetries {
+			return nil, err
+		}
 	}
 	recordID, err := activityRecordID(record)
 	if err != nil {
@@ -241,6 +248,40 @@ func (s RecordStore) createRecord(ctx context.Context, entity string, input Reco
 		return nil, err
 	}
 	return record, nil
+}
+
+func (s RecordStore) generateRecordName(ctx context.Context, layout recordLayout, input RecordInput) (string, error) {
+	switch layout.Naming.Strategy {
+	case "random":
+		name, err := randomRecordName(layout.Naming.Length)
+		if err != nil {
+			return "", recordError(RecordErrorInternal, "generate random record name failed", map[string]any{"entity": layout.Entity}, err)
+		}
+		return name, nil
+	case "field":
+		field, ok := layout.FieldByName[layout.Naming.Field]
+		if !ok {
+			return "", recordError(RecordErrorInternal, "naming field metadata is missing", map[string]any{"entity": layout.Entity, "field": layout.Naming.Field}, nil)
+		}
+		raw, ok := input[layout.Naming.Field]
+		if !ok {
+			return "", recordError(RecordErrorValidation, "naming field is required", map[string]any{"entity": layout.Entity, "field": layout.Naming.Field}, nil)
+		}
+		return recordNameValue(field, raw)
+	case "series":
+		return s.seriesRecordName(ctx, layout, layout.Naming.Pattern, time.Now().UTC())
+	default:
+		return "", recordError(RecordErrorInternal, "naming strategy metadata is invalid", map[string]any{"entity": layout.Entity, "strategy": layout.Naming.Strategy}, nil)
+	}
+}
+
+func isRecordNameCollision(err error, layout recordLayout) bool {
+	var recordErr RecordError
+	if !errors.As(err, &recordErr) || recordErr.Code != RecordErrorConstraintViolation {
+		return false
+	}
+	constraint, _ := recordErr.Details["constraint"].(string)
+	return constraint == constraintName(layout.Table, "name", "key")
 }
 
 // UpdateRecord partially updates one Record by id.
@@ -411,6 +452,7 @@ type recordLayout struct {
 	Entity      string
 	Label       string
 	Table       string
+	Naming      recordNaming
 	Fields      []recordField
 	FieldByName map[string]recordField
 }
@@ -424,6 +466,7 @@ type recordField struct {
 	Column      string
 	Storage     bool
 	WriteOnly   bool
+	SystemName  bool
 	SelectOrder int
 }
 
@@ -439,11 +482,16 @@ type recordMutation struct {
 }
 
 func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
+	naming, err := parseRecordNaming(meta.Naming)
+	if err != nil {
+		return recordLayout{}, recordError(RecordErrorInternal, "entity naming metadata is invalid", map[string]any{"entity": meta.Name}, err)
+	}
 	layout := recordLayout{
 		EntityID:    meta.ID,
 		Entity:      meta.Name,
 		Label:       meta.Label,
 		Table:       storageName(meta.Name),
+		Naming:      naming,
 		FieldByName: map[string]recordField{},
 	}
 	for _, metadataField := range meta.Fields {
@@ -454,15 +502,20 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 			Default:   metadataField.Default,
 			Storage:   metadataField.Type != "child-table",
 			WriteOnly: metadataField.Type == "password",
+			SystemName: metadataField.Name == "name" &&
+				naming.Strategy == "field" &&
+				naming.Field == "name",
 		}
 		if len(metadataField.Options) > 0 {
 			if err := json.Unmarshal(metadataField.Options, &field.Options); err != nil {
 				return recordLayout{}, recordError(RecordErrorInternal, "field options metadata is invalid", map[string]any{"entity": meta.Name, "field": metadataField.Name}, err)
 			}
 		}
-		if field.Storage {
+		if field.Storage && !field.SystemName {
 			field.Column = recordColumnForField(field.Name, field.Type)
 			field.SelectOrder = len(layout.Fields) + 3
+		} else if field.SystemName {
+			field.Column = "name"
 		}
 		layout.Fields = append(layout.Fields, field)
 		layout.FieldByName[field.Name] = field
@@ -471,9 +524,9 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 }
 
 func (l recordLayout) selectList() string {
-	columns := []string{quoteIdent("id"), quoteIdent("created_at"), quoteIdent("updated_at")}
+	columns := []string{quoteIdent("id"), quoteIdent("name"), quoteIdent("created_at"), quoteIdent("updated_at")}
 	for _, field := range l.Fields {
-		if field.Storage && !field.WriteOnly {
+		if field.Storage && !field.WriteOnly && !field.SystemName {
 			columns = append(columns, quoteIdent(field.Column))
 		}
 	}
@@ -481,9 +534,9 @@ func (l recordLayout) selectList() string {
 }
 
 func (l recordLayout) recordFromValues(values []any) (Record, error) {
-	expected := 3
+	expected := 4
 	for _, field := range l.Fields {
-		if field.Storage && !field.WriteOnly {
+		if field.Storage && !field.WriteOnly && !field.SystemName {
 			expected++
 		}
 	}
@@ -492,12 +545,13 @@ func (l recordLayout) recordFromValues(values []any) (Record, error) {
 	}
 	record := Record{
 		"id":         normalizeRecordValue("", values[0]),
-		"created-at": normalizeRecordValue("datetime", values[1]),
-		"updated-at": normalizeRecordValue("datetime", values[2]),
+		"name":       normalizeRecordValue("text", values[1]),
+		"created-at": normalizeRecordValue("datetime", values[2]),
+		"updated-at": normalizeRecordValue("datetime", values[3]),
 	}
-	index := 3
+	index := 4
 	for _, field := range l.Fields {
-		if !field.Storage || field.WriteOnly {
+		if !field.Storage || field.WriteOnly || field.SystemName {
 			continue
 		}
 		record[field.Name] = normalizeRecordValue(field.Type, values[index])
@@ -506,20 +560,39 @@ func (l recordLayout) recordFromValues(values []any) (Record, error) {
 	return record, nil
 }
 
-func (l recordLayout) createMutation(input RecordInput) (recordMutation, error) {
+func (s RecordStore) createMutation(ctx context.Context, layout recordLayout, input RecordInput) (recordMutation, error) {
 	input = normalizeRecordInput(input)
-	if err := l.validateInputFields(input, true); err != nil {
+	if err := layout.validateCreateFields(input); err != nil {
 		return recordMutation{}, err
 	}
-	for _, field := range l.Fields {
+	for _, field := range layout.Fields {
 		if !field.Required || len(field.Default) > 0 {
 			continue
 		}
+		if field.SystemName {
+			// The generated system name column enforces this field.
+			continue
+		}
 		if _, ok := input[field.Name]; !ok {
-			return recordMutation{}, recordError(RecordErrorValidation, "required field is missing", map[string]any{"entity": l.Entity, "field": field.Name}, nil)
+			return recordMutation{}, recordError(RecordErrorValidation, "required field is missing", map[string]any{"entity": layout.Entity, "field": field.Name}, nil)
 		}
 	}
-	return l.mutationFromInput(input)
+	mutation, err := layout.writeMutation(input)
+	if err != nil {
+		return recordMutation{}, err
+	}
+	if mutation.hasColumn("name") {
+		return mutation, nil
+	}
+	name, err := s.generateRecordName(ctx, layout, input)
+	if err != nil {
+		return recordMutation{}, err
+	}
+	nameField := recordField{Name: "name", Type: "text", Column: "name", Storage: true}
+	mutation.Columns = append(mutation.Columns, "name")
+	mutation.Placeholders = append(mutation.Placeholders, recordPlaceholder(len(mutation.Values)+1, nameField))
+	mutation.Values = append(mutation.Values, name)
+	return mutation, nil
 }
 
 func (l recordLayout) updateMutation(input RecordInput) (recordMutation, error) {
@@ -527,16 +600,34 @@ func (l recordLayout) updateMutation(input RecordInput) (recordMutation, error) 
 	if len(input) == 0 {
 		return recordMutation{}, recordError(RecordErrorValidation, "at least one field is required", map[string]any{"entity": l.Entity}, nil)
 	}
-	if err := l.validateInputFields(input, false); err != nil {
+	if err := l.validateUpdateFields(input); err != nil {
 		return recordMutation{}, err
 	}
-	return l.mutationFromInput(input)
+	return l.writeMutation(input)
 }
 
-func (l recordLayout) validateInputFields(input RecordInput, _ bool) error {
+func (l recordLayout) validateCreateFields(input RecordInput) error {
+	return l.validateInputFields(input, true, false)
+}
+
+func (l recordLayout) validateUpdateFields(input RecordInput) error {
+	return l.validateInputFields(input, false, false)
+}
+
+func (l recordLayout) validateMatchFields(input RecordInput) error {
+	return l.validateInputFields(input, false, true)
+}
+
+func (l recordLayout) validateInputFields(input RecordInput, create bool, match bool) error {
 	for name, raw := range input {
-		if isSystemRecordField(name) {
+		if isSystemRecordField(name) && !(match && name == "name") && !(create && l.allowsNameCreateInput()) {
 			return recordError(RecordErrorValidation, "system fields cannot be written", map[string]any{"entity": l.Entity, "field": name}, nil)
+		}
+		if match && name == "name" {
+			if rawIsNull(raw) {
+				return recordError(RecordErrorValidation, "match field cannot be null", map[string]any{"entity": l.Entity, "field": name}, nil)
+			}
+			continue
 		}
 		field, ok := l.FieldByName[name]
 		if !ok {
@@ -552,7 +643,11 @@ func (l recordLayout) validateInputFields(input RecordInput, _ bool) error {
 	return nil
 }
 
-func (l recordLayout) mutationFromInput(input RecordInput) (recordMutation, error) {
+func (l recordLayout) allowsNameCreateInput() bool {
+	return l.Naming.Strategy == "field" && l.Naming.Field == "name"
+}
+
+func (l recordLayout) writeMutation(input RecordInput) (recordMutation, error) {
 	mutation := recordMutation{}
 	names := sortedRecordInputNames(input)
 	for _, name := range names {
@@ -566,6 +661,42 @@ func (l recordLayout) mutationFromInput(input RecordInput) (recordMutation, erro
 		mutation.Values = append(mutation.Values, value)
 	}
 	return mutation, nil
+}
+
+func (l recordLayout) matchMutation(input RecordInput) (recordMutation, error) {
+	mutation := recordMutation{}
+	names := sortedRecordInputNames(input)
+	for _, name := range names {
+		if name == "name" {
+			field := recordField{Name: "name", Type: "text", Column: "name", Storage: true}
+			value, err := recordDBValue(field, input[name])
+			if err != nil {
+				return recordMutation{}, err
+			}
+			mutation.Columns = append(mutation.Columns, "name")
+			mutation.Placeholders = append(mutation.Placeholders, recordPlaceholder(len(mutation.Values)+1, field))
+			mutation.Values = append(mutation.Values, value)
+			continue
+		}
+		field := l.FieldByName[name]
+		value, err := recordDBValue(field, input[name])
+		if err != nil {
+			return recordMutation{}, err
+		}
+		mutation.Columns = append(mutation.Columns, field.Column)
+		mutation.Placeholders = append(mutation.Placeholders, recordPlaceholder(len(mutation.Values)+1, field))
+		mutation.Values = append(mutation.Values, value)
+	}
+	return mutation, nil
+}
+
+func (m *recordMutation) hasColumn(column string) bool {
+	for _, existing := range m.Columns {
+		if existing == column {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeRecordListParams(params RecordListParams) (RecordListParams, error) {
@@ -798,7 +929,7 @@ func stringInSlice(value string, values []string) bool {
 
 func isSystemRecordField(name string) bool {
 	switch name {
-	case "id", "created-at", "updated-at":
+	case "id", "name", "created-at", "updated-at":
 		return true
 	default:
 		return false

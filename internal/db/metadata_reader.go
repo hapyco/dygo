@@ -36,11 +36,12 @@ type MetadataAppRef struct {
 
 // MetadataEntity is one Entity metadata summary.
 type MetadataEntity struct {
-	ID          int64          `json:"-"`
-	Name        string         `json:"name"`
-	Label       string         `json:"label"`
-	Description string         `json:"description"`
-	App         MetadataAppRef `json:"app"`
+	ID          int64           `json:"-"`
+	Name        string          `json:"name"`
+	Label       string          `json:"label"`
+	Description string          `json:"description"`
+	Naming      json.RawMessage `json:"naming,omitempty"`
+	App         MetadataAppRef  `json:"app"`
 }
 
 // MetadataEntityMeta is the complete persisted metadata for one Entity.
@@ -157,7 +158,7 @@ func (r MetadataReader) ListEntities(ctx context.Context) ([]MetadataEntity, err
 		return nil, err
 	}
 	rows, err := r.queryer.Query(ctx, `
-SELECT e.name, e.label, COALESCE(e.description, ''), a.name, a.label
+SELECT e.name, e.label, COALESCE(e.description, ''), e.naming, a.name, a.label
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
 ORDER BY a.name, e.name`)
@@ -169,9 +170,11 @@ ORDER BY a.name, e.name`)
 	entities := []MetadataEntity{}
 	for rows.Next() {
 		var entity MetadataEntity
-		if err := rows.Scan(&entity.Name, &entity.Label, &entity.Description, &entity.App.Name, &entity.App.Label); err != nil {
+		var naming []byte
+		if err := rows.Scan(&entity.Name, &entity.Label, &entity.Description, &naming, &entity.App.Name, &entity.App.Label); err != nil {
 			return nil, fmt.Errorf("scan metadata entity: %w", err)
 		}
+		entity.Naming = rawJSONOrNil(naming)
 		entities = append(entities, entity)
 	}
 	if err := rows.Err(); err != nil {
@@ -187,17 +190,19 @@ func (r MetadataReader) GetEntityMeta(ctx context.Context, name string) (Metadat
 	}
 
 	var meta MetadataEntityMeta
+	var naming []byte
 	err := r.queryer.QueryRow(ctx, `
-SELECT e.id, e.name, e.label, COALESCE(e.description, ''), a.name, a.label
+SELECT e.id, e.name, e.label, COALESCE(e.description, ''), e.naming, a.name, a.label
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
-WHERE e.name = $1`, name).Scan(&meta.ID, &meta.Name, &meta.Label, &meta.Description, &meta.App.Name, &meta.App.Label)
+WHERE e.name = $1`, name).Scan(&meta.ID, &meta.Name, &meta.Label, &meta.Description, &naming, &meta.App.Name, &meta.App.Label)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return MetadataEntityMeta{}, MetadataNotFoundError{Kind: "entity", Name: name}
 	}
 	if err != nil {
 		return MetadataEntityMeta{}, fmt.Errorf("query metadata entity %q: %w", name, err)
 	}
+	meta.Naming = rawJSONOrNil(naming)
 
 	fields, err := r.entityFields(ctx, meta.ID)
 	if err != nil {
@@ -219,7 +224,7 @@ WHERE e.name = $1`, name).Scan(&meta.ID, &meta.Name, &meta.Label, &meta.Descript
 
 func (r MetadataReader) entityFields(ctx context.Context, entityID int64) ([]MetadataField, error) {
 	rows, err := r.queryer.Query(ctx, `
-SELECT name, label, type, required, "unique", "index", "default", "check", position, options
+SELECT field_name, label, type, required, "unique", "index", "default", "check", position, options
 FROM "field"
 WHERE entity_id = $1
 ORDER BY position, name`, entityID)
@@ -250,7 +255,7 @@ ORDER BY position, name`, entityID)
 
 func (r MetadataReader) entityIndexes(ctx context.Context, entityID int64) ([]MetadataIndex, error) {
 	rows, err := r.queryer.Query(ctx, `
-SELECT name, fields, position
+SELECT index_name, fields, position
 FROM "index"
 WHERE entity_id = $1
 ORDER BY position, name`, entityID)
@@ -277,7 +282,7 @@ ORDER BY position, name`, entityID)
 
 func (r MetadataReader) entityConstraints(ctx context.Context, entityID int64) ([]MetadataConstraint, error) {
 	rows, err := r.queryer.Query(ctx, `
-SELECT name, type, fields, COALESCE(field, ''), COALESCE(operator, ''), value, position
+SELECT constraint_name, type, fields, COALESCE(field, ''), COALESCE(operator, ''), value, position
 FROM "constraint"
 WHERE entity_id = $1
 ORDER BY position, name`, entityID)

@@ -1,6 +1,8 @@
 name: user-role
 label: User Role
 description: Role assignment for a User.
+naming:
+  strategy: random
 fields:
   - name: user
     label: User

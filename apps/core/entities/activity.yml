@@ -1,6 +1,8 @@
 name: activity
 label: Activity
 description: Timeline entry for meaningful Record and system events.
+naming:
+  strategy: random
 fields:
   - name: kind
     label: Kind

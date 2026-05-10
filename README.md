@@ -20,7 +20,7 @@ dygo is released under the [O'Saasy License](LICENSE). It is free to use, modify
 
 dygo is in early framework development.
 
-The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server, encrypted credentials, app/entity metadata validation, PostgreSQL schema sync, Core metadata registry, metadata API, session auth, generic Record API foundation, and Record permission enforcement. The framework APIs are not stable yet.
+The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server, encrypted credentials, app/entity metadata validation, PostgreSQL schema sync, Core metadata registry, metadata API, session auth, generic Record API foundation with system Record naming, and Record permission enforcement. The framework APIs are not stable yet.
 
 ## Current CLI
 

@@ -17,10 +17,30 @@ type Entity struct {
 	Name        string       `yaml:"name"`
 	Label       string       `yaml:"label"`
 	Description string       `yaml:"description,omitempty"`
+	Naming      Naming       `yaml:"naming,omitempty"`
 	Fields      []Field      `yaml:"fields"`
 	Indexes     []Index      `yaml:"indexes,omitempty"`
 	Constraints []Constraint `yaml:"constraints,omitempty"`
 }
+
+// Naming describes how dygo assigns the system-owned Record name.
+type Naming struct {
+	Line     int    `yaml:"-"`
+	Strategy string `yaml:"strategy,omitempty"`
+	Length   int    `yaml:"length,omitempty"`
+	Field    string `yaml:"field,omitempty"`
+	Pattern  string `yaml:"pattern,omitempty"`
+}
+
+const (
+	NamingStrategyRandom = "random"
+	NamingStrategyField  = "field"
+	NamingStrategySeries = "series"
+
+	DefaultRandomNameLength = 16
+	MinRandomNameLength     = 8
+	MaxRandomNameLength     = 64
+)
 
 // Field describes one field inside an Entity.
 type Field struct {
@@ -162,11 +182,159 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	}
 	validateIndexes(e, fields, fieldTypes, &problems)
 	validateConstraints(e, fields, fieldTypes, &problems)
+	validateNaming(e, fields, fieldTypes, &problems)
 
 	if len(problems) > 0 {
 		return ValidationError{Problems: problems}
 	}
 	return nil
+}
+
+// EffectiveNaming returns explicit Entity naming or the v1 default.
+func (e Entity) EffectiveNaming() Naming {
+	naming := e.Naming
+	if strings.TrimSpace(naming.Strategy) == "" {
+		naming.Strategy = NamingStrategyRandom
+	}
+	if naming.Strategy == NamingStrategyRandom && naming.Length == 0 {
+		naming.Length = DefaultRandomNameLength
+	}
+	return naming
+}
+
+func validateNaming(entity Entity, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, problems *[]string) {
+	naming := entity.EffectiveNaming()
+	line := naming.Line
+	if line == 0 {
+		line = entity.Line
+	}
+
+	switch naming.Strategy {
+	case NamingStrategyRandom:
+		validateRandomNaming(naming, line, problems)
+	case NamingStrategyField:
+		validateFieldNaming(naming, fields, fieldTypes, line, problems)
+	case NamingStrategySeries:
+		validateSeriesNaming(naming, line, problems)
+	default:
+		*problems = append(*problems, withLine(line, fmt.Sprintf("naming strategy %q is not supported", naming.Strategy)))
+	}
+
+	if _, ok := fields["name"]; ok && !(naming.Strategy == NamingStrategyField && naming.Field == "name") {
+		*problems = append(*problems, withLine(fields["name"].Line, `field "name" is reserved unless naming.strategy is "field" and naming.field is "name"`))
+	}
+}
+
+func validateRandomNaming(naming Naming, line int, problems *[]string) {
+	if strings.TrimSpace(naming.Field) != "" || strings.TrimSpace(naming.Pattern) != "" {
+		*problems = append(*problems, withLine(line, "random naming supports length only"))
+	}
+	if naming.Length < MinRandomNameLength || naming.Length > MaxRandomNameLength {
+		*problems = append(*problems, withLine(line, fmt.Sprintf("random naming length must be between %d and %d", MinRandomNameLength, MaxRandomNameLength)))
+	}
+}
+
+func validateFieldNaming(naming Naming, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, line int, problems *[]string) {
+	if naming.Length != 0 || strings.TrimSpace(naming.Pattern) != "" {
+		*problems = append(*problems, withLine(line, "field naming supports field only"))
+	}
+	if strings.TrimSpace(naming.Field) == "" {
+		*problems = append(*problems, withLine(line, "field naming field is required"))
+		return
+	}
+	if !fieldtype.IsName(naming.Field) {
+		*problems = append(*problems, withLine(line, fmt.Sprintf("field naming field %q must be kebab-case", naming.Field)))
+		return
+	}
+	field, ok := fields[naming.Field]
+	if !ok {
+		*problems = append(*problems, withLine(line, fmt.Sprintf("field naming references unknown field %q", naming.Field)))
+		return
+	}
+	definition, ok := fieldTypes[naming.Field]
+	if !ok {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q is unknown", naming.Field, field.Type)))
+		return
+	}
+	if !field.Required {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q must be required", naming.Field)))
+	}
+	if !field.Unique {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q must be unique", naming.Field)))
+	}
+	if !definition.AllowUnique {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q cannot be unique", naming.Field, field.Type)))
+	}
+	if !isStoredFieldType(field.Type) {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q is not stored", naming.Field, field.Type)))
+	}
+	if isWriteOnlyFieldType(field.Type) {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q is write-only", naming.Field, field.Type)))
+	}
+	if naming.Field == "name" && !isSystemNameFieldType(field.Type) {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q cannot use the system name column", naming.Field, field.Type)))
+	}
+}
+
+func validateSeriesNaming(naming Naming, line int, problems *[]string) {
+	if naming.Length != 0 || strings.TrimSpace(naming.Field) != "" {
+		*problems = append(*problems, withLine(line, "series naming supports pattern only"))
+	}
+	if strings.TrimSpace(naming.Pattern) == "" {
+		*problems = append(*problems, withLine(line, "series naming pattern is required"))
+		return
+	}
+	if err := validateSeriesPattern(naming.Pattern); err != nil {
+		*problems = append(*problems, withLine(line, err.Error()))
+	}
+}
+
+func validateSeriesPattern(pattern string) error {
+	counterTokens := 0
+	for i := 0; i < len(pattern); i++ {
+		if pattern[i] != '{' {
+			continue
+		}
+		end := strings.IndexByte(pattern[i+1:], '}')
+		if end < 0 {
+			return fmt.Errorf("series naming pattern has an unclosed token")
+		}
+		token := pattern[i+1 : i+1+end]
+		if token == "YY" || token == "YYYY" || token == "MM" {
+			i += end + 1
+			continue
+		}
+		if strings.Trim(token, "#") == "" && len(token) > 0 {
+			counterTokens++
+			i += end + 1
+			continue
+		}
+		return fmt.Errorf("series naming pattern token %q is not supported", "{"+token+"}")
+	}
+	if strings.Contains(pattern, "}") && !strings.Contains(pattern, "{") {
+		return fmt.Errorf("series naming pattern has an unopened token")
+	}
+	if counterTokens != 1 {
+		return fmt.Errorf("series naming pattern must include exactly one hash counter token")
+	}
+	return nil
+}
+
+func isStoredFieldType(fieldType string) bool {
+	return fieldType != "child-table"
+}
+
+func isWriteOnlyFieldType(fieldType string) bool {
+	return fieldType == "password"
+}
+
+func isSystemNameFieldType(fieldType string) bool {
+	switch fieldType {
+	case "text", "email", "phone", "select":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateIndexes(entity Entity, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, problems *[]string) {
@@ -442,6 +610,7 @@ func validateField(field Field, registry fieldtype.Registry, seenFields map[stri
 
 type sourceMap struct {
 	entityLine      int
+	namingLine      int
 	fieldLines      []int
 	indexLines      []int
 	constraintLines []int
@@ -449,6 +618,7 @@ type sourceMap struct {
 
 func (m sourceMap) apply(entity *Entity) {
 	entity.Line = m.entityLine
+	entity.Naming.Line = m.namingLine
 	for i := range entity.Fields {
 		if i >= len(m.fieldLines) {
 			break
@@ -494,6 +664,8 @@ func buildSourceMap(root *yaml.Node) sourceMap {
 			continue
 		}
 		switch key.Value {
+		case "naming":
+			source.namingLine = value.Line
 		case "fields":
 			for _, item := range value.Content {
 				source.fieldLines = append(source.fieldLines, item.Line)

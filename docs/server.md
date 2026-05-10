@@ -113,7 +113,7 @@ Record request bodies use a `data` envelope:
 Record responses use dygo metadata names, including system fields:
 
 ```json
-{"data":{"id":1,"created-at":"2026-05-07T12:00:00Z","updated-at":"2026-05-07T12:00:00Z","email":"a@example.com"}}
+{"data":{"id":1,"name":"a@example.com","created-at":"2026-05-07T12:00:00Z","updated-at":"2026-05-07T12:00:00Z","email":"a@example.com"}}
 ```
 
 Write-only fields such as `password` are accepted in create and update requests, but are not returned in responses.

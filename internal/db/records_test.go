@@ -17,8 +17,8 @@ func TestRecordStoreListRecords(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(1), now, now, "a@example.com", "A User", true},
-		{int64(2), now, now, "b@example.com", "B User", false},
+		{int64(1), "a@example.com", now, now, "a@example.com", "A User", true},
+		{int64(2), "b@example.com", now, now, "b@example.com", "B User", false},
 	}))
 
 	result, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{})
@@ -47,7 +47,7 @@ func TestRecordStoreGetRecord(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 
 	record, err := NewRecordStore(queryer).GetRecord(context.Background(), "user", 7)
@@ -70,7 +70,7 @@ func TestRecordStoreFindRecord(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 
 	record, err := NewRecordStore(queryer).FindRecord(context.Background(), "user", recordInput(map[string]string{
@@ -94,8 +94,8 @@ func TestRecordStoreFindRecordAmbiguous(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
-		{int64(8), now, now, "a@example.com", "Another User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+		{int64(8), "a@example.com", now, now, "a@example.com", "Another User", true},
 	}))
 
 	_, err := NewRecordStore(queryer).FindRecord(context.Background(), "user", recordInput(map[string]string{
@@ -108,7 +108,7 @@ func TestRecordStoreCreateRecord(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 
 	record, err := NewRecordStore(queryer).CreateRecord(context.Background(), "user", recordInput(map[string]string{
@@ -121,11 +121,41 @@ func TestRecordStoreCreateRecord(t *testing.T) {
 	if record["id"] != int64(7) || record["enabled"] != true {
 		t.Fatalf("CreateRecord() = %+v, want returned record", record)
 	}
+	if record["name"] != "a@example.com" {
+		t.Fatalf("CreateRecord() name = %v, want email naming source", record["name"])
+	}
 	lastQuery := queryer.queries[len(queryer.queries)-1]
-	for _, want := range []string{`INSERT INTO "user"`, `"email", "full_name"`, `RETURNING "id", "created_at", "updated_at"`} {
+	for _, want := range []string{`INSERT INTO "user"`, `"email", "full_name"`, `"name"`, `RETURNING "id", "name", "created_at", "updated_at"`} {
 		if !strings.Contains(lastQuery, want) {
 			t.Fatalf("create query = %q, want %q", lastQuery, want)
 		}
+	}
+	args := queryer.args[len(queryer.args)-1]
+	if args[len(args)-1] != "a@example.com" {
+		t.Fatalf("CreateRecord() name arg = %#v, want source email", args[len(args)-1])
+	}
+}
+
+func TestRecordStoreCreateRecordGeneratesRandomName(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newLeadRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "generated-name", now, now, "New"},
+	}))
+
+	_, err := NewRecordStore(queryer).CreateRecord(context.Background(), "lead", recordInput(map[string]string{
+		"status": `"New"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v, want nil", err)
+	}
+	args := queryer.args[len(queryer.args)-1]
+	name, ok := args[len(args)-1].(string)
+	if !ok {
+		t.Fatalf("random name arg type = %T, want string", args[len(args)-1])
+	}
+	if len(name) != 16 {
+		t.Fatalf("random name length = %d, want 16", len(name))
 	}
 }
 
@@ -133,10 +163,10 @@ func TestRecordStoreUpdateRecord(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "Renamed User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "Renamed User", true},
 	}))
 
 	record, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{
@@ -160,7 +190,7 @@ func TestRecordStoreHashesPasswordOnCreate(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 
 	record, err := NewRecordStore(queryer).CreateRecord(context.Background(), "user", recordInput(map[string]string{
@@ -175,18 +205,18 @@ func TestRecordStoreHashesPasswordOnCreate(t *testing.T) {
 		t.Fatalf("CreateRecord() returned password field: %+v", record)
 	}
 	lastQuery := queryer.queries[len(queryer.queries)-1]
-	for _, want := range []string{`"password_hash"`, `RETURNING "id", "created_at", "updated_at", "email", "full_name", "enabled"`} {
+	for _, want := range []string{`"password_hash"`, `RETURNING "id", "name", "created_at", "updated_at", "email", "full_name", "enabled"`} {
 		if !strings.Contains(lastQuery, want) {
 			t.Fatalf("create query = %q, want %q", lastQuery, want)
 		}
 	}
-	if strings.Contains(lastQuery, `RETURNING "id", "created_at", "updated_at", "email", "full_name", "password_hash"`) {
+	if strings.Contains(lastQuery, `RETURNING "id", "name", "created_at", "updated_at", "email", "full_name", "password_hash"`) {
 		t.Fatalf("create query = %q, returned password_hash", lastQuery)
 	}
 	args := queryer.args[len(queryer.args)-1]
-	hash, ok := args[len(args)-1].(string)
+	hash, ok := args[len(args)-2].(string)
 	if !ok {
-		t.Fatalf("password arg type = %T, want string", args[len(args)-1])
+		t.Fatalf("password arg type = %T, want string", args[len(args)-2])
 	}
 	if hash == "super-secret" {
 		t.Fatal("password arg is plaintext, want bcrypt hash")
@@ -200,10 +230,10 @@ func TestRecordStoreHashesPasswordOnUpdate(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 
 	_, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{
@@ -233,7 +263,7 @@ func TestRecordStoreDeleteRecord(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 	queryer.execTags = []pgconn.CommandTag{pgconn.NewCommandTag("DELETE 1")}
 
@@ -250,7 +280,7 @@ func TestRecordStoreCreateRecordWritesActivity(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 
 	ctx := WithActivityActor(WithActivitySource(context.Background(), ActivitySourceAPI), 99)
@@ -282,10 +312,10 @@ func TestRecordStoreUpdateRecordWritesActivityDiffsAndRedactsPassword(t *testing
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "Renamed User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "Renamed User", true},
 	}))
 
 	_, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{
@@ -322,10 +352,10 @@ func TestRecordStoreUpdateRecordSkipsActivityWithoutChanges(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 
 	_, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{
@@ -343,7 +373,7 @@ func TestRecordStoreDeleteRecordWritesActivitySnapshot(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 	queryer.execTags = []pgconn.CommandTag{pgconn.NewCommandTag("DELETE 1")}
 
@@ -365,7 +395,7 @@ func TestRecordStoreSkipsActivityForActivityEntity(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newActivityRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(1), now, now, "record", "create", "success", "Created User"},
+		{int64(1), "activity-1", now, now, "record", "create", "success", "Created User"},
 	}))
 
 	_, err := NewRecordStore(queryer).CreateRecord(context.Background(), "activity", recordInput(map[string]string{
@@ -386,7 +416,7 @@ func TestRecordStoreActivityFailureRollsBackTransactionalMutation(t *testing.T) 
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), now, now, "a@example.com", "A User", true},
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 	queryer.execErrs = []error{errors.New("activity insert failed")}
 	transactional := &fakeTransactionalRecordQueryer{fakeRecordQueryer: queryer}
@@ -517,7 +547,7 @@ func TestRecordStoreInvalidPaginationAndIDs(t *testing.T) {
 
 func newUserRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(10), "user", "User", "User identity", "core", "Core"),
+		row: newFakeRow(int64(10), "user", "User", "User identity", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
@@ -533,7 +563,7 @@ func newUserRecordQueryer() *fakeRecordQueryer {
 
 func newLeadRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(20), "lead", "Lead", "Sales lead", "crm", "CRM"),
+		row: newFakeRow(int64(20), "lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New","Qualified"]}`)},
@@ -547,7 +577,7 @@ func newLeadRecordQueryer() *fakeRecordQueryer {
 
 func newActivityRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(1), "activity", "Activity", "Timeline entry", "core", "Core"),
+		row: newFakeRow(int64(1), "activity", "Activity", "Timeline entry", []byte(`{"strategy":"random","length":16}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record"]}`)},

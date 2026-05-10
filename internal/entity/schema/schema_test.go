@@ -19,6 +19,9 @@ func TestDecode(t *testing.T) {
 	if entity.Name != "lead" {
 		t.Fatalf("Decode().Name = %q, want lead", entity.Name)
 	}
+	if got := entity.EffectiveNaming(); got.Strategy != NamingStrategyRandom || got.Length != DefaultRandomNameLength {
+		t.Fatalf("Decode().EffectiveNaming() = %+v, want default random length", got)
+	}
 	if entity.Line != 1 {
 		t.Fatalf("Decode().Line = %d, want 1", entity.Line)
 	}
@@ -98,6 +101,164 @@ fields:
 	}
 	if entity.Fields[0].Type != "rating" {
 		t.Fatalf("Decode().Fields[0].Type = %q, want rating", entity.Fields[0].Type)
+	}
+}
+
+func TestDecodeNamingStrategies(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		body      string
+		want      Naming
+		wantError string
+	}{
+		{
+			name: "random",
+			body: `
+name: ticket
+label: Ticket
+naming:
+  strategy: random
+  length: 24
+fields:
+  - name: title
+    label: Title
+    type: text
+`,
+			want: Naming{Strategy: NamingStrategyRandom, Length: 24},
+		},
+		{
+			name: "field",
+			body: `
+name: user
+label: User
+naming:
+  strategy: field
+  field: email
+fields:
+  - name: email
+    label: Email
+    type: email
+    required: true
+    unique: true
+`,
+			want: Naming{Strategy: NamingStrategyField, Field: "email"},
+		},
+		{
+			name: "series",
+			body: `
+name: sales-invoice
+label: Sales Invoice
+naming:
+  strategy: series
+  pattern: "SINV-{YYYY}-{MM}-{#####}"
+fields:
+  - name: status
+    label: Status
+    type: text
+`,
+			want: Naming{Strategy: NamingStrategySeries, Pattern: "SINV-{YYYY}-{MM}-{#####}"},
+		},
+		{
+			name: "reserved name field",
+			body: `
+name: role
+label: Role
+fields:
+  - name: name
+    label: Name
+    type: text
+    required: true
+    unique: true
+`,
+			wantError: `field "name" is reserved`,
+		},
+		{
+			name: "name field allowed as naming source",
+			body: `
+name: role
+label: Role
+naming:
+  strategy: field
+  field: name
+fields:
+  - name: name
+    label: Name
+    type: text
+    required: true
+    unique: true
+`,
+			want: Naming{Strategy: NamingStrategyField, Field: "name"},
+		},
+		{
+			name: "invalid random length",
+			body: `
+name: ticket
+label: Ticket
+naming:
+  strategy: random
+  length: 3
+fields:
+  - name: title
+    label: Title
+    type: text
+`,
+			wantError: "random naming length",
+		},
+		{
+			name: "field source must be unique",
+			body: `
+name: user
+label: User
+naming:
+  strategy: field
+  field: email
+fields:
+  - name: email
+    label: Email
+    type: email
+    required: true
+`,
+			wantError: "must be unique",
+		},
+		{
+			name: "series requires counter",
+			body: `
+name: invoice
+label: Invoice
+naming:
+  strategy: series
+  pattern: "INV-{YYYY}"
+fields:
+  - name: title
+    label: Title
+    type: text
+`,
+			wantError: "exactly one hash counter",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			entity, err := Decode([]byte(tt.body), fieldtype.DefaultRegistry())
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("Decode() error = %v, want %q", err, tt.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Decode() error = %v, want nil", err)
+			}
+			got := entity.EffectiveNaming()
+			if got.Strategy != tt.want.Strategy || got.Length != tt.want.Length || got.Field != tt.want.Field || got.Pattern != tt.want.Pattern {
+				t.Fatalf("EffectiveNaming() = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 

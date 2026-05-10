@@ -12,6 +12,9 @@ Entity metadata is still the contract layer. The generic Record API reads persis
 name: lead
 label: Lead
 description: Sales lead
+naming:
+  strategy: series
+  pattern: "LEAD-{YYYY}-{MM}-{#####}"
 fields:
   - name: full-name
     label: Full Name
@@ -76,6 +79,62 @@ Field `name`, `label`, and `type` are required.
 
 Field names must be unique inside an Entity.
 
+Every metadata-backed Record has system fields:
+
+```txt
+id
+name
+created-at
+updated-at
+```
+
+`id` is the internal numeric primary key. `name` is the stable system/business identifier. Entity `naming` metadata controls how `name` is created.
+
+If `naming` is omitted, dygo uses random naming:
+
+```yaml
+naming:
+  strategy: random
+```
+
+The effective default random length is `16`, generated with Go `crypto/rand` and a Base58-style alphabet. Builders may override the length:
+
+```yaml
+naming:
+  strategy: random
+  length: 24
+```
+
+Field-based naming copies a required, unique, stored, non-write-only field into the system `name` on create:
+
+```yaml
+naming:
+  strategy: field
+  field: email
+```
+
+A normal Field called `name` is allowed only when it is the naming source:
+
+```yaml
+naming:
+  strategy: field
+  field: name
+```
+
+Otherwise `name` is reserved as a system field and cannot appear under `fields`.
+
+Series naming uses a pattern with date tokens and exactly one hash counter token:
+
+```yaml
+naming:
+  strategy: series
+  pattern: "SINV-{YYYY}-{MM}-{#####}"
+```
+
+Supported v1 series tokens are `{YY}`, `{YYYY}`, `{MM}`, and one counter token such as `{#####}`. The number of hashes controls zero-padding. Series counters are stored in Core `naming-series` Records and incremented transactionally.
+
+Updating a field used for `naming.strategy: field` does not rename an existing Record. Explicit Record rename is future work.
+
 `index: true` creates a non-unique database index for field types that support indexing. It is useful for fields commonly used in filters, lookups, joins, or status screens.
 
 `unique: true` creates a single-field uniqueness rule.
@@ -119,7 +178,7 @@ Supported field check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`,
 
 Check fields must be DB-backed scalar fields. `password`, `child-table`, `json`, `attachment`, and `link` checks are not supported in v1.
 
-During `dygo migrate`, Field metadata is upserted into the Core `field` table with name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
+During `dygo migrate`, Entity naming metadata is upserted into the Core `entity` table. Field metadata is upserted into the Core `field` table with field-name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
 
 Type-specific settings live under `options`.
 

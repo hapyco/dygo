@@ -1,6 +1,8 @@
 name: index
 label: Index
 description: Top-level non-unique index definition belonging to an Entity.
+naming:
+  strategy: random
 fields:
   - name: entity
     label: Entity
@@ -10,8 +12,8 @@ fields:
     options:
       entity: entity
 
-  - name: name
-    label: Name
+  - name: index-name
+    label: Index Name
     type: text
     required: true
     index: true
@@ -27,4 +29,4 @@ fields:
 
 constraints:
   - type: unique
-    fields: [entity, name]
+    fields: [entity, index-name]

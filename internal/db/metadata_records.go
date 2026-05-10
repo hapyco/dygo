@@ -40,11 +40,13 @@ type entityRecord struct {
 	Name        string
 	Label       string
 	Description string
+	Naming      []byte
 }
 
 type fieldRecord struct {
 	EntityAppName string
 	EntityName    string
+	RecordName    string
 	Name          string
 	Label         string
 	Type          string
@@ -60,6 +62,7 @@ type fieldRecord struct {
 type indexRecord struct {
 	EntityAppName string
 	EntityName    string
+	RecordName    string
 	Name          string
 	Fields        []byte
 	Position      int
@@ -68,6 +71,7 @@ type indexRecord struct {
 type constraintRecord struct {
 	EntityAppName string
 	EntityName    string
+	RecordName    string
 	Name          string
 	Type          string
 	Fields        []byte
@@ -108,14 +112,15 @@ RETURNING id`, app.Name, app.Label, app.Version, app.Status).Scan(&id); err != n
 		}
 		var id int64
 		if err := tx.QueryRow(ctx, `
-INSERT INTO "entity" (app_id, name, label, description)
-VALUES ($1, $2, $3, $4)
+INSERT INTO "entity" (app_id, name, label, description, naming)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (name) DO UPDATE
 SET app_id = EXCLUDED.app_id,
 	label = EXCLUDED.label,
 	description = EXCLUDED.description,
+	naming = EXCLUDED.naming,
 	updated_at = now()
-RETURNING id`, appID, entity.Name, entity.Label, entity.Description).Scan(&id); err != nil {
+RETURNING id`, appID, entity.Name, entity.Label, entity.Description, entity.Naming).Scan(&id); err != nil {
 			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %s/%s: %w", entity.AppName, entity.Name, err)
 		}
 		entityIDs[entityKey(entity.AppName, entity.Name)] = id
@@ -162,31 +167,32 @@ RETURNING id`, appID, entity.Name, entity.Label, entity.Description).Scan(&id); 
 
 func persistFieldRecord(ctx context.Context, tx pgx.Tx, entityID int64, field fieldRecord) error {
 	var id int64
-	err := tx.QueryRow(ctx, `SELECT id FROM "field" WHERE entity_id = $1 AND name = $2`, entityID, field.Name).Scan(&id)
+	err := tx.QueryRow(ctx, `SELECT id FROM "field" WHERE entity_id = $1 AND field_name = $2`, entityID, field.Name).Scan(&id)
 	if err != nil && err != pgx.ErrNoRows {
 		return fmt.Errorf("find field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO "field" (entity_id, name, label, type, required, "unique", "index", "default", "check", position, options)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, entityID, field.Name, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Position, field.Options); err != nil {
+INSERT INTO "field" (name, entity_id, field_name, label, type, required, "unique", "index", "default", "check", position, options)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`, field.RecordName, entityID, field.Name, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Position, field.Options); err != nil {
 			return fmt.Errorf("persist field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
 		}
 		return nil
 	}
 	if _, err := tx.Exec(ctx, `
 UPDATE "field"
-SET label = $2,
-	type = $3,
-	required = $4,
-	"unique" = $5,
-	"index" = $6,
-	"default" = $7,
-	"check" = $8,
-	position = $9,
-	options = $10,
+SET name = $2,
+	label = $3,
+	type = $4,
+	required = $5,
+	"unique" = $6,
+	"index" = $7,
+	"default" = $8,
+	"check" = $9,
+	position = $10,
+	options = $11,
 	updated_at = now()
-WHERE id = $1`, id, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Position, field.Options); err != nil {
+WHERE id = $1`, id, field.RecordName, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Position, field.Options); err != nil {
 		return fmt.Errorf("persist field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
 	}
 	return nil
@@ -194,24 +200,25 @@ WHERE id = $1`, id, field.Label, field.Type, field.Required, field.Unique, field
 
 func persistIndexRecord(ctx context.Context, tx pgx.Tx, entityID int64, index indexRecord) error {
 	var id int64
-	err := tx.QueryRow(ctx, `SELECT id FROM "index" WHERE entity_id = $1 AND name = $2`, entityID, index.Name).Scan(&id)
+	err := tx.QueryRow(ctx, `SELECT id FROM "index" WHERE entity_id = $1 AND index_name = $2`, entityID, index.Name).Scan(&id)
 	if err != nil && err != pgx.ErrNoRows {
 		return fmt.Errorf("find index metadata %s/%s.%s: %w", index.EntityAppName, index.EntityName, index.Name, err)
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO "index" (entity_id, name, fields, position)
-VALUES ($1, $2, $3, $4)`, entityID, index.Name, index.Fields, index.Position); err != nil {
+INSERT INTO "index" (name, entity_id, index_name, fields, position)
+VALUES ($1, $2, $3, $4, $5)`, index.RecordName, entityID, index.Name, index.Fields, index.Position); err != nil {
 			return fmt.Errorf("persist index metadata %s/%s.%s: %w", index.EntityAppName, index.EntityName, index.Name, err)
 		}
 		return nil
 	}
 	if _, err := tx.Exec(ctx, `
 UPDATE "index"
-SET fields = $2,
-	position = $3,
+SET name = $2,
+	fields = $3,
+	position = $4,
 	updated_at = now()
-WHERE id = $1`, id, index.Fields, index.Position); err != nil {
+WHERE id = $1`, id, index.RecordName, index.Fields, index.Position); err != nil {
 		return fmt.Errorf("persist index metadata %s/%s.%s: %w", index.EntityAppName, index.EntityName, index.Name, err)
 	}
 	return nil
@@ -219,28 +226,29 @@ WHERE id = $1`, id, index.Fields, index.Position); err != nil {
 
 func persistConstraintRecord(ctx context.Context, tx pgx.Tx, entityID int64, constraint constraintRecord) error {
 	var id int64
-	err := tx.QueryRow(ctx, `SELECT id FROM "constraint" WHERE entity_id = $1 AND name = $2`, entityID, constraint.Name).Scan(&id)
+	err := tx.QueryRow(ctx, `SELECT id FROM "constraint" WHERE entity_id = $1 AND constraint_name = $2`, entityID, constraint.Name).Scan(&id)
 	if err != nil && err != pgx.ErrNoRows {
 		return fmt.Errorf("find constraint metadata %s/%s.%s: %w", constraint.EntityAppName, constraint.EntityName, constraint.Name, err)
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO "constraint" (entity_id, name, type, fields, field, operator, value, position)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, entityID, constraint.Name, constraint.Type, constraint.Fields, nullIfEmpty(constraint.Field), nullIfEmpty(constraint.Operator), constraint.Value, constraint.Position); err != nil {
+INSERT INTO "constraint" (name, entity_id, constraint_name, type, fields, field, operator, value, position)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, constraint.RecordName, entityID, constraint.Name, constraint.Type, constraint.Fields, nullIfEmpty(constraint.Field), nullIfEmpty(constraint.Operator), constraint.Value, constraint.Position); err != nil {
 			return fmt.Errorf("persist constraint metadata %s/%s.%s: %w", constraint.EntityAppName, constraint.EntityName, constraint.Name, err)
 		}
 		return nil
 	}
 	if _, err := tx.Exec(ctx, `
 UPDATE "constraint"
-SET type = $2,
-	fields = $3,
-	field = $4,
-	operator = $5,
-	value = $6,
-	position = $7,
+SET name = $2,
+	type = $3,
+	fields = $4,
+	field = $5,
+	operator = $6,
+	value = $7,
+	position = $8,
 	updated_at = now()
-WHERE id = $1`, id, constraint.Type, constraint.Fields, nullIfEmpty(constraint.Field), nullIfEmpty(constraint.Operator), constraint.Value, constraint.Position); err != nil {
+WHERE id = $1`, id, constraint.RecordName, constraint.Type, constraint.Fields, nullIfEmpty(constraint.Field), nullIfEmpty(constraint.Operator), constraint.Value, constraint.Position); err != nil {
 		return fmt.Errorf("persist constraint metadata %s/%s.%s: %w", constraint.EntityAppName, constraint.EntityName, constraint.Name, err)
 	}
 	return nil
@@ -257,11 +265,16 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 		})
 	}
 	for _, loaded := range metadata.Entities {
+		namingJSON, err := entityNamingJSON(loaded.Entity.EffectiveNaming())
+		if err != nil {
+			return metadataRecordSet{}, fmt.Errorf("build entity metadata %s/%s naming: %w", loaded.AppName, loaded.Entity.Name, err)
+		}
 		records.Entities = append(records.Entities, entityRecord{
 			AppName:     loaded.AppName,
 			Name:        loaded.Entity.Name,
 			Label:       loaded.Entity.Label,
 			Description: loaded.Entity.Description,
+			Naming:      namingJSON,
 		})
 		for index, field := range loaded.Entity.Fields {
 			defaultJSON, err := fieldDefaultJSON(field.Default)
@@ -279,6 +292,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			records.Fields = append(records.Fields, fieldRecord{
 				EntityAppName: loaded.AppName,
 				EntityName:    loaded.Entity.Name,
+				RecordName:    loaded.Entity.Name + "." + field.Name,
 				Name:          field.Name,
 				Label:         field.Label,
 				Type:          field.Type,
@@ -299,6 +313,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			records.Indexes = append(records.Indexes, indexRecord{
 				EntityAppName: loaded.AppName,
 				EntityName:    loaded.Entity.Name,
+				RecordName:    loaded.Entity.Name + "." + index.EffectiveName(loaded.Entity),
 				Name:          index.EffectiveName(loaded.Entity),
 				Fields:        fieldsJSON,
 				Position:      indexPosition + 1,
@@ -316,6 +331,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			records.Constraints = append(records.Constraints, constraintRecord{
 				EntityAppName: loaded.AppName,
 				EntityName:    loaded.Entity.Name,
+				RecordName:    loaded.Entity.Name + "." + constraint.EffectiveName(loaded.Entity),
 				Name:          constraint.EffectiveName(loaded.Entity),
 				Type:          constraint.Type,
 				Fields:        fieldsJSON,
@@ -339,6 +355,21 @@ func fieldOptionsJSON(options fieldtype.Options) ([]byte, error) {
 	}
 	if len(values) == 0 {
 		return nil, nil
+	}
+	return json.Marshal(values)
+}
+
+func entityNamingJSON(naming schema.Naming) ([]byte, error) {
+	values := map[string]any{
+		"strategy": naming.Strategy,
+	}
+	switch naming.Strategy {
+	case schema.NamingStrategyRandom:
+		values["length"] = naming.Length
+	case schema.NamingStrategyField:
+		values["field"] = naming.Field
+	case schema.NamingStrategySeries:
+		values["pattern"] = naming.Pattern
 	}
 	return json.Marshal(values)
 }

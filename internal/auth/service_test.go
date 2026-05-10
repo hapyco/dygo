@@ -49,8 +49,8 @@ func TestServiceLogin(t *testing.T) {
 	if containsArg(args, "raw-session-token") {
 		t.Fatalf("session insert args leaked raw token: %#v", args)
 	}
-	if args[1] != SessionTokenDigest("raw-session-token") {
-		t.Fatalf("session digest arg = %#v, want digest", args[1])
+	if args[2] != SessionTokenDigest("raw-session-token") {
+		t.Fatalf("session digest arg = %#v, want digest", args[2])
 	}
 }
 

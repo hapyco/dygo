@@ -24,7 +24,6 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 	for _, want := range []string{
 		"create table app",
 		"create table entity",
-		"add column app.name",
 		"add column entity.app_id",
 		"create index entity_app_id_idx on entity.app_id",
 		"add unique constraint app_name_key on app.name",
@@ -35,7 +34,7 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 
 	sql := operationSQL(plan)
 	assertContains(t, sql, `CREATE TABLE "app"`)
-	assertContains(t, sql, `ALTER TABLE "app" ADD COLUMN "name" text NOT NULL`)
+	assertContains(t, sql, `"name" text NOT NULL`)
 	assertContains(t, sql, `CREATE INDEX "entity_app_id_idx" ON "entity" ("app_id")`)
 	if strings.Contains(sql, "FOREIGN KEY") {
 		t.Fatalf("operationSQL() contains database foreign key, want framework-level links only:\n%s", sql)
@@ -108,6 +107,7 @@ func TestBuildMetadataSchemaPlanUpdatesColumnDefaults(t *testing.T) {
 			name: "drops extra default",
 			columns: map[string]liveColumn{
 				"id":         {Name: "id", Type: "bigint", Nullable: false},
+				"name":       {Name: "name", Type: "text", Nullable: false},
 				"created_at": {Name: "created_at", Type: "timestamptz", Nullable: false},
 				"updated_at": {Name: "updated_at", Type: "timestamptz", Nullable: false},
 				"note":       {Name: "note", Type: "text", Nullable: true, HasDefault: true, DefaultSQL: "'draft'::text"},
@@ -637,6 +637,7 @@ func liveSchemaTable(name string, columns map[string]liveColumn, constraints map
 func systemColumns() map[string]liveColumn {
 	return map[string]liveColumn{
 		"id":         {Name: "id", Type: "bigint", Nullable: false},
+		"name":       {Name: "name", Type: "text", Nullable: false},
 		"created_at": {Name: "created_at", Type: "timestamptz", Nullable: false},
 		"updated_at": {Name: "updated_at", Type: "timestamptz", Nullable: false},
 	}

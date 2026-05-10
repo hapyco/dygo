@@ -1,0 +1,31 @@
+name: naming-series
+label: Naming Series
+description: Transactional counter state for series-based Record names.
+naming:
+  strategy: field
+  field: key
+fields:
+  - name: entity
+    label: Entity
+    type: link
+    required: true
+    index: true
+    options:
+      entity: entity
+
+  - name: key
+    label: Key
+    type: text
+    required: true
+    unique: true
+
+  - name: pattern
+    label: Pattern
+    type: text
+    required: true
+
+  - name: current
+    label: Current
+    type: bigint
+    required: true
+    default: 0

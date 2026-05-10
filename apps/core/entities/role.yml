@@ -1,6 +1,9 @@
 name: role
 label: Role
 description: Named permission group.
+naming:
+  strategy: field
+  field: name
 fields:
   - name: name
     label: Name

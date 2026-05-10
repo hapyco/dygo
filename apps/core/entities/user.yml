@@ -1,6 +1,9 @@
 name: user
 label: User
 description: User account identity.
+naming:
+  strategy: field
+  field: email
 fields:
   - name: email
     label: Email

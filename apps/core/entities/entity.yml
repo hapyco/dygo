@@ -1,6 +1,9 @@
 name: entity
 label: Entity
 description: Registry entry for a known Entity definition.
+naming:
+  strategy: field
+  field: name
 fields:
   - name: app
     label: App
@@ -25,3 +28,7 @@ fields:
   - name: description
     label: Description
     type: long-text
+
+  - name: naming
+    label: Naming
+    type: json

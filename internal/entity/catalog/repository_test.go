@@ -38,6 +38,7 @@ func TestRepositoryEntitiesValidate(t *testing.T) {
 		"entity",
 		"field",
 		"index",
+		"naming-series",
 		"permission",
 		"role",
 		"session",

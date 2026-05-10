@@ -14,6 +14,8 @@ Use **Entity** for a business object definition.
 
 Use **Record** for saved business data created from an Entity.
 
+Use **name** for the stable system/business identifier generated for a Record. Use **id** for the internal numeric primary key.
+
 Technical implementation details may still use words such as document when they describe a file format, YAML payload, or parser concept rather than dygo business data.
 
 ## Core Terms
@@ -24,6 +26,8 @@ Technical implementation details may still use words such as document when they 
 | UI page/group inside Studio | Space |
 | Business object definition | Entity |
 | Saved instance of an Entity | Record |
+| Stable Record identifier | name |
+| Internal numeric Record identity | id |
 | Repeating structured data inside a Record | Child Table |
 | One item inside a Child Table | Row |
 | Installable package | App |
