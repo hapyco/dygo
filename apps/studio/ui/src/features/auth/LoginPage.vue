@@ -1,17 +1,28 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import { Button, Checkbox, ErrorState, Field, Input } from '@dygo/ui'
-import { login, type CurrentUser } from './auth.api'
+import { login } from './auth.api'
+import { setCurrentUser } from './session'
 
+const route = useRoute()
+const router = useRouter()
 const identifier = ref('')
 const password = ref('')
 const remember = ref(false)
 const loading = ref(false)
 const error = ref('')
-const currentUser = ref<CurrentUser | null>(null)
 
 const canSubmit = computed(() => identifier.value.trim() !== '' && password.value !== '')
+
+function redirectPath(): string {
+  const redirect = route.query.redirect
+  if (typeof redirect !== 'string' || !redirect.startsWith('/') || redirect.startsWith('//')) {
+    return '/'
+  }
+  return redirect
+}
 
 async function submitLogin() {
   if (!canSubmit.value || loading.value) {
@@ -22,11 +33,13 @@ async function submitLogin() {
   error.value = ''
 
   try {
-    currentUser.value = await login({
+    const user = await login({
       identifier: identifier.value.trim(),
       password: password.value,
       remember: remember.value,
     })
+    setCurrentUser(user)
+    await router.replace(redirectPath())
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : 'Sign in failed. Try again.'
   } finally {
@@ -51,10 +64,6 @@ async function submitLogin() {
       </p>
 
       <ErrorState v-if="error" :message="error" />
-
-      <div v-if="currentUser" class="login-panel__signed-in" role="status">
-        Signed in as {{ currentUser['full-name'] || currentUser.email }}.
-      </div>
 
       <form class="login-form" @submit.prevent="submitLogin">
         <Field id="studio-identifier" label="Email or username">
@@ -167,16 +176,6 @@ async function submitLogin() {
   color: var(--studio-text-muted);
   font-size: 14px;
   line-height: 1.55;
-}
-
-.login-panel__signed-in {
-  border: 1px solid oklch(0.52 0.105 156 / 0.24);
-  border-radius: 7px;
-  background: oklch(0.97 0.018 156);
-  color: oklch(0.38 0.095 156);
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1.45;
 }
 
 .login-form {

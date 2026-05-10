@@ -39,6 +39,28 @@ Studio owns:
 - metadata API client
 - frontend stores
 
+## Route Model
+
+Studio is root-mounted by default.
+
+Current routes:
+
+```txt
+/login
+/
+/:entity
+/:entity/new
+/:entity/:id
+```
+
+`/login` is public. The other routes require a valid Studio session.
+
+Root-level dynamic slugs are intentionally shared by future Pages, Spaces, and Entity list pages. In the current v1 router, dynamic root slugs resolve as Entity list routes because custom Pages and Spaces do not exist yet.
+
+Reserved root slugs are limited to technical paths: `api`, `assets`, `health`, `login`, and `logout`.
+
+Record IDs are numeric in v1. Activity is shown inside the Record page instead of using a separate Studio URL.
+
 ## Design Rule
 
 Business apps do not ship custom UI by default.

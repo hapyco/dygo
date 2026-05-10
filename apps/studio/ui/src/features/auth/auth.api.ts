@@ -24,6 +24,10 @@ type LoginEnvelope = {
   data: CurrentUser
 }
 
+type CurrentUserEnvelope = {
+  data: CurrentUser
+}
+
 export class AuthApiError extends Error {
   readonly code: string
 
@@ -59,11 +63,37 @@ export async function login(input: LoginInput): Promise<CurrentUser> {
   return payload.data
 }
 
+export async function getCurrentUser(): Promise<CurrentUser> {
+  const response = await fetch('/api/v1/auth/me', {
+    method: 'GET',
+    credentials: 'include',
+  })
+
+  const payload = await parseJSON<CurrentUserEnvelope & ApiErrorEnvelope>(response)
+
+  if (!response.ok) {
+    throw new AuthApiError(payload.error?.code ?? 'unauthenticated', currentUserErrorMessage(payload))
+  }
+
+  return payload.data
+}
+
 async function parseJSON<T>(response: Response): Promise<T> {
   try {
     return (await response.json()) as T
   } catch (error) {
     throw new AuthApiError('invalid_response', 'Studio could not read the server response.')
+  }
+}
+
+function currentUserErrorMessage(payload: ApiErrorEnvelope): string {
+  switch (payload.error?.code) {
+    case 'unauthenticated':
+      return 'Sign in to open Studio.'
+    case 'schema_not_ready':
+      return 'Studio is not ready yet. Run dygo migrate, then try again.'
+    default:
+      return 'Studio could not read the current session.'
   }
 }
 
