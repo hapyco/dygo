@@ -311,6 +311,40 @@ func TestBuildMetadataSchemaPlanAddsMissingIndexAndConstraint(t *testing.T) {
 	assertContains(t, operationDescriptions(plan), "add unique constraint lead_email_key on lead.email")
 }
 
+func TestBuildMetadataSchemaPlanAddsFieldLevelCheck(t *testing.T) {
+	entity := catalog.LoadedEntity{
+		AppName: "sales",
+		Path:    "apps/sales/entities/deal.yml",
+		Entity: schema.Entity{
+			Name: "deal",
+			Fields: []schema.Field{
+				{
+					Name:  "amount",
+					Type:  "currency",
+					Check: &schema.Check{Operator: "gte", Value: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: "0"}},
+				},
+			},
+		},
+	}
+	columns := systemColumns()
+	columns["amount"] = liveColumn{Name: "amount", Type: "numeric", Nullable: true}
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{
+		"deal": liveSchemaTable("deal", columns, map[string]liveConstraint{"deal_pkey": {Name: "deal_pkey", Type: "primary-key"}}, nil),
+	}})
+	if err != nil {
+		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
+	}
+	if plan.HasBlockers() {
+		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
+	}
+
+	descriptions := operationDescriptions(plan)
+	assertContains(t, descriptions, "add check constraint deal_amount_gte_check on deal.amount")
+
+	sql := operationSQL(plan)
+	assertContains(t, sql, `ALTER TABLE "deal" ADD CONSTRAINT "deal_amount_gte_check" CHECK ("amount" >= 0)`)
+}
+
 func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "sales",

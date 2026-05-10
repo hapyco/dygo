@@ -27,6 +27,12 @@ fields:
     label: Status
     type: select
     index: true
+    check:
+      operator: in
+      value:
+        - New
+        - Qualified
+        - Lost
     options:
       values:
         - New
@@ -52,14 +58,6 @@ indexes:
 constraints:
   - type: unique
     fields: [company, status]
-
-  - type: check
-    field: status
-    operator: in
-    value:
-      - New
-      - Qualified
-      - Lost
 ```
 
 ## Rules
@@ -82,6 +80,18 @@ Field names must be unique inside an Entity.
 
 `unique: true` creates a single-field uniqueness rule.
 
+`check` creates a single-field structured value rule:
+
+```yaml
+fields:
+  - name: amount
+    label: Amount
+    type: currency
+    check:
+      operator: gte
+      value: 0
+```
+
 Composite indexes and composite uniqueness are top-level Entity metadata, not field metadata.
 
 `indexes` contains non-unique lookup/performance indexes:
@@ -93,28 +103,23 @@ indexes:
     fields: [company, status]
 ```
 
-`constraints` contains composite uniqueness and structured checks:
+`constraints` contains composite uniqueness:
 
 ```yaml
 constraints:
   - type: unique
     fields: [user, role]
-
-  - type: check
-    field: amount
-    operator: gte
-    value: 0
 ```
 
 Unique constraints require at least two fields. Single-field uniqueness should stay on the Field with `unique: true`.
 
 Index and constraint names are optional. If omitted, dygo derives deterministic names from the Entity name, type, and fields. Provided names must use kebab-case and are converted to snake_case for PostgreSQL.
 
-Supported check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, and `not-in`. Checks are single-field only in v1 and must use structured metadata, not raw SQL.
+Supported field check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, and `not-in`. Field checks must use structured metadata, not raw SQL.
 
 Check fields must be DB-backed scalar fields. `password`, `child-table`, `json`, `attachment`, and `link` checks are not supported in v1.
 
-During `dygo migrate`, Field metadata is upserted into the Core `field` table with name, label, type, required, unique, index, default, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
+During `dygo migrate`, Field metadata is upserted into the Core `field` table with name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
 
 Type-specific settings live under `options`.
 

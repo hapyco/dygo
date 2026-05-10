@@ -114,7 +114,7 @@ go run ./cmd/dygo migrate
 
 Before applying changes, dygo builds a schema plan from metadata and compares it with the live PostgreSQL `public` schema. The plan classifies safe operations separately from unsafe or unsupported drift.
 
-Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Composite indexes, composite unique constraints, and structured check constraints come from top-level Entity metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
+Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Composite indexes and composite unique constraints come from top-level Entity metadata; single-field structured checks come from Field metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
 
 After the schema plan succeeds, `dygo migrate` upserts discovered Apps, Entities, Fields, Indexes, and Constraints into the Core metadata tables. This gives later runtime APIs and Studio a database-backed metadata registry while the YAML files remain the source of truth.
 

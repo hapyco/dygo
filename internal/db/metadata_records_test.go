@@ -27,7 +27,10 @@ func TestBuildMetadataRecords(t *testing.T) {
 					Fields: []schema.Field{
 						{Name: "email", Label: "Email", Type: "email", Required: true, Unique: true, Index: true},
 						{Name: "enabled", Label: "Enabled", Type: "boolean", Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"}},
-						{Name: "status", Label: "Status", Type: "select", Options: fieldtype.Options{Values: []string{"Active", "Disabled"}}},
+						{Name: "status", Label: "Status", Type: "select", Check: &schema.Check{Operator: "in", Value: yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{
+							{Kind: yaml.ScalarNode, Tag: "!!str", Value: "Active"},
+							{Kind: yaml.ScalarNode, Tag: "!!str", Value: "Disabled"},
+						}}}, Options: fieldtype.Options{Values: []string{"Active", "Disabled"}}},
 					},
 					Indexes: []schema.Index{
 						{Name: "by-enabled-status", Fields: []string{"enabled", "status"}},
@@ -66,6 +69,9 @@ func TestBuildMetadataRecords(t *testing.T) {
 	status := records.Fields[2]
 	if !strings.Contains(string(status.Options), `"values":["Active","Disabled"]`) {
 		t.Fatalf("status options = %s, want select values", status.Options)
+	}
+	if !strings.Contains(string(status.Check), `"operator":"in"`) || !strings.Contains(string(status.Check), `"Active"`) {
+		t.Fatalf("status check = %s, want field check metadata", status.Check)
 	}
 	if len(records.Indexes) != 1 || records.Indexes[0].Name != "by-enabled-status" || string(records.Indexes[0].Fields) != `["enabled","status"]` {
 		t.Fatalf("index records = %+v, want top-level index", records.Indexes)

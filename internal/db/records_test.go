@@ -520,10 +520,10 @@ func newUserRecordQueryer() *fakeRecordQueryer {
 		row: newFakeRow(int64(10), "user", "User", "User identity", "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
-				{"email", "Email", "email", true, true, false, nil, 1, nil},
-				{"full-name", "Full Name", "text", true, false, false, nil, 2, nil},
-				{"password", "Password", "password", false, false, false, nil, 3, nil},
-				{"enabled", "Enabled", "boolean", false, false, true, []byte("true"), 4, nil},
+				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
+				{"full-name", "Full Name", "text", true, false, false, nil, nil, 2, nil},
+				{"password", "Password", "password", false, false, false, nil, nil, 3, nil},
+				{"enabled", "Enabled", "boolean", false, false, true, []byte("true"), nil, 4, nil},
 			}),
 			newFakeRows(nil),
 			newFakeRows(nil),
@@ -536,8 +536,8 @@ func newLeadRecordQueryer() *fakeRecordQueryer {
 		row: newFakeRow(int64(20), "lead", "Lead", "Sales lead", "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
-				{"status", "Status", "select", true, false, false, nil, 1, []byte(`{"values":["New","Qualified"]}`)},
-				{"contacts", "Contacts", "child-table", false, false, false, nil, 2, []byte(`{"entity":"lead-contact"}`)},
+				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New","Qualified"]}`)},
+				{"contacts", "Contacts", "child-table", false, false, false, nil, nil, 2, []byte(`{"entity":"lead-contact"}`)},
 			}),
 			newFakeRows(nil),
 			newFakeRows(nil),
@@ -550,10 +550,10 @@ func newActivityRecordQueryer() *fakeRecordQueryer {
 		row: newFakeRow(int64(1), "activity", "Activity", "Timeline entry", "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
-				{"kind", "Kind", "select", true, false, true, nil, 1, []byte(`{"values":["record"]}`)},
-				{"operation", "Operation", "select", true, false, true, nil, 2, []byte(`{"values":["create"]}`)},
-				{"status", "Status", "select", true, false, true, nil, 3, []byte(`{"values":["success"]}`)},
-				{"title", "Title", "text", true, false, false, nil, 4, nil},
+				{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record"]}`)},
+				{"operation", "Operation", "select", true, false, true, nil, nil, 2, []byte(`{"values":["create"]}`)},
+				{"status", "Status", "select", true, false, true, nil, nil, 3, []byte(`{"values":["success"]}`)},
+				{"title", "Title", "text", true, false, false, nil, nil, 4, nil},
 			}),
 			newFakeRows(nil),
 			newFakeRows(nil),

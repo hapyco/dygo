@@ -28,6 +28,9 @@ func TestDecode(t *testing.T) {
 	if entity.Fields[0].Line == 0 {
 		t.Fatal("Decode().Fields[0].Line = 0, want source line")
 	}
+	if entity.Fields[0].Check == nil || entity.Fields[0].Check.Operator != "neq" || entity.Fields[0].Check.Value.Value != "" {
+		t.Fatalf("Decode().Fields[0].Check = %+v, want neq empty string", entity.Fields[0].Check)
+	}
 	if entity.Fields[1].Options.Values[0] != "New" {
 		t.Fatalf("Decode().Fields[1].Options.Values[0] = %q, want New", entity.Fields[1].Options.Values[0])
 	}
@@ -583,6 +586,65 @@ constraints:
 			wantError: "not supported",
 		},
 		{
+			name: "field check invalid operator",
+			body: `
+name: invoice
+label: Invoice
+fields:
+  - name: amount
+    label: Amount
+    type: currency
+    check:
+      operator: between
+      value: 0
+`,
+			wantError: "operator",
+		},
+		{
+			name: "field check missing value",
+			body: `
+name: invoice
+label: Invoice
+fields:
+  - name: amount
+    label: Amount
+    type: currency
+    check:
+      operator: gte
+`,
+			wantError: "value is required",
+		},
+		{
+			name: "field check in requires list",
+			body: `
+name: lead
+label: Lead
+fields:
+  - name: status
+    label: Status
+    type: text
+    check:
+      operator: in
+      value: New
+`,
+			wantError: "non-empty list",
+		},
+		{
+			name: "field check unsupported field type",
+			body: `
+name: user
+label: User
+fields:
+  - name: password
+    label: Password
+    type: password
+    check:
+      operator: neq
+      value: ""
+`,
+			wantError: "does not support checks",
+		},
+		{
 			name: "invalid constraint name",
 			body: `
 name: lead
@@ -644,6 +706,9 @@ fields:
     label: Full Name
     type: text
     required: true
+    check:
+      operator: neq
+      value: ""
   - name: status
     label: Status
     type: select

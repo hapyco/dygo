@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/dygo-dev/dygo/internal/entity/schema"
 	"github.com/jackc/pgx/v5"
 	"gopkg.in/yaml.v3"
 )
@@ -51,6 +52,7 @@ type fieldRecord struct {
 	Unique        bool
 	Index         bool
 	Default       []byte
+	Check         []byte
 	Position      int
 	Options       []byte
 }
@@ -166,8 +168,8 @@ func persistFieldRecord(ctx context.Context, tx pgx.Tx, entityID int64, field fi
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO "field" (entity_id, name, label, type, required, "unique", "index", "default", position, options)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, entityID, field.Name, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Position, field.Options); err != nil {
+INSERT INTO "field" (entity_id, name, label, type, required, "unique", "index", "default", "check", position, options)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, entityID, field.Name, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Position, field.Options); err != nil {
 			return fmt.Errorf("persist field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
 		}
 		return nil
@@ -180,10 +182,11 @@ SET label = $2,
 	"unique" = $5,
 	"index" = $6,
 	"default" = $7,
-	position = $8,
-	options = $9,
+	"check" = $8,
+	position = $9,
+	options = $10,
 	updated_at = now()
-WHERE id = $1`, id, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Position, field.Options); err != nil {
+WHERE id = $1`, id, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Position, field.Options); err != nil {
 		return fmt.Errorf("persist field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
 	}
 	return nil
@@ -269,6 +272,10 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			if err != nil {
 				return metadataRecordSet{}, fmt.Errorf("build field metadata %s/%s.%s options: %w", loaded.AppName, loaded.Entity.Name, field.Name, err)
 			}
+			checkJSON, err := fieldCheckJSON(field.Check)
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build field metadata %s/%s.%s check: %w", loaded.AppName, loaded.Entity.Name, field.Name, err)
+			}
 			records.Fields = append(records.Fields, fieldRecord{
 				EntityAppName: loaded.AppName,
 				EntityName:    loaded.Entity.Name,
@@ -279,6 +286,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 				Unique:        field.Unique,
 				Index:         field.Index,
 				Default:       defaultJSON,
+				Check:         checkJSON,
 				Position:      index + 1,
 				Options:       optionsJSON,
 			})
@@ -342,10 +350,32 @@ func fieldDefaultJSON(node yaml.Node) ([]byte, error) {
 	return scalarNodeJSON(node, "default")
 }
 
+func fieldCheckJSON(check *schema.Check) ([]byte, error) {
+	if check == nil {
+		return nil, nil
+	}
+	value, err := checkValueAny(check.Value)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(map[string]any{
+		"operator": check.Operator,
+		"value":    value,
+	})
+}
+
 func constraintValueJSON(node yaml.Node) ([]byte, error) {
 	if node.Kind == 0 {
 		return nil, nil
 	}
+	value, err := checkValueAny(node)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(value)
+}
+
+func checkValueAny(node yaml.Node) (any, error) {
 	if node.Kind == yaml.SequenceNode {
 		values := make([]any, 0, len(node.Content))
 		for _, item := range node.Content {
@@ -355,9 +385,9 @@ func constraintValueJSON(node yaml.Node) ([]byte, error) {
 			}
 			values = append(values, value)
 		}
-		return json.Marshal(values)
+		return values, nil
 	}
-	return scalarNodeJSON(node, "value")
+	return scalarNodeAny(node, "value")
 }
 
 func scalarNodeJSON(node yaml.Node, name string) ([]byte, error) {

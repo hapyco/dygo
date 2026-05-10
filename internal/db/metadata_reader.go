@@ -60,6 +60,7 @@ type MetadataField struct {
 	Unique   bool            `json:"unique"`
 	Index    bool            `json:"index"`
 	Default  json.RawMessage `json:"default,omitempty"`
+	Check    json.RawMessage `json:"check,omitempty"`
 	Position int             `json:"position"`
 	Options  json.RawMessage `json:"options,omitempty"`
 }
@@ -218,7 +219,7 @@ WHERE e.name = $1`, name).Scan(&meta.ID, &meta.Name, &meta.Label, &meta.Descript
 
 func (r MetadataReader) entityFields(ctx context.Context, entityID int64) ([]MetadataField, error) {
 	rows, err := r.queryer.Query(ctx, `
-SELECT name, label, type, required, "unique", "index", "default", position, options
+SELECT name, label, type, required, "unique", "index", "default", "check", position, options
 FROM "field"
 WHERE entity_id = $1
 ORDER BY position, name`, entityID)
@@ -231,11 +232,13 @@ ORDER BY position, name`, entityID)
 	for rows.Next() {
 		var field MetadataField
 		var defaultValue []byte
+		var check []byte
 		var options []byte
-		if err := rows.Scan(&field.Name, &field.Label, &field.Type, &field.Required, &field.Unique, &field.Index, &defaultValue, &field.Position, &options); err != nil {
+		if err := rows.Scan(&field.Name, &field.Label, &field.Type, &field.Required, &field.Unique, &field.Index, &defaultValue, &check, &field.Position, &options); err != nil {
 			return nil, fmt.Errorf("scan metadata field: %w", err)
 		}
 		field.Default = rawJSONOrNil(defaultValue)
+		field.Check = rawJSONOrNil(check)
 		field.Options = rawJSONOrNil(options)
 		fields = append(fields, field)
 	}

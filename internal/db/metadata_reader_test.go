@@ -75,8 +75,8 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 		row: newFakeRow(int64(10), "user", "User", "User identity", "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
-				{"email", "Email", "email", true, true, true, nil, 1, []byte(`{"entity":"user"}`)},
-				{"enabled", "Enabled", "boolean", false, false, true, []byte(`true`), 2, nil},
+				{"email", "Email", "email", true, true, true, nil, nil, 1, []byte(`{"entity":"user"}`)},
+				{"enabled", "Enabled", "boolean", false, false, true, []byte(`true`), []byte(`{"operator":"eq","value":true}`), 2, nil},
 			}),
 			newFakeRows([][]any{
 				{"by-enabled", []byte(`["enabled"]`), 1},
@@ -100,6 +100,9 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	}
 	if string(meta.Fields[1].Default) != "true" {
 		t.Fatalf("enabled default = %q, want true", string(meta.Fields[1].Default))
+	}
+	if string(meta.Fields[1].Check) != `{"operator":"eq","value":true}` {
+		t.Fatalf("enabled check = %q, want field check metadata", string(meta.Fields[1].Check))
 	}
 	if len(meta.Indexes) != 1 || meta.Indexes[0].Name != "by-enabled" || string(meta.Indexes[0].Fields) != `["enabled"]` {
 		t.Fatalf("GetEntityMeta() indexes = %+v, want by-enabled", meta.Indexes)

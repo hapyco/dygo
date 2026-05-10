@@ -401,6 +401,20 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 					Source:     fieldSource(loaded, field),
 				})
 			}
+			if field.Check != nil {
+				definition, err := structuredCheckValue(column, field.Check.Operator, field.Check.Value)
+				if err != nil {
+					return desiredSchema{}, fieldSchemaError(loaded, field, err)
+				}
+				constraint := constraintName(table, column, storageName(field.Check.Operator)+"_check")
+				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
+					Name:       constraint,
+					Type:       "check",
+					Columns:    []string{column},
+					Definition: definition,
+					Source:     fieldSource(loaded, field),
+				})
+			}
 		}
 		for _, index := range loaded.Entity.Indexes {
 			columns, err := columnsForMetadataFields(index.Fields, fieldColumns)
@@ -788,11 +802,15 @@ func selectCheck(column string, values []string) string {
 }
 
 func structuredCheck(column string, constraint schema.Constraint) (string, error) {
-	value, err := checkValueSQL(constraint.Value)
+	return structuredCheckValue(column, constraint.Operator, constraint.Value)
+}
+
+func structuredCheckValue(column string, operator string, valueNode yaml.Node) (string, error) {
+	value, err := checkValueSQL(valueNode)
 	if err != nil {
 		return "", fmt.Errorf("check constraint value: %w", err)
 	}
-	switch constraint.Operator {
+	switch operator {
 	case "eq":
 		return fmt.Sprintf("CHECK (%s = %s)", quoteIdent(column), value), nil
 	case "neq":
@@ -810,7 +828,7 @@ func structuredCheck(column string, constraint schema.Constraint) (string, error
 	case "not-in":
 		return fmt.Sprintf("CHECK (%s NOT IN (%s))", quoteIdent(column), value), nil
 	default:
-		return "", fmt.Errorf("unsupported operator %q", constraint.Operator)
+		return "", fmt.Errorf("unsupported operator %q", operator)
 	}
 }
 

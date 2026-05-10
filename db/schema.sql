@@ -173,7 +173,8 @@ CREATE TABLE public.field (
     index boolean DEFAULT false,
     "default" jsonb,
     "position" integer,
-    options jsonb
+    options jsonb,
+    "check" jsonb
 );
 
 

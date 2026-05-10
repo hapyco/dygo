@@ -46,6 +46,10 @@ fields:
     label: Default
     type: json
 
+  - name: check
+    label: Check
+    type: json
+
   - name: position
     label: Position
     type: int

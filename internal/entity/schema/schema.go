@@ -32,7 +32,14 @@ type Field struct {
 	Unique   bool              `yaml:"unique,omitempty"`
 	Index    bool              `yaml:"index,omitempty"`
 	Default  yaml.Node         `yaml:"default,omitempty"`
+	Check    *Check            `yaml:"check,omitempty"`
 	Options  fieldtype.Options `yaml:"options,omitempty"`
+}
+
+// Check describes one single-field structured value check.
+type Check struct {
+	Operator string    `yaml:"operator"`
+	Value    yaml.Node `yaml:"value,omitempty"`
 }
 
 // Index describes a non-unique Entity-level database index.
@@ -264,10 +271,7 @@ func validateCheckConstraint(constraint Constraint, fields map[string]Field, fie
 			*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("check constraint field %q type %q is unknown", constraint.Field, field.Type)))
 		}
 	}
-	if !isCheckOperator(constraint.Operator) {
-		*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("check constraint operator %q is not supported", constraint.Operator)))
-	}
-	validateCheckValue(constraint, problems)
+	validateCheckRule(constraint.Line, "check constraint", constraint.Operator, constraint.Value, problems)
 
 	key := strings.Join([]string{constraint.Type, constraint.Field, constraint.Operator, checkValueKey(constraint.Value)}, "\x00")
 	if _, ok := seenDefinitions[key]; ok {
@@ -317,38 +321,45 @@ func isCheckOperator(value string) bool {
 	}
 }
 
-func validateCheckValue(constraint Constraint, problems *[]string) {
-	if constraint.Operator == "in" || constraint.Operator == "not-in" {
-		if constraint.Value.Kind == 0 {
-			*problems = append(*problems, withLine(constraint.Line, "check constraint value is required"))
+func validateCheckRule(line int, owner string, operator string, value yaml.Node, problems *[]string) {
+	if !isCheckOperator(operator) {
+		*problems = append(*problems, withLine(line, fmt.Sprintf("%s operator %q is not supported", owner, operator)))
+	}
+	validateCheckValue(line, owner, operator, value, problems)
+}
+
+func validateCheckValue(line int, owner string, operator string, value yaml.Node, problems *[]string) {
+	if operator == "in" || operator == "not-in" {
+		if value.Kind == 0 {
+			*problems = append(*problems, withLine(line, fmt.Sprintf("%s value is required", owner)))
 			return
 		}
-		if constraint.Value.Kind != yaml.SequenceNode || len(constraint.Value.Content) == 0 {
-			*problems = append(*problems, withLine(constraint.Line, "check constraint value must be a non-empty list for in and not-in"))
+		if value.Kind != yaml.SequenceNode || len(value.Content) == 0 {
+			*problems = append(*problems, withLine(line, fmt.Sprintf("%s value must be a non-empty list for in and not-in", owner)))
 			return
 		}
-		for _, item := range constraint.Value.Content {
+		for _, item := range value.Content {
 			if item.Kind != yaml.ScalarNode {
-				*problems = append(*problems, withLine(constraint.Line, "check constraint list values must be scalar"))
+				*problems = append(*problems, withLine(line, fmt.Sprintf("%s list values must be scalar", owner)))
 				return
 			}
 			if item.Tag == "!!null" {
-				*problems = append(*problems, withLine(constraint.Line, "check constraint list values must not be null"))
+				*problems = append(*problems, withLine(line, fmt.Sprintf("%s list values must not be null", owner)))
 				return
 			}
 		}
 		return
 	}
-	if constraint.Value.Kind == 0 {
-		*problems = append(*problems, withLine(constraint.Line, "check constraint value is required"))
+	if value.Kind == 0 {
+		*problems = append(*problems, withLine(line, fmt.Sprintf("%s value is required", owner)))
 		return
 	}
-	if constraint.Value.Kind != yaml.ScalarNode {
-		*problems = append(*problems, withLine(constraint.Line, "check constraint value must be scalar"))
+	if value.Kind != yaml.ScalarNode {
+		*problems = append(*problems, withLine(line, fmt.Sprintf("%s value must be scalar", owner)))
 		return
 	}
-	if constraint.Value.Tag == "!!null" {
-		*problems = append(*problems, withLine(constraint.Line, "check constraint value must not be null"))
+	if value.Tag == "!!null" {
+		*problems = append(*problems, withLine(line, fmt.Sprintf("%s value must not be null", owner)))
 	}
 }
 
@@ -417,6 +428,12 @@ func validateField(field Field, registry fieldtype.Registry, seenFields map[stri
 	}
 	if field.Default.Kind != 0 && !definition.AllowDefault {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q does not support default values", fieldLabel, field.Type)))
+	}
+	if field.Check != nil {
+		if !isCheckFieldType(field.Type) {
+			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q does not support checks", fieldLabel, field.Type)))
+		}
+		validateCheckRule(field.Line, fmt.Sprintf("field %q check", fieldLabel), field.Check.Operator, field.Check.Value, problems)
 	}
 	if err := definition.Validate(field.Options); err != nil {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q options invalid for type %q: %v", fieldLabel, field.Type, err)))
