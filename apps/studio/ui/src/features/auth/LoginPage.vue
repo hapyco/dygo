@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import { DButton, DCheckbox, DErrorState, DField, DInput } from '@dygo/ui'
+import { Button, Checkbox, ErrorState, Field, Input } from '@dygo/ui'
 import { login, type CurrentUser } from './auth.api'
 
 const identifier = ref('')
@@ -50,16 +50,16 @@ async function submitLogin() {
         Open the workspace for operating records, permissions, activity, and metadata-backed business apps.
       </p>
 
-      <DErrorState v-if="error" :message="error" />
+      <ErrorState v-if="error" :message="error" />
 
       <div v-if="currentUser" class="login-panel__signed-in" role="status">
         Signed in as {{ currentUser['full-name'] || currentUser.email }}.
       </div>
 
       <form class="login-form" @submit.prevent="submitLogin">
-        <DField id="studio-identifier" label="Email or username">
+        <Field id="studio-identifier" label="Email or username">
           <template #default="{ id, invalid }">
-            <DInput
+            <Input
               :id="id"
               v-model="identifier"
               name="identifier"
@@ -70,11 +70,11 @@ async function submitLogin() {
               required
             />
           </template>
-        </DField>
+        </Field>
 
-        <DField id="studio-password" label="Password">
+        <Field id="studio-password" label="Password">
           <template #default="{ id, invalid }">
-            <DInput
+            <Input
               :id="id"
               v-model="password"
               name="password"
@@ -85,16 +85,16 @@ async function submitLogin() {
               required
             />
           </template>
-        </DField>
+        </Field>
 
         <label class="login-form__remember">
-          <DCheckbox v-model="remember" name="remember" :disabled="loading" />
+          <Checkbox v-model="remember" name="remember" :disabled="loading" />
           <span>Remember this browser</span>
         </label>
 
-        <DButton class="login-form__submit" type="submit" :loading="loading" :disabled="!canSubmit">
+        <Button class="login-form__submit" type="submit" :loading="loading" :disabled="!canSubmit">
           Sign in
-        </DButton>
+        </Button>
       </form>
     </section>
   </main>

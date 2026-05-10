@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import DLabel from '../atoms/DLabel.vue'
+import Label from '../atoms/Label.vue'
 
 defineProps<{
   id: string
@@ -12,7 +12,7 @@ defineProps<{
 <template>
   <div class="d-field">
     <div class="d-field__header">
-      <DLabel :for="id">{{ label }}</DLabel>
+      <Label :for="id">{{ label }}</Label>
       <span v-if="hint" class="d-field__hint">{{ hint }}</span>
     </div>
     <slot :id="id" :invalid="Boolean(error)" />

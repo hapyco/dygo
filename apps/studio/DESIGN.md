@@ -168,37 +168,37 @@ CommandMenu
 Atoms:
 
 ```txt
-DButton
-DIconButton
-DInput
-DLabel
-DTextarea
-DCheckbox
-DBadge
-DSpinner
+Button
+IconButton
+Input
+Label
+Textarea
+Checkbox
+Badge
+Spinner
 ```
 
 Molecules:
 
 ```txt
-DField
-DFormSection
-DToolbar
-DEmptyState
-DErrorState
-DSearchBox
-DDataCell
+Field
+FormSection
+Toolbar
+EmptyState
+ErrorState
+SearchBox
+DataCell
 ```
 
 Organisms:
 
 ```txt
-DStudioShell
-DSidebar
-DTopBar
-DEntityTable
-DRecordForm
-DActivityTimeline
+Shell
+Sidebar
+TopBar
+EntityTable
+RecordForm
+ActivityTimeline
 ```
 
 Feature code should use dygo design components. It should not import Reka directly unless a new design primitive is being built.
