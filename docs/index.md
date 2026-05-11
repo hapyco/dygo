@@ -14,6 +14,7 @@ These docs live in the repository so they are versioned with code, reviewed in P
 - [App Model](app-model.md) explains built-in apps, business apps, and app install locations.
 - [App Manifest](app-manifest.md) defines the first `app.yml` schema.
 - [Entity Metadata](entity-metadata.md) defines the Entity YAML schema, Record naming, singular storage naming, field types, indexes, and constraints.
+- [Metadata Authoring](metadata-authoring.md) explains JSON Schemas and editor support for dygo YAML files.
 - [Config](config.md) explains required project config and current runtime settings.
 - [Database](database.md) explains PostgreSQL config, secrets, metadata schema plans, schema sync, explicit schema prune, schema snapshots, and `dygo db check`.
 - [Explicit Patches](patches.md) explains how unsafe metadata changes are handled without reintroducing SQL migrations, and where patches differ from schema prune.

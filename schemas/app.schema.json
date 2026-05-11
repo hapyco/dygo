@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dygo.dev/schemas/app.schema.json",
+  "title": "dygo App Manifest",
+  "description": "Schema for dygo app.yml manifests. Runtime validation in Go remains authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "label", "version"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "description": "Canonical kebab-case app name."
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-facing app label."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
+      "description": "Semver-like app version."
+    },
+    "description": {
+      "type": "string"
+    },
+    "dependencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "App-relative metadata and asset directories. Omitted paths use dygo defaults.",
+      "properties": {
+        "entities": { "$ref": "#/$defs/relativePath" },
+        "permissions": { "$ref": "#/$defs/relativePath" },
+        "hooks": { "$ref": "#/$defs/relativePath" },
+        "fixtures": { "$ref": "#/$defs/relativePath" },
+        "patches": { "$ref": "#/$defs/relativePath" },
+        "docs": { "$ref": "#/$defs/relativePath" },
+        "assets": { "$ref": "#/$defs/relativePath" }
+      }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!\\.\\.?$)(?!\\.\\.?/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$"
+    }
+  }
+}

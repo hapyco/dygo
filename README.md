@@ -118,6 +118,7 @@ docs/              project doctrine, thesis, and structure notes
 - [App Model](docs/app-model.md)
 - [App Manifest](docs/app-manifest.md)
 - [Entity Metadata](docs/entity-metadata.md)
+- [Metadata Authoring](docs/metadata-authoring.md)
 - [Config](docs/config.md)
 - [Database](docs/database.md)
 - [Explicit Patches](docs/patches.md)

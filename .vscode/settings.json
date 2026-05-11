@@ -1,0 +1,20 @@
+{
+  "yaml.schemas": {
+    "./schemas/app.schema.json": [
+      "apps/*/app.yml",
+      ".dygo/apps/*/app.yml"
+    ],
+    "./schemas/entity.schema.json": [
+      "apps/*/entities/*.yml",
+      ".dygo/apps/*/entities/*.yml"
+    ],
+    "./schemas/fixture.schema.json": [
+      "apps/*/fixtures/*.yml",
+      ".dygo/apps/*/fixtures/*.yml"
+    ],
+    "./schemas/config.schema.json": [
+      "configs/dygo.yaml"
+    ]
+  },
+  "yaml.validate": true
+}

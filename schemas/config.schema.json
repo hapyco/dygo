@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dygo.dev/schemas/config.schema.json",
+  "title": "dygo Project Config",
+  "description": "Schema for configs/dygo.yaml. Runtime validation in Go remains authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["database"],
+  "properties": {
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "default": "127.0.0.1"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 6790
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "driver": {
+          "type": "string",
+          "const": "postgres",
+          "default": "postgres"
+        },
+        "url": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["secret"],
+          "properties": {
+            "secret": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "description": "Encrypted secret name that resolves to the database URL."
+            }
+          }
+        }
+      }
+    }
+  }
+}

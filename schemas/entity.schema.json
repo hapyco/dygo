@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dygo.dev/schemas/entity.schema.json",
+  "title": "dygo Entity Metadata",
+  "description": "Schema for dygo Entity YAML files. Runtime validation in Go remains authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "label", "fields"],
+  "properties": {
+    "name": { "$ref": "#/$defs/kebabName" },
+    "label": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "naming": { "$ref": "#/$defs/naming" },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/field" }
+    },
+    "indexes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/index" }
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/constraint" }
+    }
+  },
+  "$defs": {
+    "kebabName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "fieldType": {
+      "type": "string",
+      "enum": [
+        "text",
+        "email",
+        "phone",
+        "password",
+        "long-text",
+        "int",
+        "bigint",
+        "decimal",
+        "currency",
+        "boolean",
+        "date",
+        "datetime",
+        "time",
+        "select",
+        "link",
+        "child-table",
+        "attachment",
+        "json"
+      ]
+    },
+    "scalar": {
+      "type": ["string", "number", "integer", "boolean"]
+    },
+    "naming": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy"],
+          "properties": {
+            "strategy": { "const": "random" },
+            "length": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 64,
+              "default": 16
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy", "field"],
+          "properties": {
+            "strategy": { "const": "field" },
+            "field": { "$ref": "#/$defs/kebabName" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy", "pattern"],
+          "properties": {
+            "strategy": { "const": "series" },
+            "pattern": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Supports {YY}, {YYYY}, {MM}, and one hash counter token such as {#####}."
+            }
+          }
+        }
+      ]
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "label", "type"],
+      "properties": {
+        "name": { "$ref": "#/$defs/kebabName" },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": { "$ref": "#/$defs/fieldType" },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "unique": {
+          "type": "boolean",
+          "default": false
+        },
+        "index": {
+          "type": "boolean",
+          "default": false
+        },
+        "default": true,
+        "check": { "$ref": "#/$defs/check" },
+        "options": { "$ref": "#/$defs/options" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "const": "select" } },
+            "required": ["type"]
+          },
+          "then": {
+            "required": ["options"],
+            "properties": {
+              "options": { "$ref": "#/$defs/selectOptions" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["link", "child-table"] } },
+            "required": ["type"]
+          },
+          "then": {
+            "required": ["options"],
+            "properties": {
+              "options": { "$ref": "#/$defs/entityOptions" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "not": { "enum": ["select", "link", "child-table"] }
+              }
+            },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "options": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "entity": { "$ref": "#/$defs/kebabName" }
+      }
+    },
+    "selectOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["values"],
+      "properties": {
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "entityOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity"],
+      "properties": {
+        "entity": { "$ref": "#/$defs/kebabName" }
+      }
+    },
+    "check": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operator", "value"],
+          "properties": {
+            "operator": { "enum": ["eq", "neq", "gt", "gte", "lt", "lte"] },
+            "value": { "$ref": "#/$defs/scalar" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operator", "value"],
+          "properties": {
+            "operator": { "enum": ["in", "not-in"] },
+            "value": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/scalar" }
+            }
+          }
+        }
+      ]
+    },
+    "index": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fields"],
+      "properties": {
+        "name": { "$ref": "#/$defs/kebabName" },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/kebabName" }
+        }
+      }
+    },
+    "constraint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "fields"],
+          "properties": {
+            "name": { "$ref": "#/$defs/kebabName" },
+            "type": { "const": "unique" },
+            "fields": {
+              "type": "array",
+              "minItems": 2,
+              "items": { "$ref": "#/$defs/kebabName" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "field", "operator", "value"],
+          "properties": {
+            "name": { "$ref": "#/$defs/kebabName" },
+            "type": { "const": "check" },
+            "field": { "$ref": "#/$defs/kebabName" },
+            "operator": { "enum": ["eq", "neq", "gt", "gte", "lt", "lte", "in", "not-in"] },
+            "value": true
+          }
+        }
+      ]
+    }
+  }
+}
