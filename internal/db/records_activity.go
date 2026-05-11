@@ -82,7 +82,7 @@ func (s RecordStore) withRecordMutation(ctx context.Context, fn func(RecordStore
 	if err != nil {
 		return nil, recordError(RecordErrorInternal, "begin record transaction failed", nil, err)
 	}
-	txStore := NewRecordStore(tx)
+	txStore := NewRecordStoreWithHooks(tx, s.hooks)
 	record, err := fn(txStore)
 	if err != nil {
 		_ = tx.Rollback(ctx)
@@ -95,19 +95,19 @@ func (s RecordStore) withRecordMutation(ctx context.Context, fn func(RecordStore
 	return record, nil
 }
 
-func (s RecordStore) writeRecordActivity(ctx context.Context, layout recordLayout, operation string, recordID int64, changes []map[string]any, snapshot Record) error {
-	if layout.Entity == "activity" {
+func recordActivityHook(ctx context.Context, hookCtx RecordHookContext) error {
+	if hookCtx.Entity == "activity" {
 		return nil
 	}
 	activityName, err := randomRecordName(0)
 	if err != nil {
 		return recordError(RecordErrorInternal, "generate activity name failed", nil, err)
 	}
-	changesJSON, err := activityJSON(changes)
+	changesJSON, err := activityJSON(hookCtx.Changes)
 	if err != nil {
 		return err
 	}
-	snapshotJSON, err := activityJSON(snapshot)
+	snapshotJSON, err := activityJSON(hookCtx.Snapshot)
 	if err != nil {
 		return err
 	}
@@ -119,14 +119,14 @@ func (s RecordStore) writeRecordActivity(ctx context.Context, layout recordLayou
 	if actorID, ok := ActivityActorFromContext(ctx); ok {
 		actor = actorID
 	}
-	_, err = s.queryer.Exec(ctx, `INSERT INTO "activity" ("kind", "operation", "status", "entity_id", "record_id", "actor_id", "title", "message", "changes", "snapshot", "details", "name") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12)`,
+	_, err = hookCtx.Queryer.Exec(ctx, `INSERT INTO "activity" ("kind", "operation", "status", "entity_id", "record_id", "actor_id", "title", "message", "changes", "snapshot", "details", "name") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12)`,
 		"record",
-		operation,
+		hookCtx.Operation,
 		"success",
-		layout.EntityID,
-		recordID,
+		hookCtx.EntityID,
+		hookCtx.RecordID,
 		actor,
-		activityTitle(layout, operation),
+		activityTitle(hookCtx.EntityLabel, hookCtx.Entity, hookCtx.Operation),
 		nil,
 		changesJSON,
 		snapshotJSON,
@@ -211,10 +211,10 @@ func activityJSON(value any) (any, error) {
 	return string(encoded), nil
 }
 
-func activityTitle(layout recordLayout, operation string) string {
-	label := strings.TrimSpace(layout.Label)
+func activityTitle(label string, entity string, operation string) string {
+	label = strings.TrimSpace(label)
 	if label == "" {
-		label = layout.Entity
+		label = entity
 	}
 	switch operation {
 	case activityOperationCreate:

@@ -43,6 +43,7 @@ type RecordQueryer interface {
 type RecordStore struct {
 	queryer  RecordQueryer
 	metadata MetadataReader
+	hooks    *RecordHookRegistry
 }
 
 // Record is one metadata-backed saved Entity instance.
@@ -92,7 +93,12 @@ func IsRecordError(err error) bool {
 
 // NewRecordStore returns a Record store backed by queryer.
 func NewRecordStore(queryer RecordQueryer) RecordStore {
-	return RecordStore{queryer: queryer, metadata: NewMetadataReader(queryer)}
+	return NewRecordStoreWithHooks(queryer, DefaultRecordHookRegistry())
+}
+
+// NewRecordStoreWithHooks returns a Record store backed by queryer and hooks.
+func NewRecordStoreWithHooks(queryer RecordQueryer, hooks *RecordHookRegistry) RecordStore {
+	return RecordStore{queryer: queryer, metadata: NewMetadataReader(queryer), hooks: hooks}
 }
 
 // ListRecords returns one deterministic page of Records for entity.
@@ -219,6 +225,24 @@ func (s RecordStore) createRecord(ctx context.Context, entity string, input Reco
 	if err != nil {
 		return nil, err
 	}
+	input = cloneRecordInput(input)
+	hookCtx := newRecordHookContext(RecordBeforeValidate, layout)
+	hookCtx.Operation = activityOperationCreate
+	hookCtx.Input = input
+	if err := s.runRecordHooks(ctx, hookCtx); err != nil {
+		return nil, err
+	}
+	if err := layout.validateCreateInput(input); err != nil {
+		return nil, err
+	}
+	hookCtx.Event = RecordValidate
+	if err := s.runRecordHooks(ctx, hookCtx); err != nil {
+		return nil, err
+	}
+	hookCtx.Event = RecordBeforeCreate
+	if err := s.runRecordHooks(ctx, hookCtx); err != nil {
+		return nil, err
+	}
 
 	var record Record
 	for attempt := 0; attempt <= randomNameRetries; attempt++ {
@@ -244,7 +268,13 @@ func (s RecordStore) createRecord(ctx context.Context, entity string, input Reco
 	if err != nil {
 		return nil, err
 	}
-	if err := s.writeRecordActivity(ctx, layout, activityOperationCreate, recordID, nil, record); err != nil {
+	afterCtx := newRecordHookContext(RecordAfterCreate, layout)
+	afterCtx.Operation = activityOperationCreate
+	afterCtx.RecordID = recordID
+	afterCtx.Input = input
+	afterCtx.NewRecord = record
+	afterCtx.Snapshot = record
+	if err := s.runRecordHooks(ctx, afterCtx); err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -302,12 +332,36 @@ func (s RecordStore) updateRecord(ctx context.Context, entity string, id int64, 
 	if err != nil {
 		return nil, err
 	}
+	input = cloneRecordInput(input)
 	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
 	if err != nil {
 		return nil, err
 	}
+	hookCtx := newRecordHookContext(RecordBeforeValidate, layout)
+	hookCtx.Operation = activityOperationUpdate
+	hookCtx.RecordID = id
+	hookCtx.Input = input
+	hookCtx.OldRecord = oldRecord
+	if err := s.runRecordHooks(ctx, hookCtx); err != nil {
+		return nil, err
+	}
+	if err := layout.validateUpdateFields(input); err != nil {
+		return nil, err
+	}
+	hookCtx.Event = RecordValidate
+	if err := s.runRecordHooks(ctx, hookCtx); err != nil {
+		return nil, err
+	}
 	mutation, err := layout.updateMutation(input)
 	if err != nil {
+		return nil, err
+	}
+	beforeCtx := newRecordHookContext(RecordBeforeUpdate, layout)
+	beforeCtx.Operation = activityOperationUpdate
+	beforeCtx.RecordID = id
+	beforeCtx.Input = input
+	beforeCtx.OldRecord = oldRecord
+	if err := s.runRecordHooks(ctx, beforeCtx); err != nil {
 		return nil, err
 	}
 
@@ -331,7 +385,14 @@ func (s RecordStore) updateRecord(ctx context.Context, entity string, id int64, 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.writeRecordActivity(ctx, layout, activityOperationUpdate, recordID, changes, nil); err != nil {
+	afterCtx := newRecordHookContext(RecordAfterUpdate, layout)
+	afterCtx.Operation = activityOperationUpdate
+	afterCtx.RecordID = recordID
+	afterCtx.Input = input
+	afterCtx.OldRecord = oldRecord
+	afterCtx.NewRecord = record
+	afterCtx.Changes = changes
+	if err := s.runRecordHooks(ctx, afterCtx); err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -360,6 +421,13 @@ func (s RecordStore) deleteRecord(ctx context.Context, entity string, id int64) 
 	if err != nil {
 		return err
 	}
+	beforeCtx := newRecordHookContext(RecordBeforeDelete, layout)
+	beforeCtx.Operation = activityOperationDelete
+	beforeCtx.RecordID = id
+	beforeCtx.OldRecord = oldRecord
+	if err := s.runRecordHooks(ctx, beforeCtx); err != nil {
+		return err
+	}
 	tag, err := s.queryer.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE %s = $1", quoteIdent(layout.Table), quoteIdent("id")), id)
 	if err != nil {
 		return classifyRecordDBError(err, entity)
@@ -371,7 +439,12 @@ func (s RecordStore) deleteRecord(ctx context.Context, entity string, id int64) 
 	if err != nil {
 		return err
 	}
-	if err := s.writeRecordActivity(ctx, layout, activityOperationDelete, recordID, nil, oldRecord); err != nil {
+	afterCtx := newRecordHookContext(RecordAfterDelete, layout)
+	afterCtx.Operation = activityOperationDelete
+	afterCtx.RecordID = recordID
+	afterCtx.OldRecord = oldRecord
+	afterCtx.Snapshot = oldRecord
+	if err := s.runRecordHooks(ctx, afterCtx); err != nil {
 		return err
 	}
 	return nil
@@ -445,6 +518,14 @@ func (s RecordStore) requireQueryer() error {
 		return recordError(RecordErrorInternal, "record queryer is required", nil, nil)
 	}
 	return nil
+}
+
+func (s RecordStore) runRecordHooks(ctx context.Context, hookCtx RecordHookContext) error {
+	if s.hooks == nil {
+		return nil
+	}
+	hookCtx.Queryer = s.queryer
+	return s.hooks.Run(ctx, hookCtx)
 }
 
 type recordLayout struct {
@@ -562,20 +643,8 @@ func (l recordLayout) recordFromValues(values []any) (Record, error) {
 
 func (s RecordStore) createMutation(ctx context.Context, layout recordLayout, input RecordInput) (recordMutation, error) {
 	input = normalizeRecordInput(input)
-	if err := layout.validateCreateFields(input); err != nil {
+	if err := layout.validateCreateInput(input); err != nil {
 		return recordMutation{}, err
-	}
-	for _, field := range layout.Fields {
-		if !field.Required || len(field.Default) > 0 {
-			continue
-		}
-		if field.SystemName {
-			// The generated system name column enforces this field.
-			continue
-		}
-		if _, ok := input[field.Name]; !ok {
-			return recordMutation{}, recordError(RecordErrorValidation, "required field is missing", map[string]any{"entity": layout.Entity, "field": field.Name}, nil)
-		}
 	}
 	mutation, err := layout.writeMutation(input)
 	if err != nil {
@@ -608,6 +677,25 @@ func (l recordLayout) updateMutation(input RecordInput) (recordMutation, error) 
 
 func (l recordLayout) validateCreateFields(input RecordInput) error {
 	return l.validateInputFields(input, true, false)
+}
+
+func (l recordLayout) validateCreateInput(input RecordInput) error {
+	if err := l.validateCreateFields(input); err != nil {
+		return err
+	}
+	for _, field := range l.Fields {
+		if !field.Required || len(field.Default) > 0 {
+			continue
+		}
+		if field.SystemName {
+			// The generated system name column enforces this field.
+			continue
+		}
+		if _, ok := input[field.Name]; !ok {
+			return recordError(RecordErrorValidation, "required field is missing", map[string]any{"entity": l.Entity, "field": field.Name}, nil)
+		}
+	}
+	return nil
 }
 
 func (l recordLayout) validateUpdateFields(input RecordInput) error {

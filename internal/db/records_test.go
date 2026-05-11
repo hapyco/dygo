@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -431,6 +432,87 @@ func TestRecordStoreActivityFailureRollsBackTransactionalMutation(t *testing.T) 
 	assertRecordError(t, err, RecordErrorInternal, "")
 	if transactional.tx == nil || !transactional.tx.rolledBack || transactional.tx.committed {
 		t.Fatalf("transaction state = %+v, want rollback without commit", transactional.tx)
+	}
+}
+
+func TestRecordStoreRunsGlobalHooksBeforeEntityHooks(t *testing.T) {
+	queryer := newUserRecordQueryer()
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+	var order []string
+	registry := NewRecordHookRegistry()
+	mustRegisterRecordHook(registry.RegisterGlobal(RecordBeforeCreate, "global-before-create", func(context.Context, RecordHookContext) error {
+		order = append(order, "global-before-create")
+		return nil
+	}))
+	mustRegisterRecordHook(registry.RegisterEntity("user", RecordBeforeCreate, "entity-before-create", func(context.Context, RecordHookContext) error {
+		order = append(order, "entity-before-create")
+		return nil
+	}))
+	mustRegisterRecordHook(registry.RegisterGlobal(RecordAfterCreate, "global-after-create", func(context.Context, RecordHookContext) error {
+		order = append(order, "global-after-create")
+		return nil
+	}))
+	mustRegisterRecordHook(registry.RegisterEntity("user", RecordAfterCreate, "entity-after-create", func(context.Context, RecordHookContext) error {
+		order = append(order, "entity-after-create")
+		return nil
+	}))
+
+	_, err := NewRecordStoreWithHooks(queryer, registry).CreateRecord(context.Background(), "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"A User"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v, want nil", err)
+	}
+	want := []string{"global-before-create", "entity-before-create", "global-after-create", "entity-after-create"}
+	if !reflect.DeepEqual(order, want) {
+		t.Fatalf("hook order = %#v, want %#v", order, want)
+	}
+}
+
+func TestRecordStoreBeforeValidateHookCanMutateInput(t *testing.T) {
+	queryer := newUserRecordQueryer()
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "Filled User", true},
+	}))
+	registry := NewRecordHookRegistry()
+	mustRegisterRecordHook(registry.RegisterEntity("user", RecordBeforeValidate, "fill-full-name", func(_ context.Context, hookCtx RecordHookContext) error {
+		hookCtx.Input["full-name"] = json.RawMessage(`"Filled User"`)
+		return nil
+	}))
+
+	_, err := NewRecordStoreWithHooks(queryer, registry).CreateRecord(context.Background(), "user", recordInput(map[string]string{
+		"email": `"a@example.com"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v, want nil", err)
+	}
+	args := queryer.args[len(queryer.args)-1]
+	if args[1] != "Filled User" {
+		t.Fatalf("create args = %#v, want hook-mutated full-name", args)
+	}
+}
+
+func TestRecordStoreHookErrorPreventsMutation(t *testing.T) {
+	queryer := newUserRecordQueryer()
+	registry := NewRecordHookRegistry()
+	mustRegisterRecordHook(registry.RegisterEntity("user", RecordBeforeCreate, "reject-create", func(context.Context, RecordHookContext) error {
+		return errors.New("blocked by test hook")
+	}))
+
+	_, err := NewRecordStoreWithHooks(queryer, registry).CreateRecord(context.Background(), "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"A User"`,
+	}))
+	assertRecordError(t, err, RecordErrorValidation, "")
+	for _, query := range queryer.queries {
+		if strings.Contains(query, `INSERT INTO "user"`) {
+			t.Fatalf("query %q was executed after hook rejection", query)
+		}
 	}
 }
 
