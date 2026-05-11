@@ -6,7 +6,7 @@ It is where operators run the business, builders configure the system, and agent
 
 Studio is a first-party dygo app, not a temporary admin panel. It should feel like one coherent product across records, lists, forms, saved views, jobs, audit logs, settings, and spaces.
 
-The framework repo includes the initial Studio app manifest at `apps/studio/app.yml`. The first scaffold defines the app contract only; UI source and runtime behavior come later.
+The framework repo includes the Studio app manifest at `apps/studio/app.yml` and the first Vue/Vite frontend scaffold under `apps/studio/ui`. The current scaffold includes login, route guards, root-mounted page placeholders, and Dygo UI foundation components. Shell, stores, metadata renderers, and final page types are still being built.
 
 ## Mental Model
 
@@ -58,6 +58,8 @@ Current routes:
 Root-level dynamic slugs are intentionally shared by future Pages, Spaces, and Entity list pages. In the current v1 router, dynamic root slugs resolve as Entity list routes because custom Pages and Spaces do not exist yet.
 
 Reserved root slugs are limited to technical paths: `api`, `assets`, `health`, `login`, and `logout`.
+
+Entity names are globally unique in v1 because those names become root route slugs. Page and Space slugs will get their own collision validation when those models are implemented.
 
 Record IDs are numeric in v1. Activity is shown inside the Record page instead of using a separate Studio URL.
 

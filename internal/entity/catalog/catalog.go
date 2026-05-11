@@ -107,13 +107,15 @@ func (c Catalog) discoverApp(app manifest.LoadedApp) ([]LoadedEntity, error) {
 
 func validateCatalog(entities []LoadedEntity) error {
 	var problems []string
-	seen := map[string]string{}
+	seen := map[string]LoadedEntity{}
 	for _, entity := range entities {
-		key := entity.AppName + "\x00" + entity.Entity.Name
-		if previousPath, ok := seen[key]; ok {
-			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q has duplicate entity %q in %s and %s", entity.AppName, entity.Entity.Name, previousPath, entity.Path)))
+		if isReservedRootSlug(entity.Entity.Name) {
+			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q uses reserved root route slug %q", entity.AppName, entity.Entity.Name, entity.Entity.Name)))
+		}
+		if previous, ok := seen[entity.Entity.Name]; ok {
+			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q duplicates global entity name %q from app %q at %s", entity.AppName, entity.Entity.Name, entity.Entity.Name, previous.AppName, location(previous.Path, previous.Entity.Line))))
 		} else {
-			seen[key] = entity.Path
+			seen[entity.Entity.Name] = entity
 		}
 	}
 
@@ -146,10 +148,16 @@ func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
 				*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("references unknown entity target %q", targetName)))
 				continue
 			}
-			if len(matches) > 1 {
-				*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("references ambiguous entity target %q found in %s", targetName, targetLocations(matches))))
-			}
 		}
+	}
+}
+
+func isReservedRootSlug(value string) bool {
+	switch value {
+	case "api", "assets", "health", "login", "logout":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -195,13 +203,4 @@ func location(path string, line int) string {
 		return path
 	}
 	return fmt.Sprintf("%s:%d", path, line)
-}
-
-func targetLocations(entities []LoadedEntity) string {
-	locations := make([]string, 0, len(entities))
-	for _, entity := range entities {
-		locations = append(locations, fmt.Sprintf("%s/%s at %s", entity.AppName, entity.Entity.Name, location(entity.Path, entity.Entity.Line)))
-	}
-	sort.Strings(locations)
-	return strings.Join(locations, ", ")
 }

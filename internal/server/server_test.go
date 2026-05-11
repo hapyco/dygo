@@ -189,7 +189,7 @@ func TestMetadataRoutes(t *testing.T) {
 			request := authenticatedRequest(http.MethodGet, tt.path, "")
 			recorder := httptest.NewRecorder()
 
-			NewRouter(Options{Auth: authStore, Metadata: store}).ServeHTTP(recorder, request)
+			NewRouter(Options{Auth: authStore, Metadata: store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
 
 			response := recorder.Result()
 			defer response.Body.Close()
@@ -215,7 +215,7 @@ func TestMetadataRouteNotFound(t *testing.T) {
 	request := authenticatedRequest(http.MethodGet, "/api/v1/apps/missing", "")
 	recorder := httptest.NewRecorder()
 
-	NewRouter(Options{Auth: validFakeAuthStore(), Metadata: store}).ServeHTTP(recorder, request)
+	NewRouter(Options{Auth: validFakeAuthStore(), Metadata: store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -237,7 +237,7 @@ func TestMetadataRouteFailureIsRedacted(t *testing.T) {
 	request := authenticatedRequest(http.MethodGet, "/api/v1/apps", "")
 	recorder := httptest.NewRecorder()
 
-	NewRouter(Options{Auth: validFakeAuthStore(), Metadata: store}).ServeHTTP(recorder, request)
+	NewRouter(Options{Auth: validFakeAuthStore(), Metadata: store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -267,6 +267,174 @@ func TestMetadataRouteWithoutStore(t *testing.T) {
 
 	if recorder.Result().StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("metadata without store status = %d, want 503", recorder.Result().StatusCode)
+	}
+}
+
+func TestMetadataRoutesFailClosedWithoutPermissionChecker(t *testing.T) {
+	store := &fakeMetadataStore{apps: []db.MetadataApp{{Name: "core", Label: "Core", Version: "0.1.0", Status: "active"}}}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/apps", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Metadata: store}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("metadata without permission checker status = %d, want 503", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(metadata without permission checker body) error = %v", err)
+	}
+	if !contains(string(body), `"code":"service_unavailable"`) || !contains(string(body), "permission checker is unavailable") {
+		t.Fatalf("metadata without permission checker body = %s, want service_unavailable", string(body))
+	}
+}
+
+func TestMetadataEntityListFiltersUnreadableEntities(t *testing.T) {
+	authStore := validFakeAuthStore()
+	authStore.user.Administrator = false
+	store := &fakeMetadataStore{entities: []db.MetadataEntity{
+		{Name: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+		{Name: "role", Label: "Role", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+	}}
+	checker := &fakePermissionChecker{denied: map[string]bool{"user": true}}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/entities", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: authStore, Metadata: store, Permissions: checker}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("filtered entities status = %d, want 200", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(filtered entities body) error = %v", err)
+	}
+	if contains(string(body), `"name":"user"`) || !contains(string(body), `"name":"role"`) {
+		t.Fatalf("filtered entities body = %s, want role only", string(body))
+	}
+}
+
+func TestMetadataEntityMetaDenied(t *testing.T) {
+	authStore := validFakeAuthStore()
+	authStore.user.Administrator = false
+	store := &fakeMetadataStore{meta: db.MetadataEntityMeta{MetadataEntity: db.MetadataEntity{Name: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}}}}
+	checker := &fakePermissionChecker{denied: map[string]bool{"user": true}}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/entities/user/meta", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: authStore, Metadata: store, Permissions: checker}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("metadata denied status = %d, want 403", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(metadata denied body) error = %v", err)
+	}
+	if !contains(string(body), `"code":"forbidden"`) {
+		t.Fatalf("metadata denied body = %s, want forbidden", string(body))
+	}
+}
+
+func TestMetadataRoutesAdministratorReceivesFullMetadata(t *testing.T) {
+	store := &fakeMetadataStore{entities: []db.MetadataEntity{
+		{Name: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+		{Name: "role", Label: "Role", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+	}}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/entities", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Metadata: store, Permissions: permissions.NewChecker(nil)}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("administrator metadata status = %d, want 200", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(administrator metadata body) error = %v", err)
+	}
+	if !contains(string(body), `"name":"user"`) || !contains(string(body), `"name":"role"`) {
+		t.Fatalf("administrator metadata body = %s, want all entities", string(body))
+	}
+}
+
+func TestMetadataAppsFollowReadableEntities(t *testing.T) {
+	authStore := validFakeAuthStore()
+	authStore.user.Administrator = false
+	store := &fakeMetadataStore{
+		apps: []db.MetadataApp{
+			{Name: "core", Label: "Core", Version: "0.1.0", Status: "active"},
+			{Name: "crm", Label: "CRM", Version: "0.1.0", Status: "active"},
+		},
+		app: db.MetadataApp{Name: "core", Label: "Core", Version: "0.1.0", Status: "active"},
+		entities: []db.MetadataEntity{
+			{Name: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+			{Name: "lead", Label: "Lead", App: db.MetadataAppRef{Name: "crm", Label: "CRM"}},
+		},
+	}
+	checker := &fakePermissionChecker{denied: map[string]bool{"app": true, "user": true}}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/apps", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: authStore, Metadata: store, Permissions: checker}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("filtered apps status = %d, want 200", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(filtered apps body) error = %v", err)
+	}
+	if contains(string(body), `"name":"core"`) || !contains(string(body), `"name":"crm"`) {
+		t.Fatalf("filtered apps body = %s, want crm only", string(body))
+	}
+
+	store.app = db.MetadataApp{Name: "core", Label: "Core", Version: "0.1.0", Status: "active"}
+	request = authenticatedRequest(http.MethodGet, "/api/v1/apps/core", "")
+	recorder = httptest.NewRecorder()
+
+	NewRouter(Options{Auth: authStore, Metadata: store, Permissions: checker}).ServeHTTP(recorder, request)
+
+	response = recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("forbidden app detail status = %d, want 403", response.StatusCode)
+	}
+}
+
+func TestMetadataAppsReadableWhenCoreAppPermissionAllows(t *testing.T) {
+	authStore := validFakeAuthStore()
+	authStore.user.Administrator = false
+	store := &fakeMetadataStore{apps: []db.MetadataApp{
+		{Name: "core", Label: "Core", Version: "0.1.0", Status: "active"},
+		{Name: "crm", Label: "CRM", Version: "0.1.0", Status: "active"},
+	}}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/apps", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: authStore, Metadata: store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("core app permission metadata status = %d, want 200", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(core app permission body) error = %v", err)
+	}
+	if !contains(string(body), `"name":"core"`) || !contains(string(body), `"name":"crm"`) {
+		t.Fatalf("core app permission body = %s, want all apps", string(body))
 	}
 }
 
@@ -989,11 +1157,15 @@ func (s *fakeActivityStore) ListRecordActivity(_ context.Context, entity string,
 
 type fakePermissionChecker struct {
 	err      error
+	denied   map[string]bool
 	requests []permissions.Request
 }
 
 func (c *fakePermissionChecker) Can(_ context.Context, request permissions.Request) error {
 	c.requests = append(c.requests, request)
+	if c.denied[request.Entity] {
+		return permissions.Error{Code: permissions.ErrorDenied, Message: "permission denied", Details: map[string]any{"entity": request.Entity, "action": request.Action}}
+	}
 	return c.err
 }
 

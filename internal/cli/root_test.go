@@ -1516,6 +1516,105 @@ fields:
 	}
 }
 
+func TestEntitiesValidateCommandRejectsGlobalDuplicateEntityNames(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	t.Chdir(root)
+
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIApp(t, filepath.Join(root, "apps", "support"), "support")
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "customer.yml"), `
+name: customer
+label: Customer
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	duplicatePath := filepath.Join(root, "apps", "support", "entities", "customer.yml")
+	writeCLIEntity(t, duplicatePath, `
+name: customer
+label: Customer
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"entities", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(entities validate) error = nil, want duplicate entity error")
+	}
+	wantPath := filepath.ToSlash(filepath.Join("apps", "support", "entities", "customer.yml")) + ":1"
+	for _, want := range []string{wantPath, `app "support"`, `entity "customer"`, `duplicates global entity name "customer"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
+func TestEntitiesValidateCommandRejectsReservedRootSlugs(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	t.Chdir(root)
+
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	entityPath := filepath.Join(root, "apps", "sales", "entities", "login.yml")
+	writeCLIEntity(t, entityPath, `
+name: login
+label: Login
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"entities", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(entities validate) error = nil, want reserved slug error")
+	}
+	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "login.yml")) + ":1"
+	for _, want := range []string{wantPath, `app "sales"`, `entity "login"`, `reserved root route slug "login"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
+func TestDoctorReportsEntityMetadataFailureForReservedSlug(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	t.Chdir(root)
+
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "api.yml"), `
+name: api
+label: API
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"doctor"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(doctor) error = nil, want entity metadata failure")
+	}
+	output := stdout.String()
+	for _, want := range []string{"FAIL entity metadata:", `reserved root route slug "api"`, "dygo doctor found"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
 func TestSecretsCommandSurface(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)

@@ -78,6 +78,8 @@ DELETE /api/v1/records/{entity}/{id}
 
 The API endpoints are generic and metadata-powered; dygo does not create separate handlers for each Entity.
 
+Metadata and Record APIs require an authenticated Studio session. Metadata visibility is permission-aware, and Record routes check Entity actions through the permission engine.
+
 Scoped Record Activity is read through the target Record route and checked against the target Entity's `read` permission.
 
 Project-aware commands discover the dygo root by walking upward from the current directory. Generated projects use `dygo.yml` as the root marker; the framework repository is also recognized during development.

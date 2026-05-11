@@ -114,26 +114,66 @@ func TestValidateRejectsDuplicateEntityNamesWithinApp(t *testing.T) {
 	if err == nil {
 		t.Fatal("Validate() error = nil, want duplicate entity error")
 	}
-	if !strings.Contains(err.Error(), `app "sales" has duplicate entity "lead"`) {
+	if !strings.Contains(err.Error(), `app "sales" entity "lead" duplicates global entity name "lead"`) {
 		t.Fatalf("Validate() error = %q, want duplicate entity context", err.Error())
 	}
 }
 
-func TestValidateAllowsDuplicateEntityNamesAcrossApps(t *testing.T) {
+func TestValidateRejectsDuplicateEntityNamesAcrossApps(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
 	support := loadedApp(root, "support", "support", manifest.Paths{})
 	writeEntity(t, filepath.Join(sales.Dir, "entities", "customer.yml"), "customer")
-	writeEntity(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer")
+	supportPath := filepath.Join(support.Dir, "entities", "customer.yml")
+	writeEntity(t, supportPath, "customer")
 
-	entities, err := New([]manifest.LoadedApp{sales, support}, fieldtype.DefaultRegistry()).Validate()
+	_, err := New([]manifest.LoadedApp{sales, support}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want duplicate entity error")
+	}
+	for _, want := range []string{supportPath + ":1", `app "support"`, `entity "customer"`, `duplicates global entity name "customer"`, `app "sales"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
+func TestValidateRejectsReservedRootSlugs(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	entityPath := filepath.Join(app.Dir, "entities", "login.yml")
+	writeEntity(t, entityPath, "login")
+
+	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want reserved slug error")
+	}
+	for _, want := range []string{entityPath + ":1", `app "sales"`, `entity "login"`, `reserved root route slug "login"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
+func TestValidateAllowsCurrentNonReservedRootSlugs(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	for _, name := range []string{"settings", "spaces", "pages", "reports", "new"} {
+		writeEntity(t, filepath.Join(app.Dir, "entities", name+".yml"), name)
+	}
+
+	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
 		t.Fatalf("Validate() error = %v, want nil", err)
 	}
-	if len(entities) != 2 {
-		t.Fatalf("Validate() len = %d, want 2", len(entities))
+	if len(entities) != 5 {
+		t.Fatalf("Validate() len = %d, want 5", len(entities))
 	}
 }
 
@@ -197,7 +237,7 @@ fields:
 	}
 }
 
-func TestValidateRejectsAmbiguousFieldTarget(t *testing.T) {
+func TestValidateRejectsDuplicateTargetEntityNamesGlobally(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -219,12 +259,15 @@ fields:
 
 	_, err := New([]manifest.LoadedApp{sales, support}, fieldtype.DefaultRegistry()).Validate()
 	if err == nil {
-		t.Fatal("Validate() error = nil, want ambiguous target error")
+		t.Fatal("Validate() error = nil, want duplicate target entity error")
 	}
-	for _, want := range []string{entityPath + ":4", `field "customer"`, `ambiguous entity target "customer"`, "sales/customer", "support/customer"} {
+	for _, want := range []string{`app "support"`, `entity "customer"`, `duplicates global entity name "customer"`, "sales"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 		}
+	}
+	if strings.Contains(err.Error(), "ambiguous entity target") || strings.Contains(err.Error(), entityPath+":4") {
+		t.Fatalf("Validate() error = %q, want duplicate entity error without ambiguous target diagnostic", err.Error())
 	}
 }
 

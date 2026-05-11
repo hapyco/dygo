@@ -88,7 +88,7 @@ Business apps should not need default `views`, `spaces`, or `reports` folders at
 
 Each app is described by an `app.yml` manifest. See [App Manifest](app-manifest.md) for the v1 schema.
 
-Entity files live in the app's manifest-defined `entities` directory. Entity names are unique within the owning app for v1.
+Entity files live in the app's manifest-defined `entities` directory. Entity names are globally unique across installed Apps in v1 because Studio uses root-mounted Entity routes such as `/lead` and `/user`.
 
 Entity metadata uses singular names only. Runtime code uses Entity `name` as the source for storage naming by converting kebab-case to snake_case.
 

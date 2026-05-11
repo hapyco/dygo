@@ -62,7 +62,7 @@ POST /api/v1/auth/logout
 GET  /api/v1/auth/me
 ```
 
-`POST /api/v1/auth/login` is public. Metadata and Record API routes require a valid session. Record API routes also require an allowed Entity permission.
+`POST /api/v1/auth/login` is public. Metadata and Record API routes require a valid session and use the same permission engine. Metadata list endpoints filter unreadable Entities; Record API routes require the relevant Entity action.
 
 ## Metadata API
 
@@ -88,6 +88,8 @@ Errors use:
 ```
 
 These endpoints are generic. dygo does not create per-Entity routes such as `/api/users` or `/api/leads`.
+
+Metadata visibility is permission-aware. `GET /api/v1/entities` returns only Entities the current user can read, while `GET /api/v1/entities/{entity}/meta` returns `403 forbidden` for a known Entity the user cannot read. App metadata is visible when the user can read Core `app` metadata or at least one Entity owned by that App.
 
 ## Record API
 

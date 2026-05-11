@@ -82,7 +82,7 @@ func NewRouter(options ...Options) http.Handler {
 		registerAuthRoutes(api, opts.Auth)
 		api.Group(func(protected chi.Router) {
 			protected.Use(authMiddleware(opts.Auth))
-			registerMetadataRoutes(protected, opts.Metadata)
+			registerMetadataRoutes(protected, opts.Metadata, opts.Permissions)
 			registerRecordRoutes(protected, opts.Records, opts.Activity, opts.Permissions)
 		})
 	})
@@ -440,11 +440,12 @@ type apiError struct {
 }
 
 type metadataHandler struct {
-	store MetadataStore
+	store       MetadataStore
+	permissions PermissionChecker
 }
 
-func registerMetadataRoutes(router chi.Router, store MetadataStore) {
-	handler := metadataHandler{store: store}
+func registerMetadataRoutes(router chi.Router, store MetadataStore, checker PermissionChecker) {
+	handler := metadataHandler{store: store, permissions: checker}
 	router.Get("/apps", handler.listApps)
 	router.Get("/apps/{app}", handler.getApp)
 	router.Get("/entities", handler.listEntities)
@@ -455,16 +456,49 @@ func (h metadataHandler) listApps(w http.ResponseWriter, r *http.Request) {
 	if h.requireStore(w) {
 		return
 	}
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
 	apps, err := h.store.ListApps(r.Context())
 	if err != nil {
 		writeAPIError(w, err, "", "")
 		return
 	}
-	writeJSON(w, http.StatusOK, dataEnvelope{Data: apps})
+	canReadApps, err := h.canReadEntity(r.Context(), user, "app")
+	if err != nil {
+		writePermissionError(w, err)
+		return
+	}
+	if canReadApps {
+		writeJSON(w, http.StatusOK, dataEnvelope{Data: apps})
+		return
+	}
+	entities, err := h.store.ListEntities(r.Context())
+	if err != nil {
+		writeAPIError(w, err, "", "")
+		return
+	}
+	visibleApps, err := h.visibleAppNames(r.Context(), user, entities)
+	if err != nil {
+		writePermissionError(w, err)
+		return
+	}
+	filtered := make([]db.MetadataApp, 0, len(apps))
+	for _, app := range apps {
+		if visibleApps[app.Name] {
+			filtered = append(filtered, app)
+		}
+	}
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: filtered})
 }
 
 func (h metadataHandler) getApp(w http.ResponseWriter, r *http.Request) {
 	if h.requireStore(w) {
+		return
+	}
+	user, ok := h.currentUser(w, r)
+	if !ok {
 		return
 	}
 	name := chi.URLParam(r, "app")
@@ -473,6 +507,27 @@ func (h metadataHandler) getApp(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, err, "app", name)
 		return
 	}
+	canReadApps, err := h.canReadEntity(r.Context(), user, "app")
+	if err != nil {
+		writePermissionError(w, err)
+		return
+	}
+	if !canReadApps {
+		entities, err := h.store.ListEntities(r.Context())
+		if err != nil {
+			writeAPIError(w, err, "", "")
+			return
+		}
+		visibleApps, err := h.visibleAppNames(r.Context(), user, entities)
+		if err != nil {
+			writePermissionError(w, err)
+			return
+		}
+		if !visibleApps[app.Name] {
+			writePermissionError(w, permissions.Error{Code: permissions.ErrorDenied, Message: "permission denied", Details: map[string]any{"app": name}})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, dataEnvelope{Data: app})
 }
 
@@ -480,22 +535,50 @@ func (h metadataHandler) listEntities(w http.ResponseWriter, r *http.Request) {
 	if h.requireStore(w) {
 		return
 	}
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
 	entities, err := h.store.ListEntities(r.Context())
 	if err != nil {
 		writeAPIError(w, err, "", "")
 		return
 	}
-	writeJSON(w, http.StatusOK, dataEnvelope{Data: entities})
+	filtered := make([]db.MetadataEntity, 0, len(entities))
+	for _, entity := range entities {
+		canRead, err := h.canReadEntity(r.Context(), user, entity.Name)
+		if err != nil {
+			writePermissionError(w, err)
+			return
+		}
+		if canRead {
+			filtered = append(filtered, entity)
+		}
+	}
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: filtered})
 }
 
 func (h metadataHandler) getEntityMeta(w http.ResponseWriter, r *http.Request) {
 	if h.requireStore(w) {
 		return
 	}
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
 	name := chi.URLParam(r, "entity")
 	meta, err := h.store.GetEntityMeta(r.Context(), name)
 	if err != nil {
 		writeAPIError(w, err, "entity", name)
+		return
+	}
+	canRead, err := h.canReadEntity(r.Context(), user, meta.Name)
+	if err != nil {
+		writePermissionError(w, err)
+		return
+	}
+	if !canRead {
+		writePermissionError(w, permissions.Error{Code: permissions.ErrorDenied, Message: "permission denied", Details: map[string]any{"entity": name, "action": permissions.ActionRead}})
 		return
 	}
 	writeJSON(w, http.StatusOK, dataEnvelope{Data: meta})
@@ -510,6 +593,58 @@ func (h metadataHandler) requireStore(w http.ResponseWriter) bool {
 		Message: "metadata store is unavailable",
 	}})
 	return true
+}
+
+func (h metadataHandler) requirePermissionChecker(w http.ResponseWriter) bool {
+	if h.permissions != nil {
+		return false
+	}
+	writeJSON(w, http.StatusServiceUnavailable, errorEnvelope{Error: apiError{
+		Code:    "service_unavailable",
+		Message: "permission checker is unavailable",
+	}})
+	return true
+}
+
+func (h metadataHandler) currentUser(w http.ResponseWriter, r *http.Request) (auth.User, bool) {
+	if h.requirePermissionChecker(w) {
+		return auth.User{}, false
+	}
+	user, ok := CurrentUserFromContext(r.Context())
+	if !ok {
+		writeAuthError(w, auth.Error{Code: auth.ErrorUnauthenticated, Message: "authentication required"})
+		return auth.User{}, false
+	}
+	return user, true
+}
+
+func (h metadataHandler) canReadEntity(ctx context.Context, user auth.User, entity string) (bool, error) {
+	err := h.permissions.Can(ctx, permissions.Request{
+		Actor:  permissions.Actor{UserID: user.ID, Administrator: user.Administrator},
+		Entity: entity,
+		Action: permissions.ActionRead,
+	})
+	if err == nil {
+		return true, nil
+	}
+	if permissions.IsDenied(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func (h metadataHandler) visibleAppNames(ctx context.Context, user auth.User, entities []db.MetadataEntity) (map[string]bool, error) {
+	visible := map[string]bool{}
+	for _, entity := range entities {
+		canRead, err := h.canReadEntity(ctx, user, entity.Name)
+		if err != nil {
+			return nil, err
+		}
+		if canRead {
+			visible[entity.App.Name] = true
+		}
+	}
+	return visible, nil
 }
 
 func writeAPIError(w http.ResponseWriter, err error, detailKey string, detailValue string) {

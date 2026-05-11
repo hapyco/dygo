@@ -71,6 +71,8 @@ Entity names, field names, and field type names use kebab-case.
 
 dygo uses singular Entity names only. There is no separate required metadata for display plurals or storage plurals.
 
+Entity names are globally unique across all installed Apps in v1. Studio is root-mounted, so Entity `name` is also the default route slug for screens such as `/lead` and `/user`. Apps cannot define Entities named `api`, `assets`, `health`, `login`, or `logout` because those root slugs are reserved for technical routes. Page and Space slug collision checks are deferred until those metadata models exist.
+
 When dygo needs a SQL table name from Entity metadata, it converts Entity `name` from kebab-case to snake_case. For example, `user-role` maps to `user_role`.
 
 Current metadata-driven schema sync supports scalar fields, `select`, `link`, and `password` fields. `child-table` parsing is supported, but child table storage is deferred until the record model is designed.
@@ -225,7 +227,7 @@ entities
 
 dygo loads regular `*.yml` files from the immediate directory only. Missing `entities` directories are allowed for apps that do not define Entities yet.
 
-Entity names are unique within the owning app for v1. Two different apps may use the same Entity name.
+Entity names are globally unique across loaded apps for v1. Two different apps may not use the same Entity name.
 
 Validate discovered Entity metadata from the current project:
 
@@ -236,10 +238,10 @@ go run ./cmd/dygo entities validate
 
 `entities list` prints a tree grouped by app name.
 
-`entities validate` checks Entity syntax, field types, duplicate Entity names within an app, and `link` or `child-table` targets.
+`entities validate` checks Entity syntax, field types, duplicate global Entity names, reserved root route slugs, and `link` or `child-table` targets.
 
 Both commands discover the dygo project root before loading apps, so they can be run from nested directories inside a project.
 
-`link` and `child-table` targets use Entity names in v1. A target is valid only when exactly one loaded Entity has that name. If no Entity matches, validation fails. If multiple apps define the same target name, validation fails as ambiguous until app-qualified references exist.
+`link` and `child-table` targets use Entity names in v1. Because Entity names are globally unique, a target is valid when one loaded Entity has that name. If no Entity matches, validation fails.
 
 Validation errors include the app name, Entity name, field name when relevant, file path, and a best-effort YAML line number.

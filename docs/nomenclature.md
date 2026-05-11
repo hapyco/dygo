@@ -55,7 +55,7 @@ The Studio contains Spaces.
 
 A Space organizes work around a business function.
 
-An Entity defines Fields, Permissions, Hooks, and Child Tables.
+An Entity defines Fields and Child Tables. Apps attach Permissions, Hooks, Fixtures, and Patches around Entities.
 
 A Record is saved data created from an Entity.
 

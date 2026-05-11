@@ -22,7 +22,8 @@ dygo should handle the foundation:
 - entities and records
 - permissions
 - jobs
-- migrations
+- metadata schema sync
+- app-owned patches
 - logging
 - auditing
 - observability
