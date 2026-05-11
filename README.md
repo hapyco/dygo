@@ -26,6 +26,7 @@ The current repository contains the first Go module, CLI entrypoint, config defa
 
 ```sh
 go run ./cmd/dygo
+go run ./cmd/dygo new my-company
 go run ./cmd/dygo version
 go run ./cmd/dygo doctor
 go run ./cmd/dygo serve
@@ -43,6 +44,7 @@ go run ./cmd/dygo apps list
 go run ./cmd/dygo apps validate
 go run ./cmd/dygo entities list
 go run ./cmd/dygo entities validate
+go run ./cmd/dygo hooks generate sales lead
 go run ./cmd/dygo secrets init
 go run ./cmd/dygo secrets edit
 go run ./cmd/dygo secrets validate
@@ -83,6 +85,8 @@ Metadata and Record APIs require an authenticated Studio session. Metadata visib
 Scoped Record Activity is read through the target Record route and checked against the target Entity's `read` permission.
 
 Project-aware commands discover the dygo root by walking upward from the current directory. Generated projects use `dygo.yml` as the root marker; the framework repository is also recognized during development.
+
+`dygo new <name>` creates a project with one app under `apps/`, a project-local `cmd/dygo` runner, encrypted secrets, and a development `DATABASE_URL` secret. It does not create a database or run schema sync; run `dygo db prepare` when the local database is ready.
 
 ## Development
 

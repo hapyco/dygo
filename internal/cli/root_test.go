@@ -107,6 +107,8 @@ func TestRootHelpIncludesServeAndDB(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Available Commands:",
+		"new",
+		"Create a new dygo project",
 		"serve",
 		"Start the dygo server",
 		"db",

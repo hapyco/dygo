@@ -154,9 +154,15 @@ the generated project should look like this:
 
 ```txt
 my-company/
+  README.md
+  .gitignore
   dygo.yml
   go.mod
   go.sum
+
+  cmd/
+    dygo/
+      main.go
 
   apps/
     my-company/
@@ -166,6 +172,7 @@ my-company/
       hooks/
       fixtures/
       patches/
+      assets/
       docs/
 
   configs/
@@ -179,6 +186,7 @@ my-company/
     schema.sql
 
   docs/
+    index.md
 
   var/
     storage/
@@ -194,9 +202,13 @@ my-company/
   .dygo/
     apps/
     cache/
+
+  master.key
 ```
 
 `dygo.yml` is the generated project root marker. CLI commands walk upward from the current directory to find it before reading apps, config, secrets, and future runtime state.
+
+`master.key`, `.dygo/`, and `var/` are generated local state and ignored by the generated `.gitignore`. The encrypted files under `configs/secrets/` are safe to commit.
 
 ## Runtime Rules
 

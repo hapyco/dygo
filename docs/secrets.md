@@ -41,6 +41,8 @@ Do not use short forms like `dev` or `prod`.
 
 Secret commands discover the dygo project root before reading or writing `master.key`, `configs/secrets/`, and `.dygo/secrets/tmp/`, so they can be run from nested directories inside a project.
 
+`dygo new <name>` runs the same initialization for new projects and seeds `DATABASE_URL` in development secrets. Run `dygo secrets init` directly only for an existing project that does not have encrypted secrets yet.
+
 Initialize secrets:
 
 ```sh

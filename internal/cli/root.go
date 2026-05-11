@@ -160,6 +160,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 
+	root.AddCommand(newProjectCommand(ctx, stdout))
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDoctorCommand(ctx, stdout))
 	root.AddCommand(newServeCommand(ctx, stdout, stderr, serve, recordHooks))
