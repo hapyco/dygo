@@ -115,6 +115,8 @@ func TestRootHelpIncludesServeAndDB(t *testing.T) {
 		"Sync dygo metadata to the database",
 		"schema",
 		"Manage explicit schema cleanup",
+		"hooks",
+		"Manage dygo hooks",
 		"setup",
 		"Set up dygo runtime accounts",
 	} {
