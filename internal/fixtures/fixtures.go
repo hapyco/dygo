@@ -266,13 +266,28 @@ func ApplyFiles(ctx context.Context, store Store, files []LoadedFile) (Result, e
 			if err != nil {
 				return Result{}, err
 			}
-			if _, err := store.UpdateRecord(ctx, file.Fixture.Entity, id, input); err != nil {
+			updateInput := fixtureUpdateInput(input)
+			if len(updateInput) == 0 {
+				continue
+			}
+			if _, err := store.UpdateRecord(ctx, file.Fixture.Entity, id, updateInput); err != nil {
 				return Result{}, safeWrap("update fixture record", err)
 			}
 			result.Updated++
 		}
 	}
 	return result, nil
+}
+
+func fixtureUpdateInput(input db.RecordInput) db.RecordInput {
+	update := make(db.RecordInput, len(input))
+	for key, value := range input {
+		if key == "name" {
+			continue
+		}
+		update[key] = value
+	}
+	return update
 }
 
 func (s runtimeStore) GetEntityMeta(ctx context.Context, entity string) (db.MetadataEntityMeta, error) {

@@ -99,6 +99,10 @@ func (s RecordStore) writeRecordActivity(ctx context.Context, layout recordLayou
 	if layout.Entity == "activity" {
 		return nil
 	}
+	activityName, err := randomRecordName(0)
+	if err != nil {
+		return recordError(RecordErrorInternal, "generate activity name failed", nil, err)
+	}
 	changesJSON, err := activityJSON(changes)
 	if err != nil {
 		return err
@@ -115,7 +119,7 @@ func (s RecordStore) writeRecordActivity(ctx context.Context, layout recordLayou
 	if actorID, ok := ActivityActorFromContext(ctx); ok {
 		actor = actorID
 	}
-	_, err = s.queryer.Exec(ctx, `INSERT INTO "activity" ("kind", "operation", "status", "entity_id", "record_id", "actor_id", "title", "message", "changes", "snapshot", "details") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb)`,
+	_, err = s.queryer.Exec(ctx, `INSERT INTO "activity" ("kind", "operation", "status", "entity_id", "record_id", "actor_id", "title", "message", "changes", "snapshot", "details", "name") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12)`,
 		"record",
 		operation,
 		"success",
@@ -127,6 +131,7 @@ func (s RecordStore) writeRecordActivity(ctx context.Context, layout recordLayou
 		changesJSON,
 		snapshotJSON,
 		detailsJSON,
+		activityName,
 	)
 	if err != nil {
 		return classifyRecordDBError(err, "activity")

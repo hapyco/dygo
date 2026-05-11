@@ -29,6 +29,7 @@ SET default_table_access_method = heap;
 
 CREATE TABLE public.activity (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     kind text DEFAULT 'record'::text NOT NULL,
@@ -68,9 +69,9 @@ ALTER TABLE public.activity ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 CREATE TABLE public.app (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    name text NOT NULL,
     label text NOT NULL,
     version text NOT NULL,
     status text DEFAULT 'active'::text NOT NULL,
@@ -98,10 +99,11 @@ ALTER TABLE public.app ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 CREATE TABLE public."constraint" (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     entity_id bigint NOT NULL,
-    name text NOT NULL,
+    constraint_name text NOT NULL,
     type text NOT NULL,
     fields jsonb,
     field text,
@@ -133,12 +135,13 @@ ALTER TABLE public."constraint" ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY
 
 CREATE TABLE public.entity (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     app_id bigint NOT NULL,
-    name text NOT NULL,
     label text NOT NULL,
-    description text
+    description text,
+    naming jsonb
 );
 
 
@@ -162,19 +165,20 @@ ALTER TABLE public.entity ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 CREATE TABLE public.field (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     entity_id bigint NOT NULL,
-    name text NOT NULL,
+    field_name text NOT NULL,
     label text NOT NULL,
     type text NOT NULL,
     required boolean DEFAULT false,
     "unique" boolean DEFAULT false,
     index boolean DEFAULT false,
     "default" jsonb,
+    "check" jsonb,
     "position" integer,
-    options jsonb,
-    "check" jsonb
+    options jsonb
 );
 
 
@@ -198,10 +202,11 @@ ALTER TABLE public.field ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 CREATE TABLE public.index (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     entity_id bigint NOT NULL,
-    name text NOT NULL,
+    index_name text NOT NULL,
     fields jsonb NOT NULL,
     "position" integer
 );
@@ -222,11 +227,42 @@ ALTER TABLE public.index ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: naming_series; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.naming_series (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    entity_id bigint NOT NULL,
+    key text NOT NULL,
+    pattern text NOT NULL,
+    current bigint DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: naming_series_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.naming_series ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.naming_series_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: permission; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.permission (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     entity_id bigint NOT NULL,
@@ -260,9 +296,9 @@ ALTER TABLE public.permission ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 CREATE TABLE public.role (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    name text NOT NULL,
     label text NOT NULL,
     description text,
     enabled boolean DEFAULT true
@@ -289,6 +325,7 @@ ALTER TABLE public.role ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 CREATE TABLE public.session (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     user_id bigint NOT NULL,
@@ -321,6 +358,7 @@ ALTER TABLE public.session ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 CREATE TABLE public."user" (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     email text NOT NULL,
@@ -351,6 +389,7 @@ ALTER TABLE public."user" ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 CREATE TABLE public.user_role (
     id bigint NOT NULL,
+    name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     user_id bigint NOT NULL,
@@ -370,6 +409,14 @@ ALTER TABLE public.user_role ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
+
+--
+-- Name: activity activity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.activity
+    ADD CONSTRAINT activity_name_key UNIQUE (name);
 
 
 --
@@ -397,11 +444,19 @@ ALTER TABLE ONLY public.app
 
 
 --
--- Name: constraint constraint_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: constraint constraint_entity_constraint_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public."constraint"
-    ADD CONSTRAINT constraint_entity_name_key UNIQUE (entity_id, name);
+    ADD CONSTRAINT constraint_entity_constraint_name_key UNIQUE (entity_id, constraint_name);
+
+
+--
+-- Name: constraint constraint_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public."constraint"
+    ADD CONSTRAINT constraint_name_key UNIQUE (name);
 
 
 --
@@ -429,11 +484,19 @@ ALTER TABLE ONLY public.entity
 
 
 --
--- Name: field field_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: field field_entity_field_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.field
-    ADD CONSTRAINT field_entity_name_key UNIQUE (entity_id, name);
+    ADD CONSTRAINT field_entity_field_name_key UNIQUE (entity_id, field_name);
+
+
+--
+-- Name: field field_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.field
+    ADD CONSTRAINT field_name_key UNIQUE (name);
 
 
 --
@@ -445,11 +508,19 @@ ALTER TABLE ONLY public.field
 
 
 --
--- Name: index index_entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: index index_entity_index_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.index
-    ADD CONSTRAINT index_entity_name_key UNIQUE (entity_id, name);
+    ADD CONSTRAINT index_entity_index_name_key UNIQUE (entity_id, index_name);
+
+
+--
+-- Name: index index_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.index
+    ADD CONSTRAINT index_name_key UNIQUE (name);
 
 
 --
@@ -461,11 +532,43 @@ ALTER TABLE ONLY public.index
 
 
 --
+-- Name: naming_series naming_series_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.naming_series
+    ADD CONSTRAINT naming_series_key_key UNIQUE (key);
+
+
+--
+-- Name: naming_series naming_series_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.naming_series
+    ADD CONSTRAINT naming_series_name_key UNIQUE (name);
+
+
+--
+-- Name: naming_series naming_series_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.naming_series
+    ADD CONSTRAINT naming_series_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: permission permission_entity_role_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.permission
     ADD CONSTRAINT permission_entity_role_key UNIQUE (entity_id, role_id);
+
+
+--
+-- Name: permission permission_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.permission
+    ADD CONSTRAINT permission_name_key UNIQUE (name);
 
 
 --
@@ -493,6 +596,14 @@ ALTER TABLE ONLY public.role
 
 
 --
+-- Name: session session_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.session
+    ADD CONSTRAINT session_name_key UNIQUE (name);
+
+
+--
 -- Name: session session_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -517,11 +628,27 @@ ALTER TABLE ONLY public."user"
 
 
 --
+-- Name: user user_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public."user"
+    ADD CONSTRAINT user_name_key UNIQUE (name);
+
+
+--
 -- Name: user user_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public."user"
     ADD CONSTRAINT user_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_role user_role_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_role
+    ADD CONSTRAINT user_role_name_key UNIQUE (name);
 
 
 --
@@ -597,17 +724,17 @@ CREATE INDEX by_record ON public.activity USING btree (entity_id, record_id);
 
 
 --
+-- Name: constraint_constraint_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX constraint_constraint_name_idx ON public."constraint" USING btree (constraint_name);
+
+
+--
 -- Name: constraint_entity_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX constraint_entity_id_idx ON public."constraint" USING btree (entity_id);
-
-
---
--- Name: constraint_name_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX constraint_name_idx ON public."constraint" USING btree (name);
 
 
 --
@@ -625,13 +752,6 @@ CREATE INDEX entity_app_id_idx ON public.entity USING btree (app_id);
 
 
 --
--- Name: entity_name_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX entity_name_idx ON public.entity USING btree (name);
-
-
---
 -- Name: field_entity_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -639,10 +759,10 @@ CREATE INDEX field_entity_id_idx ON public.field USING btree (entity_id);
 
 
 --
--- Name: field_name_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: field_field_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX field_name_idx ON public.field USING btree (name);
+CREATE INDEX field_field_name_idx ON public.field USING btree (field_name);
 
 
 --
@@ -660,10 +780,17 @@ CREATE INDEX index_entity_id_idx ON public.index USING btree (entity_id);
 
 
 --
--- Name: index_name_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: index_index_name_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_name_idx ON public.index USING btree (name);
+CREATE INDEX index_index_name_idx ON public.index USING btree (index_name);
+
+
+--
+-- Name: naming_series_entity_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX naming_series_entity_id_idx ON public.naming_series USING btree (entity_id);
 
 
 --

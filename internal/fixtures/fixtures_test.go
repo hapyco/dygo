@@ -178,6 +178,9 @@ records:
 	if len(store.updateSources) != 1 || store.updateSources[0] != db.ActivitySourceFixtures {
 		t.Fatalf("update activity sources = %#v, want fixtures source", store.updateSources)
 	}
+	if _, ok := store.updateInputs[0]["name"]; ok {
+		t.Fatalf("update input includes immutable name field: %#v", store.updateInputs[0])
+	}
 }
 
 func TestApplyFilesRejectsNonUniqueMatch(t *testing.T) {
@@ -387,6 +390,7 @@ type fakeStore struct {
 	nextID        int64
 	createSources []string
 	updateSources []string
+	updateInputs  []db.RecordInput
 }
 
 func newFakeStore() *fakeStore {
@@ -488,6 +492,7 @@ func (s *fakeStore) UpdateRecord(ctx context.Context, entity string, id int64, i
 		if record["id"] == id {
 			source, _ := db.ActivitySourceFromContext(ctx)
 			s.updateSources = append(s.updateSources, source)
+			s.updateInputs = append(s.updateInputs, input)
 			for key, value := range recordFromInput(input) {
 				record[key] = value
 			}

@@ -298,6 +298,9 @@ func TestRecordStoreCreateRecordWritesActivity(t *testing.T) {
 	if args[1] != activityOperationCreate || args[3] != int64(10) || args[4] != int64(7) || args[5] != int64(99) {
 		t.Fatalf("activity args = %#v, want create for user entity and actor", args)
 	}
+	if name, ok := args[11].(string); !ok || len(name) != 16 {
+		t.Fatalf("activity name arg = %#v, want generated length-16 string", args[11])
+	}
 	snapshot := decodeActivityObject(t, args[9])
 	if snapshot["email"] != "a@example.com" || snapshot["password"] != nil {
 		t.Fatalf("activity snapshot = %#v, want visible record without password", snapshot)
