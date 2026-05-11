@@ -23,7 +23,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "dev"
 const defaultStudioDevURL = "http://127.0.0.1:6791"
 
 type serveRunner func(context.Context, server.Options) error
@@ -161,6 +160,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.SetErr(stderr)
 
 	root.AddCommand(newProjectCommand(ctx, stdout))
+	root.AddCommand(newUpgradeCommand(ctx, stdin, stdout, stderr))
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDoctorCommand(ctx, stdout))
 	root.AddCommand(newServeCommand(ctx, stdout, stderr, serve, recordHooks))
@@ -226,7 +226,7 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 		Short: "Print the dygo version",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if _, err := fmt.Fprintf(stdout, "dygo %s\n", version); err != nil {
+			if _, err := fmt.Fprintf(stdout, "dygo %s\n", currentVersion()); err != nil {
 				return fmt.Errorf("write version: %w", err)
 			}
 			return nil

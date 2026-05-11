@@ -6,14 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime/debug"
-	"strings"
 
 	"github.com/dygo-dev/dygo/internal/projectgen"
 	"github.com/spf13/cobra"
 )
-
-var readBuildInfo = debug.ReadBuildInfo
 
 func newProjectCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 	modulePath := ""
@@ -76,18 +72,4 @@ func relToNewWorkingDir(workingDir string, path string) string {
 		return filepath.Clean(path)
 	}
 	return filepath.ToSlash(relative)
-}
-
-func dygoVersionForNew() string {
-	if cliVersion := strings.TrimSpace(version); cliVersion != "" && cliVersion != "dev" {
-		return cliVersion
-	}
-	buildInfo, ok := readBuildInfo()
-	if ok {
-		buildVersion := strings.TrimSpace(buildInfo.Main.Version)
-		if buildVersion != "" && buildVersion != "(devel)" {
-			return buildVersion
-		}
-	}
-	return "dev"
 }

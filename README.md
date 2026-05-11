@@ -22,11 +22,26 @@ dygo is in early framework development.
 
 The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server, encrypted credentials, app/entity metadata validation, PostgreSQL schema sync, Core metadata registry, metadata API, session auth, generic Record API foundation with system Record naming, and Record permission enforcement. The framework APIs are not stable yet.
 
+## Install
+
+The intended installer is:
+
+```sh
+curl -fsSL https://dygo.dev/install | sh
+```
+
+Until `dygo.dev/install` is wired, use:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/dygo-dev/dygo/main/scripts/install.sh | sh
+```
+
 ## Current CLI
 
 ```sh
 go run ./cmd/dygo
 go run ./cmd/dygo new my-company
+go run ./cmd/dygo upgrade
 go run ./cmd/dygo version
 go run ./cmd/dygo doctor
 go run ./cmd/dygo serve
@@ -118,6 +133,7 @@ docs/              project doctrine, thesis, and structure notes
 ## Docs
 
 - [Documentation Index](docs/index.md)
+- [Installation](docs/installation.md)
 - [The dygo Doctrine](docs/doctrine.md)
 - [Platform Thesis](docs/platform-thesis.md)
 - [Nomenclature](docs/nomenclature.md)

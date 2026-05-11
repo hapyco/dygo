@@ -109,6 +109,8 @@ func TestRootHelpIncludesServeAndDB(t *testing.T) {
 		"Available Commands:",
 		"new",
 		"Create a new dygo project",
+		"upgrade",
+		"Upgrade dygo CLI and the current project",
 		"serve",
 		"Start the dygo server",
 		"db",

@@ -46,6 +46,12 @@ type hookApp struct {
 	Alias      string
 }
 
+// RunnerUpdate describes a generated project runner update.
+type RunnerUpdate struct {
+	RunnerFile string
+	Source     []byte
+}
+
 // Generate creates an Entity hook scaffold and updates generated runner wiring.
 func Generate(root string, appName string, entityName string) (Result, error) {
 	root = filepath.Clean(root)
@@ -158,6 +164,52 @@ func Generate(root string, appName string, entityName string) (Result, error) {
 	}
 	result.RunnerFileWritten = written
 	return result, nil
+}
+
+// RenderRunner renders the project runner for all app hooks that expose Register.
+func RenderRunner(root string) (RunnerUpdate, error) {
+	root = filepath.Clean(root)
+	if err := requireGeneratedProjectRoot(root); err != nil {
+		return RunnerUpdate{}, err
+	}
+	modulePath, err := readModulePath(root)
+	if err != nil {
+		return RunnerUpdate{}, err
+	}
+	apps, err := appregistry.New(root).Validate()
+	if err != nil {
+		return RunnerUpdate{}, fmt.Errorf("validate apps: %w", err)
+	}
+
+	runnerFile := filepath.Join(root, "cmd", "dygo", "main.go")
+	if err := preflightGeneratedFile(runnerFile, runnerUpgradeManualSnippet()); err != nil {
+		return RunnerUpdate{}, err
+	}
+	hookApps, err := collectHookApps(root, modulePath, apps, "")
+	if err != nil {
+		return RunnerUpdate{}, err
+	}
+	runnerSource, err := renderRunnerSource(hookApps)
+	if err != nil {
+		return RunnerUpdate{}, err
+	}
+	return RunnerUpdate{RunnerFile: runnerFile, Source: runnerSource}, nil
+}
+
+// UpdateRunner writes the generated project runner when its content changes.
+func UpdateRunner(root string) (RunnerUpdate, bool, error) {
+	update, err := RenderRunner(root)
+	if err != nil {
+		return RunnerUpdate{}, false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(update.RunnerFile), 0o755); err != nil {
+		return RunnerUpdate{}, false, fmt.Errorf("create runner directory %s: %w", filepath.Dir(update.RunnerFile), err)
+	}
+	written, err := writeFileIfChanged(update.RunnerFile, update.Source)
+	if err != nil {
+		return RunnerUpdate{}, false, err
+	}
+	return update, written, nil
 }
 
 func requireGeneratedProjectRoot(root string) error {
@@ -552,6 +604,10 @@ func runnerManualSnippet(root string, modulePath string, appName string, hooksDi
 	return fmt.Sprintf(`import %s %q
 
 RecordHooks: []sdk.RecordHookRegistrar{%s.Register},`, alias, importPath, alias)
+}
+
+func runnerUpgradeManualSnippet() string {
+	return `cmd/dygo/main.go is custom. Import app hook packages manually and call pkg/sdk/runtime.Run with runtime.Options{RecordHooks: ...}.`
 }
 
 func exportedIdentifier(value string) string {
