@@ -238,7 +238,7 @@ go run ./cmd/dygo entities validate
 
 `entities list` prints a tree grouped by app name.
 
-`entities validate` checks Entity syntax, field types, duplicate global Entity names, reserved root route slugs, and `link` or `child-table` targets.
+`entities validate` checks Entity syntax, field types, duplicate global Entity names, reserved root route slugs, `link` or `child-table` targets, and top-level `hooks/<entity>.go` filenames for each app.
 
 Both commands discover the dygo project root before loading apps, so they can be run from nested directories inside a project.
 

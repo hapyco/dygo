@@ -17,7 +17,9 @@ import (
 	"github.com/dygo-dev/dygo/internal/config"
 	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/dygo-dev/dygo/internal/fixtures"
+	recordhooks "github.com/dygo-dev/dygo/internal/hooks"
 	"github.com/dygo-dev/dygo/internal/server"
+	"github.com/dygo-dev/dygo/pkg/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +28,6 @@ const defaultStudioDevURL = "http://127.0.0.1:6791"
 
 type serveRunner func(context.Context, server.Options) error
 type studioDevStop func() error
-type studioDevStarter func(context.Context, string, io.Writer, io.Writer) (string, studioDevStop, error)
 type databaseChecker func(context.Context, string) error
 type adminSetupRunner interface {
 	SetupAdmin(context.Context, string, auth.SetupAdminInput) (auth.User, error)
@@ -49,12 +50,26 @@ type schemaSyncRunner interface {
 	Sync(context.Context, string, string) (db.SchemaSyncResult, error)
 }
 
+// Options configures dygo CLI runtime extensions.
+type Options struct {
+	RecordHooks []sdk.RecordHookRegistrar
+}
+
 var startStudioDevServer = startStudioDevServerProcess
 
 // Run executes the dygo command-line interface.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	return RunWithOptions(ctx, args, stdin, stdout, stderr, Options{})
+}
+
+// RunWithOptions executes the dygo command-line interface with compiled extensions.
+func RunWithOptions(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, options Options) error {
 	migrator := db.NewMigrator()
-	return runWithServicesAndSetupAndFixtures(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{})
+	recordHooks, err := recordhooks.NewRecordHookRegistry(options.RecordHooks)
+	if err != nil {
+		return fmt.Errorf("configure record hooks: %w", err)
+	}
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, recordHooks)
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker) error {
@@ -71,7 +86,11 @@ func runWithServicesAndSetup(ctx context.Context, args []string, stdin io.Reader
 }
 
 func runWithServicesAndSetupAndFixtures(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner) error {
-	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup, fixture)
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, database, sync, setup, fixture, nil)
+}
+
+func runWithServicesAndSetupAndFixturesAndHooks(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, recordHooks *db.RecordHookRegistry) error {
+	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup, fixture, recordHooks)
 	if err != nil {
 		return err
 	}
@@ -88,10 +107,14 @@ func runWithServicesAndSetupAndFixtures(ctx context.Context, args []string, stdi
 // NewRootCommand creates the root dygo CLI command.
 func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, error) {
 	migrator := db.NewMigrator()
-	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{})
+	recordHooks, err := recordhooks.NewRecordHookRegistry(nil)
+	if err != nil {
+		return nil, fmt.Errorf("configure record hooks: %w", err)
+	}
+	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, recordHooks)
 }
 
-func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner) (*cobra.Command, error) {
+func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, recordHooks *db.RecordHookRegistry) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
 	}
@@ -139,7 +162,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDoctorCommand(ctx, stdout))
-	root.AddCommand(newServeCommand(ctx, stdout, stderr, serve))
+	root.AddCommand(newServeCommand(ctx, stdout, stderr, serve, recordHooks))
 	root.AddCommand(newDBCommand(ctx, stdout, database))
 	root.AddCommand(newMigrateCommand(ctx, stdout, sync))
 	root.AddCommand(newSchemaCommand(ctx, stdout, sync))
@@ -157,9 +180,14 @@ type checkBackedDatabaseRunner struct {
 	manager databaseRunner
 }
 
-type defaultFixtureRunner struct{}
+type defaultFixtureRunner struct {
+	recordHooks *db.RecordHookRegistry
+}
 
 func (r defaultFixtureRunner) Apply(ctx context.Context, root string, databaseURL string) (fixtures.Result, error) {
+	if r.recordHooks != nil {
+		return fixtures.NewRunnerWithHooks(r.recordHooks).Apply(ctx, root, databaseURL)
+	}
 	return fixtures.NewRunner().Apply(ctx, root, databaseURL)
 }
 
@@ -204,7 +232,7 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 	}
 }
 
-func newServeCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRunner) *cobra.Command {
+func newServeCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRunner, recordHooks *db.RecordHookRegistry) *cobra.Command {
 	envName := "development"
 	studioDevURL := ""
 
@@ -247,6 +275,7 @@ func newServeCommand(ctx context.Context, stdout, stderr io.Writer, serve serveR
 			if err := serve(ctx, server.Options{
 				Address:     address,
 				DatabaseURL: databaseURL,
+				RecordHooks: recordHooks,
 				Studio:      studioHandler,
 				OnReady: func(address string) error {
 					if _, err := fmt.Fprintf(stdout, "dygo serving on %s\n", address); err != nil {
@@ -332,7 +361,7 @@ func waitForStudioDevServer(ctx context.Context, studioURL string, done chan err
 		case <-ctx.Done():
 			return fmt.Errorf("start Studio UI dev server: %w", ctx.Err())
 		case <-timeout.C:
-			return fmt.Errorf("Studio UI dev server did not become ready on %s", studioURL)
+			return fmt.Errorf("studio UI dev server did not become ready on %s", studioURL)
 		case <-ticker.C:
 		}
 	}
@@ -347,9 +376,9 @@ func studioDevStartupError(err error, output string) error {
 		return fmt.Errorf("start Studio UI dev server: %w", err)
 	}
 	if output != "" {
-		return fmt.Errorf("Studio UI dev server exited before dygo started\n%s", output)
+		return fmt.Errorf("studio UI dev server exited before dygo started\n%s", output)
 	}
-	return fmt.Errorf("Studio UI dev server exited before dygo started")
+	return fmt.Errorf("studio UI dev server exited before dygo started")
 }
 
 func stopStudioDevProcess(cmd *exec.Cmd, done <-chan error) error {

@@ -94,6 +94,8 @@ Entity metadata uses singular names only. Runtime code uses Entity `name` as the
 
 Every Record also has a system `name` generated from Entity `naming` metadata. Apps can choose random names, field-based names, or series names. The numeric `id` remains dygo's internal primary key.
 
+Hooks are app-owned Go code under the app's manifest-defined `hooks` directory. A file such as `hooks/lead.go` belongs to Entity `lead`. dygo validates this filename convention, but the code must still be compiled into a project runner through `pkg/sdk/runtime`; dygo does not dynamically load Go source files.
+
 Patches are app-owned lifecycle changes for unsafe transitions that metadata cannot infer, such as renames, drops, destructive type changes, and data backfills. See [Explicit Patches](patches.md) for the current design model. The patch runner is not implemented yet.
 
 Fixtures are app-owned seed Records for roles, permissions, and reference data. They live under the app's manifest-defined `fixtures` directory, with each fixture file named after its Entity, and are applied explicitly with `dygo fixtures apply`. See [Fixtures](fixtures.md) for the v1 file shape.

@@ -290,6 +290,61 @@ func TestDiscoverIgnoresNonYAMLFilesAndNestedDirectories(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsHookFilesMatchingEntityNames(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
+	writeFile(t, filepath.Join(app.Dir, "hooks", "lead.go"), "package hooks")
+	writeFile(t, filepath.Join(app.Dir, "hooks", "register.go"), "package hooks")
+	writeFile(t, filepath.Join(app.Dir, "hooks", "lead_test.go"), "package hooks")
+	writeFile(t, filepath.Join(app.Dir, "hooks", "notes.txt"), "not go")
+	writeFile(t, filepath.Join(app.Dir, "hooks", "nested", "customer.go"), "package hooks")
+
+	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	if got := entityKeys(entities); strings.Join(got, ",") != "sales/lead" {
+		t.Fatalf("Validate() entities = %#v, want [sales/lead]", got)
+	}
+}
+
+func TestValidateRejectsHookFilesWithoutMatchingEntityNames(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
+	hookPath := filepath.Join(app.Dir, "hooks", "customer.go")
+	writeFile(t, hookPath, "package hooks")
+
+	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want hook filename error")
+	}
+	for _, want := range []string{hookPath, `app "sales"`, `hook file "customer"`, "known Entity name"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
+func TestValidateReadsHookFilesFromManifestPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{Hooks: "metadata/hooks"})
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
+	writeFile(t, filepath.Join(app.Dir, "metadata", "hooks", "lead.go"), "package hooks")
+
+	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
 func loadedApp(root string, dirName string, name string, paths manifest.Paths) manifest.LoadedApp {
 	dir := filepath.Join(root, dirName)
 	return manifest.LoadedApp{

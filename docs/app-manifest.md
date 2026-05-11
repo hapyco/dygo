@@ -64,6 +64,8 @@ The app commands read app manifests from `apps/` and `.dygo/apps/`. Entity valid
 
 These commands can be run from nested directories. The CLI walks upward to find the dygo project root before reading app manifests.
 
+`paths.hooks` identifies the app's conventional Go hook source directory. Files named `hooks/<entity>.go` are validated against Entity names in the same app, but dygo does not dynamically load Go source files. Compiled hook registration is documented in [Record Hooks](record-hooks.md).
+
 ## V1 Boundaries
 
 The app manifest loader is internal for now.

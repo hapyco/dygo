@@ -13,8 +13,10 @@ import (
 	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/dygo-dev/dygo/internal/fixtures"
+	recordhooks "github.com/dygo-dev/dygo/internal/hooks"
 	"github.com/dygo-dev/dygo/internal/secrets"
 	"github.com/dygo-dev/dygo/internal/server"
+	"github.com/dygo-dev/dygo/pkg/sdk"
 )
 
 func TestRun(t *testing.T) {
@@ -401,6 +403,40 @@ func TestServeCommandUsesEnvironment(t *testing.T) {
 	}
 	if gotOptions.DatabaseURL != databaseURL {
 		t.Fatalf("serve database URL = %q, want staging URL %q", gotOptions.DatabaseURL, databaseURL)
+	}
+}
+
+func TestRunWithOptionsPassesRecordHooksToServe(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	registrarCalled := false
+	var gotOptions server.Options
+	err := runWithOptionsForTest(context.Background(), []string{"serve"}, strings.NewReader(""), io.Discard, io.Discard, func(_ context.Context, options server.Options) error {
+		gotOptions = options
+		return nil
+	}, Options{
+		RecordHooks: []sdk.RecordHookRegistrar{
+			func(registry sdk.RecordHookRegistry) error {
+				registrarCalled = true
+				return registry.RegisterEntity("lead", sdk.RecordBeforeCreate, "test", func(context.Context, sdk.RecordHookContext) error {
+					return nil
+				})
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("runWithOptionsForTest(serve) error = %v, want nil", err)
+	}
+	if !registrarCalled {
+		t.Fatal("registrar was not called")
+	}
+	if gotOptions.RecordHooks == nil {
+		t.Fatal("serve RecordHooks = nil, want configured registry")
 	}
 }
 
@@ -1585,6 +1621,37 @@ fields:
 	}
 }
 
+func TestEntitiesValidateCommandRejectsUnknownHookEntityFile(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	t.Chdir(root)
+
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead.yml"), `
+name: lead
+label: Lead
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	hookPath := filepath.Join(root, "apps", "sales", "hooks", "customer.go")
+	writeCLIEntity(t, hookPath, "package hooks")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"entities", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(entities validate) error = nil, want hook entity error")
+	}
+	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "hooks", "customer.go"))
+	for _, want := range []string{wantPath, `app "sales"`, `hook file "customer"`, "known Entity name"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
 func TestDoctorReportsEntityMetadataFailureForReservedSlug(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -1964,6 +2031,19 @@ func noopDatabaseChecker(context.Context, string) error {
 
 func noopDatabaseRunner() *fakeDatabaseRunner {
 	return &fakeDatabaseRunner{}
+}
+
+func runWithOptionsForTest(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, options Options) error {
+	migrator := db.NewMigrator()
+	recordHooks, err := recordhooksForTest(options.RecordHooks)
+	if err != nil {
+		return err
+	}
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, noopDatabaseRunner(), migrator, &fakeAdminSetupRunner{}, &fakeFixtureRunner{}, recordHooks)
+}
+
+func recordhooksForTest(registrars []sdk.RecordHookRegistrar) (*db.RecordHookRegistry, error) {
+	return recordhooks.NewRecordHookRegistry(registrars)
 }
 
 type fakeAdminSetupRunner struct {

@@ -27,7 +27,9 @@ type Result struct {
 }
 
 // Runner applies discovered fixture files.
-type Runner struct{}
+type Runner struct {
+	recordHooks *db.RecordHookRegistry
+}
 
 // LoadedFile is one fixture file loaded from an App.
 type LoadedFile struct {
@@ -75,6 +77,11 @@ func NewRunner() Runner {
 	return Runner{}
 }
 
+// NewRunnerWithHooks returns a fixture runner using compiled Record hooks.
+func NewRunnerWithHooks(recordHooks *db.RecordHookRegistry) Runner {
+	return Runner{recordHooks: recordHooks}
+}
+
 // Apply discovers and applies all app-owned fixtures in one transaction.
 func (r Runner) Apply(ctx context.Context, root string, databaseURL string) (Result, error) {
 	apps, err := registry.New(root).Validate()
@@ -103,7 +110,7 @@ func (r Runner) Apply(ctx context.Context, root string, databaseURL string) (Res
 
 	store := runtimeStore{
 		metadata: db.NewMetadataReader(tx),
-		records:  db.NewRecordStore(tx),
+		records:  newFixtureRecordStore(tx, r.recordHooks),
 	}
 	result, err := ApplyFiles(ctx, store, files)
 	if err != nil {
@@ -113,6 +120,13 @@ func (r Runner) Apply(ctx context.Context, root string, databaseURL string) (Res
 		return Result{}, fmt.Errorf("commit fixtures transaction: %w", err)
 	}
 	return result, nil
+}
+
+func newFixtureRecordStore(queryer db.RecordQueryer, recordHooks *db.RecordHookRegistry) db.RecordStore {
+	if recordHooks != nil {
+		return db.NewRecordStoreWithHooks(queryer, recordHooks)
+	}
+	return db.NewRecordStore(queryer)
 }
 
 // Discover loads fixture files from each app's configured fixtures path.

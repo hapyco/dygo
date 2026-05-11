@@ -32,6 +32,7 @@ type Options struct {
 	Records     RecordStore
 	Activity    ActivityStore
 	Permissions PermissionChecker
+	RecordHooks *db.RecordHookRegistry
 	Studio      http.Handler
 	OnReady     func(string) error
 }
@@ -137,7 +138,11 @@ func Serve(ctx context.Context, options Options) error {
 		defer pool.Close()
 		options.Auth = auth.NewService(pool)
 		options.Metadata = db.NewMetadataReader(pool)
-		options.Records = db.NewRecordStore(pool)
+		if options.RecordHooks != nil {
+			options.Records = db.NewRecordStoreWithHooks(pool, options.RecordHooks)
+		} else {
+			options.Records = db.NewRecordStore(pool)
+		}
 		options.Activity = db.NewActivityReader(pool)
 		options.Permissions = permissions.NewChecker(pool)
 	}

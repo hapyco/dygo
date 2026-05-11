@@ -59,7 +59,7 @@ func (c Catalog) Validate() ([]LoadedEntity, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCatalog(entities); err != nil {
+	if err := validateCatalog(c.apps, entities); err != nil {
 		return nil, err
 	}
 	return entities, nil
@@ -105,7 +105,7 @@ func (c Catalog) discoverApp(app manifest.LoadedApp) ([]LoadedEntity, error) {
 	return entities, nil
 }
 
-func validateCatalog(entities []LoadedEntity) error {
+func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
 	var problems []string
 	seen := map[string]LoadedEntity{}
 	for _, entity := range entities {
@@ -120,6 +120,9 @@ func validateCatalog(entities []LoadedEntity) error {
 	}
 
 	validateFieldTargets(entities, &problems)
+	if err := validateHookFiles(apps, entities, &problems); err != nil {
+		return err
+	}
 
 	if len(problems) > 0 {
 		return ValidationError{Problems: problems}
@@ -150,6 +153,48 @@ func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
 			}
 		}
 	}
+}
+
+func validateHookFiles(apps []manifest.LoadedApp, entities []LoadedEntity, problems *[]string) error {
+	entitiesByApp := map[string]map[string]struct{}{}
+	for _, entity := range entities {
+		if entitiesByApp[entity.AppName] == nil {
+			entitiesByApp[entity.AppName] = map[string]struct{}{}
+		}
+		entitiesByApp[entity.AppName][entity.Entity.Name] = struct{}{}
+	}
+
+	for _, app := range apps {
+		hooksDir := filepath.Join(app.Dir, filepath.FromSlash(app.Manifest.Paths.WithDefaults().Hooks))
+		entries, err := os.ReadDir(hooksDir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("read hooks for app %q from %s: %w", app.Manifest.Name, hooksDir, err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || filepath.Ext(entry.Name()) != ".go" {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return fmt.Errorf("stat hook for app %q from %s: %w", app.Manifest.Name, filepath.Join(hooksDir, entry.Name()), err)
+			}
+			if !info.Mode().IsRegular() {
+				continue
+			}
+			if entry.Name() == "register.go" || strings.HasSuffix(entry.Name(), "_test.go") {
+				continue
+			}
+			entityName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+			if _, ok := entitiesByApp[app.Manifest.Name][entityName]; ok {
+				continue
+			}
+			*problems = append(*problems, hookDiagnostic(app, filepath.Join(hooksDir, entry.Name()), entityName))
+		}
+	}
+	return nil
 }
 
 func isReservedRootSlug(value string) bool {
@@ -196,6 +241,10 @@ func fieldDiagnostic(entity LoadedEntity, field schema.Field, message string) st
 		fieldName = "<missing>"
 	}
 	return fmt.Sprintf("%s: app %q entity %q field %q: %s", location(entity.Path, line), entity.AppName, entity.Entity.Name, fieldName, message)
+}
+
+func hookDiagnostic(app manifest.LoadedApp, path string, entityName string) string {
+	return fmt.Sprintf("%s: app %q hook file %q does not match a known Entity name in the same app", location(path, 0), app.Manifest.Name, entityName)
 }
 
 func location(path string, line int) string {

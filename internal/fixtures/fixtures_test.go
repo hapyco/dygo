@@ -383,6 +383,16 @@ records:
 	}
 }
 
+func TestNewRunnerWithHooksStoresRecordHooks(t *testing.T) {
+	t.Parallel()
+
+	recordHooks := db.NewRecordHookRegistry()
+	runner := NewRunnerWithHooks(recordHooks)
+	if runner.recordHooks != recordHooks {
+		t.Fatal("NewRunnerWithHooks() did not retain configured Record hooks")
+	}
+}
+
 type fakeStore struct {
 	metadata      map[string]db.MetadataEntityMeta
 	records       map[string][]db.Record
