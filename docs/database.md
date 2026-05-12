@@ -76,6 +76,12 @@ go run ./cmd/dygo db prepare
 go run ./cmd/dygo fixtures apply
 ```
 
+After fixtures are applied, create the first Administrator account before opening Studio:
+
+```sh
+go run ./cmd/dygo setup admin
+```
+
 Drop or reset the configured database only with explicit confirmation:
 
 ```sh

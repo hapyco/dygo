@@ -6,10 +6,11 @@ The first auth layer uses Core `user` and `session` records. Password fields are
 
 ## Bootstrap
 
-Create the first Administrator account after running metadata sync:
+Create the first Administrator account after running metadata sync and fixtures:
 
 ```sh
-go run ./cmd/dygo migrate
+go run ./cmd/dygo db prepare
+go run ./cmd/dygo fixtures apply
 go run ./cmd/dygo setup admin
 ```
 

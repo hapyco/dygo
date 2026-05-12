@@ -12,10 +12,12 @@ import (
 	"github.com/dygo-dev/dygo/internal/app/manifest"
 	appregistry "github.com/dygo-dev/dygo/internal/app/registry"
 	"github.com/dygo-dev/dygo/internal/config"
+	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/dygo-dev/dygo/internal/entity/catalog"
 	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
 	"github.com/dygo-dev/dygo/internal/project"
 	"github.com/dygo-dev/dygo/internal/secrets"
+	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 )
 
@@ -35,6 +37,15 @@ type doctorResult struct {
 
 type doctorError struct {
 	Problems int
+}
+
+type doctorRuntimePool interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Close()
+}
+
+var openDoctorRuntimePool = func(ctx context.Context, databaseURL string) (doctorRuntimePool, error) {
+	return db.OpenRuntimePool(ctx, databaseURL)
 }
 
 func (e doctorError) Error() string {
@@ -74,13 +85,21 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 
 	apps, appResult := checkAppManifests(root)
 	results = append(results, appResult)
+	entityResult := doctorResult{Status: doctorSkip, Name: "entity metadata", Detail: "app manifests are invalid"}
 	if appResult.Status == doctorPass {
-		results = append(results, checkEntityMetadata(apps))
-	} else {
-		results = append(results, doctorResult{Status: doctorSkip, Name: "entity metadata", Detail: "app manifests are invalid"})
+		entityResult = checkEntityMetadata(apps)
 	}
-	results = append(results, checkConfig(root))
-	results = append(results, checkSecretsLayout(root))
+	results = append(results, entityResult)
+	configResult := checkConfig(root)
+	results = append(results, configResult)
+	secretsResult := checkSecretsLayout(root)
+	results = append(results, secretsResult)
+
+	if appResult.Status == doctorPass && entityResult.Status == doctorPass && configResult.Status == doctorPass && secretsResult.Status == doctorPass {
+		results = append(results, checkRuntimeReadiness(ctx, root)...)
+	} else {
+		results = append(results, doctorResult{Status: doctorSkip, Name: "runtime database", Detail: "config, secrets, or metadata are not ready"})
+	}
 
 	return writeDoctorResults(stdout, results)
 }
@@ -152,6 +171,81 @@ func checkSecretsLayout(root string) doctorResult {
 		return doctorResult{Status: doctorFail, Name: "secrets layout", Detail: "missing " + strings.Join(missing, ", ")}
 	}
 	return doctorResult{Status: doctorPass, Name: "secrets layout", Detail: fmt.Sprintf("%d environments configured", len(envs))}
+}
+
+func checkRuntimeReadiness(ctx context.Context, root string) []doctorResult {
+	env := secrets.EnvironmentDevelopment
+	databaseURL, err := doctorDatabaseURL(root, env)
+	if err != nil {
+		return []doctorResult{
+			{Status: doctorFail, Name: "runtime database", Detail: fmt.Sprintf("%v; run dygo secrets edit", err)},
+			{Status: doctorSkip, Name: "core fixtures", Detail: "runtime database is not ready"},
+			{Status: doctorSkip, Name: "administrator account", Detail: "runtime database is not ready"},
+		}
+	}
+
+	pool, err := openDoctorRuntimePool(ctx, databaseURL)
+	if err != nil {
+		return []doctorResult{
+			{Status: doctorFail, Name: "runtime database", Detail: fmt.Sprintf("%v; run dygo db prepare", err)},
+			{Status: doctorSkip, Name: "core fixtures", Detail: "runtime database is not ready"},
+			{Status: doctorSkip, Name: "administrator account", Detail: "runtime database is not ready"},
+		}
+	}
+	defer pool.Close()
+
+	return []doctorResult{
+		{Status: doctorPass, Name: "runtime database", Detail: string(env) + " database reachable"},
+		checkCoreFixtures(ctx, pool),
+		checkAdministratorAccount(ctx, pool),
+	}
+}
+
+func doctorDatabaseURL(root string, env secrets.Environment) (string, error) {
+	cfg, err := config.Load(root)
+	if err != nil {
+		return "", fmt.Errorf("load config: %w", err)
+	}
+	secretName := cfg.Database.URL.Secret
+	databaseURL, err := databaseURLForEnvironment(root, env, secretName)
+	if err != nil {
+		return "", fmt.Errorf("read database secret %q for %s: %w", secretName, env, err)
+	}
+	return databaseURL, nil
+}
+
+func checkCoreFixtures(ctx context.Context, pool doctorRuntimePool) doctorResult {
+	var roleCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM "role" WHERE name IN ($1, $2)`, "studio-member", "system-manager").Scan(&roleCount); err != nil {
+		return doctorResult{Status: doctorFail, Name: "core fixtures", Detail: fmt.Sprintf("check required roles: %v; run dygo db prepare then dygo fixtures apply", err)}
+	}
+	var permissionCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM "permission"`).Scan(&permissionCount); err != nil {
+		return doctorResult{Status: doctorFail, Name: "core fixtures", Detail: fmt.Sprintf("check permissions: %v; run dygo db prepare then dygo fixtures apply", err)}
+	}
+
+	var missing []string
+	if roleCount < 2 {
+		missing = append(missing, "roles")
+	}
+	if permissionCount == 0 {
+		missing = append(missing, "permissions")
+	}
+	if len(missing) > 0 {
+		return doctorResult{Status: doctorFail, Name: "core fixtures", Detail: fmt.Sprintf("missing Core %s; run dygo fixtures apply", strings.Join(missing, " and "))}
+	}
+	return doctorResult{Status: doctorPass, Name: "core fixtures", Detail: fmt.Sprintf("%d roles and %d permissions ready", roleCount, permissionCount)}
+}
+
+func checkAdministratorAccount(ctx context.Context, pool doctorRuntimePool) doctorResult {
+	var adminExists bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM "user" WHERE COALESCE(administrator, false) = true LIMIT 1)`).Scan(&adminExists); err != nil {
+		return doctorResult{Status: doctorFail, Name: "administrator account", Detail: fmt.Sprintf("check administrator account: %v; run dygo db prepare then dygo setup admin", err)}
+	}
+	if !adminExists {
+		return doctorResult{Status: doctorFail, Name: "administrator account", Detail: "missing Administrator account; run dygo setup admin"}
+	}
+	return doctorResult{Status: doctorPass, Name: "administrator account", Detail: "Administrator account exists"}
 }
 
 func writeDoctorResults(stdout io.Writer, results []doctorResult) error {

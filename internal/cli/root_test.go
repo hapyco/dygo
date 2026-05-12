@@ -18,6 +18,7 @@ import (
 	"github.com/dygo-dev/dygo/internal/server"
 	"github.com/dygo-dev/dygo/internal/studio"
 	"github.com/dygo-dev/dygo/pkg/sdk"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestRun(t *testing.T) {
@@ -1386,10 +1387,16 @@ func TestAppsValidateCommandRejectsMissingProjectRoot(t *testing.T) {
 }
 
 func TestDoctorCommand(t *testing.T) {
+	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{
+		roleCount:       2,
+		permissionCount: 17,
+		adminExists:     true,
+	})
+
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
-	writeCLISecretsLayout(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
 	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company.yml"), `
 name: company
@@ -1416,7 +1423,40 @@ fields:
 		"PASS entity metadata: 1 entities valid",
 		"PASS config: configs/dygo.yaml server=127.0.0.1:6790",
 		"PASS secrets layout: 3 environments configured",
+		"PASS runtime database: development database reachable",
+		"PASS core fixtures: 2 roles and 17 permissions ready",
+		"PASS administrator account: Administrator account exists",
 		"dygo doctor passed",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
+func TestDoctorCommandReportsMissingFirstRunSetup(t *testing.T) {
+	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{})
+
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"doctor"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(doctor) error = nil, want first-run setup diagnostics")
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"PASS runtime database: development database reachable",
+		"FAIL core fixtures: missing Core roles and permissions; run dygo fixtures apply",
+		"FAIL administrator account: missing Administrator account; run dygo setup admin",
+		"dygo doctor found 2 problems",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
@@ -1453,6 +1493,7 @@ dependencies:
 		"FAIL config:",
 		"configs/dygo.yaml",
 		"FAIL secrets layout:",
+		"SKIP runtime database:",
 		"dygo doctor found",
 	} {
 		if !strings.Contains(output, want) {
@@ -2116,6 +2157,83 @@ func runWithOptionsForTest(ctx context.Context, args []string, stdin io.Reader, 
 
 func recordhooksForTest(registrars []sdk.RecordHookRegistrar) (*db.RecordHookRegistry, error) {
 	return recordhooks.NewRecordHookRegistry(registrars)
+}
+
+func withDoctorRuntimePool(t *testing.T, pool *fakeDoctorRuntimePool) {
+	t.Helper()
+	previous := openDoctorRuntimePool
+	openDoctorRuntimePool = func(_ context.Context, databaseURL string) (doctorRuntimePool, error) {
+		pool.opened++
+		pool.databaseURL = databaseURL
+		if pool.openErr != nil {
+			return nil, pool.openErr
+		}
+		return pool, nil
+	}
+	t.Cleanup(func() {
+		openDoctorRuntimePool = previous
+	})
+}
+
+type fakeDoctorRuntimePool struct {
+	roleCount       int
+	permissionCount int
+	adminExists     bool
+	openErr         error
+	roleErr         error
+	permissionErr   error
+	adminErr        error
+	databaseURL     string
+	opened          int
+	closed          bool
+}
+
+func (p *fakeDoctorRuntimePool) QueryRow(_ context.Context, sql string, _ ...any) pgx.Row {
+	switch {
+	case strings.Contains(sql, `FROM "role"`):
+		return fakeDoctorRow{value: p.roleCount, err: p.roleErr}
+	case strings.Contains(sql, `FROM "permission"`):
+		return fakeDoctorRow{value: p.permissionCount, err: p.permissionErr}
+	case strings.Contains(sql, `FROM "user"`):
+		return fakeDoctorRow{value: p.adminExists, err: p.adminErr}
+	default:
+		return fakeDoctorRow{err: errors.New("unexpected doctor query")}
+	}
+}
+
+func (p *fakeDoctorRuntimePool) Close() {
+	p.closed = true
+}
+
+type fakeDoctorRow struct {
+	value any
+	err   error
+}
+
+func (r fakeDoctorRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	if len(dest) != 1 {
+		return errors.New("fake doctor row expects one destination")
+	}
+	switch target := dest[0].(type) {
+	case *int:
+		value, ok := r.value.(int)
+		if !ok {
+			return errors.New("fake doctor row value is not int")
+		}
+		*target = value
+	case *bool:
+		value, ok := r.value.(bool)
+		if !ok {
+			return errors.New("fake doctor row value is not bool")
+		}
+		*target = value
+	default:
+		return errors.New("unsupported fake doctor row destination")
+	}
+	return nil
 }
 
 type fakeAdminSetupRunner struct {

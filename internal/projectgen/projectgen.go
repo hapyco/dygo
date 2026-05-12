@@ -445,6 +445,8 @@ Do not commit `+"`master.key`"+`.
 `, label, "```sh\n"+
 		"dygo secrets edit\n"+
 		"dygo db prepare\n"+
+		"dygo fixtures apply\n"+
+		"dygo setup admin\n"+
 		"dygo serve\n"+
 		"```")
 }

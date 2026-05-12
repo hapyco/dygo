@@ -101,7 +101,7 @@ Scoped Record Activity is read through the target Record route and checked again
 
 Project-aware commands discover the dygo root by walking upward from the current directory. Generated projects use `dygo.yml` as the root marker; the framework repository is also recognized during development.
 
-`dygo new <name>` creates a project with one app under `apps/`, a project-local `cmd/dygo` runner, encrypted secrets, a development `DATABASE_URL` secret, and cached Studio UI assets when the running dygo build has them. It does not create a database or run schema sync; run `dygo db prepare` when the local database is ready.
+`dygo new <name>` creates a project with one app under `apps/`, a project-local `cmd/dygo` runner, encrypted secrets, a development `DATABASE_URL` secret, and cached Studio UI assets when the running dygo build has them. It does not create a database, run schema sync, apply fixtures, or create the first Administrator; run the printed first-run commands before opening Studio.
 
 ## Development
 

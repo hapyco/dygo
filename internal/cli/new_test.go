@@ -32,6 +32,8 @@ func TestNewProjectCommandCreatesProject(t *testing.T) {
 		"dependencies: tidy skipped",
 		"studio: cached from framework Studio build",
 		"dygo db prepare",
+		"dygo fixtures apply",
+		"dygo setup admin",
 		"dygo serve",
 	} {
 		if !strings.Contains(stdout.String(), want) {

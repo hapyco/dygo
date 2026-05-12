@@ -105,6 +105,11 @@ func TestGenerateCreatesProjectSkeletonAndSecrets(t *testing.T) {
 	assertContains(t, readFile(t, filepath.Join(root, ".gitignore")), ".dygo/")
 	assertContains(t, readFile(t, filepath.Join(root, ".gitignore")), "var/")
 	assertContains(t, readFile(t, filepath.Join(root, "cmd", "dygo", "main.go")), "dygoruntime.Run")
+	readme := readFile(t, filepath.Join(root, "README.md"))
+	assertContains(t, readme, "dygo db prepare")
+	assertContains(t, readme, "dygo fixtures apply")
+	assertContains(t, readme, "dygo setup admin")
+	assertContains(t, readme, "dygo serve")
 }
 
 func TestGenerateInstallsStudioCacheFromFrameworkBuild(t *testing.T) {
