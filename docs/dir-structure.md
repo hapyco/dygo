@@ -216,7 +216,7 @@ my-company/
 
 `apps/` in a generated project is for business apps owned by the project.
 
-`.dygo/apps/` is for framework-managed cached apps.
+`.dygo/apps/` is for framework-managed cached apps and the generated-project Studio UI cache.
 
 `db/schema.sql` is the generated Postgres schema snapshot after metadata schema sync runs.
 

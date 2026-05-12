@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/dygo-dev/dygo/internal/hookgen"
+	"github.com/dygo-dev/dygo/internal/studio"
 )
 
 // ProjectOptions configures a project upgrade.
@@ -21,6 +23,10 @@ type ProjectOptions struct {
 	CommandRunner CommandRunner
 	Confirm       Confirmer
 	SkipTidy      bool
+
+	// StudioAssets is for tests and custom upgrade callers. Normal upgrades use
+	// bundled release assets from the running dygo binary.
+	StudioAssets fs.FS
 }
 
 // PlanProject describes project upgrade work without writing files.
@@ -88,6 +94,10 @@ func UpgradeProject(ctx context.Context, options ProjectOptions) (ProjectResult,
 		return ProjectResult{}, fmt.Errorf("update project runner: %w", err)
 	}
 	_ = update
+	studioUpdated, studioSource, err := installStudioCache(root, options.StudioAssets)
+	if err != nil {
+		return ProjectResult{}, err
+	}
 	if !options.SkipTidy {
 		if _, err := runner(ctx, root, "go", "mod", "tidy"); err != nil {
 			return ProjectResult{}, fmt.Errorf("run go mod tidy: %w", err)
@@ -95,7 +105,28 @@ func UpgradeProject(ctx context.Context, options ProjectOptions) (ProjectResult,
 	}
 	result.Updated = true
 	result.RunnerUpdated = written
+	result.StudioUpdated = studioUpdated
+	result.StudioSource = studioSource
 	return result, nil
+}
+
+func installStudioCache(root string, configured fs.FS) (bool, string, error) {
+	sources := make([]studio.Source, 0, 2)
+	if configured != nil {
+		sources = append(sources, studio.Source{Name: "configured Studio assets", FS: configured})
+	}
+	source, ok, err := studio.EmbeddedSource()
+	if err != nil {
+		return false, "", err
+	}
+	if ok {
+		sources = append(sources, source)
+	}
+	cached, name, err := studio.InstallCache(root, sources...)
+	if err != nil {
+		return false, "", fmt.Errorf("install Studio assets: %w", err)
+	}
+	return cached, name, nil
 }
 
 // ReadProjectVersion reads the dygo module version from go.mod.

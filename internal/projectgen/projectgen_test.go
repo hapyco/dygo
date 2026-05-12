@@ -107,6 +107,29 @@ func TestGenerateCreatesProjectSkeletonAndSecrets(t *testing.T) {
 	assertContains(t, readFile(t, filepath.Join(root, "cmd", "dygo", "main.go")), "dygoruntime.Run")
 }
 
+func TestGenerateInstallsStudioCacheFromFrameworkBuild(t *testing.T) {
+	parent := t.TempDir()
+	frameworkRoot := t.TempDir()
+	writeProjectgenFile(t, filepath.Join(frameworkRoot, "apps", "studio", "ui", "dist", "index.html"), "<html>studio</html>")
+	writeProjectgenFile(t, filepath.Join(frameworkRoot, "apps", "studio", "ui", "dist", "assets", "index.js"), "console.log('studio')")
+
+	result, err := Generate(context.Background(), Options{
+		Name:          "studio-ready",
+		WorkingDir:    parent,
+		FrameworkRoot: frameworkRoot,
+		SkipTidy:      true,
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v, want nil", err)
+	}
+	if !result.StudioCached || result.StudioSource != "framework Studio build" {
+		t.Fatalf("Generate() result = %+v, want Studio cache from framework build", result)
+	}
+	root := filepath.Join(parent, "studio-ready")
+	assertContains(t, readFile(t, filepath.Join(root, ".dygo", "apps", "studio", "ui", "dist", "index.html")), "studio")
+	assertContains(t, readFile(t, filepath.Join(root, ".dygo", "apps", "studio", "ui", "dist", "assets", "index.js")), "console.log")
+}
+
 func TestGenerateDefaultsModuleToName(t *testing.T) {
 	parent := t.TempDir()
 
@@ -252,5 +275,15 @@ func runGoCommand(t *testing.T, dir string, args ...string) {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go %s error = %v\n%s", strings.Join(args, " "), err, string(output))
+	}
+}
+
+func writeProjectgenFile(t *testing.T, path string, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
 }

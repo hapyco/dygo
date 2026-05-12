@@ -21,6 +21,21 @@ jobs:
           go-version: "1.26.2"
           cache: true
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/studio/ui/package-lock.json
+
+      - name: Build Studio UI
+        working-directory: apps/studio/ui
+        run: |
+          npm ci
+          rm -f ../../../internal/studio/bundled/index.html
+          find ../../../internal/studio/bundled/assets -type f ! -name placeholder.txt -delete
+          npm run build:embed
+
       - name: Test
         run: go test ./...
 

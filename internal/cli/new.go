@@ -53,6 +53,13 @@ func newProjectCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 			} else if _, err := fmt.Fprintln(stdout, "dependencies: tidy skipped"); err != nil {
 				return fmt.Errorf("write new project output: %w", err)
 			}
+			if result.StudioCached {
+				if _, err := fmt.Fprintf(stdout, "studio: cached from %s\n", result.StudioSource); err != nil {
+					return fmt.Errorf("write new project output: %w", err)
+				}
+			} else if _, err := fmt.Fprintln(stdout, "studio: not cached; dygo serve will require bundled Studio assets or --studio-dev-url"); err != nil {
+				return fmt.Errorf("write new project output: %w", err)
+			}
 			if _, err := fmt.Fprintf(stdout, "\nnext:\n  cd %s\n  dygo db prepare\n  dygo serve\n", result.Name); err != nil {
 				return fmt.Errorf("write new project output: %w", err)
 			}

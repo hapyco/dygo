@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"go/format"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/dygo-dev/dygo/internal/project"
 	"github.com/dygo-dev/dygo/internal/secrets"
+	"github.com/dygo-dev/dygo/internal/studio"
 )
 
 const (
@@ -32,16 +34,22 @@ type Options struct {
 	FrameworkRoot string
 	SkipTidy      bool
 	DatabaseURL   string
+
+	// StudioAssets is for tests and custom project generators. Normal builds use
+	// framework build output or bundled release assets.
+	StudioAssets fs.FS
 }
 
 // Result describes a generated dygo project.
 type Result struct {
-	Name        string
-	Label       string
-	ModulePath  string
-	Path        string
-	DatabaseURL string
-	TidyRun     bool
+	Name         string
+	Label        string
+	ModulePath   string
+	Path         string
+	DatabaseURL  string
+	TidyRun      bool
+	StudioCached bool
+	StudioSource string
 }
 
 type dygoDependency struct {
@@ -101,13 +109,19 @@ func Generate(ctx context.Context, options Options) (Result, error) {
 	if err := store.Set(secrets.EnvironmentDevelopment, "DATABASE_URL", databaseURL); err != nil {
 		return Result{}, fmt.Errorf("write development database secret: %w", err)
 	}
+	studioCached, studioSource, err := installStudioCache(target, options, dep)
+	if err != nil {
+		return Result{}, err
+	}
 
 	result := Result{
-		Name:        name,
-		Label:       label,
-		ModulePath:  modulePath,
-		Path:        target,
-		DatabaseURL: databaseURL,
+		Name:         name,
+		Label:        label,
+		ModulePath:   modulePath,
+		Path:         target,
+		DatabaseURL:  databaseURL,
+		StudioCached: studioCached,
+		StudioSource: studioSource,
 	}
 	if !options.SkipTidy {
 		if err := runGoModTidy(ctx, target); err != nil {
@@ -218,6 +232,34 @@ func resolveDygoDependency(options Options, workingDir string) (dygoDependency, 
 		return dygoDependency{}, fmt.Errorf("resolve framework root: %w", err)
 	}
 	return dygoDependency{Version: "v0.0.0", Replace: frameworkRoot}, nil
+}
+
+func installStudioCache(root string, options Options, dep dygoDependency) (bool, string, error) {
+	sources := make([]studio.Source, 0, 3)
+	if options.StudioAssets != nil {
+		sources = append(sources, studio.Source{Name: "configured Studio assets", FS: options.StudioAssets})
+	}
+	if dep.Replace != "" {
+		source, ok, err := studio.SourceFromDir("framework Studio build", studio.FrameworkDistPath(dep.Replace))
+		if err != nil {
+			return false, "", fmt.Errorf("resolve framework Studio build: %w", err)
+		}
+		if ok {
+			sources = append(sources, source)
+		}
+	}
+	source, ok, err := studio.EmbeddedSource()
+	if err != nil {
+		return false, "", err
+	}
+	if ok {
+		sources = append(sources, source)
+	}
+	cached, name, err := studio.InstallCache(root, sources...)
+	if err != nil {
+		return false, "", fmt.Errorf("install Studio assets: %w", err)
+	}
+	return cached, name, nil
 }
 
 func writeProjectFiles(root string, name string, label string, modulePath string, dep dygoDependency) error {

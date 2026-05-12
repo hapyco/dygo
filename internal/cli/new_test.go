@@ -30,6 +30,7 @@ func TestNewProjectCommandCreatesProject(t *testing.T) {
 		"module: example.com/my-company",
 		"secrets: initialized",
 		"dependencies: tidy skipped",
+		"studio: cached from framework Studio build",
 		"dygo db prepare",
 		"dygo serve",
 	} {
@@ -51,6 +52,7 @@ func TestNewProjectCommandCreatesProject(t *testing.T) {
 		"configs/secrets/staging.age.yaml",
 		"configs/secrets/production.age.yaml",
 		"master.key",
+		".dygo/apps/studio/ui/dist/index.html",
 	} {
 		if _, err := os.Stat(filepath.Join(projectRoot, filepath.FromSlash(path))); err != nil {
 			t.Fatalf("Stat(%s) error = %v, want generated path", path, err)
@@ -113,5 +115,17 @@ func writeCLIFrameworkRootForNew(t *testing.T, root string) {
 	}
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/dygo-dev/dygo\n\ngo 1.26.2\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(go.mod) error = %v", err)
+	}
+	writeCLIFrameworkFileForNew(t, filepath.Join(root, "apps", "studio", "ui", "dist", "index.html"), "<html>studio</html>")
+	writeCLIFrameworkFileForNew(t, filepath.Join(root, "apps", "studio", "ui", "dist", "assets", "index.js"), "console.log('studio')")
+}
+
+func writeCLIFrameworkFileForNew(t *testing.T, path string, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
 }

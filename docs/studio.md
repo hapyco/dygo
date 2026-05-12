@@ -8,6 +8,8 @@ Studio is a first-party dygo app, not a temporary admin panel. It should feel li
 
 The framework repo includes the Studio app manifest at `apps/studio/app.yml` and the first Vue/Vite frontend scaffold under `apps/studio/ui`. The current scaffold includes login, route guards, root-mounted page placeholders, and Dygo UI foundation components. Shell, stores, metadata renderers, and final page types are still being built.
 
+Release builds bundle the built Studio UI into the dygo binary. Generated projects cache those assets under `.dygo/apps/studio/ui/dist` so the project-local `cmd/dygo` runner can serve Studio without requiring the framework source checkout. `dygo upgrade` refreshes that cache when the running dygo binary includes newer bundled Studio assets.
+
 ## Mental Model
 
 The Studio contains Spaces.

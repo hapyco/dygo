@@ -50,7 +50,7 @@ Upgrade the managed CLI:
 dygo upgrade
 ```
 
-Inside a generated dygo project, `dygo upgrade` also updates the project `go.mod` dygo dependency and dygo-managed generated runner files. Project upgrades refuse dirty git worktrees.
+Inside a generated dygo project, `dygo upgrade` also updates the project `go.mod` dygo dependency, dygo-managed generated runner files, and the cached Studio UI assets when the release binary includes them. Project upgrades refuse dirty git worktrees.
 
 Useful upgrade modes:
 

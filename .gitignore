@@ -36,6 +36,9 @@ master.key
 
 # Frontend build output
 dist/
+internal/studio/bundled/index.html
+internal/studio/bundled/assets/*
+!internal/studio/bundled/assets/placeholder.txt
 
 # Editor/IDE
 # .idea/

@@ -19,6 +19,7 @@ import (
 	"github.com/dygo-dev/dygo/internal/fixtures"
 	recordhooks "github.com/dygo-dev/dygo/internal/hooks"
 	"github.com/dygo-dev/dygo/internal/server"
+	"github.com/dygo-dev/dygo/internal/studio"
 	"github.com/dygo-dev/dygo/pkg/sdk"
 	"github.com/spf13/cobra"
 )
@@ -270,6 +271,12 @@ func newServeCommand(ctx context.Context, stdout, stderr io.Writer, serve serveR
 				handler, err := server.NewStudioDevProxy(studioURL)
 				if err != nil {
 					return err
+				}
+				studioHandler = handler
+			} else {
+				handler, _, err := studio.HandlerForProject(root)
+				if err != nil {
+					return fmt.Errorf("resolve Studio UI: %w", err)
 				}
 				studioHandler = handler
 			}

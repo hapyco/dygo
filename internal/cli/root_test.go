@@ -16,6 +16,7 @@ import (
 	recordhooks "github.com/dygo-dev/dygo/internal/hooks"
 	"github.com/dygo-dev/dygo/internal/secrets"
 	"github.com/dygo-dev/dygo/internal/server"
+	"github.com/dygo-dev/dygo/internal/studio"
 	"github.com/dygo-dev/dygo/pkg/sdk"
 )
 
@@ -627,6 +628,51 @@ func TestServeCommandReturnsRunnerError(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "dygo serving on") {
 		t.Fatalf("serve stdout = %q, want no ready message when runner fails before startup", stdout.String())
+	}
+}
+
+func TestServeCommandFailsWhenStudioAssetsAreUnavailable(t *testing.T) {
+	restoreEmbedded := studio.SetEmbeddedSourceForTest(func() (studio.Source, bool, error) {
+		return studio.Source{}, false, nil
+	})
+	defer restoreEmbedded()
+
+	previousStarter := startStudioDevServer
+	startStudioDevServer = func(context.Context, string, io.Writer, io.Writer) (string, studioDevStop, error) {
+		return "", nil, nil
+	}
+	defer func() {
+		startStudioDevServer = previousStarter
+	}()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "dygo.yml"), []byte("name: test\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
+	}
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	called := false
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, _ server.Options) error {
+		called = true
+		return nil
+	}, noopDatabaseChecker)
+	if err == nil {
+		t.Fatal("Run(serve) error = nil, want missing Studio assets error")
+	}
+	for _, want := range []string{"resolve Studio UI", "Studio UI assets are unavailable", ".dygo/apps/studio/ui/dist", "--studio-dev-url"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(serve) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+	if called {
+		t.Fatal("serve runner was called without Studio assets")
+	}
+	if strings.Contains(stdout.String(), "dygo serving on") {
+		t.Fatalf("serve stdout = %q, want no ready message", stdout.String())
 	}
 }
 
@@ -1979,6 +2025,26 @@ func writeCLIProjectRoot(t *testing.T, root string) {
 
 	if err := os.WriteFile(filepath.Join(root, "dygo.yml"), []byte("name: test\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
+	}
+	writeCLIStudioCache(t, root)
+}
+
+func writeCLIStudioCache(t *testing.T, root string) {
+	t.Helper()
+
+	files := map[string]string{
+		"index.html":       "<html><body><div id=\"app\"></div><script type=\"module\" src=\"/assets/index.js\"></script></body></html>",
+		"assets/index.js":  "console.log('studio')",
+		"assets/index.css": "body { margin: 0; }",
+	}
+	for name, body := range files {
+		path := filepath.Join(studio.ProjectCachePath(root), filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(path), err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", path, err)
+		}
 	}
 }
 

@@ -22,6 +22,10 @@ go run ./cmd/dygo serve
 
 In a source checkout with `apps/studio/ui/package.json`, the same command also starts Studio's development asset server internally and proxies Studio pages through dygo. The browser-facing address stays `http://127.0.0.1:6790/`, so Studio and `/api/v1/...` share one origin during development.
 
+Generated projects serve Studio from `.dygo/apps/studio/ui/dist` when that cache exists. Release builds also include bundled Studio assets, and `dygo new` / `dygo upgrade` refresh the generated-project cache when the running dygo binary has those assets.
+
+If no Studio dev server, generated-project cache, or bundled release assets are available, `dygo serve` exits before listening instead of serving an API-only site.
+
 Use another encrypted environment with `--env`:
 
 ```sh
@@ -150,4 +154,4 @@ The CLI listens for interrupt and termination signals, asks the HTTP server to s
 
 ## Boundaries
 
-The current server includes health, session auth, read-only metadata APIs, generic Record CRUD APIs, Entity permission enforcement for Records, and a development proxy for the Studio UI. The server does not include production Studio asset embedding, per-Entity controllers, child table storage, row-level sharing rules, workflow hooks, or audit logging yet.
+The current server includes health, session auth, read-only metadata APIs, generic Record CRUD APIs, Entity permission enforcement for Records, a development proxy for Studio, and static serving for generated-project or bundled Studio assets. The server does not include per-Entity controllers, child table storage, row-level sharing rules, workflow hooks, or audit logging yet.
