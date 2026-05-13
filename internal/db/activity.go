@@ -77,7 +77,7 @@ func (r ActivityReader) ListRecordActivity(ctx context.Context, entity string, r
 SELECT
 	a.id,
 	a.created_at,
-	e.name,
+	e.route_slug,
 	a.record_id,
 	a.kind,
 	a.operation,
@@ -154,7 +154,7 @@ LIMIT $3 OFFSET $4`, entityID, recordID, params.Limit, params.Offset)
 
 func (r ActivityReader) entityID(ctx context.Context, entity string) (int64, error) {
 	var id int64
-	err := r.queryer.QueryRow(ctx, `SELECT id FROM "entity" WHERE name = $1`, entity).Scan(&id)
+	err := r.queryer.QueryRow(ctx, `SELECT id FROM "entity" WHERE route_slug = $1`, entity).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, recordError(RecordErrorNotFound, "entity not found", map[string]any{"entity": entity}, err)
 	}

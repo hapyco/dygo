@@ -28,16 +28,18 @@ type recordHookRegistry struct {
 	registry *db.RecordHookRegistry
 }
 
-func (r recordHookRegistry) RegisterEntity(entity string, event sdk.RecordHookEvent, name string, fn sdk.RecordHookFunc) error {
+func (r recordHookRegistry) RegisterEntity(appName string, entity string, event sdk.RecordHookEvent, name string, fn sdk.RecordHookFunc) error {
 	if fn == nil {
 		return fmt.Errorf("record hook %q function is required", name)
 	}
-	return r.registry.RegisterEntity(entity, db.RecordHookEvent(event), name, func(ctx context.Context, hookCtx db.RecordHookContext) error {
+	return r.registry.RegisterEntity(appName, entity, db.RecordHookEvent(event), name, func(ctx context.Context, hookCtx db.RecordHookContext) error {
 		return fn(ctx, sdk.RecordHookContext{
 			Event:       sdk.RecordHookEvent(hookCtx.Event),
 			Operation:   hookCtx.Operation,
 			EntityID:    hookCtx.EntityID,
+			AppName:     hookCtx.AppName,
 			Entity:      hookCtx.Entity,
+			RouteSlug:   hookCtx.RouteSlug,
 			EntityLabel: hookCtx.EntityLabel,
 			RecordID:    hookCtx.RecordID,
 			Input:       sdk.RecordInput(hookCtx.Input),

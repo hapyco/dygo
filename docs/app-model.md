@@ -88,9 +88,9 @@ Business apps should not need default `views`, `spaces`, or `reports` folders at
 
 Each app is described by an `app.yml` manifest. See [App Manifest](app-manifest.md) for the v1 schema.
 
-Entity files live in the app's manifest-defined `entities` directory. Entity names are globally unique across installed Apps in v1 because Studio uses root-mounted Entity routes such as `/lead` and `/user`.
+Entity files live in the app's manifest-defined `entities` directory. Entity identity is app-scoped, so `crm/contact` and `support/contact` can both exist when their route slugs are unique.
 
-Entity metadata uses singular names only. Runtime code uses Entity `name` as the source for storage naming by converting kebab-case to snake_case.
+Entity metadata uses singular names only. Studio record URLs use `route.slug`, defaulting to Entity `name`, at `/{route-slug}`. Non-Core storage tables are app-scoped by default, so `crm/lead` maps to `crm_lead`.
 
 Every Record also has a system `name` generated from Entity `naming` metadata. Apps can choose random names, field-based names, or series names. The numeric `id` remains dygo's internal primary key.
 

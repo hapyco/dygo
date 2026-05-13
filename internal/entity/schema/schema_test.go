@@ -298,6 +298,20 @@ label: Lead
 			wantError: "at least one field",
 		},
 		{
+			name: "invalid route slug",
+			body: `
+name: lead
+label: Lead
+route:
+  slug: BadSlug
+fields:
+  - name: title
+    label: Title
+    type: text
+`,
+			wantError: "route slug",
+		},
+		{
 			name: "duplicate field names",
 			body: `
 name: lead

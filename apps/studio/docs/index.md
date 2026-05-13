@@ -26,7 +26,7 @@ Use `--studio-dev-url` only when you want to run the Studio asset server yoursel
 
 ## Routes
 
-Studio is root-mounted by default:
+Studio is root-mounted by default. Global pages and record pages both live at root paths:
 
 ```txt
 /login
@@ -36,4 +36,4 @@ Studio is root-mounted by default:
 /:entity/:id
 ```
 
-Dynamic Entity routes are authenticated. `/login` is public and redirects authenticated users back to `/`. Activity appears inside the Record page.
+Dynamic Entity route slugs are authenticated. `/login` is public and redirects authenticated users back to `/`. Activity appears inside the Record page.

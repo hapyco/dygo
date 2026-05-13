@@ -153,7 +153,7 @@ func TestMetadataRoutes(t *testing.T) {
 			App:   db.MetadataAppRef{Name: "core", Label: "Core"},
 		}},
 		meta: db.MetadataEntityMeta{
-			MetadataEntity: db.MetadataEntity{Name: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+			MetadataEntity: db.MetadataEntity{Name: "user", RouteSlug: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
 			Fields: []db.MetadataField{{
 				Name:     "email",
 				Label:    "Email",
@@ -295,8 +295,8 @@ func TestMetadataEntityListFiltersUnreadableEntities(t *testing.T) {
 	authStore := validFakeAuthStore()
 	authStore.user.Administrator = false
 	store := &fakeMetadataStore{entities: []db.MetadataEntity{
-		{Name: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
-		{Name: "role", Label: "Role", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+		{Name: "user", RouteSlug: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+		{Name: "role", RouteSlug: "role", Label: "Role", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
 	}}
 	checker := &fakePermissionChecker{denied: map[string]bool{"user": true}}
 	request := authenticatedRequest(http.MethodGet, "/api/v1/entities", "")
@@ -321,7 +321,7 @@ func TestMetadataEntityListFiltersUnreadableEntities(t *testing.T) {
 func TestMetadataEntityMetaDenied(t *testing.T) {
 	authStore := validFakeAuthStore()
 	authStore.user.Administrator = false
-	store := &fakeMetadataStore{meta: db.MetadataEntityMeta{MetadataEntity: db.MetadataEntity{Name: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}}}}
+	store := &fakeMetadataStore{meta: db.MetadataEntityMeta{MetadataEntity: db.MetadataEntity{Name: "user", RouteSlug: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}}}}
 	checker := &fakePermissionChecker{denied: map[string]bool{"user": true}}
 	request := authenticatedRequest(http.MethodGet, "/api/v1/entities/user/meta", "")
 	recorder := httptest.NewRecorder()
@@ -344,8 +344,8 @@ func TestMetadataEntityMetaDenied(t *testing.T) {
 
 func TestMetadataRoutesAdministratorReceivesFullMetadata(t *testing.T) {
 	store := &fakeMetadataStore{entities: []db.MetadataEntity{
-		{Name: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
-		{Name: "role", Label: "Role", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+		{Name: "user", RouteSlug: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+		{Name: "role", RouteSlug: "role", Label: "Role", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
 	}}
 	request := authenticatedRequest(http.MethodGet, "/api/v1/entities", "")
 	recorder := httptest.NewRecorder()
@@ -376,8 +376,8 @@ func TestMetadataAppsFollowReadableEntities(t *testing.T) {
 		},
 		app: db.MetadataApp{Name: "core", Label: "Core", Version: "0.1.0", Status: "active"},
 		entities: []db.MetadataEntity{
-			{Name: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
-			{Name: "lead", Label: "Lead", App: db.MetadataAppRef{Name: "crm", Label: "CRM"}},
+			{Name: "user", RouteSlug: "user", Label: "User", App: db.MetadataAppRef{Name: "core", Label: "Core"}},
+			{Name: "lead", RouteSlug: "lead", Label: "Lead", App: db.MetadataAppRef{Name: "crm", Label: "CRM"}},
 		},
 	}
 	checker := &fakePermissionChecker{denied: map[string]bool{"app": true, "user": true}}

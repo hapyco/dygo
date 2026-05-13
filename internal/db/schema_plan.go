@@ -289,10 +289,7 @@ type desiredConstraint struct {
 }
 
 func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) {
-	targets := map[string]catalog.LoadedEntity{}
-	for _, entity := range entities {
-		targets[entity.Entity.Name] = entity
-	}
+	targets := newSchemaTargetIndex(entities)
 
 	ordered := append([]catalog.LoadedEntity(nil), entities...)
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -308,7 +305,7 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 	var desired desiredSchema
 	seenTables := map[string]catalog.LoadedEntity{}
 	for _, loaded := range ordered {
-		table, err := tableName(loaded.Entity)
+		table, err := tableName(loaded)
 		if err != nil {
 			return desiredSchema{}, entitySchemaError(loaded, err)
 		}
@@ -327,15 +324,16 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 				{Name: "created_at", Type: "timestamptz", Required: true, Source: entitySource(loaded)},
 				{Name: "updated_at", Type: "timestamptz", Required: true, Source: entitySource(loaded)},
 			},
-			Constraints: []desiredConstraint{
-				{
-					Name:       constraintName(table, "name", "key"),
-					Type:       "unique",
-					Columns:    []string{"name"},
-					Definition: fmt.Sprintf("UNIQUE (%s)", quoteIdentList([]string{"name"})),
-					Source:     entitySource(loaded),
-				},
-			},
+			Constraints: []desiredConstraint{},
+		}
+		if requiresSystemNameUniqueConstraint(loaded) {
+			desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
+				Name:       constraintName(table, "name", "key"),
+				Type:       "unique",
+				Columns:    []string{"name"},
+				Definition: fmt.Sprintf("UNIQUE (%s)", quoteIdentList([]string{"name"})),
+				Source:     entitySource(loaded),
+			})
 		}
 
 		fieldColumns := map[string]string{}
@@ -356,7 +354,7 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 				continue
 			}
 			fieldColumns[field.Name] = column
-			sqlType, err := columnType(field, targets)
+			sqlType, err := columnType(loaded, field, targets)
 			if err != nil {
 				return desiredSchema{}, fieldSchemaError(loaded, field, err)
 			}
@@ -497,6 +495,10 @@ func validateDesiredObjectNames(table desiredTable) error {
 		constraintNames[constraint.Name] = constraint.Source
 	}
 	return nil
+}
+
+func requiresSystemNameUniqueConstraint(entity catalog.LoadedEntity) bool {
+	return !(entity.AppName == "core" && entity.Entity.Name == "entity")
 }
 
 func compareColumn(plan *SchemaPlan, table string, desired desiredColumn, live liveColumn) {
@@ -729,11 +731,18 @@ func createTableSQL(table string) string {
 )`, quoteIdent(table), quoteIdent("id"), quoteIdent("name"), quoteIdent("created_at"), quoteIdent("updated_at"))
 }
 
-func tableName(entity schema.Entity) (string, error) {
-	if strings.TrimSpace(entity.Name) == "" {
+func tableName(entity catalog.LoadedEntity) (string, error) {
+	if strings.TrimSpace(entity.Entity.Name) == "" {
 		return "", fmt.Errorf("name is required")
 	}
-	return storageName(entity.Name), nil
+	return entityTableName(entity.AppName, entity.Entity.Name), nil
+}
+
+func entityTableName(appName string, entityName string) string {
+	if appName == "core" || strings.TrimSpace(appName) == "" {
+		return storageName(entityName)
+	}
+	return storageName(appName + "-" + entityName)
 }
 
 func columnForField(field schema.Field) (string, error) {
@@ -750,7 +759,7 @@ func columnForField(field schema.Field) (string, error) {
 	return name, nil
 }
 
-func columnType(field schema.Field, targets map[string]catalog.LoadedEntity) (string, error) {
+func columnType(owner catalog.LoadedEntity, field schema.Field, targets schemaTargetIndex) (string, error) {
 	switch field.Type {
 	case "text", "email", "phone", "password", "long-text", "select", "attachment":
 		return "text", nil
@@ -771,14 +780,58 @@ func columnType(field schema.Field, targets map[string]catalog.LoadedEntity) (st
 	case "json":
 		return "jsonb", nil
 	case "link":
-		if _, ok := targets[field.Options.Entity]; !ok {
-			return "", fmt.Errorf("link target %q is not loaded", field.Options.Entity)
+		if _, err := targets.resolve(owner, field.Options.App, field.Options.Entity); err != nil {
+			return "", err
 		}
 		return "bigint", nil
 	case "child-table":
 		return "", fmt.Errorf("child-table storage is not supported by metadata schema sync yet")
 	default:
 		return "", fmt.Errorf("unsupported field type %q", field.Type)
+	}
+}
+
+type schemaTargetIndex struct {
+	byIdentity map[string]catalog.LoadedEntity
+	byName     map[string][]catalog.LoadedEntity
+}
+
+func newSchemaTargetIndex(entities []catalog.LoadedEntity) schemaTargetIndex {
+	index := schemaTargetIndex{
+		byIdentity: map[string]catalog.LoadedEntity{},
+		byName:     map[string][]catalog.LoadedEntity{},
+	}
+	for _, entity := range entities {
+		index.byIdentity[catalog.EntityKey(entity.AppName, entity.Entity.Name)] = entity
+		index.byName[entity.Entity.Name] = append(index.byName[entity.Entity.Name], entity)
+	}
+	return index
+}
+
+func (i schemaTargetIndex) resolve(owner catalog.LoadedEntity, appName string, entityName string) (catalog.LoadedEntity, error) {
+	if strings.TrimSpace(appName) != "" {
+		target, ok := i.byIdentity[catalog.EntityKey(appName, entityName)]
+		if !ok {
+			return catalog.LoadedEntity{}, fmt.Errorf("link target %q in app %q is not loaded", entityName, appName)
+		}
+		return target, nil
+	}
+	if target, ok := i.byIdentity[catalog.EntityKey(owner.AppName, entityName)]; ok {
+		return target, nil
+	}
+	matches := i.byName[entityName]
+	switch len(matches) {
+	case 0:
+		return catalog.LoadedEntity{}, fmt.Errorf("link target %q is not loaded", entityName)
+	case 1:
+		return matches[0], nil
+	default:
+		apps := make([]string, 0, len(matches))
+		for _, match := range matches {
+			apps = append(apps, match.AppName)
+		}
+		sort.Strings(apps)
+		return catalog.LoadedEntity{}, fmt.Errorf("link target %q is ambiguous in apps %s; set options.app", entityName, strings.Join(apps, ", "))
 	}
 }
 

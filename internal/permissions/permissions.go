@@ -135,7 +135,7 @@ SELECT EXISTS (
 	JOIN entity e ON e.id = p.entity_id
 	WHERE u.id = $1
 		AND COALESCE(u.enabled, false) = true
-		AND e.name = $2
+		AND e.route_slug = $2
 		AND COALESCE(p.%s, false) = true
 	LIMIT 1
 )`, column)

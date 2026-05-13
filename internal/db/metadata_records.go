@@ -38,6 +38,7 @@ type appRecord struct {
 type entityRecord struct {
 	AppName     string
 	Name        string
+	RouteSlug   string
 	Label       string
 	Description string
 	Naming      []byte
@@ -112,15 +113,17 @@ RETURNING id`, app.Name, app.Label, app.Version, app.Status).Scan(&id); err != n
 		}
 		var id int64
 		if err := tx.QueryRow(ctx, `
-INSERT INTO "entity" (app_id, name, label, description, naming)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (name) DO UPDATE
+INSERT INTO "entity" (app_id, name, route_slug, label, description, naming)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (app_id, name) DO UPDATE
 SET app_id = EXCLUDED.app_id,
+	name = EXCLUDED.name,
+	route_slug = EXCLUDED.route_slug,
 	label = EXCLUDED.label,
 	description = EXCLUDED.description,
 	naming = EXCLUDED.naming,
 	updated_at = now()
-RETURNING id`, appID, entity.Name, entity.Label, entity.Description, entity.Naming).Scan(&id); err != nil {
+RETURNING id`, appID, entity.Name, entity.RouteSlug, entity.Label, entity.Description, entity.Naming).Scan(&id); err != nil {
 			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %s/%s: %w", entity.AppName, entity.Name, err)
 		}
 		entityIDs[entityKey(entity.AppName, entity.Name)] = id
@@ -272,6 +275,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 		records.Entities = append(records.Entities, entityRecord{
 			AppName:     loaded.AppName,
 			Name:        loaded.Entity.Name,
+			RouteSlug:   loaded.Entity.EffectiveRouteSlug(),
 			Label:       loaded.Entity.Label,
 			Description: loaded.Entity.Description,
 			Naming:      namingJSON,
@@ -349,6 +353,9 @@ func fieldOptionsJSON(options fieldtype.Options) ([]byte, error) {
 	values := map[string]any{}
 	if len(options.Values) > 0 {
 		values["values"] = options.Values
+	}
+	if options.App != "" {
+		values["app"] = options.App
 	}
 	if options.Entity != "" {
 		values["entity"] = options.Entity

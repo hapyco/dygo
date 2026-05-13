@@ -17,10 +17,17 @@ type Entity struct {
 	Name        string       `yaml:"name"`
 	Label       string       `yaml:"label"`
 	Description string       `yaml:"description,omitempty"`
+	Route       Route        `yaml:"route,omitempty"`
 	Naming      Naming       `yaml:"naming,omitempty"`
 	Fields      []Field      `yaml:"fields"`
 	Indexes     []Index      `yaml:"indexes,omitempty"`
 	Constraints []Constraint `yaml:"constraints,omitempty"`
+}
+
+// Route describes the user-facing Studio route metadata for an Entity.
+type Route struct {
+	Line int    `yaml:"-"`
+	Slug string `yaml:"slug,omitempty"`
 }
 
 // Naming describes how dygo assigns the system-owned Record name.
@@ -163,6 +170,13 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	if strings.TrimSpace(e.Label) == "" {
 		problems = append(problems, withLine(e.Line, "label is required"))
 	}
+	if strings.TrimSpace(e.Route.Slug) != "" && !fieldtype.IsName(e.Route.Slug) {
+		line := e.Route.Line
+		if line == 0 {
+			line = e.Line
+		}
+		problems = append(problems, withLine(line, fmt.Sprintf("route slug %q must be kebab-case", e.Route.Slug)))
+	}
 	if len(e.Fields) == 0 {
 		problems = append(problems, withLine(e.Line, "at least one field is required"))
 	}
@@ -190,6 +204,14 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	return nil
 }
 
+// EffectiveRouteSlug returns the explicit route slug or the default Entity name.
+func (e Entity) EffectiveRouteSlug() string {
+	if strings.TrimSpace(e.Route.Slug) != "" {
+		return e.Route.Slug
+	}
+	return e.Name
+}
+
 // EffectiveNaming returns explicit Entity naming or the v1 default.
 func (e Entity) EffectiveNaming() Naming {
 	naming := e.Naming
@@ -213,7 +235,7 @@ func validateNaming(entity Entity, fields map[string]Field, fieldTypes map[strin
 	case NamingStrategyRandom:
 		validateRandomNaming(naming, line, problems)
 	case NamingStrategyField:
-		validateFieldNaming(naming, fields, fieldTypes, line, problems)
+		validateFieldNaming(entity, naming, fields, fieldTypes, line, problems)
 	case NamingStrategySeries:
 		validateSeriesNaming(naming, line, problems)
 	default:
@@ -234,7 +256,7 @@ func validateRandomNaming(naming Naming, line int, problems *[]string) {
 	}
 }
 
-func validateFieldNaming(naming Naming, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, line int, problems *[]string) {
+func validateFieldNaming(entity Entity, naming Naming, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, line int, problems *[]string) {
 	if naming.Length != 0 || strings.TrimSpace(naming.Pattern) != "" {
 		*problems = append(*problems, withLine(line, "field naming supports field only"))
 	}
@@ -259,8 +281,8 @@ func validateFieldNaming(naming Naming, fields map[string]Field, fieldTypes map[
 	if !field.Required {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q must be required", naming.Field)))
 	}
-	if !field.Unique {
-		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q must be unique", naming.Field)))
+	if !field.Unique && !fieldCoveredByUniqueConstraint(entity, naming.Field) {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q must be unique or covered by a unique constraint", naming.Field)))
 	}
 	if !definition.AllowUnique {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q cannot be unique", naming.Field, field.Type)))
@@ -274,6 +296,20 @@ func validateFieldNaming(naming Naming, fields map[string]Field, fieldTypes map[
 	if naming.Field == "name" && !isSystemNameFieldType(field.Type) {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q cannot use the system name column", naming.Field, field.Type)))
 	}
+}
+
+func fieldCoveredByUniqueConstraint(entity Entity, fieldName string) bool {
+	for _, constraint := range entity.Constraints {
+		if constraint.Type != "unique" {
+			continue
+		}
+		for _, field := range constraint.Fields {
+			if field == fieldName {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func validateSeriesNaming(naming Naming, line int, problems *[]string) {
@@ -610,6 +646,7 @@ func validateField(field Field, registry fieldtype.Registry, seenFields map[stri
 
 type sourceMap struct {
 	entityLine      int
+	routeLine       int
 	namingLine      int
 	fieldLines      []int
 	indexLines      []int
@@ -618,6 +655,7 @@ type sourceMap struct {
 
 func (m sourceMap) apply(entity *Entity) {
 	entity.Line = m.entityLine
+	entity.Route.Line = m.routeLine
 	entity.Naming.Line = m.namingLine
 	for i := range entity.Fields {
 		if i >= len(m.fieldLines) {
@@ -660,21 +698,31 @@ func buildSourceMap(root *yaml.Node) sourceMap {
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
 		key := mapping.Content[i]
 		value := mapping.Content[i+1]
-		if value.Kind != yaml.SequenceNode {
-			continue
-		}
 		switch key.Value {
+		case "route":
+			if value.Kind == yaml.MappingNode {
+				source.routeLine = value.Line
+			}
 		case "naming":
 			source.namingLine = value.Line
 		case "fields":
+			if value.Kind != yaml.SequenceNode {
+				continue
+			}
 			for _, item := range value.Content {
 				source.fieldLines = append(source.fieldLines, item.Line)
 			}
 		case "indexes":
+			if value.Kind != yaml.SequenceNode {
+				continue
+			}
 			for _, item := range value.Content {
 				source.indexLines = append(source.indexLines, item.Line)
 			}
 		case "constraints":
+			if value.Kind != yaml.SequenceNode {
+				continue
+			}
 			for _, item := range value.Content {
 				source.constraintLines = append(source.constraintLines, item.Line)
 			}

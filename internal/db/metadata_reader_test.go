@@ -53,8 +53,8 @@ func TestMetadataReaderGetApp(t *testing.T) {
 func TestMetadataReaderListEntities(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
 		rows: []pgx.Rows{newFakeRows([][]any{
-			{"app", "App", "Runtime state", []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
-			{"user", "User", "User identity", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
+			{"app", "app", "App", "Runtime state", []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
+			{"user", "user", "User", "User identity", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
 		})},
 	}
 
@@ -62,7 +62,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntities() error = %v, want nil", err)
 	}
-	if len(entities) != 2 || entities[0].Name != "app" || entities[0].App.Name != "core" || entities[1].Name != "user" {
+	if len(entities) != 2 || entities[0].Name != "app" || entities[0].App.Name != "core" || entities[1].Name != "user" || entities[1].RouteSlug != "user" {
 		t.Fatalf("ListEntities() = %+v, want core entities", entities)
 	}
 	if !strings.Contains(queryer.queries[0], `JOIN "app"`) || !strings.Contains(queryer.queries[0], "ORDER BY a.name, e.name") {
@@ -72,7 +72,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 
 func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(10), "user", "User", "User identity", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "user", "user", "User", "User identity", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, true, nil, nil, 1, []byte(`{"entity":"user"}`)},

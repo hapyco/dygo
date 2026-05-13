@@ -17,6 +17,12 @@ fields:
     label: Name
     type: text
     required: true
+    index: true
+
+  - name: route-slug
+    label: Route Slug
+    type: text
+    required: true
     unique: true
     index: true
 
@@ -32,3 +38,7 @@ fields:
   - name: naming
     label: Naming
     type: json
+
+constraints:
+  - type: unique
+    fields: [app, name]

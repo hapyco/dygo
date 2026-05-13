@@ -93,6 +93,8 @@ Errors use:
 
 These endpoints are generic. dygo does not create per-Entity routes such as `/api/users` or `/api/leads`.
 
+`{entity}` in metadata and Record routes is the Entity route slug.
+
 Metadata visibility is permission-aware. `GET /api/v1/entities` returns only Entities the current user can read, while `GET /api/v1/entities/{entity}/meta` returns `403 forbidden` for a known Entity the user cannot read. App metadata is visible when the user can read Core `app` metadata or at least one Entity owned by that App.
 
 ## Record API
@@ -108,7 +110,7 @@ PATCH  /api/v1/records/{entity}/{id}
 DELETE /api/v1/records/{entity}/{id}
 ```
 
-Record APIs read persisted Core metadata to map Entity names, Field names, and storage columns. Run `dygo migrate` before serving Records so metadata tables and Entity storage tables are in sync.
+Record APIs read persisted Core metadata to map Entity route slugs, Field names, and storage columns. `{entity}` is the route slug, defaulting to Entity `name`. Run `dygo migrate` before serving Records so metadata tables and Entity storage tables are in sync.
 
 Record request bodies use a `data` envelope:
 

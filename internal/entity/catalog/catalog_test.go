@@ -114,12 +114,30 @@ func TestValidateRejectsDuplicateEntityNamesWithinApp(t *testing.T) {
 	if err == nil {
 		t.Fatal("Validate() error = nil, want duplicate entity error")
 	}
-	if !strings.Contains(err.Error(), `app "sales" entity "lead" duplicates global entity name "lead"`) {
+	if !strings.Contains(err.Error(), `app "sales" entity "lead" duplicates Entity identity`) {
 		t.Fatalf("Validate() error = %q, want duplicate entity context", err.Error())
 	}
 }
 
-func TestValidateRejectsDuplicateEntityNamesAcrossApps(t *testing.T) {
+func TestValidateAllowsDuplicateEntityNamesAcrossAppsWithUniqueRouteSlugs(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
+	support := loadedApp(root, "support", "support", manifest.Paths{})
+	writeEntity(t, filepath.Join(sales.Dir, "entities", "customer.yml"), "customer")
+	writeEntityWithRoute(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer", "support-customer")
+
+	entities, err := New([]manifest.LoadedApp{sales, support}, fieldtype.DefaultRegistry()).Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	if got := entityKeys(entities); strings.Join(got, ",") != "sales/customer,support/customer" {
+		t.Fatalf("Validate() entities = %#v, want duplicate names across apps", got)
+	}
+}
+
+func TestValidateRejectsDuplicateRouteSlugsAcrossApps(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -131,28 +149,9 @@ func TestValidateRejectsDuplicateEntityNamesAcrossApps(t *testing.T) {
 
 	_, err := New([]manifest.LoadedApp{sales, support}, fieldtype.DefaultRegistry()).Validate()
 	if err == nil {
-		t.Fatal("Validate() error = nil, want duplicate entity error")
+		t.Fatal("Validate() error = nil, want duplicate route slug error")
 	}
-	for _, want := range []string{supportPath + ":1", `app "support"`, `entity "customer"`, `duplicates global entity name "customer"`, `app "sales"`} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
-		}
-	}
-}
-
-func TestValidateRejectsReservedRootSlugs(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	entityPath := filepath.Join(app.Dir, "entities", "login.yml")
-	writeEntity(t, entityPath, "login")
-
-	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
-	if err == nil {
-		t.Fatal("Validate() error = nil, want reserved slug error")
-	}
-	for _, want := range []string{entityPath + ":1", `app "sales"`, `entity "login"`, `reserved root route slug "login"`} {
+	for _, want := range []string{supportPath + ":1", `app "support"`, `entity "customer"`, `route slug "customer" conflicts`, `set route.slug`, `support-customer`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 		}
@@ -174,6 +173,46 @@ func TestValidateAllowsCurrentNonReservedRootSlugs(t *testing.T) {
 	}
 	if len(entities) != 5 {
 		t.Fatalf("Validate() len = %d, want 5", len(entities))
+	}
+}
+
+func TestValidateRejectsReservedRootRouteSlugs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		entityName string
+		routeSlug  string
+		wantSlug   string
+	}{
+		{name: "default route slug", entityName: "login", wantSlug: "login"},
+		{name: "explicit route slug", entityName: "lead", routeSlug: "health", wantSlug: "health"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			app := loadedApp(root, "sales", "sales", manifest.Paths{})
+			entityPath := filepath.Join(app.Dir, "entities", tt.entityName+".yml")
+			if tt.routeSlug == "" {
+				writeEntity(t, entityPath, tt.entityName)
+			} else {
+				writeEntityWithRoute(t, entityPath, tt.entityName, tt.routeSlug)
+			}
+
+			_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+			if err == nil {
+				t.Fatal("Validate() error = nil, want reserved slug error")
+			}
+			for _, want := range []string{entityPath + ":1", `app "sales"`, `entity "` + tt.entityName + `"`, `reserved root route slug "` + tt.wantSlug + `"`, `set route.slug`} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
+				}
+			}
+		})
 	}
 }
 
@@ -237,14 +276,14 @@ fields:
 	}
 }
 
-func TestValidateRejectsDuplicateTargetEntityNamesGlobally(t *testing.T) {
+func TestValidateResolvesSameAppFieldTargetBeforeGlobalNames(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
 	support := loadedApp(root, "support", "support", manifest.Paths{})
 	writeEntity(t, filepath.Join(sales.Dir, "entities", "customer.yml"), "customer")
-	writeEntity(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer")
+	writeEntityWithRoute(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer", "support-customer")
 	entityPath := filepath.Join(sales.Dir, "entities", "lead.yml")
 	writeFile(t, entityPath, `
 name: lead
@@ -258,16 +297,40 @@ fields:
 `)
 
 	_, err := New([]manifest.LoadedApp{sales, support}, fieldtype.DefaultRegistry()).Validate()
-	if err == nil {
-		t.Fatal("Validate() error = nil, want duplicate target entity error")
+	if err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
 	}
-	for _, want := range []string{`app "support"`, `entity "customer"`, `duplicates global entity name "customer"`, "sales"} {
+}
+
+func TestValidateRejectsAmbiguousFieldTargetAcrossApps(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
+	support := loadedApp(root, "support", "support", manifest.Paths{})
+	billing := loadedApp(root, "billing", "billing", manifest.Paths{})
+	writeEntityWithRoute(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer", "support-customer")
+	writeEntityWithRoute(t, filepath.Join(billing.Dir, "entities", "customer.yml"), "customer", "billing-customer")
+	entityPath := filepath.Join(sales.Dir, "entities", "lead.yml")
+	writeFile(t, entityPath, `
+name: lead
+label: Lead
+fields:
+  - name: customer
+    label: Customer
+    type: link
+    options:
+      entity: customer
+`)
+
+	_, err := New([]manifest.LoadedApp{sales, support, billing}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want ambiguous target error")
+	}
+	for _, want := range []string{entityPath + ":4", `app "sales"`, `field "customer"`, `ambiguous entity target "customer"`, `set options.app`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 		}
-	}
-	if strings.Contains(err.Error(), "ambiguous entity target") || strings.Contains(err.Error(), entityPath+":4") {
-		t.Fatalf("Validate() error = %q, want duplicate entity error without ambiguous target diagnostic", err.Error())
 	}
 }
 
@@ -365,6 +428,21 @@ func writeEntity(t *testing.T, path string, name string) {
 	writeFile(t, path, `
 name: `+name+`
 label: `+labelForName(name)+`
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+}
+
+func writeEntityWithRoute(t *testing.T, path string, name string, routeSlug string) {
+	t.Helper()
+
+	writeFile(t, path, `
+name: `+name+`
+label: `+labelForName(name)+`
+route:
+  slug: `+routeSlug+`
 fields:
   - name: title
     label: Title

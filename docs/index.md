@@ -14,7 +14,7 @@ These docs live in the repository so they are versioned with code, reviewed in P
 - [Nomenclature](nomenclature.md) defines the core vocabulary used across the framework.
 - [App Model](app-model.md) explains built-in apps, business apps, and app install locations.
 - [App Manifest](app-manifest.md) defines the first `app.yml` schema.
-- [Entity Metadata](entity-metadata.md) defines the Entity YAML schema, Record naming, singular storage naming, field types, indexes, and constraints.
+- [Entity Metadata](entity-metadata.md) defines the Entity YAML schema, app-scoped identity, route slugs, Record naming, storage naming, field types, indexes, and constraints.
 - [Metadata Authoring](metadata-authoring.md) explains JSON Schemas and editor support for dygo YAML files.
 - [Config](config.md) explains required project config and current runtime settings.
 - [Database](database.md) explains PostgreSQL config, secrets, metadata schema plans, schema sync, explicit schema prune, schema snapshots, and `dygo db check`.

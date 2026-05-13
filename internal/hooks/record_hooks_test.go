@@ -18,14 +18,14 @@ func TestNewRecordHookRegistryAppliesRegistrarsInOrder(t *testing.T) {
 	var order []string
 	registry, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
 		func(registry sdk.RecordHookRegistry) error {
-			return registry.RegisterEntity("lead", sdk.RecordBeforeCreate, "first", func(_ context.Context, hookCtx sdk.RecordHookContext) error {
+			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "first", func(_ context.Context, hookCtx sdk.RecordHookContext) error {
 				order = append(order, "first:"+hookCtx.Entity)
 				hookCtx.Input["status"] = json.RawMessage(`"qualified"`)
 				return nil
 			})
 		},
 		func(registry sdk.RecordHookRegistry) error {
-			return registry.RegisterEntity("lead", sdk.RecordBeforeCreate, "second", func(_ context.Context, hookCtx sdk.RecordHookContext) error {
+			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "second", func(_ context.Context, hookCtx sdk.RecordHookContext) error {
 				order = append(order, "second:"+string(hookCtx.Event))
 				return nil
 			})
@@ -40,7 +40,9 @@ func TestNewRecordHookRegistryAppliesRegistrarsInOrder(t *testing.T) {
 		Event:       db.RecordBeforeCreate,
 		Operation:   sdk.RecordOperationCreate,
 		EntityID:    7,
+		AppName:     "sales",
 		Entity:      "lead",
+		RouteSlug:   "lead",
 		EntityLabel: "Lead",
 		Input:       input,
 	})
@@ -84,7 +86,7 @@ func TestNewRecordHookRegistryRejectsNilRegistrarAndHook(t *testing.T) {
 
 	_, err = NewRecordHookRegistry([]sdk.RecordHookRegistrar{
 		func(registry sdk.RecordHookRegistry) error {
-			return registry.RegisterEntity("lead", sdk.RecordBeforeCreate, "missing", nil)
+			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "missing", nil)
 		},
 	})
 	if err == nil {

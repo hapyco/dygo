@@ -2,7 +2,7 @@
 
 Records are saved data created from an Entity.
 
-dygo's first Record runtime is generic. It uses persisted Core metadata to map Entity names and Field names to PostgreSQL tables and columns, so the framework does not need handwritten handlers for each Entity.
+dygo's first Record runtime is generic. It uses persisted Core metadata to map Entity route slugs, app-scoped Entity identity, and Field names to PostgreSQL tables and columns, so the framework does not need handwritten handlers for each Entity.
 
 Run metadata sync before using the Record API:
 
@@ -12,6 +12,8 @@ go run ./cmd/dygo serve
 ```
 
 Record API routes require a valid `dygo_session` cookie from the auth API and an allowed Entity permission.
+
+`{entity}` is the Entity route slug. It defaults to Entity `name`, but apps can set `route.slug` to keep URLs stable when multiple apps define the same Entity name.
 
 ## API
 

@@ -52,7 +52,7 @@ func TestBuildMetadataRecords(t *testing.T) {
 	if len(records.Apps) != 1 || records.Apps[0].Name != "core" || records.Apps[0].Status != "active" {
 		t.Fatalf("app records = %+v, want active core app", records.Apps)
 	}
-	if len(records.Entities) != 1 || records.Entities[0].Name != "user" || records.Entities[0].AppName != "core" {
+	if len(records.Entities) != 1 || records.Entities[0].Name != "user" || records.Entities[0].RouteSlug != "user" || records.Entities[0].AppName != "core" {
 		t.Fatalf("entity records = %+v, want core/user", records.Entities)
 	}
 	if len(records.Fields) != 3 {

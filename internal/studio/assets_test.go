@@ -30,7 +30,7 @@ func TestNewStaticHandlerServesAssetsAndSPAFallback(t *testing.T) {
 	}{
 		{path: "/", wantStatus: http.StatusOK, wantBody: "studio"},
 		{path: "/login", wantStatus: http.StatusOK, wantBody: "studio"},
-		{path: "/records/lead/1", wantStatus: http.StatusOK, wantBody: "studio"},
+		{path: "/lead/1", wantStatus: http.StatusOK, wantBody: "studio"},
 		{path: "/assets/index.js", wantStatus: http.StatusOK, wantBody: "console.log"},
 		{path: "/nested/readme.txt", wantStatus: http.StatusOK, wantBody: "asset"},
 		{path: "/assets", wantStatus: http.StatusNotFound},

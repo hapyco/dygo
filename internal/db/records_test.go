@@ -447,7 +447,7 @@ func TestRecordStoreRunsGlobalHooksBeforeEntityHooks(t *testing.T) {
 		order = append(order, "global-before-create")
 		return nil
 	}))
-	mustRegisterRecordHook(registry.RegisterEntity("user", RecordBeforeCreate, "entity-before-create", func(context.Context, RecordHookContext) error {
+	mustRegisterRecordHook(registry.RegisterEntity("core", "user", RecordBeforeCreate, "entity-before-create", func(context.Context, RecordHookContext) error {
 		order = append(order, "entity-before-create")
 		return nil
 	}))
@@ -455,7 +455,7 @@ func TestRecordStoreRunsGlobalHooksBeforeEntityHooks(t *testing.T) {
 		order = append(order, "global-after-create")
 		return nil
 	}))
-	mustRegisterRecordHook(registry.RegisterEntity("user", RecordAfterCreate, "entity-after-create", func(context.Context, RecordHookContext) error {
+	mustRegisterRecordHook(registry.RegisterEntity("core", "user", RecordAfterCreate, "entity-after-create", func(context.Context, RecordHookContext) error {
 		order = append(order, "entity-after-create")
 		return nil
 	}))
@@ -480,7 +480,7 @@ func TestRecordStoreBeforeValidateHookCanMutateInput(t *testing.T) {
 		{int64(7), "a@example.com", now, now, "a@example.com", "Filled User", true},
 	}))
 	registry := NewRecordHookRegistry()
-	mustRegisterRecordHook(registry.RegisterEntity("user", RecordBeforeValidate, "fill-full-name", func(_ context.Context, hookCtx RecordHookContext) error {
+	mustRegisterRecordHook(registry.RegisterEntity("core", "user", RecordBeforeValidate, "fill-full-name", func(_ context.Context, hookCtx RecordHookContext) error {
 		hookCtx.Input["full-name"] = json.RawMessage(`"Filled User"`)
 		return nil
 	}))
@@ -500,7 +500,7 @@ func TestRecordStoreBeforeValidateHookCanMutateInput(t *testing.T) {
 func TestRecordStoreHookErrorPreventsMutation(t *testing.T) {
 	queryer := newUserRecordQueryer()
 	registry := NewRecordHookRegistry()
-	mustRegisterRecordHook(registry.RegisterEntity("user", RecordBeforeCreate, "reject-create", func(context.Context, RecordHookContext) error {
+	mustRegisterRecordHook(registry.RegisterEntity("core", "user", RecordBeforeCreate, "reject-create", func(context.Context, RecordHookContext) error {
 		return errors.New("blocked by test hook")
 	}))
 
@@ -632,7 +632,7 @@ func TestRecordStoreInvalidPaginationAndIDs(t *testing.T) {
 
 func newUserRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(10), "user", "User", "User identity", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "user", "user", "User", "User identity", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
@@ -648,7 +648,7 @@ func newUserRecordQueryer() *fakeRecordQueryer {
 
 func newLeadRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(20), "lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		row: newFakeRow(int64(20), "lead", "lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New","Qualified"]}`)},
@@ -662,7 +662,7 @@ func newLeadRecordQueryer() *fakeRecordQueryer {
 
 func newActivityRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(1), "activity", "Activity", "Timeline entry", []byte(`{"strategy":"random","length":16}`), "core", "Core"),
+		row: newFakeRow(int64(1), "activity", "activity", "Activity", "Timeline entry", []byte(`{"strategy":"random","length":16}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record"]}`)},

@@ -35,7 +35,7 @@ func TestCheckerAllowsEnabledUserWithEnabledRolePermission(t *testing.T) {
 		`JOIN "permission" p ON p.role_id = r.id`,
 		`JOIN entity e ON e.id = p.entity_id`,
 		`COALESCE(u.enabled, false) = true`,
-		`e.name = $2`,
+		`e.route_slug = $2`,
 		`COALESCE(p."read", false) = true`,
 	} {
 		if !strings.Contains(sql, want) {

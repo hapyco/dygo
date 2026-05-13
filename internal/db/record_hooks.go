@@ -29,7 +29,9 @@ type RecordHookContext struct {
 	Operation string
 
 	EntityID    int64
+	AppName     string
 	Entity      string
+	RouteSlug   string
 	EntityLabel string
 	Table       string
 	RecordID    int64
@@ -83,7 +85,10 @@ func (r *RecordHookRegistry) RegisterGlobal(event RecordHookEvent, name string, 
 }
 
 // RegisterEntity registers one Entity-scoped hook for event.
-func (r *RecordHookRegistry) RegisterEntity(entity string, event RecordHookEvent, name string, fn RecordHookFunc) error {
+func (r *RecordHookRegistry) RegisterEntity(appName string, entity string, event RecordHookEvent, name string, fn RecordHookFunc) error {
+	if strings.TrimSpace(appName) == "" {
+		return fmt.Errorf("record hook app is required")
+	}
 	if strings.TrimSpace(entity) == "" {
 		return fmt.Errorf("record hook entity is required")
 	}
@@ -91,10 +96,11 @@ func (r *RecordHookRegistry) RegisterEntity(entity string, event RecordHookEvent
 		return err
 	}
 	r.ensure()
-	if r.entity[entity] == nil {
-		r.entity[entity] = map[RecordHookEvent][]recordHookDefinition{}
+	key := entityKey(appName, entity)
+	if r.entity[key] == nil {
+		r.entity[key] = map[RecordHookEvent][]recordHookDefinition{}
 	}
-	r.entity[entity][event] = append(r.entity[entity][event], recordHookDefinition{Name: name, Fn: fn})
+	r.entity[key][event] = append(r.entity[key][event], recordHookDefinition{Name: name, Fn: fn})
 	return nil
 }
 
@@ -109,7 +115,7 @@ func (r *RecordHookRegistry) Run(ctx context.Context, hookCtx RecordHookContext)
 			return err
 		}
 	}
-	for _, hook := range r.entity[hookCtx.Entity][hookCtx.Event] {
+	for _, hook := range r.entity[entityKey(hookCtx.AppName, hookCtx.Entity)][hookCtx.Event] {
 		if err := runRecordHook(ctx, hookCtx, hook); err != nil {
 			return err
 		}
@@ -179,7 +185,9 @@ func newRecordHookContext(event RecordHookEvent, layout recordLayout) RecordHook
 	return RecordHookContext{
 		Event:       event,
 		EntityID:    layout.EntityID,
+		AppName:     layout.AppName,
 		Entity:      layout.Entity,
+		RouteSlug:   layout.RouteSlug,
 		EntityLabel: layout.Label,
 		Table:       layout.Table,
 	}

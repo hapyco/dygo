@@ -38,6 +38,7 @@ type MetadataAppRef struct {
 type MetadataEntity struct {
 	ID          int64           `json:"-"`
 	Name        string          `json:"name"`
+	RouteSlug   string          `json:"route-slug"`
 	Label       string          `json:"label"`
 	Description string          `json:"description"`
 	Naming      json.RawMessage `json:"naming,omitempty"`
@@ -158,7 +159,7 @@ func (r MetadataReader) ListEntities(ctx context.Context) ([]MetadataEntity, err
 		return nil, err
 	}
 	rows, err := r.queryer.Query(ctx, `
-SELECT e.name, e.label, COALESCE(e.description, ''), e.naming, a.name, a.label
+SELECT e.name, e.route_slug, e.label, COALESCE(e.description, ''), e.naming, a.name, a.label
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
 ORDER BY a.name, e.name`)
@@ -171,7 +172,7 @@ ORDER BY a.name, e.name`)
 	for rows.Next() {
 		var entity MetadataEntity
 		var naming []byte
-		if err := rows.Scan(&entity.Name, &entity.Label, &entity.Description, &naming, &entity.App.Name, &entity.App.Label); err != nil {
+		if err := rows.Scan(&entity.Name, &entity.RouteSlug, &entity.Label, &entity.Description, &naming, &entity.App.Name, &entity.App.Label); err != nil {
 			return nil, fmt.Errorf("scan metadata entity: %w", err)
 		}
 		entity.Naming = rawJSONOrNil(naming)
@@ -183,8 +184,8 @@ ORDER BY a.name, e.name`)
 	return entities, nil
 }
 
-// GetEntityMeta returns complete persisted metadata for one Entity name.
-func (r MetadataReader) GetEntityMeta(ctx context.Context, name string) (MetadataEntityMeta, error) {
+// GetEntityMeta returns complete persisted metadata for one Entity route slug.
+func (r MetadataReader) GetEntityMeta(ctx context.Context, routeSlug string) (MetadataEntityMeta, error) {
 	if err := r.requireQueryer(); err != nil {
 		return MetadataEntityMeta{}, err
 	}
@@ -192,15 +193,15 @@ func (r MetadataReader) GetEntityMeta(ctx context.Context, name string) (Metadat
 	var meta MetadataEntityMeta
 	var naming []byte
 	err := r.queryer.QueryRow(ctx, `
-SELECT e.id, e.name, e.label, COALESCE(e.description, ''), e.naming, a.name, a.label
+SELECT e.id, e.name, e.route_slug, e.label, COALESCE(e.description, ''), e.naming, a.name, a.label
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
-WHERE e.name = $1`, name).Scan(&meta.ID, &meta.Name, &meta.Label, &meta.Description, &naming, &meta.App.Name, &meta.App.Label)
+WHERE e.route_slug = $1`, routeSlug).Scan(&meta.ID, &meta.Name, &meta.RouteSlug, &meta.Label, &meta.Description, &naming, &meta.App.Name, &meta.App.Label)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return MetadataEntityMeta{}, MetadataNotFoundError{Kind: "entity", Name: name}
+		return MetadataEntityMeta{}, MetadataNotFoundError{Kind: "entity", Name: routeSlug}
 	}
 	if err != nil {
-		return MetadataEntityMeta{}, fmt.Errorf("query metadata entity %q: %w", name, err)
+		return MetadataEntityMeta{}, fmt.Errorf("query metadata entity %q: %w", routeSlug, err)
 	}
 	meta.Naming = rawJSONOrNil(naming)
 

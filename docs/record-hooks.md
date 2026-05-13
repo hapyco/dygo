@@ -65,6 +65,8 @@ func Register(registry sdk.RecordHookRegistry) error {
 
 An Entity hook file registers hooks for its matching Entity:
 
+Hooks register by app-scoped Entity identity, not by route slug. That keeps hooks stable even when an Entity uses an explicit `route.slug`.
+
 ```go
 package hooks
 
@@ -75,7 +77,7 @@ import (
 )
 
 func registerLeadHooks(registry sdk.RecordHookRegistry) error {
-	return registry.RegisterEntity("lead", sdk.RecordBeforeCreate, "normalize-lead", normalizeLead)
+	return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "normalize-lead", normalizeLead)
 }
 
 func normalizeLead(ctx context.Context, hookCtx sdk.RecordHookContext) error {

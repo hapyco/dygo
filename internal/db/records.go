@@ -530,7 +530,9 @@ func (s RecordStore) runRecordHooks(ctx context.Context, hookCtx RecordHookConte
 
 type recordLayout struct {
 	EntityID    int64
+	AppName     string
 	Entity      string
+	RouteSlug   string
 	Label       string
 	Table       string
 	Naming      recordNaming
@@ -552,6 +554,7 @@ type recordField struct {
 }
 
 type recordFieldOptions struct {
+	App    string   `json:"app,omitempty"`
 	Values []string `json:"values,omitempty"`
 	Entity string   `json:"entity,omitempty"`
 }
@@ -569,9 +572,11 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 	}
 	layout := recordLayout{
 		EntityID:    meta.ID,
+		AppName:     meta.App.Name,
 		Entity:      meta.Name,
+		RouteSlug:   meta.RouteSlug,
 		Label:       meta.Label,
-		Table:       storageName(meta.Name),
+		Table:       entityTableName(meta.App.Name, meta.Name),
 		Naming:      naming,
 		FieldByName: map[string]recordField{},
 	}

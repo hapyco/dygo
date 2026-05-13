@@ -49,7 +49,9 @@ type RecordHookContext struct {
 	Operation string
 
 	EntityID    int64
+	AppName     string
 	Entity      string
+	RouteSlug   string
 	EntityLabel string
 	RecordID    int64
 
@@ -65,7 +67,7 @@ type RecordHookFunc func(context.Context, RecordHookContext) error
 
 // RecordHookRegistry is the public app-facing Record hook registration API.
 type RecordHookRegistry interface {
-	RegisterEntity(entity string, event RecordHookEvent, name string, fn RecordHookFunc) error
+	RegisterEntity(appName string, entity string, event RecordHookEvent, name string, fn RecordHookFunc) error
 }
 
 // RecordHookRegistrar registers compiled app hooks with dygo.

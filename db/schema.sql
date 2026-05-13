@@ -136,6 +136,7 @@ ALTER TABLE public."constraint" ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY
 CREATE TABLE public.entity (
     id bigint NOT NULL,
     name text NOT NULL,
+    route_slug text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     app_id bigint NOT NULL,
@@ -468,11 +469,11 @@ ALTER TABLE ONLY public."constraint"
 
 
 --
--- Name: entity entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: entity entity_app_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.entity
-    ADD CONSTRAINT entity_name_key UNIQUE (name);
+    ADD CONSTRAINT entity_app_name_key UNIQUE (app_id, name);
 
 
 --
@@ -481,6 +482,14 @@ ALTER TABLE ONLY public.entity
 
 ALTER TABLE ONLY public.entity
     ADD CONSTRAINT entity_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: entity entity_route_slug_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.entity
+    ADD CONSTRAINT entity_route_slug_key UNIQUE (route_slug);
 
 
 --
@@ -752,6 +761,20 @@ CREATE INDEX entity_app_id_idx ON public.entity USING btree (app_id);
 
 
 --
+-- Name: entity_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX entity_name_idx ON public.entity USING btree (name);
+
+
+--
+-- Name: entity_route_slug_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX entity_route_slug_idx ON public.entity USING btree (route_slug);
+
+
+--
 -- Name: field_entity_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -861,4 +884,3 @@ CREATE INDEX user_role_user_id_idx ON public.user_role USING btree (user_id);
 --
 
 \unrestrict dygoschemasnapshot
-

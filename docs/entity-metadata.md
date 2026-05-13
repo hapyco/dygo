@@ -12,6 +12,8 @@ Entity metadata is still the contract layer. The generic Record API reads persis
 name: lead
 label: Lead
 description: Sales lead
+route:
+  slug: sales-lead
 naming:
   strategy: series
   pattern: "LEAD-{YYYY}-{MM}-{#####}"
@@ -71,9 +73,18 @@ Entity names, field names, and field type names use kebab-case.
 
 dygo uses singular Entity names only. There is no separate required metadata for display plurals or storage plurals.
 
-Entity names are globally unique across all installed Apps in v1. Studio is root-mounted, so Entity `name` is also the default route slug for screens such as `/lead` and `/user`. Apps cannot define Entities named `api`, `assets`, `health`, `login`, or `logout` because those root slugs are reserved for technical routes. Page and Space slug collision checks are deferred until those metadata models exist.
+The stable internal Entity identity is `{app, entity}`. Two apps may define the same Entity name, such as `crm/contact` and `support/contact`.
 
-When dygo needs a SQL table name from Entity metadata, it converts Entity `name` from kebab-case to snake_case. For example, `user-role` maps to `user_role`.
+The user-facing route slug is separate from that internal identity. `route.slug` is optional and defaults to Entity `name`. Route slugs must be globally unique across loaded apps and must not use Studio's reserved root slugs: `api`, `assets`, `health`, `login`, or `logout`. dygo fails validation on route slug conflicts instead of generating unstable numeric suffixes. If two apps both define `contact`, set one explicit slug, such as:
+
+```yaml
+route:
+  slug: support-contact
+```
+
+Studio record pages use `/{route-slug}` at the root. The route does not prepend the app name unless the app author intentionally chooses that slug.
+
+When dygo needs a SQL table name from Entity metadata, Core tables keep their historical singular names, such as `user` and `entity`. Non-Core app tables are app-scoped by default, so `crm/lead` maps to `crm_lead` and `support/contact` maps to `support_contact`.
 
 Current metadata-driven schema sync supports scalar fields, `select`, `link`, and `password` fields. `child-table` parsing is supported, but child table storage is deferred until the record model is designed.
 
@@ -186,7 +197,13 @@ Type-specific settings live under `options`.
 
 `select` fields require non-empty `options.values`.
 
-`link` and `child-table` fields require `options.entity`.
+`link` and `child-table` fields require `options.entity`. `options.app` is optional. When omitted, dygo resolves the target in the current app first; otherwise the target Entity name must be globally unambiguous. Set `options.app` for cross-app links or ambiguous target names:
+
+```yaml
+options:
+  app: support
+  entity: contact
+```
 
 `link` fields are framework-level relationships. They create indexed storage columns and dygo validates linked Records at runtime, but v1 does not create database foreign key constraints for links.
 
@@ -227,7 +244,7 @@ entities
 
 dygo loads regular `*.yml` files from the immediate directory only. Missing `entities` directories are allowed for apps that do not define Entities yet.
 
-Entity names are globally unique across loaded apps for v1. Two different apps may not use the same Entity name.
+Entity identities are unique per app. Two different apps may use the same Entity name when their route slugs are unique.
 
 Validate discovered Entity metadata from the current project:
 
@@ -238,10 +255,10 @@ go run ./cmd/dygo entities validate
 
 `entities list` prints a tree grouped by app name.
 
-`entities validate` checks Entity syntax, field types, duplicate global Entity names, reserved root route slugs, `link` or `child-table` targets, and top-level `hooks/<entity>.go` filenames for each app.
+`entities validate` checks Entity syntax, field types, duplicate app-owned Entity identities, duplicate route slugs, `link` or `child-table` targets, and top-level `hooks/<entity>.go` filenames for each app.
 
 Both commands discover the dygo project root before loading apps, so they can be run from nested directories inside a project.
 
-`link` and `child-table` targets use Entity names in v1. Because Entity names are globally unique, a target is valid when one loaded Entity has that name. If no Entity matches, validation fails.
+`link` and `child-table` targets use `{app, entity}` identity when `options.app` is set. Without `options.app`, dygo resolves same-app targets first, then a single globally unambiguous target. If no Entity matches or multiple external apps match, validation fails.
 
 Validation errors include the app name, Entity name, field name when relevant, file path, and a best-effort YAML line number.

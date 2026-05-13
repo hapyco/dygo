@@ -431,7 +431,7 @@ func TestRunWithOptionsPassesRecordHooksToServe(t *testing.T) {
 		RecordHooks: []sdk.RecordHookRegistrar{
 			func(registry sdk.RecordHookRegistry) error {
 				registrarCalled = true
-				return registry.RegisterEntity("lead", sdk.RecordBeforeCreate, "test", func(context.Context, sdk.RecordHookContext) error {
+				return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "test", func(context.Context, sdk.RecordHookContext) error {
 					return nil
 				})
 			},
@@ -1677,7 +1677,7 @@ fields:
 		t.Fatal("Run(entities validate) error = nil, want duplicate entity error")
 	}
 	wantPath := filepath.ToSlash(filepath.Join("apps", "support", "entities", "customer.yml")) + ":1"
-	for _, want := range []string{wantPath, `app "support"`, `entity "customer"`, `duplicates global entity name "customer"`} {
+	for _, want := range []string{wantPath, `app "support"`, `entity "customer"`, `route slug "customer" conflicts`, `set route.slug`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
 		}
@@ -1707,7 +1707,7 @@ fields:
 		t.Fatal("Run(entities validate) error = nil, want reserved slug error")
 	}
 	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "login.yml")) + ":1"
-	for _, want := range []string{wantPath, `app "sales"`, `entity "login"`, `reserved root route slug "login"`} {
+	for _, want := range []string{wantPath, `app "sales"`, `entity "login"`, `reserved root route slug "login"`, `set route.slug`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
 		}
@@ -1745,7 +1745,7 @@ fields:
 	}
 }
 
-func TestDoctorReportsEntityMetadataFailureForReservedSlug(t *testing.T) {
+func TestDoctorReportsEntityMetadataFailureForInvalidRouteSlug(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -1755,6 +1755,8 @@ func TestDoctorReportsEntityMetadataFailureForReservedSlug(t *testing.T) {
 	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "api.yml"), `
 name: api
 label: API
+route:
+  slug: BadSlug
 fields:
   - name: title
     label: Title
@@ -1768,7 +1770,7 @@ fields:
 		t.Fatal("Run(doctor) error = nil, want entity metadata failure")
 	}
 	output := stdout.String()
-	for _, want := range []string{"FAIL entity metadata:", `reserved root route slug "api"`, "dygo doctor found"} {
+	for _, want := range []string{"FAIL entity metadata:", `route slug "BadSlug" must be kebab-case`, "dygo doctor found"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
 		}

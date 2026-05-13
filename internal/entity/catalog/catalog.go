@@ -21,6 +21,29 @@ type LoadedEntity struct {
 	Entity  schema.Entity
 }
 
+// Key returns the stable internal Entity identity.
+func (e LoadedEntity) Key() string {
+	return EntityKey(e.AppName, e.Entity.Name)
+}
+
+// RouteSlug returns the globally unique Studio route slug for the Entity.
+func (e LoadedEntity) RouteSlug() string {
+	return e.Entity.EffectiveRouteSlug()
+}
+
+// EntityKey returns a stable key for an app-owned Entity identity.
+func EntityKey(appName string, entityName string) string {
+	return appName + "\x00" + entityName
+}
+
+var rootReservedSlugs = map[string]struct{}{
+	"api":    {},
+	"assets": {},
+	"health": {},
+	"login":  {},
+	"logout": {},
+}
+
 // Catalog loads Entity metadata from a set of discovered apps.
 type Catalog struct {
 	apps       []manifest.LoadedApp
@@ -107,15 +130,23 @@ func (c Catalog) discoverApp(app manifest.LoadedApp) ([]LoadedEntity, error) {
 
 func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
 	var problems []string
-	seen := map[string]LoadedEntity{}
+	seenIdentities := map[string]LoadedEntity{}
+	seenRouteSlugs := map[string]LoadedEntity{}
 	for _, entity := range entities {
-		if isReservedRootSlug(entity.Entity.Name) {
-			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q uses reserved root route slug %q", entity.AppName, entity.Entity.Name, entity.Entity.Name)))
-		}
-		if previous, ok := seen[entity.Entity.Name]; ok {
-			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q duplicates global entity name %q from app %q at %s", entity.AppName, entity.Entity.Name, entity.Entity.Name, previous.AppName, location(previous.Path, previous.Entity.Line))))
+		if previous, ok := seenIdentities[entity.Key()]; ok {
+			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q duplicates Entity identity from %s", entity.AppName, entity.Entity.Name, location(previous.Path, previous.Entity.Line))))
 		} else {
-			seen[entity.Entity.Name] = entity
+			seenIdentities[entity.Key()] = entity
+		}
+
+		routeSlug := entity.RouteSlug()
+		if isReservedRootSlug(routeSlug) {
+			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q uses reserved root route slug %q; set route.slug to a non-reserved stable slug", entity.AppName, entity.Entity.Name, routeSlug)))
+		}
+		if previous, ok := seenRouteSlugs[routeSlug]; ok {
+			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q route slug %q conflicts with app %q entity %q at %s; set route.slug to a stable unique slug such as %q", entity.AppName, entity.Entity.Name, routeSlug, previous.AppName, previous.Entity.Name, location(previous.Path, previous.Entity.Line), suggestedRouteSlug(entity))))
+		} else {
+			seenRouteSlugs[routeSlug] = entity
 		}
 	}
 
@@ -131,10 +162,7 @@ func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
 }
 
 func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
-	targets := map[string][]LoadedEntity{}
-	for _, entity := range entities {
-		targets[entity.Entity.Name] = append(targets[entity.Entity.Name], entity)
-	}
+	targets := newTargetIndex(entities)
 
 	for _, entity := range entities {
 		for _, field := range entity.Entity.Fields {
@@ -146,9 +174,8 @@ func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
 				continue
 			}
 
-			matches := targets[targetName]
-			if len(matches) == 0 {
-				*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("references unknown entity target %q", targetName)))
+			if _, err := targets.resolve(entity, field.Options.App, targetName); err != nil {
+				*problems = append(*problems, fieldDiagnostic(entity, field, err.Error()))
 				continue
 			}
 		}
@@ -197,13 +224,9 @@ func validateHookFiles(apps []manifest.LoadedApp, entities []LoadedEntity, probl
 	return nil
 }
 
-func isReservedRootSlug(value string) bool {
-	switch value {
-	case "api", "assets", "health", "login", "logout":
-		return true
-	default:
-		return false
-	}
+func isReservedRootSlug(slug string) bool {
+	_, ok := rootReservedSlugs[strings.ToLower(strings.TrimSpace(slug))]
+	return ok
 }
 
 func sortEntities(entities []LoadedEntity) {
@@ -216,6 +239,57 @@ func sortEntities(entities []LoadedEntity) {
 		}
 		return entities[i].Path < entities[j].Path
 	})
+}
+
+type targetIndex struct {
+	byIdentity map[string]LoadedEntity
+	byName     map[string][]LoadedEntity
+}
+
+func newTargetIndex(entities []LoadedEntity) targetIndex {
+	index := targetIndex{
+		byIdentity: map[string]LoadedEntity{},
+		byName:     map[string][]LoadedEntity{},
+	}
+	for _, entity := range entities {
+		index.byIdentity[entity.Key()] = entity
+		index.byName[entity.Entity.Name] = append(index.byName[entity.Entity.Name], entity)
+	}
+	return index
+}
+
+func (i targetIndex) resolve(owner LoadedEntity, appName string, entityName string) (LoadedEntity, error) {
+	if strings.TrimSpace(appName) != "" {
+		target, ok := i.byIdentity[EntityKey(appName, entityName)]
+		if !ok {
+			return LoadedEntity{}, fmt.Errorf("references unknown entity target %q in app %q", entityName, appName)
+		}
+		return target, nil
+	}
+	if target, ok := i.byIdentity[EntityKey(owner.AppName, entityName)]; ok {
+		return target, nil
+	}
+	matches := i.byName[entityName]
+	switch len(matches) {
+	case 0:
+		return LoadedEntity{}, fmt.Errorf("references unknown entity target %q", entityName)
+	case 1:
+		return matches[0], nil
+	default:
+		apps := make([]string, 0, len(matches))
+		for _, match := range matches {
+			apps = append(apps, match.AppName)
+		}
+		sort.Strings(apps)
+		return LoadedEntity{}, fmt.Errorf("references ambiguous entity target %q in apps %s; set options.app", entityName, strings.Join(apps, ", "))
+	}
+}
+
+func suggestedRouteSlug(entity LoadedEntity) string {
+	if strings.TrimSpace(entity.AppName) == "" {
+		return entity.Entity.Name
+	}
+	return entity.AppName + "-" + entity.Entity.Name
 }
 
 // ValidationError reports one or more Entity catalog validation problems.
