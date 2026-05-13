@@ -82,10 +82,10 @@ go run ./cmd/dygo secrets validate --env staging
 Rotate the project master key:
 
 ```sh
-go run ./cmd/dygo secrets rotate-key
+go run ./cmd/dygo secrets rotate-key --confirm my-company/master.key
 ```
 
-`rotate-key` decrypts every environment with the existing `master.key`, generates a new `master.key`, and re-encrypts every existing environment file.
+`rotate-key` requires the exact confirmation token `<project-name>/master.key`, where `<project-name>` comes from `dygo.yml`. It decrypts every environment with the existing `master.key`, stages and verifies the rotated key and encrypted files, replaces files in a recoverable order, and then re-encrypts every environment file for the new key.
 
 ## Decrypted Shape
 
@@ -168,3 +168,5 @@ database:
 Secrets can only be changed through `dygo secrets edit`. There are no public `set`, `get`, `show`, `list`, or `remove` commands.
 
 `master.key` is intentionally project-local for now. Sharing it, backing it up, and injecting it into deployment environments are operational concerns outside this first implementation.
+
+dygo still uses one local root key for development, staging, and production. Per-environment recipients, KMS, Vault, and other external production secret providers are future work.

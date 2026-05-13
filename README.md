@@ -66,7 +66,7 @@ go run ./cmd/dygo hooks generate sales lead
 go run ./cmd/dygo secrets init
 go run ./cmd/dygo secrets edit
 go run ./cmd/dygo secrets validate
-go run ./cmd/dygo secrets rotate-key
+go run ./cmd/dygo secrets rotate-key --confirm my-company/master.key
 ```
 
 `go run ./cmd/dygo serve` starts dygo on `127.0.0.1:6790`. In this source checkout it also starts the Studio development asset server internally and proxies Studio through the same dygo origin.

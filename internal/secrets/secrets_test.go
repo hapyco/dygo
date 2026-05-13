@@ -1,6 +1,8 @@
 package secrets
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,6 +180,7 @@ func TestRotateKeyPreservesAllEnvironments(t *testing.T) {
 	if _, err := store.RotateKey(); err != nil {
 		t.Fatalf("RotateKey() error = %v", err)
 	}
+	assertNoRotationArtifacts(t, store)
 
 	for _, tt := range []struct {
 		env  Environment
@@ -193,6 +196,219 @@ func TestRotateKeyPreservesAllEnvironments(t *testing.T) {
 		}
 		if secret.Value != tt.want {
 			t.Fatalf("Get(%s).Value = %q, want %q", tt.env, secret.Value, tt.want)
+		}
+	}
+}
+
+func TestRotateKeyVerifiesStagedFilesBeforeReplacement(t *testing.T) {
+	store := newRotatableStore(t)
+	oldMaster, oldSecrets := readRotationState(t, store)
+	store.fileOps.writeFileAtomic = func(path string, data []byte, perm os.FileMode) error {
+		if strings.HasSuffix(path, "production.age.yaml.final.next") {
+			data = []byte("not age armor")
+		}
+		return writeFileAtomic(path, data, perm)
+	}
+
+	_, err := store.RotateKey()
+	if err == nil {
+		t.Fatal("RotateKey() error = nil, want staged verification failure")
+	}
+	assertRotationErrorRedacted(t, err)
+	assertRotationState(t, store, oldMaster, oldSecrets)
+	assertRotatedSecrets(t, store)
+}
+
+func TestRotateKeyFailureBeforeMasterReplacementLeavesOldState(t *testing.T) {
+	store := newRotatableStore(t)
+	oldMaster, oldSecrets := readRotationState(t, store)
+	store.fileOps.rename = func(oldPath string, newPath string) error {
+		if strings.HasSuffix(oldPath, "development.age.yaml.dual.next") {
+			return errors.New("injected dual replacement failure")
+		}
+		return os.Rename(oldPath, newPath)
+	}
+
+	_, err := store.RotateKey()
+	if err == nil {
+		t.Fatal("RotateKey() error = nil, want dual replacement failure")
+	}
+	assertRotationErrorRedacted(t, err)
+	assertRotationState(t, store, oldMaster, oldSecrets)
+	assertRotatedSecrets(t, store)
+}
+
+func TestRotateKeyFailureAfterDualRecipientReplacementUsesOldKey(t *testing.T) {
+	store := newRotatableStore(t)
+	oldMaster, _ := readRotationState(t, store)
+	store.fileOps.rename = func(oldPath string, newPath string) error {
+		if strings.HasSuffix(oldPath, "master.key.next") && filepath.Base(newPath) == "master.key" {
+			return errors.New("injected master replacement failure")
+		}
+		return os.Rename(oldPath, newPath)
+	}
+
+	_, err := store.RotateKey()
+	if err == nil {
+		t.Fatal("RotateKey() error = nil, want master replacement failure")
+	}
+	assertRotationErrorRedacted(t, err)
+	afterMaster, err := os.ReadFile(store.Paths(EnvironmentDevelopment).MasterKeyFile)
+	if err != nil {
+		t.Fatalf("ReadFile(master.key) error = %v", err)
+	}
+	if !bytes.Equal(afterMaster, oldMaster) {
+		t.Fatal("master.key changed after failed master replacement")
+	}
+	assertRotatedSecrets(t, store)
+}
+
+func TestRotateKeyFailureAfterMasterReplacementUsesNewKey(t *testing.T) {
+	store := newRotatableStore(t)
+	oldMaster, _ := readRotationState(t, store)
+	store.fileOps.rename = func(oldPath string, newPath string) error {
+		if strings.HasSuffix(oldPath, "development.age.yaml.final.next") {
+			return errors.New("injected final replacement failure")
+		}
+		return os.Rename(oldPath, newPath)
+	}
+
+	_, err := store.RotateKey()
+	if err == nil {
+		t.Fatal("RotateKey() error = nil, want final replacement failure")
+	}
+	assertRotationErrorRedacted(t, err)
+	afterMaster, err := os.ReadFile(store.Paths(EnvironmentDevelopment).MasterKeyFile)
+	if err != nil {
+		t.Fatalf("ReadFile(master.key) error = %v", err)
+	}
+	if bytes.Equal(afterMaster, oldMaster) {
+		t.Fatal("master.key was not replaced before final replacement failure")
+	}
+	assertRotatedSecrets(t, store)
+}
+
+func TestRotateKeyCleanupFailureLeavesNewKeyUsable(t *testing.T) {
+	store := newRotatableStore(t)
+	oldMaster, _ := readRotationState(t, store)
+	store.fileOps.remove = func(path string) error {
+		if strings.HasSuffix(path, "master.key.rollback") {
+			return errors.New("injected cleanup failure")
+		}
+		return os.Remove(path)
+	}
+
+	_, err := store.RotateKey()
+	if err == nil {
+		t.Fatal("RotateKey() error = nil, want cleanup failure")
+	}
+	if !strings.Contains(err.Error(), "secrets key rotation completed but cleanup failed") {
+		t.Fatalf("RotateKey() error = %q, want cleanup failure", err.Error())
+	}
+	assertRotationErrorRedacted(t, err)
+	afterMaster, err := os.ReadFile(store.Paths(EnvironmentDevelopment).MasterKeyFile)
+	if err != nil {
+		t.Fatalf("ReadFile(master.key) error = %v", err)
+	}
+	if bytes.Equal(afterMaster, oldMaster) {
+		t.Fatal("master.key was not replaced before cleanup failure")
+	}
+	assertRotatedSecrets(t, store)
+}
+
+func newRotatableStore(t *testing.T) Store {
+	t.Helper()
+
+	store := NewStore(t.TempDir())
+	if _, err := store.Init(false); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	for _, tt := range []struct {
+		env   Environment
+		value string
+	}{
+		{env: EnvironmentDevelopment, value: "postgres://development-secret"},
+		{env: EnvironmentStaging, value: "postgres://staging-secret"},
+		{env: EnvironmentProduction, value: "postgres://production-secret"},
+	} {
+		if err := store.Set(tt.env, "DATABASE_URL", tt.value); err != nil {
+			t.Fatalf("Set(%s DATABASE_URL) error = %v", tt.env, err)
+		}
+	}
+	return store
+}
+
+func readRotationState(t *testing.T, store Store) ([]byte, map[Environment][]byte) {
+	t.Helper()
+
+	master, err := os.ReadFile(store.Paths(EnvironmentDevelopment).MasterKeyFile)
+	if err != nil {
+		t.Fatalf("ReadFile(master.key) error = %v", err)
+	}
+	files := make(map[Environment][]byte)
+	for _, env := range SupportedEnvironments() {
+		data, err := os.ReadFile(store.Paths(env).SecretFile)
+		if err != nil {
+			t.Fatalf("ReadFile(%s secrets) error = %v", env, err)
+		}
+		files[env] = data
+	}
+	return master, files
+}
+
+func assertRotationState(t *testing.T, store Store, wantMaster []byte, wantSecrets map[Environment][]byte) {
+	t.Helper()
+
+	gotMaster, gotSecrets := readRotationState(t, store)
+	if !bytes.Equal(gotMaster, wantMaster) {
+		t.Fatal("master.key changed after failed rotation")
+	}
+	for _, env := range SupportedEnvironments() {
+		if !bytes.Equal(gotSecrets[env], wantSecrets[env]) {
+			t.Fatalf("%s secrets changed after failed rotation", env)
+		}
+	}
+}
+
+func assertRotatedSecrets(t *testing.T, store Store) {
+	t.Helper()
+
+	for _, tt := range []struct {
+		env  Environment
+		want string
+	}{
+		{env: EnvironmentDevelopment, want: "postgres://development-secret"},
+		{env: EnvironmentStaging, want: "postgres://staging-secret"},
+		{env: EnvironmentProduction, want: "postgres://production-secret"},
+	} {
+		secret, err := store.Get(tt.env, "DATABASE_URL")
+		if err != nil {
+			t.Fatalf("Get(%s DATABASE_URL) error = %v", tt.env, err)
+		}
+		if secret.Value != tt.want {
+			t.Fatalf("Get(%s DATABASE_URL).Value = %q, want %q", tt.env, secret.Value, tt.want)
+		}
+	}
+}
+
+func assertNoRotationArtifacts(t *testing.T, store Store) {
+	t.Helper()
+
+	rotateDir := filepath.Join(store.Paths(EnvironmentDevelopment).TempDir, "rotate-key")
+	if _, err := os.Stat(rotateDir); err == nil {
+		t.Fatalf("rotation artifact directory %s still exists", rotateDir)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("Stat(%s) error = %v", rotateDir, err)
+	}
+}
+
+func assertRotationErrorRedacted(t *testing.T, err error) {
+	t.Helper()
+
+	message := err.Error()
+	for _, leaked := range []string{"postgres://", "development-secret", "staging-secret", "production-secret", "AGE-SECRET-KEY"} {
+		if strings.Contains(message, leaked) {
+			t.Fatalf("RotateKey() error leaked %q: %s", leaked, message)
 		}
 	}
 }

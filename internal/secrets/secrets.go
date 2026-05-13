@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -59,8 +60,15 @@ type Paths struct {
 
 // Store manages encrypted dygo secret files below a repository root.
 type Store struct {
-	root  string
-	clock func() time.Time
+	root    string
+	clock   func() time.Time
+	fileOps fileOperations
+}
+
+type fileOperations struct {
+	writeFileAtomic func(path string, data []byte, perm os.FileMode) error
+	rename          func(oldPath string, newPath string) error
+	remove          func(path string) error
 }
 
 // NewStore returns a Store rooted at the provided directory.
@@ -214,9 +222,15 @@ func (s Store) Init(force bool) (Paths, error) {
 // RotateKey replaces the root master key and re-encrypts all environments.
 func (s Store) RotateKey() (Paths, error) {
 	envs := SupportedEnvironments()
+	paths := s.Paths(EnvironmentDevelopment)
+
+	oldIdentity, err := loadMasterIdentity(paths.MasterKeyFile)
+	if err != nil {
+		return Paths{}, err
+	}
 	docs := make(map[Environment]Document, len(envs))
 	for _, env := range envs {
-		doc, err := s.Load(env)
+		doc, err := s.loadWithIdentity(env, oldIdentity)
 		if err != nil {
 			return Paths{}, fmt.Errorf("load existing %s secrets before rotating key: %w", env, err)
 		}
@@ -227,19 +241,58 @@ func (s Store) RotateKey() (Paths, error) {
 	if err != nil {
 		return Paths{}, err
 	}
-	encrypted, err := encryptDocuments(docs, identity.Recipient())
+	dualEncrypted, err := encryptDocumentsForRecipients(docs, []age.Recipient{oldIdentity.Recipient(), identity.Recipient()})
+	if err != nil {
+		return Paths{}, err
+	}
+	finalEncrypted, err := encryptDocuments(docs, identity.Recipient())
 	if err != nil {
 		return Paths{}, err
 	}
 
-	paths := s.Paths(EnvironmentDevelopment)
-	if err := writeFileAtomic(paths.MasterKeyFile, keyData, 0o600); err != nil {
-		return Paths{}, fmt.Errorf("write master key: %w", err)
+	rotation := s.rotationPaths(envs)
+	if err := s.stageRotationFiles(rotation, keyData, dualEncrypted, finalEncrypted); err != nil {
+		_ = s.cleanupRotationArtifacts(rotation)
+		return Paths{}, err
 	}
+	if err := s.verifyStagedRotation(rotation, docs, oldIdentity, identity); err != nil {
+		_ = s.cleanupRotationArtifacts(rotation)
+		return Paths{}, err
+	}
+	if err := s.backupRotationFiles(rotation); err != nil {
+		_ = s.cleanupRotationArtifacts(rotation)
+		return Paths{}, err
+	}
+
 	for _, env := range envs {
-		if err := writeFileAtomic(s.Paths(env).SecretFile, encrypted[env], 0o644); err != nil {
-			return Paths{}, fmt.Errorf("write encrypted %s secrets file: %w", env, err)
+		if err := s.rename(rotation.DualNext[env], s.Paths(env).SecretFile); err != nil {
+			rollbackErr := s.restoreRotationBackups(rotation, true)
+			cleanupErr := s.cleanupRotationArtifacts(rotation)
+			return Paths{}, combineRotationErrors(fmt.Errorf("replace %s secrets with dual-recipient file: %w", env, err), rollbackErr, cleanupErr)
 		}
+	}
+
+	if err := s.rename(rotation.MasterNext, paths.MasterKeyFile); err != nil {
+		rollbackErr := s.restoreRotationBackups(rotation, true)
+		cleanupErr := s.cleanupRotationArtifacts(rotation)
+		return Paths{}, combineRotationErrors(fmt.Errorf("replace master key: %w", err), rollbackErr, cleanupErr)
+	}
+
+	for _, env := range envs {
+		if err := s.rename(rotation.FinalNext[env], s.Paths(env).SecretFile); err != nil {
+			cleanupErr := s.cleanupRotationArtifacts(rotation)
+			return Paths{}, combineRotationErrors(fmt.Errorf("finalize rotated %s secrets: %w; rotation is recoverable with the new master.key", env, err), nil, cleanupErr)
+		}
+	}
+
+	for _, env := range envs {
+		if _, err := s.Load(env); err != nil {
+			cleanupErr := s.cleanupRotationArtifacts(rotation)
+			return Paths{}, combineRotationErrors(fmt.Errorf("verify rotated %s secrets with new master.key: %w", env, err), nil, cleanupErr)
+		}
+	}
+	if err := s.cleanupRotationArtifacts(rotation); err != nil {
+		return Paths{}, fmt.Errorf("secrets key rotation completed but cleanup failed: %w", err)
 	}
 
 	return paths, nil
@@ -258,13 +311,19 @@ func NewDocument(env Environment) Document {
 func (s Store) Load(env Environment) (Document, error) {
 	paths := s.Paths(env)
 
-	ciphertext, err := os.ReadFile(paths.SecretFile)
-	if err != nil {
-		return Document{}, fmt.Errorf("read encrypted secrets file: %w", err)
-	}
 	identity, err := loadMasterIdentity(paths.MasterKeyFile)
 	if err != nil {
 		return Document{}, err
+	}
+	return s.loadWithIdentity(env, identity)
+}
+
+func (s Store) loadWithIdentity(env Environment, identity age.Identity) (Document, error) {
+	paths := s.Paths(env)
+
+	ciphertext, err := os.ReadFile(paths.SecretFile)
+	if err != nil {
+		return Document{}, fmt.Errorf("read encrypted secrets file: %w", err)
 	}
 	plaintext, err := decryptArmored(ciphertext, []age.Identity{identity})
 	if err != nil {
@@ -666,6 +725,10 @@ func generateMasterKeyData() (*age.HybridIdentity, []byte, error) {
 }
 
 func encryptDocuments(docs map[Environment]Document, recipient age.Recipient) (map[Environment][]byte, error) {
+	return encryptDocumentsForRecipients(docs, []age.Recipient{recipient})
+}
+
+func encryptDocumentsForRecipients(docs map[Environment]Document, recipients []age.Recipient) (map[Environment][]byte, error) {
 	encrypted := make(map[Environment][]byte, len(docs))
 	for _, env := range SupportedEnvironments() {
 		doc, ok := docs[env]
@@ -676,13 +739,193 @@ func encryptDocuments(docs map[Environment]Document, recipient age.Recipient) (m
 		if err != nil {
 			return nil, err
 		}
-		ciphertext, err := encryptArmored(plaintext, []age.Recipient{recipient})
+		ciphertext, err := encryptArmored(plaintext, recipients)
 		if err != nil {
 			return nil, fmt.Errorf("encrypt %s secrets: %w", env, err)
 		}
 		encrypted[env] = ciphertext
 	}
 	return encrypted, nil
+}
+
+type rotationFileSet struct {
+	MasterNext     string
+	MasterRollback string
+	DualNext       map[Environment]string
+	FinalNext      map[Environment]string
+	SecretRollback map[Environment]string
+}
+
+func (s Store) rotationPaths(envs []Environment) rotationFileSet {
+	base := filepath.Join(s.Paths(EnvironmentDevelopment).TempDir, "rotate-key")
+	paths := rotationFileSet{
+		MasterNext:     filepath.Join(base, "master.key.next"),
+		MasterRollback: filepath.Join(base, "master.key.rollback"),
+		DualNext:       make(map[Environment]string, len(envs)),
+		FinalNext:      make(map[Environment]string, len(envs)),
+		SecretRollback: make(map[Environment]string, len(envs)),
+	}
+	for _, env := range envs {
+		name := string(env) + ".age.yaml"
+		paths.DualNext[env] = filepath.Join(base, name+".dual.next")
+		paths.FinalNext[env] = filepath.Join(base, name+".final.next")
+		paths.SecretRollback[env] = filepath.Join(base, name+".rollback")
+	}
+	return paths
+}
+
+func (s Store) stageRotationFiles(paths rotationFileSet, keyData []byte, dualEncrypted, finalEncrypted map[Environment][]byte) error {
+	if err := s.writeFileAtomic(paths.MasterNext, keyData, 0o600); err != nil {
+		return fmt.Errorf("stage rotated master key: %w", err)
+	}
+	for _, env := range SupportedEnvironments() {
+		if err := s.writeFileAtomic(paths.DualNext[env], dualEncrypted[env], 0o644); err != nil {
+			return fmt.Errorf("stage dual-recipient %s secrets: %w", env, err)
+		}
+		if err := s.writeFileAtomic(paths.FinalNext[env], finalEncrypted[env], 0o644); err != nil {
+			return fmt.Errorf("stage final %s secrets: %w", env, err)
+		}
+	}
+	return nil
+}
+
+func (s Store) verifyStagedRotation(paths rotationFileSet, docs map[Environment]Document, oldIdentity, newIdentity *age.HybridIdentity) error {
+	stagedIdentity, err := loadMasterIdentity(paths.MasterNext)
+	if err != nil {
+		return fmt.Errorf("verify staged master key: %w", err)
+	}
+	if stagedIdentity.Recipient().String() != newIdentity.Recipient().String() {
+		return fmt.Errorf("verify staged master key: staged recipient does not match generated recipient")
+	}
+	for _, env := range SupportedEnvironments() {
+		if err := verifyEncryptedDocumentFile(paths.DualNext[env], env, docs[env], []age.Identity{oldIdentity}); err != nil {
+			return fmt.Errorf("verify staged dual-recipient %s secrets with old key: %w", env, err)
+		}
+		if err := verifyEncryptedDocumentFile(paths.DualNext[env], env, docs[env], []age.Identity{newIdentity}); err != nil {
+			return fmt.Errorf("verify staged dual-recipient %s secrets with new key: %w", env, err)
+		}
+		if err := verifyEncryptedDocumentFile(paths.FinalNext[env], env, docs[env], []age.Identity{newIdentity}); err != nil {
+			return fmt.Errorf("verify staged final %s secrets with new key: %w", env, err)
+		}
+	}
+	return nil
+}
+
+func verifyEncryptedDocumentFile(path string, env Environment, want Document, identities []age.Identity) error {
+	ciphertext, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read staged encrypted secrets file: %w", err)
+	}
+	plaintext, err := decryptArmored(ciphertext, identities)
+	if err != nil {
+		return err
+	}
+	got, err := DecodeDocument(plaintext, env)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(got, want) {
+		return fmt.Errorf("staged secrets document changed unexpectedly")
+	}
+	return nil
+}
+
+func (s Store) backupRotationFiles(paths rotationFileSet) error {
+	if err := s.copyExistingFile(s.Paths(EnvironmentDevelopment).MasterKeyFile, paths.MasterRollback, 0o600); err != nil {
+		return fmt.Errorf("backup master key: %w", err)
+	}
+	for _, env := range SupportedEnvironments() {
+		if err := s.copyExistingFile(s.Paths(env).SecretFile, paths.SecretRollback[env], 0o644); err != nil {
+			return fmt.Errorf("backup %s secrets: %w", env, err)
+		}
+	}
+	return nil
+}
+
+func (s Store) copyExistingFile(source string, target string, perm os.FileMode) error {
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return err
+	}
+	return s.writeFileAtomic(target, data, perm)
+}
+
+func (s Store) restoreRotationBackups(paths rotationFileSet, restoreMaster bool) error {
+	var problems []string
+	for _, env := range SupportedEnvironments() {
+		backup := paths.SecretRollback[env]
+		if !exists(backup) {
+			continue
+		}
+		if err := s.rename(backup, s.Paths(env).SecretFile); err != nil {
+			problems = append(problems, fmt.Sprintf("restore %s secrets: %v", env, err))
+		}
+	}
+	if restoreMaster && exists(paths.MasterRollback) {
+		if err := s.rename(paths.MasterRollback, s.Paths(EnvironmentDevelopment).MasterKeyFile); err != nil {
+			problems = append(problems, fmt.Sprintf("restore master key: %v", err))
+		}
+	}
+	if len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+func (s Store) cleanupRotationArtifacts(paths rotationFileSet) error {
+	var problems []string
+	for _, path := range paths.all() {
+		if err := s.remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			problems = append(problems, fmt.Sprintf("remove %s: %v", path, err))
+		}
+	}
+	rotateDir := filepath.Dir(paths.MasterNext)
+	if err := s.remove(rotateDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		problems = append(problems, fmt.Sprintf("remove %s: %v", rotateDir, err))
+	}
+	if len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+func (paths rotationFileSet) all() []string {
+	files := []string{paths.MasterNext, paths.MasterRollback}
+	for _, env := range SupportedEnvironments() {
+		files = append(files, paths.DualNext[env], paths.FinalNext[env], paths.SecretRollback[env])
+	}
+	return files
+}
+
+func combineRotationErrors(primary error, rollbackErr error, cleanupErr error) error {
+	if rollbackErr != nil {
+		primary = fmt.Errorf("%w; rollback failed: %v", primary, rollbackErr)
+	}
+	if cleanupErr != nil {
+		primary = fmt.Errorf("%w; cleanup failed: %v", primary, cleanupErr)
+	}
+	return primary
+}
+
+func (s Store) writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	if s.fileOps.writeFileAtomic != nil {
+		return s.fileOps.writeFileAtomic(path, data, perm)
+	}
+	return writeFileAtomic(path, data, perm)
+}
+
+func (s Store) rename(oldPath string, newPath string) error {
+	if s.fileOps.rename != nil {
+		return s.fileOps.rename(oldPath, newPath)
+	}
+	return os.Rename(oldPath, newPath)
+}
+
+func (s Store) remove(path string) error {
+	if s.fileOps.remove != nil {
+		return s.fileOps.remove(path)
+	}
+	return os.Remove(path)
 }
 
 func (s Store) loadForRewrite(env Environment) (Document, error) {

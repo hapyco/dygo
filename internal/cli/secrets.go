@@ -7,10 +7,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
+	"github.com/dygo-dev/dygo/internal/project"
 	"github.com/dygo-dev/dygo/internal/secrets"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 func newSecretsCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
@@ -118,15 +121,25 @@ func newSecretsValidateCommand(stdout io.Writer) *cobra.Command {
 }
 
 func newSecretsRotateKeyCommand(stdout io.Writer) *cobra.Command {
+	var confirmToken string
+
 	cmd := &cobra.Command{
-		Use:   "rotate-key",
+		Use:   "rotate-key --confirm <project-name>/master.key",
 		Short: "Rotate the root master key and re-encrypt all secrets",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			store, err := newWorkingSecretsStore()
+			root, err := workingRootPath()
 			if err != nil {
 				return err
 			}
+			expected, err := rotateKeyConfirmationToken(root)
+			if err != nil {
+				return err
+			}
+			if confirmToken != expected {
+				return fmt.Errorf("secrets rotate-key requires --confirm %s", expected)
+			}
+			store := secrets.NewStore(root)
 			paths, err := store.RotateKey()
 			if err != nil {
 				return err
@@ -138,7 +151,39 @@ func newSecretsRotateKeyCommand(stdout io.Writer) *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&confirmToken, "confirm", "", "Typed confirmation token: <project-name>/master.key")
+
 	return cmd
+}
+
+func rotateKeyConfirmationToken(root string) (string, error) {
+	name, err := projectNameForConfirmation(root)
+	if err != nil {
+		return "", err
+	}
+	return name + "/master.key", nil
+}
+
+func projectNameForConfirmation(root string) (string, error) {
+	markerPath := filepath.Join(root, project.MarkerFile)
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return filepath.Base(root), nil
+		}
+		return "", fmt.Errorf("read %s: %w", project.MarkerFile, err)
+	}
+	var marker struct {
+		Name string `yaml:"name"`
+	}
+	if err := yaml.Unmarshal(data, &marker); err != nil {
+		return "", fmt.Errorf("parse %s: %w", project.MarkerFile, err)
+	}
+	name := strings.TrimSpace(marker.Name)
+	if name == "" {
+		return "", fmt.Errorf("%s name is required for rotate-key confirmation", project.MarkerFile)
+	}
+	return name, nil
 }
 
 func newWorkingSecretsStore() (secrets.Store, error) {

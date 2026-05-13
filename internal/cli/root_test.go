@@ -1899,6 +1899,21 @@ func TestSecretsCommandSurface(t *testing.T) {
 	}
 }
 
+func TestSecretsRotateKeyHelpDocumentsConfirmation(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"secrets", "rotate-key", "--help"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(secrets rotate-key --help) error = %v, want nil", err)
+	}
+	output := stdout.String()
+	for _, want := range []string{"--confirm", "<project-name>/master.key"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("rotate-key help = %q, want substring %q", output, want)
+		}
+	}
+}
+
 func TestSecretsInitCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -2120,7 +2135,7 @@ func TestSecretsRotateKeyCommand(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"secrets", "rotate-key"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"secrets", "rotate-key", "--confirm", "test/master.key"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("Run(secrets rotate-key) error = %v, want nil", err)
 	}
@@ -2133,6 +2148,94 @@ func TestSecretsRotateKeyCommand(t *testing.T) {
 	}
 	if secret.Value != "postgres://production" {
 		t.Fatalf("production DATABASE_URL after rotate = %q, want preserved value", secret.Value)
+	}
+}
+
+func TestSecretsRotateKeyRequiresConfirmation(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		args []string
+	}{
+		{name: "missing", args: []string{"secrets", "rotate-key"}},
+		{name: "wrong", args: []string{"secrets", "rotate-key", "--confirm", "wrong"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeCLIProjectRoot(t, root)
+			store := secrets.NewStore(root)
+			paths, err := store.Init(false)
+			if err != nil {
+				t.Fatalf("Init(secrets) error = %v", err)
+			}
+			before, err := os.ReadFile(paths.MasterKeyFile)
+			if err != nil {
+				t.Fatalf("ReadFile(master.key) error = %v", err)
+			}
+			if err := store.Set(secrets.EnvironmentProduction, "DATABASE_URL", "postgres://production"); err != nil {
+				t.Fatalf("Set(production DATABASE_URL) error = %v", err)
+			}
+			t.Chdir(root)
+
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			err = Run(context.Background(), tt.args, strings.NewReader(""), &stdout, &stderr)
+			if err == nil {
+				t.Fatal("Run(secrets rotate-key) error = nil, want confirmation error")
+			}
+			if !strings.Contains(err.Error(), "secrets rotate-key requires --confirm test/master.key") {
+				t.Fatalf("Run(secrets rotate-key) error = %q, want confirmation target", err.Error())
+			}
+			after, err := os.ReadFile(paths.MasterKeyFile)
+			if err != nil {
+				t.Fatalf("ReadFile(master.key after failed confirmation) error = %v", err)
+			}
+			if string(after) != string(before) {
+				t.Fatal("master.key changed after failed confirmation")
+			}
+			secret, err := store.Get(secrets.EnvironmentProduction, "DATABASE_URL")
+			if err != nil {
+				t.Fatalf("Get(production DATABASE_URL) error = %v", err)
+			}
+			if secret.Value != "postgres://production" {
+				t.Fatalf("production DATABASE_URL = %q, want original value", secret.Value)
+			}
+		})
+	}
+}
+
+func TestSecretsRotateKeyFrameworkRootConfirmationFallback(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "apps"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(apps) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "configs"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(configs) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/dygo-dev/dygo\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(go.mod) error = %v", err)
+	}
+	store := secrets.NewStore(root)
+	if _, err := store.Init(false); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
+	}
+	if err := store.Set(secrets.EnvironmentDevelopment, "DATABASE_URL", "postgres://development"); err != nil {
+		t.Fatalf("Set(development DATABASE_URL) error = %v", err)
+	}
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	token := filepath.Base(root) + "/master.key"
+	err := Run(context.Background(), []string{"secrets", "rotate-key", "--confirm", token}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(secrets rotate-key framework fallback) error = %v, want nil", err)
+	}
+	secret, err := store.Get(secrets.EnvironmentDevelopment, "DATABASE_URL")
+	if err != nil {
+		t.Fatalf("Get(development DATABASE_URL) error = %v", err)
+	}
+	if secret.Value != "postgres://development" {
+		t.Fatalf("development DATABASE_URL after rotate = %q, want preserved value", secret.Value)
 	}
 }
 
