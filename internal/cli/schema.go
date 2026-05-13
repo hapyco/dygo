@@ -27,39 +27,42 @@ func newSchemaCommand(ctx context.Context, stdout io.Writer, sync schemaSyncRunn
 
 func newSchemaPruneCommand(ctx context.Context, stdout io.Writer, sync schemaSyncRunner) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
-	force := false
+	confirm := ""
 
 	cmd := &cobra.Command{
 		Use:   "prune",
 		Short: "Preview or apply destructive cleanup for metadata-orphaned schema objects",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			env, root, databaseURL, err := databaseInputs(envName)
+			target, err := destructiveDatabaseTarget(envName)
 			if err != nil {
 				return err
 			}
-			if force {
-				result, err := sync.Prune(ctx, root, databaseURL)
+			if confirm != "" {
+				if err := requireDestructiveConfirmation("schema prune", confirm, target); err != nil {
+					return err
+				}
+				result, err := sync.Prune(ctx, target.Root, target.DatabaseURL)
 				if err != nil {
 					return fmt.Errorf("schema prune: %w", err)
 				}
 				if result.Operations == 0 {
-					if _, err := fmt.Fprintf(stdout, "no schema objects to prune (%s)\n", env); err != nil {
+					if _, err := fmt.Fprintf(stdout, "no schema objects to prune (%s)\n", target.Env); err != nil {
 						return fmt.Errorf("write schema prune output: %w", err)
 					}
 					return nil
 				}
-				if _, err := fmt.Fprintf(stdout, "schema pruned: %d destructive %s (%s)\n", result.Operations, noun(result.Operations, "operation"), env); err != nil {
+				if _, err := fmt.Fprintf(stdout, "schema pruned: %d destructive %s (%s)\n", result.Operations, noun(result.Operations, "operation"), target.Env); err != nil {
 					return fmt.Errorf("write schema prune output: %w", err)
 				}
 				return nil
 			}
 
-			plan, err := sync.PrunePlan(ctx, root, databaseURL)
+			plan, err := sync.PrunePlan(ctx, target.Root, target.DatabaseURL)
 			if err != nil {
 				return fmt.Errorf("schema prune: %w", err)
 			}
-			if err := writeSchemaPrunePlan(stdout, env, plan); err != nil {
+			if err := writeSchemaPrunePlan(stdout, target.Env, destructiveConfirmationToken(target), plan); err != nil {
 				return fmt.Errorf("write schema prune output: %w", err)
 			}
 			return plan.BlockerError()
@@ -67,12 +70,12 @@ func newSchemaPruneCommand(ctx context.Context, stdout io.Writer, sync schemaSyn
 	}
 
 	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
-	cmd.Flags().BoolVar(&force, "force", force, "Apply the destructive schema prune plan")
+	cmd.Flags().StringVar(&confirm, "confirm", confirm, "Apply the destructive schema prune plan as <environment>/<database>")
 
 	return cmd
 }
 
-func writeSchemaPrunePlan(stdout io.Writer, env secrets.Environment, plan db.SchemaPrunePlan) error {
+func writeSchemaPrunePlan(stdout io.Writer, env secrets.Environment, confirm string, plan db.SchemaPrunePlan) error {
 	if len(plan.Operations) == 0 && len(plan.Diagnostics) == 0 {
 		_, err := fmt.Fprintf(stdout, "no schema objects to prune (%s)\n", env)
 		return err
@@ -112,6 +115,6 @@ func writeSchemaPrunePlan(stdout io.Writer, env secrets.Environment, plan db.Sch
 		}
 		return nil
 	}
-	_, err := fmt.Fprintln(stdout, "\nrerun with --force to apply")
+	_, err := fmt.Fprintf(stdout, "\nrerun with --confirm %s to apply\n", confirm)
 	return err
 }

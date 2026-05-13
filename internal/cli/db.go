@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/dygo-dev/dygo/internal/config"
+	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/dygo-dev/dygo/internal/secrets"
 	"github.com/spf13/cobra"
 )
@@ -91,21 +92,21 @@ func newDBCreateCommand(ctx context.Context, stdout io.Writer, database database
 
 func newDBDropCommand(ctx context.Context, stdout io.Writer, database databaseRunner) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
-	force := false
+	confirm := ""
 
 	cmd := &cobra.Command{
 		Use:   "drop",
 		Short: "Drop the configured PostgreSQL database",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if !force {
-				return fmt.Errorf("db drop requires --force")
-			}
-			env, _, databaseURL, err := databaseInputs(envName)
+			target, err := destructiveDatabaseTarget(envName)
 			if err != nil {
 				return err
 			}
-			result, err := database.Drop(ctx, databaseURL)
+			if err := requireDestructiveConfirmation("db drop", confirm, target); err != nil {
+				return err
+			}
+			result, err := database.Drop(ctx, target.DatabaseURL)
 			if err != nil {
 				return fmt.Errorf("drop database: %w", err)
 			}
@@ -113,7 +114,7 @@ func newDBDropCommand(ctx context.Context, stdout io.Writer, database databaseRu
 			if !result.Changed {
 				action = "does not exist"
 			}
-			if _, err := fmt.Fprintf(stdout, "database %s: %s (%s)\n", action, result.Name, env); err != nil {
+			if _, err := fmt.Fprintf(stdout, "database %s: %s (%s)\n", action, result.Name, target.Env); err != nil {
 				return fmt.Errorf("write database drop output: %w", err)
 			}
 			return nil
@@ -121,7 +122,7 @@ func newDBDropCommand(ctx context.Context, stdout io.Writer, database databaseRu
 	}
 
 	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
-	cmd.Flags().BoolVar(&force, "force", force, "Confirm the destructive database drop")
+	cmd.Flags().StringVar(&confirm, "confirm", confirm, "Confirm the destructive database drop as <environment>/<database>")
 
 	return cmd
 }
@@ -156,25 +157,25 @@ func newDBPrepareCommand(ctx context.Context, stdout io.Writer, database databas
 
 func newDBResetCommand(ctx context.Context, stdout io.Writer, database databaseRunner) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
-	force := false
+	confirm := ""
 
 	cmd := &cobra.Command{
 		Use:   "reset",
 		Short: "Drop, create, and sync the configured PostgreSQL database",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if !force {
-				return fmt.Errorf("db reset requires --force")
-			}
-			env, root, databaseURL, err := databaseInputs(envName)
+			target, err := destructiveDatabaseTarget(envName)
 			if err != nil {
 				return err
 			}
-			result, err := database.Reset(ctx, root, databaseURL)
+			if err := requireDestructiveConfirmation("db reset", confirm, target); err != nil {
+				return err
+			}
+			result, err := database.Reset(ctx, target.Root, target.DatabaseURL)
 			if err != nil {
 				return fmt.Errorf("reset database: %w", err)
 			}
-			if _, err := fmt.Fprintf(stdout, "database reset: synced %d %s, %d %s, %d %s (%s)\n", result.Apps, noun(result.Apps, "app"), result.Entities, noun(result.Entities, "entity"), result.Fields, noun(result.Fields, "field"), env); err != nil {
+			if _, err := fmt.Fprintf(stdout, "database reset: synced %d %s, %d %s, %d %s (%s)\n", result.Apps, noun(result.Apps, "app"), result.Entities, noun(result.Entities, "entity"), result.Fields, noun(result.Fields, "field"), target.Env); err != nil {
 				return fmt.Errorf("write database reset output: %w", err)
 			}
 			return nil
@@ -182,7 +183,7 @@ func newDBResetCommand(ctx context.Context, stdout io.Writer, database databaseR
 	}
 
 	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
-	cmd.Flags().BoolVar(&force, "force", force, "Confirm the destructive database reset")
+	cmd.Flags().StringVar(&confirm, "confirm", confirm, "Confirm the destructive database reset as <environment>/<database>")
 
 	return cmd
 }
@@ -256,4 +257,40 @@ func databaseURLForEnvironment(root string, env secrets.Environment, secretName 
 		return "", err
 	}
 	return secret.Value, nil
+}
+
+type destructiveTarget struct {
+	Env         secrets.Environment
+	Root        string
+	DatabaseURL string
+	Database    string
+}
+
+func destructiveDatabaseTarget(envName string) (destructiveTarget, error) {
+	env, root, databaseURL, err := databaseInputs(envName)
+	if err != nil {
+		return destructiveTarget{}, err
+	}
+	target, err := db.ParseDatabaseTarget(databaseURL)
+	if err != nil {
+		return destructiveTarget{}, fmt.Errorf("parse database target: %w", err)
+	}
+	return destructiveTarget{
+		Env:         env,
+		Root:        root,
+		DatabaseURL: databaseURL,
+		Database:    target.Name,
+	}, nil
+}
+
+func requireDestructiveConfirmation(command string, confirm string, target destructiveTarget) error {
+	expected := destructiveConfirmationToken(target)
+	if confirm != expected {
+		return fmt.Errorf("%s requires --confirm %s", command, expected)
+	}
+	return nil
+}
+
+func destructiveConfirmationToken(target destructiveTarget) string {
+	return fmt.Sprintf("%s/%s", target.Env, target.Database)
 }

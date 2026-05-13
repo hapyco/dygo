@@ -829,8 +829,12 @@ func TestDBCreateCommandAlreadyExists(t *testing.T) {
 	}
 }
 
-func TestDBDropCommandRequiresForce(t *testing.T) {
+func TestDBDropCommandRequiresConfirm(t *testing.T) {
 	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
 	t.Chdir(root)
 
 	fake := &fakeDatabaseRunner{}
@@ -838,10 +842,39 @@ func TestDBDropCommandRequiresForce(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runWithServices(context.Background(), []string{"db", "drop"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err == nil {
-		t.Fatal("Run(db drop) error = nil, want force error")
+		t.Fatal("Run(db drop) error = nil, want confirmation error")
 	}
-	if !strings.Contains(err.Error(), "db drop requires --force") {
-		t.Fatalf("Run(db drop) error = %q, want force context", err.Error())
+	if !strings.Contains(err.Error(), "db drop requires --confirm development/dygo") {
+		t.Fatalf("Run(db drop) error = %q, want confirmation context", err.Error())
+	}
+	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
+		t.Fatalf("Run(db drop) error = %q, want redacted database URL", err.Error())
+	}
+	if fake.calls != 0 {
+		t.Fatalf("database runner calls = %d, want 0", fake.calls)
+	}
+}
+
+func TestDBDropCommandRejectsWrongConfirm(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeDatabaseRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"db", "drop", "--env", "staging", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
+	if err == nil {
+		t.Fatal("Run(db drop) error = nil, want confirmation error")
+	}
+	if !strings.Contains(err.Error(), "db drop requires --confirm staging/dygo_staging") {
+		t.Fatalf("Run(db drop) error = %q, want confirmation context", err.Error())
+	}
+	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
+		t.Fatalf("Run(db drop) error = %q, want redacted database URL", err.Error())
 	}
 	if fake.calls != 0 {
 		t.Fatalf("database runner calls = %d, want 0", fake.calls)
@@ -861,7 +894,7 @@ func TestDBDropCommand(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "drop", "--force", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
+	err := runWithServices(context.Background(), []string{"db", "drop", "--confirm", "staging/dygo_staging", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err != nil {
 		t.Fatalf("Run(db drop) error = %v, want nil", err)
 	}
@@ -898,8 +931,11 @@ func TestDBPrepareCommand(t *testing.T) {
 	}
 }
 
-func TestDBResetCommandRequiresForce(t *testing.T) {
+func TestDBResetCommandRequiresConfirm(t *testing.T) {
 	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
 	t.Chdir(root)
 
 	fake := &fakeDatabaseRunner{}
@@ -907,10 +943,13 @@ func TestDBResetCommandRequiresForce(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runWithServices(context.Background(), []string{"db", "reset"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err == nil {
-		t.Fatal("Run(db reset) error = nil, want force error")
+		t.Fatal("Run(db reset) error = nil, want confirmation error")
 	}
-	if !strings.Contains(err.Error(), "db reset requires --force") {
-		t.Fatalf("Run(db reset) error = %q, want force context", err.Error())
+	if !strings.Contains(err.Error(), "db reset requires --confirm development/dygo") {
+		t.Fatalf("Run(db reset) error = %q, want confirmation context", err.Error())
+	}
+	if strings.Contains(err.Error(), "secret-password") {
+		t.Fatalf("Run(db reset) error = %q, want redacted database URL", err.Error())
 	}
 	if fake.calls != 0 {
 		t.Fatalf("database runner calls = %d, want 0", fake.calls)
@@ -929,7 +968,7 @@ func TestDBResetCommand(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "reset", "--force"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
+	err := runWithServices(context.Background(), []string{"db", "reset", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err != nil {
 		t.Fatalf("Run(db reset) error = %v, want nil", err)
 	}
@@ -1148,7 +1187,7 @@ func TestSchemaPruneCommandPreviewsDestructivePlan(t *testing.T) {
 		"destructive operations: 2\n",
 		"- drop column lead.legacy\n",
 		"- drop table old_import\n",
-		"rerun with --force to apply\n",
+		"rerun with --confirm development/dygo to apply\n",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("schema prune stdout = %q, want substring %q", stdout.String(), want)
@@ -1162,7 +1201,7 @@ func TestSchemaPruneCommandPreviewsDestructivePlan(t *testing.T) {
 	}
 }
 
-func TestSchemaPruneCommandForceAppliesPlan(t *testing.T) {
+func TestSchemaPruneCommandConfirmAppliesPlan(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -1175,15 +1214,66 @@ func TestSchemaPruneCommandForceAppliesPlan(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"schema", "prune", "--force"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	err := runWithServices(context.Background(), []string{"schema", "prune", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
 	if err != nil {
-		t.Fatalf("Run(schema prune --force) error = %v, want nil", err)
+		t.Fatalf("Run(schema prune --confirm) error = %v, want nil", err)
 	}
 	if stdout.String() != "schema pruned: 2 destructive operations (development)\n" {
 		t.Fatalf("schema prune stdout = %q, want applied output", stdout.String())
 	}
 	if fake.pruneCalls != 1 || fake.prunePlanCalls != 0 {
 		t.Fatalf("schema prune calls = apply %d plan %d, want force apply only", fake.pruneCalls, fake.prunePlanCalls)
+	}
+	if fake.pruneRoot != root || fake.pruneDatabaseURL != databaseURL {
+		t.Fatalf("schema prune inputs = root %q URL %q, want root %q URL %q", fake.pruneRoot, fake.pruneDatabaseURL, root, databaseURL)
+	}
+}
+
+func TestSchemaPruneCommandRejectsWrongConfirm(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"schema", "prune", "--confirm", "wrong"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err == nil {
+		t.Fatal("Run(schema prune --confirm wrong) error = nil, want confirmation error")
+	}
+	if !strings.Contains(err.Error(), "schema prune requires --confirm development/dygo") {
+		t.Fatalf("schema prune error = %q, want confirmation context", err.Error())
+	}
+	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
+		t.Fatalf("schema prune error = %q, want redacted database URL", err.Error())
+	}
+	if fake.pruneCalls != 0 || fake.prunePlanCalls != 0 {
+		t.Fatalf("schema prune calls = apply %d plan %d, want none", fake.pruneCalls, fake.prunePlanCalls)
+	}
+}
+
+func TestSchemaPruneCommandProductionConfirm(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://production-user:secret-password@localhost:5432/dygo_prod"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentProduction, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{
+		pruneResult: db.SchemaPruneResult{Operations: 1},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"schema", "prune", "--env", "production", "--confirm", "production/dygo_prod"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(schema prune --env production --confirm) error = %v, want nil", err)
+	}
+	if stdout.String() != "schema pruned: 1 destructive operation (production)\n" {
+		t.Fatalf("schema prune stdout = %q, want production output", stdout.String())
 	}
 	if fake.pruneRoot != root || fake.pruneDatabaseURL != databaseURL {
 		t.Fatalf("schema prune inputs = root %q URL %q, want root %q URL %q", fake.pruneRoot, fake.pruneDatabaseURL, root, databaseURL)
@@ -1254,7 +1344,7 @@ func TestSchemaPruneCommandReportsBlockers(t *testing.T) {
 	}
 }
 
-func TestSchemaPruneForceNoopOutput(t *testing.T) {
+func TestSchemaPruneConfirmNoopOutput(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -1265,9 +1355,9 @@ func TestSchemaPruneForceNoopOutput(t *testing.T) {
 	fake := &fakeSchemaSyncRunner{}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"schema", "prune", "--force"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	err := runWithServices(context.Background(), []string{"schema", "prune", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
 	if err != nil {
-		t.Fatalf("Run(schema prune --force) error = %v, want nil", err)
+		t.Fatalf("Run(schema prune --confirm) error = %v, want nil", err)
 	}
 	if stdout.String() != "no schema objects to prune (development)\n" {
 		t.Fatalf("schema prune stdout = %q, want no-op output", stdout.String())

@@ -49,12 +49,15 @@ go run ./cmd/dygo serve --env staging
 go run ./cmd/dygo setup admin
 go run ./cmd/dygo db check
 go run ./cmd/dygo db create
+go run ./cmd/dygo db drop --confirm development/dygo
 go run ./cmd/dygo db prepare
+go run ./cmd/dygo db reset --confirm development/dygo
 go run ./cmd/dygo db schema dump
 go run ./cmd/dygo migrate plan
 go run ./cmd/dygo migrate
 go run ./cmd/dygo fixtures apply
 go run ./cmd/dygo schema prune
+go run ./cmd/dygo schema prune --confirm development/dygo
 go run ./cmd/dygo apps list
 go run ./cmd/dygo apps validate
 go run ./cmd/dygo entities list

@@ -85,11 +85,20 @@ go run ./cmd/dygo setup admin
 Drop or reset the configured database only with explicit confirmation:
 
 ```sh
-go run ./cmd/dygo db drop --force
-go run ./cmd/dygo db reset --force
+go run ./cmd/dygo db drop --confirm development/dygo
+go run ./cmd/dygo db reset --confirm development/dygo
 ```
 
 `db reset` drops the database, creates it again, syncs metadata schema, and updates `db/schema.sql`.
+
+The confirmation value is always `<environment>/<database-name>`, where the database name comes from the selected environment's encrypted `DATABASE_URL`. For staging or production, include the matching environment:
+
+```sh
+go run ./cmd/dygo db drop --env staging --confirm staging/dygo_staging
+go run ./cmd/dygo db reset --env production --confirm production/dygo_prod
+```
+
+dygo does not automate backups before destructive database operations yet. Take and verify any required backup before running destructive commands, especially for production.
 
 All database commands default to `development` and support `--env staging` or `--env production`.
 
@@ -147,12 +156,12 @@ go run ./cmd/dygo schema prune
 Apply the prune plan:
 
 ```sh
-go run ./cmd/dygo schema prune --force
+go run ./cmd/dygo schema prune --confirm development/dygo
 ```
 
 `dygo schema prune` defaults to `development` and supports `--env staging` or `--env production`.
 
-Preview mode is the default and exits after printing the destructive plan. `--force` applies the plan in one transaction and updates `db/schema.sql` only after a successful prune.
+Preview mode is the default and exits after printing the destructive plan. `--confirm <environment>/<database-name>` applies the plan in one transaction and updates `db/schema.sql` only after a successful prune.
 
 Prune can drop extra constraints, extra non-constraint indexes, extra columns, and extra tables. It skips primary keys, not-null constraints, system columns, and indexes that back constraints. Generated SQL uses quoted identifiers and does not use `CASCADE`; hidden dependencies should fail instead of widening the blast radius.
 
@@ -160,7 +169,7 @@ Prune still refuses non-prunable blockers such as type drift, required drift, un
 
 ## Schema Snapshot
 
-After a successful `dygo migrate`, `dygo schema prune --force`, `db prepare`, or `db reset`, dygo writes a Postgres-native schema snapshot:
+After a successful `dygo migrate`, confirmed `dygo schema prune`, `db prepare`, or confirmed `db reset`, dygo writes a Postgres-native schema snapshot:
 
 ```txt
 db/schema.sql
