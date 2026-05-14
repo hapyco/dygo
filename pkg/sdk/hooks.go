@@ -10,15 +10,15 @@ import (
 type RecordHookEvent string
 
 const (
-	// RecordBeforeValidate runs before dygo validates Record input.
+	// RecordBeforeValidate runs before dygo validates Record input. Mutating Input changes the input dygo validates.
 	RecordBeforeValidate RecordHookEvent = "before-validate"
-	// RecordValidate runs during dygo Record validation.
+	// RecordValidate runs after framework input validation. Return an error to reject; mutate other Records through Records.
 	RecordValidate RecordHookEvent = "validate"
-	// RecordBeforeCreate runs before dygo creates a Record.
+	// RecordBeforeCreate runs before dygo creates a Record. Mutating Input changes the row dygo inserts.
 	RecordBeforeCreate RecordHookEvent = "before-create"
 	// RecordAfterCreate runs after dygo creates a Record inside the same transaction.
 	RecordAfterCreate RecordHookEvent = "after-create"
-	// RecordBeforeUpdate runs before dygo updates a Record.
+	// RecordBeforeUpdate runs before dygo updates a Record. Mutating Input changes the row dygo updates.
 	RecordBeforeUpdate RecordHookEvent = "before-update"
 	// RecordAfterUpdate runs after dygo updates a Record inside the same transaction.
 	RecordAfterUpdate RecordHookEvent = "after-update"
@@ -43,8 +43,32 @@ type RecordInput map[string]json.RawMessage
 // Record is one metadata-backed saved Entity instance visible to Record hooks.
 type Record map[string]any
 
-// RecordHookContext contains the Record lifecycle state visible to app hooks.
-type RecordHookContext struct {
+// RecordListParams controls Record list pagination in hook code.
+type RecordListParams struct {
+	Limit  int
+	Offset int
+}
+
+// RecordListResult is a page of Records returned to hook code.
+type RecordListResult struct {
+	Records []Record
+	Limit   int
+	Offset  int
+	Count   int
+}
+
+// RecordData gives hooks transactional access to metadata-backed Records.
+type RecordData interface {
+	List(ctx context.Context, entity string, params RecordListParams) (RecordListResult, error)
+	Get(ctx context.Context, entity string, id int64) (Record, error)
+	Find(ctx context.Context, entity string, match RecordInput) (Record, error)
+	Create(ctx context.Context, entity string, input RecordInput) (Record, error)
+	Update(ctx context.Context, entity string, id int64, input RecordInput) (Record, error)
+	Delete(ctx context.Context, entity string, id int64) error
+}
+
+// RecordHook contains the Record lifecycle state and services visible to app hooks.
+type RecordHook struct {
 	Event     RecordHookEvent
 	Operation string
 
@@ -60,10 +84,16 @@ type RecordHookContext struct {
 	NewRecord Record
 	Changes   []map[string]any
 	Snapshot  Record
+
+	// Records performs metadata-backed Record reads and writes in the current hook transaction.
+	Records RecordData
 }
 
+// RecordHookContext is kept as an alias for older hook code. Prefer RecordHook.
+type RecordHookContext = RecordHook
+
 // RecordHookFunc handles one Record lifecycle hook.
-type RecordHookFunc func(context.Context, RecordHookContext) error
+type RecordHookFunc func(context.Context, RecordHook) error
 
 // RecordHookRegistry is the public app-facing Record hook registration API.
 type RecordHookRegistry interface {

@@ -80,7 +80,7 @@ func registerLeadHooks(registry sdk.RecordHookRegistry) error {
 	return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "normalize-lead", normalizeLead)
 }
 
-func normalizeLead(ctx context.Context, hookCtx sdk.RecordHookContext) error {
+func normalizeLead(ctx context.Context, dygo sdk.RecordHook) error {
 	return nil
 }
 ```
@@ -115,6 +115,31 @@ func main() {
 	}
 }
 ```
+
+## Lifecycle Contract
+
+All Record hooks run synchronously inside the current Record transaction. If a hook returns an error, dygo aborts the current operation and rolls back the transaction.
+
+Hooks can read and write app data through `dygo.Records`. Those calls use dygo's metadata-backed Record API and participate in the same transaction as the hook. In v1, `dygo.Records` calls do not re-enter app Record hooks; this keeps hook behavior bounded and avoids accidental recursive hook loops.
+
+Examples name the hook runtime value `dygo`. It is a local function parameter, not a global package variable. Keeping it local makes transaction, actor, permission, and hook state explicit while still making app hooks read like dygo framework code.
+
+Hook context fields are ordinary Go values, but only some context mutations change the current target operation:
+
+| Event | Target operation effect | Typical use |
+| --- | --- | --- |
+| `before-validate` | Mutating `dygo.Input` changes the input dygo validates. | Normalize raw input, fill required values, reject early. |
+| `validate` | Mutating context fields does not change the target write. Returning an error rejects the operation. | Cross-field validation, permission/business checks, transactional lookups. |
+| `before-create` | Mutating `dygo.Input` changes the row dygo inserts. dygo validates the final input before SQL is built. | Compute derived fields, set defaults, create related data. |
+| `after-create` | Mutating context fields does not rewrite the created record. `dygo.Records` can still write related data in the same transaction. | Create follow-up records, update aggregates, observe the created snapshot. |
+| `before-update` | Mutating `dygo.Input` changes the row dygo updates. dygo validates the final input before SQL is built. | Compute final patch values, enforce state transitions, write related data. |
+| `after-update` | Mutating context fields does not rewrite the updated record or diff. `dygo.Records` can still write related data in the same transaction. | React to changes, update aggregates, write follow-up records. |
+| `before-delete` | There is no target input to mutate. Returning an error prevents the delete; `dygo.Records` can write related data in the same transaction. | Enforce delete rules, clean up related data, archive before delete. |
+| `after-delete` | Mutating context fields does not rewrite the deleted snapshot. `dygo.Records` can still write related data in the same transaction. | Record follow-up data or update aggregates after the delete succeeds. |
+
+Use `before-validate`, `before-create`, and `before-update` when you intend to mutate the current target input. Use `dygo.Records` when you intend to mutate any other Record.
+
+Avoid external side effects in v1 hooks unless they are safe to repeat or compensate manually. dygo does not have after-commit hooks yet, so a database rollback can still happen after an email, webhook, or external API call has already been sent.
 
 ## Runtime Behavior
 

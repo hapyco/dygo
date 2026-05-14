@@ -352,16 +352,16 @@ func (s RecordStore) updateRecord(ctx context.Context, entity string, id int64, 
 	if err := s.runRecordHooks(ctx, hookCtx); err != nil {
 		return nil, err
 	}
-	mutation, err := layout.updateMutation(input)
-	if err != nil {
-		return nil, err
-	}
 	beforeCtx := newRecordHookContext(RecordBeforeUpdate, layout)
 	beforeCtx.Operation = activityOperationUpdate
 	beforeCtx.RecordID = id
 	beforeCtx.Input = input
 	beforeCtx.OldRecord = oldRecord
 	if err := s.runRecordHooks(ctx, beforeCtx); err != nil {
+		return nil, err
+	}
+	mutation, err := layout.updateMutation(input)
+	if err != nil {
 		return nil, err
 	}
 

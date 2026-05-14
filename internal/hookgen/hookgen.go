@@ -500,11 +500,11 @@ func register%[1]sHooks(registry sdk.RecordHookRegistry) error {
 	return nil
 }
 
-func beforeSave%[1]s(ctx context.Context, hookCtx sdk.RecordHookContext) error {
+func beforeSave%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
 	return nil
 }
 
-func afterSave%[1]s(ctx context.Context, hookCtx sdk.RecordHookContext) error {
+func afterSave%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
 	return nil
 }
 `, name, appName, entityName, entityName+"-before-save", entityName+"-after-save")

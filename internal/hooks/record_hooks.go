@@ -33,7 +33,7 @@ func (r recordHookRegistry) RegisterEntity(appName string, entity string, event 
 		return fmt.Errorf("record hook %q function is required", name)
 	}
 	return r.registry.RegisterEntity(appName, entity, db.RecordHookEvent(event), name, func(ctx context.Context, hookCtx db.RecordHookContext) error {
-		return fn(ctx, sdk.RecordHookContext{
+		return fn(ctx, sdk.RecordHook{
 			Event:       sdk.RecordHookEvent(hookCtx.Event),
 			Operation:   hookCtx.Operation,
 			EntityID:    hookCtx.EntityID,
@@ -47,6 +47,72 @@ func (r recordHookRegistry) RegisterEntity(appName string, entity string, event 
 			NewRecord:   sdk.Record(hookCtx.NewRecord),
 			Changes:     hookCtx.Changes,
 			Snapshot:    sdk.Record(hookCtx.Snapshot),
+			Records:     recordData{queryer: hookCtx.Queryer},
 		})
 	})
+}
+
+type recordData struct {
+	queryer db.RecordQueryer
+}
+
+func (d recordData) store() db.RecordStore {
+	return db.NewRecordStore(d.queryer)
+}
+
+func (d recordData) List(ctx context.Context, entity string, params sdk.RecordListParams) (sdk.RecordListResult, error) {
+	result, err := d.store().ListRecords(ctx, entity, db.RecordListParams(params))
+	if err != nil {
+		return sdk.RecordListResult{}, err
+	}
+	return sdk.RecordListResult{
+		Records: sdkRecords(result.Records),
+		Limit:   result.Limit,
+		Offset:  result.Offset,
+		Count:   result.Count,
+	}, nil
+}
+
+func (d recordData) Get(ctx context.Context, entity string, id int64) (sdk.Record, error) {
+	record, err := d.store().GetRecord(ctx, entity, id)
+	if err != nil {
+		return nil, err
+	}
+	return sdk.Record(record), nil
+}
+
+func (d recordData) Find(ctx context.Context, entity string, match sdk.RecordInput) (sdk.Record, error) {
+	record, err := d.store().FindRecord(ctx, entity, db.RecordInput(match))
+	if err != nil {
+		return nil, err
+	}
+	return sdk.Record(record), nil
+}
+
+func (d recordData) Create(ctx context.Context, entity string, input sdk.RecordInput) (sdk.Record, error) {
+	record, err := d.store().CreateRecord(ctx, entity, db.RecordInput(input))
+	if err != nil {
+		return nil, err
+	}
+	return sdk.Record(record), nil
+}
+
+func (d recordData) Update(ctx context.Context, entity string, id int64, input sdk.RecordInput) (sdk.Record, error) {
+	record, err := d.store().UpdateRecord(ctx, entity, id, db.RecordInput(input))
+	if err != nil {
+		return nil, err
+	}
+	return sdk.Record(record), nil
+}
+
+func (d recordData) Delete(ctx context.Context, entity string, id int64) error {
+	return d.store().DeleteRecord(ctx, entity, id)
+}
+
+func sdkRecords(records []db.Record) []sdk.Record {
+	converted := make([]sdk.Record, len(records))
+	for i, record := range records {
+		converted[i] = sdk.Record(record)
+	}
+	return converted
 }

@@ -111,12 +111,12 @@ func (r *RecordHookRegistry) Run(ctx context.Context, hookCtx RecordHookContext)
 	}
 	r.ensure()
 	for _, hook := range r.global[hookCtx.Event] {
-		if err := runRecordHook(ctx, hookCtx, hook); err != nil {
+		if err := runRecordHook(ctx, recordHookContextForRun(hookCtx), hook); err != nil {
 			return err
 		}
 	}
 	for _, hook := range r.entity[entityKey(hookCtx.AppName, hookCtx.Entity)][hookCtx.Event] {
-		if err := runRecordHook(ctx, hookCtx, hook); err != nil {
+		if err := runRecordHook(ctx, recordHookContextForRun(hookCtx), hook); err != nil {
 			return err
 		}
 	}
@@ -175,6 +175,26 @@ func runRecordHook(ctx context.Context, hookCtx RecordHookContext, hook recordHo
 	return nil
 }
 
+func recordHookContextForRun(hookCtx RecordHookContext) RecordHookContext {
+	hookCtx.OldRecord = cloneRecord(hookCtx.OldRecord)
+	hookCtx.NewRecord = cloneRecord(hookCtx.NewRecord)
+	hookCtx.Changes = cloneRecordChanges(hookCtx.Changes)
+	hookCtx.Snapshot = cloneRecord(hookCtx.Snapshot)
+	if !recordHookEventMutatesTargetInput(hookCtx.Event) {
+		hookCtx.Input = cloneRecordInput(hookCtx.Input)
+	}
+	return hookCtx
+}
+
+func recordHookEventMutatesTargetInput(event RecordHookEvent) bool {
+	switch event {
+	case RecordBeforeValidate, RecordBeforeCreate, RecordBeforeUpdate:
+		return true
+	default:
+		return false
+	}
+}
+
 func mustRegisterRecordHook(err error) {
 	if err != nil {
 		panic(err)
@@ -202,6 +222,32 @@ func cloneRecordInput(input RecordInput) RecordInput {
 		clonedValue := make([]byte, len(value))
 		copy(clonedValue, value)
 		cloned[key] = clonedValue
+	}
+	return cloned
+}
+
+func cloneRecord(record Record) Record {
+	if record == nil {
+		return nil
+	}
+	cloned := make(Record, len(record))
+	for key, value := range record {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneRecordChanges(changes []map[string]any) []map[string]any {
+	if changes == nil {
+		return nil
+	}
+	cloned := make([]map[string]any, len(changes))
+	for i, change := range changes {
+		clonedChange := make(map[string]any, len(change))
+		for key, value := range change {
+			clonedChange[key] = value
+		}
+		cloned[i] = clonedChange
 	}
 	return cloned
 }

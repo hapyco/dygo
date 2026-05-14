@@ -29,6 +29,8 @@ func TestGenerateCreatesHookRegisterAndRunner(t *testing.T) {
 		`sdk.RecordBeforeUpdate, "lead-before-save", beforeSaveLead`,
 		`sdk.RecordAfterCreate, "lead-after-save", afterSaveLead`,
 		`sdk.RecordAfterUpdate, "lead-after-save", afterSaveLead`,
+		"func beforeSaveLead(ctx context.Context, dygo sdk.RecordHook) error",
+		"func afterSaveLead(ctx context.Context, dygo sdk.RecordHook) error",
 	} {
 		if !strings.Contains(hookSource, want) {
 			t.Fatalf("hook source = %q, want substring %q", hookSource, want)

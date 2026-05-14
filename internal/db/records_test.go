@@ -187,6 +187,42 @@ func TestRecordStoreUpdateRecord(t *testing.T) {
 	}
 }
 
+func TestRecordStoreBeforeUpdateHookCanMutateInput(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "Renamed User", false},
+	}))
+	registry := NewRecordHookRegistry()
+	mustRegisterRecordHook(registry.RegisterEntity("core", "user", RecordBeforeUpdate, "disable-user", func(_ context.Context, hookCtx RecordHookContext) error {
+		hookCtx.Input["enabled"] = json.RawMessage(`false`)
+		return nil
+	}))
+
+	record, err := NewRecordStoreWithHooks(queryer, registry).UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{
+		"full-name": `"Renamed User"`,
+	}))
+	if err != nil {
+		t.Fatalf("UpdateRecord() error = %v, want nil", err)
+	}
+	if record["enabled"] != false {
+		t.Fatalf("UpdateRecord() = %+v, want before-update input mutation applied", record)
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	for _, want := range []string{`"enabled" = $1`, `"full_name" = $2`} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("update query = %q, want %q", lastQuery, want)
+		}
+	}
+	args := queryer.args[len(queryer.args)-1]
+	if len(args) < 3 || args[0] != false || args[1] != "Renamed User" || args[2] != int64(7) {
+		t.Fatalf("update args = %#v, want hook-mutated enabled plus original full-name", args)
+	}
+}
+
 func TestRecordStoreHashesPasswordOnCreate(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
@@ -494,6 +530,60 @@ func TestRecordStoreBeforeValidateHookCanMutateInput(t *testing.T) {
 	args := queryer.args[len(queryer.args)-1]
 	if args[1] != "Filled User" {
 		t.Fatalf("create args = %#v, want hook-mutated full-name", args)
+	}
+}
+
+func TestRecordStoreValidateHookCannotMutateTargetInput(t *testing.T) {
+	queryer := newUserRecordQueryer()
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "Original User", true},
+	}))
+	registry := NewRecordHookRegistry()
+	mustRegisterRecordHook(registry.RegisterEntity("core", "user", RecordValidate, "attempt-mutate", func(_ context.Context, hookCtx RecordHookContext) error {
+		hookCtx.Input["full-name"] = json.RawMessage(`"Changed By Validate"`)
+		return nil
+	}))
+
+	_, err := NewRecordStoreWithHooks(queryer, registry).CreateRecord(context.Background(), "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"Original User"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v, want nil", err)
+	}
+	args := queryer.args[len(queryer.args)-1]
+	if args[1] != "Original User" {
+		t.Fatalf("create args = %#v, want validate hook context mutation ignored for target input", args)
+	}
+}
+
+func TestRecordStoreObservationHookContextMutationDoesNotLeak(t *testing.T) {
+	queryer := newUserRecordQueryer()
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+	registry := NewRecordHookRegistry()
+	mustRegisterRecordHook(registry.RegisterGlobal(RecordAfterCreate, "global-mutator", func(_ context.Context, hookCtx RecordHookContext) error {
+		hookCtx.NewRecord["email"] = "changed@example.com"
+		return nil
+	}))
+	var observed any
+	mustRegisterRecordHook(registry.RegisterEntity("core", "user", RecordAfterCreate, "entity-observer", func(_ context.Context, hookCtx RecordHookContext) error {
+		observed = hookCtx.NewRecord["email"]
+		return nil
+	}))
+
+	_, err := NewRecordStoreWithHooks(queryer, registry).CreateRecord(context.Background(), "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"A User"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v, want nil", err)
+	}
+	if observed != "a@example.com" {
+		t.Fatalf("entity after-create observed email = %#v, want unchanged snapshot", observed)
 	}
 }
 

@@ -431,7 +431,7 @@ func TestRunWithOptionsPassesRecordHooksToServe(t *testing.T) {
 		RecordHooks: []sdk.RecordHookRegistrar{
 			func(registry sdk.RecordHookRegistry) error {
 				registrarCalled = true
-				return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "test", func(context.Context, sdk.RecordHookContext) error {
+				return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "test", func(context.Context, sdk.RecordHook) error {
 					return nil
 				})
 			},
