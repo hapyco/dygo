@@ -120,7 +120,7 @@ func main() {
 
 All Record hooks run synchronously inside the current Record transaction. If a hook returns an error, dygo aborts the current operation and rolls back the transaction.
 
-Hooks can read and write app data through `dygo.Records`. Those calls use dygo's metadata-backed Record API and participate in the same transaction as the hook. In v1, `dygo.Records` calls do not re-enter app Record hooks; this keeps hook behavior bounded and avoids accidental recursive hook loops.
+Hooks can read and write app data through `dygo.Records`. Those calls use dygo's metadata-backed Record API and participate in the same transaction as the hook. In v1, `dygo.Records` create, update, and delete calls do not re-enter app Record hooks for the target Entity; this keeps hook behavior bounded and avoids accidental recursive hook loops. Framework-owned hooks such as Activity history can still run.
 
 `dygo.Records` addresses Records by stable app-scoped Entity identity:
 

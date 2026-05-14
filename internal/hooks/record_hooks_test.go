@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/dygo-dev/dygo/pkg/sdk"
@@ -240,6 +242,122 @@ func TestNewRecordHookRegistryExposesTransactionalRecordData(t *testing.T) {
 	}
 }
 
+func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		queryer func() *recordDataMutationQueryer
+		mutate  func(context.Context, sdk.RecordHook) error
+	}{
+		{
+			name: "create",
+			queryer: func() *recordDataMutationQueryer {
+				return newUserRecordDataMutationQueryer(userRecordRow("a@example.com", "A User", true))
+			},
+			mutate: func(ctx context.Context, dygo sdk.RecordHook) error {
+				_, err := dygo.Records.Create(ctx, "core", "user", sdk.RecordInput{
+					"email":     json.RawMessage(`"a@example.com"`),
+					"full-name": json.RawMessage(`"A User"`),
+				})
+				return err
+			},
+		},
+		{
+			name: "update",
+			queryer: func() *recordDataMutationQueryer {
+				return newUserRecordDataMutationQueryer(
+					userRecordRow("a@example.com", "A User", true),
+					userRecordRow("a@example.com", "Renamed User", true),
+				)
+			},
+			mutate: func(ctx context.Context, dygo sdk.RecordHook) error {
+				_, err := dygo.Records.Update(ctx, "core", "user", 7, sdk.RecordInput{
+					"full-name": json.RawMessage(`"Renamed User"`),
+				})
+				return err
+			},
+		},
+		{
+			name: "delete",
+			queryer: func() *recordDataMutationQueryer {
+				queryer := newUserRecordDataMutationQueryer(userRecordRow("a@example.com", "A User", true))
+				queryer.execTags = []pgconn.CommandTag{pgconn.NewCommandTag("DELETE 1")}
+				return queryer
+			},
+			mutate: func(ctx context.Context, dygo sdk.RecordHook) error {
+				return dygo.Records.Delete(ctx, "core", "user", 7)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			queryer := tt.queryer()
+			var outerCalls int
+			var reentryCalls int
+			registry, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
+				func(registry sdk.RecordHookRegistry) error {
+					if err := registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "outer-"+tt.name, func(ctx context.Context, dygo sdk.RecordHook) error {
+						outerCalls++
+						return tt.mutate(ctx, dygo)
+					}); err != nil {
+						return err
+					}
+					for _, event := range allRecordHookEvents() {
+						event := event
+						if err := registry.RegisterEntity("core", "user", event, "reentry-"+string(event), func(context.Context, sdk.RecordHook) error {
+							reentryCalls++
+							return nil
+						}); err != nil {
+							return err
+						}
+					}
+					return nil
+				},
+			})
+			if err != nil {
+				t.Fatalf("NewRecordHookRegistry() error = %v, want nil", err)
+			}
+
+			err = registry.Run(context.Background(), db.RecordHookContext{
+				Event:     db.RecordBeforeCreate,
+				Operation: sdk.RecordOperationCreate,
+				AppName:   "sales",
+				Entity:    "lead",
+				Queryer:   queryer,
+			})
+			if err != nil {
+				t.Fatalf("Run() error = %v, want nil", err)
+			}
+			if outerCalls != 1 {
+				t.Fatalf("outer hook calls = %d, want 1", outerCalls)
+			}
+			if reentryCalls != 0 {
+				t.Fatalf("inner app hook calls = %d, want dygo.Records mutation without app hook re-entry", reentryCalls)
+			}
+			if !queryer.executedSQLContaining(`INSERT INTO "activity"`) {
+				t.Fatalf("exec SQL = %#v, want framework Activity hook to stay active", queryer.execSQL)
+			}
+		})
+	}
+}
+
+func allRecordHookEvents() []sdk.RecordHookEvent {
+	return []sdk.RecordHookEvent{
+		sdk.RecordBeforeValidate,
+		sdk.RecordValidate,
+		sdk.RecordBeforeCreate,
+		sdk.RecordAfterCreate,
+		sdk.RecordBeforeUpdate,
+		sdk.RecordAfterUpdate,
+		sdk.RecordBeforeDelete,
+		sdk.RecordAfterDelete,
+	}
+}
+
 func TestNewRecordHookRegistryRejectsNilRegistrarAndHook(t *testing.T) {
 	t.Parallel()
 
@@ -292,4 +410,207 @@ type failingRow struct {
 
 func (r failingRow) Scan(...any) error {
 	return r.err
+}
+
+type recordDataMutationQueryer struct {
+	row      pgx.Row
+	rows     []pgx.Rows
+	execTags []pgconn.CommandTag
+
+	queries []string
+	args    [][]any
+	rowSQL  []string
+	rowArgs [][]any
+	execSQL []string
+	execArg [][]any
+}
+
+func newUserRecordDataMutationQueryer(recordRows ...[]any) *recordDataMutationQueryer {
+	queryer := &recordDataMutationQueryer{
+		row: newRecordDataMutationRow(int64(10), "user", "user", "User", "User identity", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		rows: []pgx.Rows{
+			newRecordDataMutationRows([][]any{
+				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
+				{"full-name", "Full Name", "text", true, false, false, nil, nil, 2, nil},
+				{"password", "Password", "password", false, false, false, nil, nil, 3, nil},
+				{"enabled", "Enabled", "boolean", false, false, true, []byte("true"), nil, 4, nil},
+			}),
+			newRecordDataMutationRows(nil),
+			newRecordDataMutationRows(nil),
+		},
+	}
+	for _, row := range recordRows {
+		queryer.rows = append(queryer.rows, newRecordDataMutationRows([][]any{row}))
+	}
+	return queryer
+}
+
+func userRecordRow(email string, fullName string, enabled bool) []any {
+	now := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	return []any{int64(7), email, now, now, email, fullName, enabled}
+}
+
+func (q *recordDataMutationQueryer) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
+	q.queries = append(q.queries, sql)
+	q.args = append(q.args, args)
+	if len(q.rows) == 0 {
+		return newRecordDataMutationRows(nil), nil
+	}
+	rows := q.rows[0]
+	q.rows = q.rows[1:]
+	return rows, nil
+}
+
+func (q *recordDataMutationQueryer) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
+	q.rowSQL = append(q.rowSQL, sql)
+	q.rowArgs = append(q.rowArgs, args)
+	if q.row == nil {
+		return recordDataMutationRow{err: pgx.ErrNoRows}
+	}
+	return q.row
+}
+
+func (q *recordDataMutationQueryer) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	q.execSQL = append(q.execSQL, sql)
+	q.execArg = append(q.execArg, args)
+	if len(q.execTags) == 0 {
+		return pgconn.CommandTag{}, nil
+	}
+	tag := q.execTags[0]
+	q.execTags = q.execTags[1:]
+	return tag, nil
+}
+
+func (q *recordDataMutationQueryer) executedSQLContaining(fragment string) bool {
+	for _, sql := range q.execSQL {
+		if strings.Contains(sql, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+type recordDataMutationRow struct {
+	values []any
+	err    error
+}
+
+func newRecordDataMutationRow(values ...any) recordDataMutationRow {
+	return recordDataMutationRow{values: values}
+}
+
+func (r recordDataMutationRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	return assignRecordDataMutationScanValues(r.values, dest)
+}
+
+type recordDataMutationRows struct {
+	values [][]any
+	index  int
+	err    error
+	closed bool
+}
+
+func newRecordDataMutationRows(values [][]any) *recordDataMutationRows {
+	return &recordDataMutationRows{values: values, index: -1}
+}
+
+func (r *recordDataMutationRows) Close() {
+	r.closed = true
+}
+
+func (r *recordDataMutationRows) Err() error {
+	return r.err
+}
+
+func (r *recordDataMutationRows) CommandTag() pgconn.CommandTag {
+	return pgconn.CommandTag{}
+}
+
+func (r *recordDataMutationRows) FieldDescriptions() []pgconn.FieldDescription {
+	return nil
+}
+
+func (r *recordDataMutationRows) Next() bool {
+	if r.index+1 >= len(r.values) {
+		r.closed = true
+		return false
+	}
+	r.index++
+	return true
+}
+
+func (r *recordDataMutationRows) Scan(dest ...any) error {
+	if r.index < 0 || r.index >= len(r.values) {
+		return errors.New("scan without current row")
+	}
+	return assignRecordDataMutationScanValues(r.values[r.index], dest)
+}
+
+func (r *recordDataMutationRows) Values() ([]any, error) {
+	if r.index < 0 || r.index >= len(r.values) {
+		return nil, errors.New("values without current row")
+	}
+	return r.values[r.index], nil
+}
+
+func (r *recordDataMutationRows) RawValues() [][]byte {
+	return nil
+}
+
+func (r *recordDataMutationRows) Conn() *pgx.Conn {
+	return nil
+}
+
+func assignRecordDataMutationScanValues(values []any, dest []any) error {
+	if len(values) != len(dest) {
+		return fmt.Errorf("scan value count %d does not match destination count %d", len(values), len(dest))
+	}
+	for i, value := range values {
+		switch target := dest[i].(type) {
+		case *int:
+			v, ok := value.(int)
+			if !ok {
+				return fmt.Errorf("scan value %d has type %T, want int", i, value)
+			}
+			*target = v
+		case *int64:
+			v, ok := value.(int64)
+			if !ok {
+				return fmt.Errorf("scan value %d has type %T, want int64", i, value)
+			}
+			*target = v
+		case *string:
+			if value == nil {
+				*target = ""
+				continue
+			}
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("scan value %d has type %T, want string", i, value)
+			}
+			*target = v
+		case *bool:
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("scan value %d has type %T, want bool", i, value)
+			}
+			*target = v
+		case *[]byte:
+			if value == nil {
+				*target = nil
+				continue
+			}
+			v, ok := value.([]byte)
+			if !ok {
+				return fmt.Errorf("scan value %d has type %T, want []byte", i, value)
+			}
+			*target = append([]byte(nil), v...)
+		default:
+			return fmt.Errorf("unsupported scan destination %T", dest[i])
+		}
+	}
+	return nil
 }
