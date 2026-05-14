@@ -114,7 +114,26 @@ func (s RecordStore) ListRecords(ctx context.Context, entity string, params Reco
 	if err != nil {
 		return RecordListResult{}, err
 	}
+	return s.listRecords(ctx, layout, entity, params)
+}
 
+// ListRecordsByIdentity returns one deterministic page of Records for an app-scoped Entity identity.
+func (s RecordStore) ListRecordsByIdentity(ctx context.Context, appName string, entity string, params RecordListParams) (RecordListResult, error) {
+	if err := s.requireQueryer(); err != nil {
+		return RecordListResult{}, err
+	}
+	params, err := normalizeRecordListParams(params)
+	if err != nil {
+		return RecordListResult{}, err
+	}
+	layout, err := s.recordLayoutByIdentity(ctx, appName, entity)
+	if err != nil {
+		return RecordListResult{}, err
+	}
+	return s.listRecords(ctx, layout, recordIdentityName(appName, entity), params)
+}
+
+func (s RecordStore) listRecords(ctx context.Context, layout recordLayout, entity string, params RecordListParams) (RecordListResult, error) {
 	sql := fmt.Sprintf("SELECT %s FROM %s ORDER BY %s ASC LIMIT $1 OFFSET $2", layout.selectList(), quoteIdent(layout.Table), quoteIdent("id"))
 	rows, err := s.queryer.Query(ctx, sql, params.Limit, params.Offset)
 	if err != nil {
@@ -152,8 +171,22 @@ func (s RecordStore) GetRecord(ctx context.Context, entity string, id int64) (Re
 	if err != nil {
 		return nil, err
 	}
-	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent("id"))
-	return s.queryOneRecord(ctx, layout, sql, id)
+	return s.getRecordWithLayout(ctx, layout, id)
+}
+
+// GetRecordByIdentity returns one Record by app-scoped Entity identity and id.
+func (s RecordStore) GetRecordByIdentity(ctx context.Context, appName string, entity string, id int64) (Record, error) {
+	if err := s.requireQueryer(); err != nil {
+		return nil, err
+	}
+	if id <= 0 {
+		return nil, invalidRecordIDError(recordIdentityName(appName, entity))
+	}
+	layout, err := s.recordLayoutByIdentity(ctx, appName, entity)
+	if err != nil {
+		return nil, err
+	}
+	return s.getRecordWithLayout(ctx, layout, id)
 }
 
 // FindRecord returns one Record matching metadata field values.
@@ -169,6 +202,27 @@ func (s RecordStore) FindRecord(ctx context.Context, entity string, match Record
 	if err != nil {
 		return nil, err
 	}
+	return s.findRecordWithLayout(ctx, layout, entity, match)
+}
+
+// FindRecordByIdentity returns one Record matching metadata field values for an app-scoped Entity identity.
+func (s RecordStore) FindRecordByIdentity(ctx context.Context, appName string, entity string, match RecordInput) (Record, error) {
+	if err := s.requireQueryer(); err != nil {
+		return nil, err
+	}
+	match = normalizeRecordInput(match)
+	identity := recordIdentityName(appName, entity)
+	if len(match) == 0 {
+		return nil, recordError(RecordErrorInvalidRequest, "at least one match field is required", map[string]any{"entity": identity}, nil)
+	}
+	layout, err := s.recordLayoutByIdentity(ctx, appName, entity)
+	if err != nil {
+		return nil, err
+	}
+	return s.findRecordWithLayout(ctx, layout, identity, match)
+}
+
+func (s RecordStore) findRecordWithLayout(ctx context.Context, layout recordLayout, entity string, match RecordInput) (Record, error) {
 	if err := layout.validateMatchFields(match); err != nil {
 		return nil, err
 	}
@@ -220,11 +274,33 @@ func (s RecordStore) CreateRecord(ctx context.Context, entity string, input Reco
 	})
 }
 
+// CreateRecordByIdentity inserts one Record using app-scoped Entity identity.
+func (s RecordStore) CreateRecordByIdentity(ctx context.Context, appName string, entity string, input RecordInput) (Record, error) {
+	if err := s.requireQueryer(); err != nil {
+		return nil, err
+	}
+	return s.withRecordMutation(ctx, func(store RecordStore) (Record, error) {
+		return store.createRecordByIdentity(ctx, appName, entity, input)
+	})
+}
+
 func (s RecordStore) createRecord(ctx context.Context, entity string, input RecordInput) (Record, error) {
 	layout, err := s.recordLayout(ctx, entity)
 	if err != nil {
 		return nil, err
 	}
+	return s.createRecordWithLayout(ctx, layout, input)
+}
+
+func (s RecordStore) createRecordByIdentity(ctx context.Context, appName string, entity string, input RecordInput) (Record, error) {
+	layout, err := s.recordLayoutByIdentity(ctx, appName, entity)
+	if err != nil {
+		return nil, err
+	}
+	return s.createRecordWithLayout(ctx, layout, input)
+}
+
+func (s RecordStore) createRecordWithLayout(ctx context.Context, layout recordLayout, input RecordInput) (Record, error) {
 	input = cloneRecordInput(input)
 	hookCtx := newRecordHookContext(RecordBeforeValidate, layout)
 	hookCtx.Operation = activityOperationCreate
@@ -327,11 +403,36 @@ func (s RecordStore) UpdateRecord(ctx context.Context, entity string, id int64, 
 	})
 }
 
+// UpdateRecordByIdentity partially updates one Record by app-scoped Entity identity and id.
+func (s RecordStore) UpdateRecordByIdentity(ctx context.Context, appName string, entity string, id int64, input RecordInput) (Record, error) {
+	if err := s.requireQueryer(); err != nil {
+		return nil, err
+	}
+	if id <= 0 {
+		return nil, invalidRecordIDError(recordIdentityName(appName, entity))
+	}
+	return s.withRecordMutation(ctx, func(store RecordStore) (Record, error) {
+		return store.updateRecordByIdentity(ctx, appName, entity, id, input)
+	})
+}
+
 func (s RecordStore) updateRecord(ctx context.Context, entity string, id int64, input RecordInput) (Record, error) {
 	layout, err := s.recordLayout(ctx, entity)
 	if err != nil {
 		return nil, err
 	}
+	return s.updateRecordWithLayout(ctx, layout, id, input)
+}
+
+func (s RecordStore) updateRecordByIdentity(ctx context.Context, appName string, entity string, id int64, input RecordInput) (Record, error) {
+	layout, err := s.recordLayoutByIdentity(ctx, appName, entity)
+	if err != nil {
+		return nil, err
+	}
+	return s.updateRecordWithLayout(ctx, layout, id, input)
+}
+
+func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLayout, id int64, input RecordInput) (Record, error) {
 	input = cloneRecordInput(input)
 	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
 	if err != nil {
@@ -412,11 +513,37 @@ func (s RecordStore) DeleteRecord(ctx context.Context, entity string, id int64) 
 	return err
 }
 
+// DeleteRecordByIdentity hard-deletes one Record by app-scoped Entity identity and id.
+func (s RecordStore) DeleteRecordByIdentity(ctx context.Context, appName string, entity string, id int64) error {
+	if err := s.requireQueryer(); err != nil {
+		return err
+	}
+	if id <= 0 {
+		return invalidRecordIDError(recordIdentityName(appName, entity))
+	}
+	_, err := s.withRecordMutation(ctx, func(store RecordStore) (Record, error) {
+		return nil, store.deleteRecordByIdentity(ctx, appName, entity, id)
+	})
+	return err
+}
+
 func (s RecordStore) deleteRecord(ctx context.Context, entity string, id int64) error {
 	layout, err := s.recordLayout(ctx, entity)
 	if err != nil {
 		return err
 	}
+	return s.deleteRecordWithLayout(ctx, layout, entity, id)
+}
+
+func (s RecordStore) deleteRecordByIdentity(ctx context.Context, appName string, entity string, id int64) error {
+	layout, err := s.recordLayoutByIdentity(ctx, appName, entity)
+	if err != nil {
+		return err
+	}
+	return s.deleteRecordWithLayout(ctx, layout, recordIdentityName(appName, entity), id)
+}
+
+func (s RecordStore) deleteRecordWithLayout(ctx context.Context, layout recordLayout, entity string, id int64) error {
 	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
 	if err != nil {
 		return err
@@ -511,6 +638,26 @@ func (s RecordStore) recordLayout(ctx context.Context, entity string) (recordLay
 		return recordLayout{}, recordError(RecordErrorInternal, "load entity metadata failed", map[string]any{"entity": entity}, err)
 	}
 	return newRecordLayout(meta)
+}
+
+func (s RecordStore) recordLayoutByIdentity(ctx context.Context, appName string, entity string) (recordLayout, error) {
+	meta, err := s.metadata.GetEntityMetaByIdentity(ctx, appName, entity)
+	if err != nil {
+		if IsMetadataNotFound(err) {
+			return recordLayout{}, recordError(RecordErrorNotFound, "entity not found", map[string]any{"app": appName, "entity": entity}, err)
+		}
+		identity := recordIdentityName(appName, entity)
+		var classified RecordError
+		if errors.As(classifyRecordDBError(err, identity), &classified) && classified.Code == RecordErrorSchemaNotReady {
+			return recordLayout{}, classified
+		}
+		return recordLayout{}, recordError(RecordErrorInternal, "load entity metadata failed", map[string]any{"app": appName, "entity": entity}, err)
+	}
+	return newRecordLayout(meta)
+}
+
+func recordIdentityName(appName string, entity string) string {
+	return appName + "/" + entity
 }
 
 func (s RecordStore) requireQueryer() error {

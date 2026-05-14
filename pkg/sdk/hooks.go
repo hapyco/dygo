@@ -57,14 +57,14 @@ type RecordListResult struct {
 	Count   int
 }
 
-// RecordData gives hooks transactional access to metadata-backed Records.
+// RecordData gives hooks transactional access to metadata-backed Records by app/entity identity.
 type RecordData interface {
-	List(ctx context.Context, entity string, params RecordListParams) (RecordListResult, error)
-	Get(ctx context.Context, entity string, id int64) (Record, error)
-	Find(ctx context.Context, entity string, match RecordInput) (Record, error)
-	Create(ctx context.Context, entity string, input RecordInput) (Record, error)
-	Update(ctx context.Context, entity string, id int64, input RecordInput) (Record, error)
-	Delete(ctx context.Context, entity string, id int64) error
+	List(ctx context.Context, appName string, entity string, params RecordListParams) (RecordListResult, error)
+	Get(ctx context.Context, appName string, entity string, id int64) (Record, error)
+	Find(ctx context.Context, appName string, entity string, match RecordInput) (Record, error)
+	Create(ctx context.Context, appName string, entity string, input RecordInput) (Record, error)
+	Update(ctx context.Context, appName string, entity string, id int64, input RecordInput) (Record, error)
+	Delete(ctx context.Context, appName string, entity string, id int64) error
 }
 
 // RecordHook contains the Record lifecycle state and services visible to app hooks.
@@ -85,7 +85,7 @@ type RecordHook struct {
 	Changes   []map[string]any
 	Snapshot  Record
 
-	// Records performs metadata-backed Record reads and writes in the current hook transaction.
+	// Records performs metadata-backed Record reads and writes by app/entity identity in the current hook transaction.
 	Records RecordData
 }
 

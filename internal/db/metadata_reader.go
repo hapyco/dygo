@@ -186,22 +186,35 @@ ORDER BY a.name, e.name`)
 
 // GetEntityMeta returns complete persisted metadata for one Entity route slug.
 func (r MetadataReader) GetEntityMeta(ctx context.Context, routeSlug string) (MetadataEntityMeta, error) {
+	return r.getEntityMeta(ctx, routeSlug, `
+SELECT e.id, e.name, e.route_slug, e.label, COALESCE(e.description, ''), e.naming, a.name, a.label
+FROM "entity" e
+JOIN "app" a ON a.id = e.app_id
+WHERE e.route_slug = $1`, routeSlug)
+}
+
+// GetEntityMetaByIdentity returns complete persisted metadata for one app-scoped Entity identity.
+func (r MetadataReader) GetEntityMetaByIdentity(ctx context.Context, appName string, entity string) (MetadataEntityMeta, error) {
+	return r.getEntityMeta(ctx, appName+"/"+entity, `
+SELECT e.id, e.name, e.route_slug, e.label, COALESCE(e.description, ''), e.naming, a.name, a.label
+FROM "entity" e
+JOIN "app" a ON a.id = e.app_id
+WHERE a.name = $1 AND e.name = $2`, appName, entity)
+}
+
+func (r MetadataReader) getEntityMeta(ctx context.Context, name string, sql string, args ...any) (MetadataEntityMeta, error) {
 	if err := r.requireQueryer(); err != nil {
 		return MetadataEntityMeta{}, err
 	}
 
 	var meta MetadataEntityMeta
 	var naming []byte
-	err := r.queryer.QueryRow(ctx, `
-SELECT e.id, e.name, e.route_slug, e.label, COALESCE(e.description, ''), e.naming, a.name, a.label
-FROM "entity" e
-JOIN "app" a ON a.id = e.app_id
-WHERE e.route_slug = $1`, routeSlug).Scan(&meta.ID, &meta.Name, &meta.RouteSlug, &meta.Label, &meta.Description, &naming, &meta.App.Name, &meta.App.Label)
+	err := r.queryer.QueryRow(ctx, sql, args...).Scan(&meta.ID, &meta.Name, &meta.RouteSlug, &meta.Label, &meta.Description, &naming, &meta.App.Name, &meta.App.Label)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return MetadataEntityMeta{}, MetadataNotFoundError{Kind: "entity", Name: routeSlug}
+		return MetadataEntityMeta{}, MetadataNotFoundError{Kind: "entity", Name: name}
 	}
 	if err != nil {
-		return MetadataEntityMeta{}, fmt.Errorf("query metadata entity %q: %w", routeSlug, err)
+		return MetadataEntityMeta{}, fmt.Errorf("query metadata entity %q: %w", name, err)
 	}
 	meta.Naming = rawJSONOrNil(naming)
 

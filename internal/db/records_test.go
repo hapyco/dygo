@@ -67,6 +67,53 @@ func TestRecordStoreGetRecord(t *testing.T) {
 	}
 }
 
+func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newLeadRecordQueryer()
+	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "New"},
+	}))
+
+	record, err := NewRecordStore(queryer).GetRecordByIdentity(context.Background(), "crm", "lead", 7)
+	if err != nil {
+		t.Fatalf("GetRecordByIdentity() error = %v, want nil", err)
+	}
+	if record["id"] != int64(7) || record["status"] != "New" {
+		t.Fatalf("GetRecordByIdentity() = %+v, want crm lead record", record)
+	}
+	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.name = $2`) {
+		t.Fatalf("metadata query = %q, want app/entity lookup", queryer.rowSQL[0])
+	}
+	if !reflect.DeepEqual(queryer.rowArgs[0], []any{"crm", "lead"}) {
+		t.Fatalf("metadata args = %#v, want crm/lead", queryer.rowArgs[0])
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	if !strings.Contains(lastQuery, `FROM "crm_lead"`) {
+		t.Fatalf("get query = %q, want app-scoped storage table", lastQuery)
+	}
+}
+
+func TestRecordStoreRouteSlugMethodsKeepUsingRouteSlugLookup(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newLeadRecordQueryer()
+	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "New"},
+	}))
+
+	_, err := NewRecordStore(queryer).GetRecord(context.Background(), "crm-lead", 7)
+	if err != nil {
+		t.Fatalf("GetRecord() error = %v, want nil", err)
+	}
+	if !strings.Contains(queryer.rowSQL[0], `WHERE e.route_slug = $1`) {
+		t.Fatalf("metadata query = %q, want route slug lookup", queryer.rowSQL[0])
+	}
+	if !reflect.DeepEqual(queryer.rowArgs[0], []any{"crm-lead"}) {
+		t.Fatalf("metadata args = %#v, want crm-lead route slug", queryer.rowArgs[0])
+	}
+}
+
 func TestRecordStoreFindRecord(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()

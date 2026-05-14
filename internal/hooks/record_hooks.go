@@ -60,8 +60,8 @@ func (d recordData) store() db.RecordStore {
 	return db.NewRecordStore(d.queryer)
 }
 
-func (d recordData) List(ctx context.Context, entity string, params sdk.RecordListParams) (sdk.RecordListResult, error) {
-	result, err := d.store().ListRecords(ctx, entity, db.RecordListParams(params))
+func (d recordData) List(ctx context.Context, appName string, entity string, params sdk.RecordListParams) (sdk.RecordListResult, error) {
+	result, err := d.store().ListRecordsByIdentity(ctx, appName, entity, db.RecordListParams(params))
 	if err != nil {
 		return sdk.RecordListResult{}, err
 	}
@@ -73,40 +73,40 @@ func (d recordData) List(ctx context.Context, entity string, params sdk.RecordLi
 	}, nil
 }
 
-func (d recordData) Get(ctx context.Context, entity string, id int64) (sdk.Record, error) {
-	record, err := d.store().GetRecord(ctx, entity, id)
+func (d recordData) Get(ctx context.Context, appName string, entity string, id int64) (sdk.Record, error) {
+	record, err := d.store().GetRecordByIdentity(ctx, appName, entity, id)
 	if err != nil {
 		return nil, err
 	}
 	return sdk.Record(record), nil
 }
 
-func (d recordData) Find(ctx context.Context, entity string, match sdk.RecordInput) (sdk.Record, error) {
-	record, err := d.store().FindRecord(ctx, entity, db.RecordInput(match))
+func (d recordData) Find(ctx context.Context, appName string, entity string, match sdk.RecordInput) (sdk.Record, error) {
+	record, err := d.store().FindRecordByIdentity(ctx, appName, entity, db.RecordInput(match))
 	if err != nil {
 		return nil, err
 	}
 	return sdk.Record(record), nil
 }
 
-func (d recordData) Create(ctx context.Context, entity string, input sdk.RecordInput) (sdk.Record, error) {
-	record, err := d.store().CreateRecord(ctx, entity, db.RecordInput(input))
+func (d recordData) Create(ctx context.Context, appName string, entity string, input sdk.RecordInput) (sdk.Record, error) {
+	record, err := d.store().CreateRecordByIdentity(ctx, appName, entity, db.RecordInput(input))
 	if err != nil {
 		return nil, err
 	}
 	return sdk.Record(record), nil
 }
 
-func (d recordData) Update(ctx context.Context, entity string, id int64, input sdk.RecordInput) (sdk.Record, error) {
-	record, err := d.store().UpdateRecord(ctx, entity, id, db.RecordInput(input))
+func (d recordData) Update(ctx context.Context, appName string, entity string, id int64, input sdk.RecordInput) (sdk.Record, error) {
+	record, err := d.store().UpdateRecordByIdentity(ctx, appName, entity, id, db.RecordInput(input))
 	if err != nil {
 		return nil, err
 	}
 	return sdk.Record(record), nil
 }
 
-func (d recordData) Delete(ctx context.Context, entity string, id int64) error {
-	return d.store().DeleteRecord(ctx, entity, id)
+func (d recordData) Delete(ctx context.Context, appName string, entity string, id int64) error {
+	return d.store().DeleteRecordByIdentity(ctx, appName, entity, id)
 }
 
 func sdkRecords(records []db.Record) []sdk.Record {

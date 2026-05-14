@@ -86,7 +86,7 @@ func TestNewRecordHookRegistryExposesTransactionalRecordData(t *testing.T) {
 				if dygo.Records == nil {
 					return errors.New("record data service is nil")
 				}
-				_, dataErr = dygo.Records.Get(ctx, "lead", 42)
+				_, dataErr = dygo.Records.Get(ctx, "sales", "lead", 42)
 				return nil
 			})
 		},
@@ -110,6 +110,12 @@ func TestNewRecordHookRegistryExposesTransactionalRecordData(t *testing.T) {
 	}
 	if queryer.rowCalls != 1 {
 		t.Fatalf("queryer row calls = %d, want Records.Get to use hook queryer", queryer.rowCalls)
+	}
+	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.name = $2`) {
+		t.Fatalf("Records.Get() metadata query = %q, want app/entity lookup", queryer.rowSQL[0])
+	}
+	if !reflect.DeepEqual(queryer.rowArgs[0], []any{"sales", "lead"}) {
+		t.Fatalf("Records.Get() metadata args = %#v, want sales/lead", queryer.rowArgs[0])
 	}
 }
 
@@ -140,14 +146,18 @@ func TestNewRecordHookRegistryRejectsNilRegistrarAndHook(t *testing.T) {
 type failingRecordQueryer struct {
 	err      error
 	rowCalls int
+	rowSQL   []string
+	rowArgs  [][]any
 }
 
 func (q *failingRecordQueryer) Query(context.Context, string, ...any) (pgx.Rows, error) {
 	return nil, q.err
 }
 
-func (q *failingRecordQueryer) QueryRow(context.Context, string, ...any) pgx.Row {
+func (q *failingRecordQueryer) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 	q.rowCalls++
+	q.rowSQL = append(q.rowSQL, sql)
+	q.rowArgs = append(q.rowArgs, args)
 	return failingRow{err: q.err}
 }
 

@@ -112,6 +112,33 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	}
 }
 
+func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
+	queryer := &fakeMetadataQueryer{
+		row: newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		rows: []pgx.Rows{
+			newFakeRows([][]any{
+				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New"]}`)},
+			}),
+			newFakeRows(nil),
+			newFakeRows(nil),
+		},
+	}
+
+	meta, err := NewMetadataReader(queryer).GetEntityMetaByIdentity(context.Background(), "crm", "lead")
+	if err != nil {
+		t.Fatalf("GetEntityMetaByIdentity() error = %v, want nil", err)
+	}
+	if meta.Name != "lead" || meta.RouteSlug != "crm-lead" || meta.App.Name != "crm" {
+		t.Fatalf("GetEntityMetaByIdentity() = %+v, want crm/lead with crm-lead route slug", meta.MetadataEntity)
+	}
+	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.name = $2`) {
+		t.Fatalf("GetEntityMetaByIdentity() query = %q, want app/entity lookup", queryer.rowSQL[0])
+	}
+	if !reflect.DeepEqual(queryer.rowArgs[0], []any{"crm", "lead"}) {
+		t.Fatalf("GetEntityMetaByIdentity() args = %#v, want app/entity", queryer.rowArgs[0])
+	}
+}
+
 func TestMetadataReaderNotFound(t *testing.T) {
 	queryer := &fakeMetadataQueryer{row: fakeRow{err: pgx.ErrNoRows}}
 

@@ -122,6 +122,18 @@ All Record hooks run synchronously inside the current Record transaction. If a h
 
 Hooks can read and write app data through `dygo.Records`. Those calls use dygo's metadata-backed Record API and participate in the same transaction as the hook. In v1, `dygo.Records` calls do not re-enter app Record hooks; this keeps hook behavior bounded and avoids accidental recursive hook loops.
 
+`dygo.Records` addresses Records by stable app-scoped Entity identity:
+
+```go
+record, err := dygo.Records.Get(ctx, "sales", "lead", 42)
+created, err := dygo.Records.Create(ctx, "sales", "activity", input)
+updated, err := dygo.Records.Update(ctx, dygo.AppName, dygo.Entity, dygo.RecordID, input)
+```
+
+The app name is the app manifest `name`, and the Entity is the Entity metadata `name`. Do not pass the route slug to `dygo.Records`. `dygo.RouteSlug` is exposed for URLs, metadata links, and display behavior when an Entity uses an explicit `route.slug`.
+
+`dygo.Records` is trusted server-side app code. It does not run the HTTP route permission checks used by `/api/v1/records/{entity}`. Use it for app-owned business behavior that must run with the hook transaction; actor-scoped and permission-scoped SDK access modes are separate future work.
+
 Examples name the hook runtime value `dygo`. It is a local function parameter, not a global package variable. Keeping it local makes transaction, actor, permission, and hook state explicit while still making app hooks read like dygo framework code.
 
 Hook context fields are ordinary Go values, but only some context mutations change the current target operation:
