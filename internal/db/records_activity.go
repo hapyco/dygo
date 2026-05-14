@@ -99,6 +99,9 @@ func recordActivityHook(ctx context.Context, hookCtx RecordHookContext) error {
 	if hookCtx.Entity == "activity" {
 		return nil
 	}
+	if hookCtx.Operation == activityOperationUpdate && len(hookCtx.Changes) == 0 {
+		return nil
+	}
 	activityName, err := randomRecordName(0)
 	if err != nil {
 		return recordError(RecordErrorInternal, "generate activity name failed", nil, err)

@@ -456,6 +456,48 @@ func TestRecordStoreUpdateRecordSkipsActivityWithoutChanges(t *testing.T) {
 	}
 }
 
+func TestRecordStoreAfterUpdateHookRunsWithoutChanges(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+
+	var afterCalls int
+	var observed RecordHookContext
+	registry := DefaultRecordHookRegistry()
+	mustRegisterRecordHook(registry.RegisterEntity("core", "user", RecordAfterUpdate, "observe-noop-update", func(_ context.Context, hookCtx RecordHookContext) error {
+		afterCalls++
+		observed = hookCtx
+		return nil
+	}))
+
+	_, err := NewRecordStoreWithHooks(queryer, registry).UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{
+		"full-name": `"A User"`,
+	}))
+	if err != nil {
+		t.Fatalf("UpdateRecord() error = %v, want nil", err)
+	}
+	if afterCalls != 1 {
+		t.Fatalf("after-update hook calls = %d, want 1", afterCalls)
+	}
+	if observed.RecordID != int64(7) || observed.Operation != activityOperationUpdate {
+		t.Fatalf("after-update context = %+v, want record 7 update", observed)
+	}
+	if observed.OldRecord["full-name"] != "A User" || observed.NewRecord["full-name"] != "A User" {
+		t.Fatalf("after-update records = old %+v new %+v, want unchanged snapshots", observed.OldRecord, observed.NewRecord)
+	}
+	if len(observed.Changes) != 0 {
+		t.Fatalf("after-update changes = %#v, want empty", observed.Changes)
+	}
+	if len(queryer.execSQL) != 0 {
+		t.Fatalf("exec SQL = %#v, want no activity insert for unchanged update", queryer.execSQL)
+	}
+}
+
 func TestRecordStoreDeleteRecordWritesActivitySnapshot(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()

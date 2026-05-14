@@ -479,9 +479,6 @@ func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLa
 		return nil, err
 	}
 	changes := layout.activityChanges(input, oldRecord, record)
-	if len(changes) == 0 {
-		return record, nil
-	}
 	recordID, err := activityRecordID(record)
 	if err != nil {
 		return nil, err
