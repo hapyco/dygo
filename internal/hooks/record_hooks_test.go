@@ -4,7 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -56,6 +62,121 @@ func TestNewRecordHookRegistryAppliesRegistrarsInOrder(t *testing.T) {
 	}
 	if string(input["status"]) != `"qualified"` {
 		t.Fatalf("input status = %s, want hook mutation", input["status"])
+	}
+}
+
+func TestRecordHookEventMapsAllSDKEvents(t *testing.T) {
+	t.Parallel()
+	sdkEvents := sdkRecordHookEventConstants(t)
+
+	tests := []struct {
+		name      string
+		constName string
+		sdk       sdk.RecordHookEvent
+		db        db.RecordHookEvent
+	}{
+		{name: "before validate", constName: "RecordBeforeValidate", sdk: sdk.RecordBeforeValidate, db: db.RecordBeforeValidate},
+		{name: "validate", constName: "RecordValidate", sdk: sdk.RecordValidate, db: db.RecordValidate},
+		{name: "before create", constName: "RecordBeforeCreate", sdk: sdk.RecordBeforeCreate, db: db.RecordBeforeCreate},
+		{name: "after create", constName: "RecordAfterCreate", sdk: sdk.RecordAfterCreate, db: db.RecordAfterCreate},
+		{name: "before update", constName: "RecordBeforeUpdate", sdk: sdk.RecordBeforeUpdate, db: db.RecordBeforeUpdate},
+		{name: "after update", constName: "RecordAfterUpdate", sdk: sdk.RecordAfterUpdate, db: db.RecordAfterUpdate},
+		{name: "before delete", constName: "RecordBeforeDelete", sdk: sdk.RecordBeforeDelete, db: db.RecordBeforeDelete},
+		{name: "after delete", constName: "RecordAfterDelete", sdk: sdk.RecordAfterDelete, db: db.RecordAfterDelete},
+	}
+	if len(tests) != len(sdkEvents) {
+		t.Fatalf("record hook mapping tests cover %d SDK events, SDK defines %d: %#v", len(tests), len(sdkEvents), sdkEvents)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := sdkEvents[tt.constName]; got != tt.sdk {
+				t.Fatalf("SDK %s = %q, want %q", tt.constName, got, tt.sdk)
+			}
+			got, err := recordHookEvent(tt.sdk)
+			if err != nil {
+				t.Fatalf("recordHookEvent(%q) error = %v, want nil", tt.sdk, err)
+			}
+			if got != tt.db {
+				t.Fatalf("recordHookEvent(%q) = %q, want %q", tt.sdk, got, tt.db)
+			}
+		})
+	}
+}
+
+func sdkRecordHookEventConstants(t *testing.T) map[string]sdk.RecordHookEvent {
+	t.Helper()
+
+	events := map[string]sdk.RecordHookEvent{}
+	fset := token.NewFileSet()
+	dir := filepath.Join("..", "..", "pkg", "sdk")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read SDK package directory: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			spec, ok := node.(*ast.ValueSpec)
+			if !ok || spec.Type == nil {
+				return true
+			}
+			ident, ok := spec.Type.(*ast.Ident)
+			if !ok || ident.Name != "RecordHookEvent" {
+				return true
+			}
+			for i, name := range spec.Names {
+				if i >= len(spec.Values) {
+					continue
+				}
+				lit, ok := spec.Values[i].(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					continue
+				}
+				value, err := strconv.Unquote(lit.Value)
+				if err != nil {
+					t.Fatalf("unquote %s: %v", lit.Value, err)
+				}
+				events[name.Name] = sdk.RecordHookEvent(value)
+			}
+			return true
+		})
+	}
+	if len(events) == 0 {
+		t.Fatal("no SDK RecordHookEvent constants found")
+	}
+	return events
+}
+
+func TestNewRecordHookRegistryRejectsUnsupportedSDKEvent(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
+		func(registry sdk.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", sdk.RecordHookEvent("after-save"), "legacy-save", func(context.Context, sdk.RecordHook) error {
+				return nil
+			})
+		},
+	})
+	if err == nil {
+		t.Fatal("NewRecordHookRegistry() error = nil, want unsupported SDK event error")
+	}
+	for _, want := range []string{
+		"register record hook registrar 1",
+		`record hook event "after-save" is not supported`,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("NewRecordHookRegistry() error = %q, want %q", err.Error(), want)
+		}
 	}
 }
 

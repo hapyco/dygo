@@ -32,7 +32,11 @@ func (r recordHookRegistry) RegisterEntity(appName string, entity string, event 
 	if fn == nil {
 		return fmt.Errorf("record hook %q function is required", name)
 	}
-	return r.registry.RegisterEntity(appName, entity, db.RecordHookEvent(event), name, func(ctx context.Context, hookCtx db.RecordHookContext) error {
+	dbEvent, err := recordHookEvent(event)
+	if err != nil {
+		return err
+	}
+	return r.registry.RegisterEntity(appName, entity, dbEvent, name, func(ctx context.Context, hookCtx db.RecordHookContext) error {
 		return fn(ctx, sdk.RecordHook{
 			Event:       sdk.RecordHookEvent(hookCtx.Event),
 			Operation:   hookCtx.Operation,
@@ -50,6 +54,29 @@ func (r recordHookRegistry) RegisterEntity(appName string, entity string, event 
 			Records:     recordData{queryer: hookCtx.Queryer},
 		})
 	})
+}
+
+func recordHookEvent(event sdk.RecordHookEvent) (db.RecordHookEvent, error) {
+	switch event {
+	case sdk.RecordBeforeValidate:
+		return db.RecordBeforeValidate, nil
+	case sdk.RecordValidate:
+		return db.RecordValidate, nil
+	case sdk.RecordBeforeCreate:
+		return db.RecordBeforeCreate, nil
+	case sdk.RecordAfterCreate:
+		return db.RecordAfterCreate, nil
+	case sdk.RecordBeforeUpdate:
+		return db.RecordBeforeUpdate, nil
+	case sdk.RecordAfterUpdate:
+		return db.RecordAfterUpdate, nil
+	case sdk.RecordBeforeDelete:
+		return db.RecordBeforeDelete, nil
+	case sdk.RecordAfterDelete:
+		return db.RecordAfterDelete, nil
+	default:
+		return "", fmt.Errorf("record hook event %q is not supported", event)
+	}
 }
 
 type recordData struct {
