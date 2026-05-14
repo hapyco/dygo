@@ -485,29 +485,37 @@ import (
 )
 
 func register%[1]sHooks(registry sdk.RecordHookRegistry) error {
-	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordBeforeCreate, %[4]q, beforeSave%[1]s); err != nil {
+	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordBeforeCreate, %[4]q, beforeCreate%[1]s); err != nil {
 		return err
 	}
-	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordBeforeUpdate, %[4]q, beforeSave%[1]s); err != nil {
+	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordAfterCreate, %[5]q, afterCreate%[1]s); err != nil {
 		return err
 	}
-	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordAfterCreate, %[5]q, afterSave%[1]s); err != nil {
+	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordBeforeUpdate, %[6]q, beforeUpdate%[1]s); err != nil {
 		return err
 	}
-	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordAfterUpdate, %[5]q, afterSave%[1]s); err != nil {
+	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordAfterUpdate, %[7]q, afterUpdate%[1]s); err != nil {
 		return err
 	}
 	return nil
 }
 
-func beforeSave%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
+func beforeCreate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
 	return nil
 }
 
-func afterSave%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
+func afterCreate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
 	return nil
 }
-`, name, appName, entityName, entityName+"-before-save", entityName+"-after-save")
+
+func beforeUpdate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
+	return nil
+}
+
+func afterUpdate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
+	return nil
+}
+`, name, appName, entityName, entityName+"-before-create", entityName+"-after-create", entityName+"-before-update", entityName+"-after-update")
 	return formatGoSource([]byte(source))
 }
 

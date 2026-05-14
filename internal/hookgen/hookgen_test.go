@@ -25,12 +25,14 @@ func TestGenerateCreatesHookRegisterAndRunner(t *testing.T) {
 	hookSource := readTestFile(t, filepath.Join(root, "apps", "sales", "hooks", "lead.go"))
 	for _, want := range []string{
 		"func registerLeadHooks(registry sdk.RecordHookRegistry) error",
-		`sdk.RecordBeforeCreate, "lead-before-save", beforeSaveLead`,
-		`sdk.RecordBeforeUpdate, "lead-before-save", beforeSaveLead`,
-		`sdk.RecordAfterCreate, "lead-after-save", afterSaveLead`,
-		`sdk.RecordAfterUpdate, "lead-after-save", afterSaveLead`,
-		"func beforeSaveLead(ctx context.Context, dygo sdk.RecordHook) error",
-		"func afterSaveLead(ctx context.Context, dygo sdk.RecordHook) error",
+		`sdk.RecordBeforeCreate, "lead-before-create", beforeCreateLead`,
+		`sdk.RecordAfterCreate, "lead-after-create", afterCreateLead`,
+		`sdk.RecordBeforeUpdate, "lead-before-update", beforeUpdateLead`,
+		`sdk.RecordAfterUpdate, "lead-after-update", afterUpdateLead`,
+		"func beforeCreateLead(ctx context.Context, dygo sdk.RecordHook) error",
+		"func afterCreateLead(ctx context.Context, dygo sdk.RecordHook) error",
+		"func beforeUpdateLead(ctx context.Context, dygo sdk.RecordHook) error",
+		"func afterUpdateLead(ctx context.Context, dygo sdk.RecordHook) error",
 	} {
 		if !strings.Contains(hookSource, want) {
 			t.Fatalf("hook source = %q, want substring %q", hookSource, want)
@@ -141,7 +143,7 @@ func TestGenerateHonorsCustomHooksPathAndKebabEntityName(t *testing.T) {
 	}
 
 	hookSource := readTestFile(t, filepath.Join(root, "apps", "sales", "custom-hooks", "lead-status.go"))
-	for _, want := range []string{"registerLeadStatusHooks", "beforeSaveLeadStatus", "afterSaveLeadStatus"} {
+	for _, want := range []string{"registerLeadStatusHooks", "beforeCreateLeadStatus", "afterCreateLeadStatus", "beforeUpdateLeadStatus", "afterUpdateLeadStatus"} {
 		if !strings.Contains(hookSource, want) {
 			t.Fatalf("hook source = %q, want substring %q", hookSource, want)
 		}
