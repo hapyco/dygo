@@ -1,0 +1,52 @@
+name: patch-run
+label: Patch Run
+description: Ledger entry for one successfully applied app patch.
+naming:
+  strategy: random
+fields:
+  - name: app
+    label: App
+    type: link
+    required: true
+    index: true
+    options:
+      entity: app
+
+  - name: patch-id
+    label: Patch ID
+    type: text
+    required: true
+    index: true
+
+  - name: path
+    label: Path
+    type: text
+    required: true
+
+  - name: phase
+    label: Phase
+    type: select
+    required: true
+    index: true
+    options:
+      values:
+        - pre-sync
+        - post-sync
+
+  - name: checksum
+    label: Checksum
+    type: text
+    required: true
+
+  - name: applied-at
+    label: Applied At
+    type: datetime
+    required: true
+
+  - name: dygo-version
+    label: dygo Version
+    type: text
+
+constraints:
+  - type: unique
+    fields: [app, patch-id]

@@ -258,6 +258,40 @@ ALTER TABLE public.naming_series ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
 
 
 --
+-- Name: patch_run; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.patch_run (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    app_id bigint NOT NULL,
+    patch_id text NOT NULL,
+    path text NOT NULL,
+    phase text NOT NULL,
+    checksum text NOT NULL,
+    applied_at timestamp with time zone NOT NULL,
+    dygo_version text,
+    CONSTRAINT patch_run_phase_check CHECK ((phase = ANY (ARRAY['pre-sync'::text, 'post-sync'::text])))
+);
+
+
+--
+-- Name: patch_run_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.patch_run ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.patch_run_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: permission; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -565,6 +599,30 @@ ALTER TABLE ONLY public.naming_series
 
 
 --
+-- Name: patch_run patch_run_app_patch_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.patch_run
+    ADD CONSTRAINT patch_run_app_patch_id_key UNIQUE (app_id, patch_id);
+
+
+--
+-- Name: patch_run patch_run_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.patch_run
+    ADD CONSTRAINT patch_run_name_key UNIQUE (name);
+
+
+--
+-- Name: patch_run patch_run_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.patch_run
+    ADD CONSTRAINT patch_run_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: permission permission_entity_role_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -814,6 +872,27 @@ CREATE INDEX index_index_name_idx ON public.index USING btree (index_name);
 --
 
 CREATE INDEX naming_series_entity_id_idx ON public.naming_series USING btree (entity_id);
+
+
+--
+-- Name: patch_run_app_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX patch_run_app_id_idx ON public.patch_run USING btree (app_id);
+
+
+--
+-- Name: patch_run_patch_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX patch_run_patch_id_idx ON public.patch_run USING btree (patch_id);
+
+
+--
+-- Name: patch_run_phase_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX patch_run_phase_idx ON public.patch_run USING btree (phase);
 
 
 --

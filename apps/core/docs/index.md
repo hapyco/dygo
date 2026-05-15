@@ -11,6 +11,9 @@ app
 activity
 entity
 field
+index
+naming-series
+patch-run
 user
 role
 user-role
@@ -20,4 +23,4 @@ session
 
 These contracts create Core database tables through dygo's metadata-driven schema sync. The `activity` contract is the append-only storage shape for Record history and product timeline events.
 
-Lifecycle records such as patch runs and ledger-style app change history are deferred until patches and app lifecycle behavior are designed.
+`patch-run` is the first app lifecycle ledger. It records successfully applied app patches so later patch planning and application can detect pending patches and checksum drift.

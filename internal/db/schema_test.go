@@ -24,8 +24,11 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 	for _, want := range []string{
 		"create table app",
 		"create table entity",
+		"create table patch_run",
 		"add column entity.app_id",
+		"add column patch_run.app_id",
 		"create index entity_app_id_idx on entity.app_id",
+		"add unique constraint patch_run_app_patch_id_key on patch_run(app_id, patch_id)",
 		"add unique constraint app_name_key on app.name",
 		"add check constraint app_status_check on app.status",
 	} {
@@ -34,7 +37,9 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 
 	sql := operationSQL(plan)
 	assertContains(t, sql, `CREATE TABLE "app"`)
+	assertContains(t, sql, `CREATE TABLE "patch_run"`)
 	assertContains(t, sql, `"name" text NOT NULL`)
+	assertContains(t, sql, `"applied_at" timestamptz NOT NULL`)
 	assertContains(t, sql, `CREATE INDEX "entity_app_id_idx" ON "entity" ("app_id")`)
 	if strings.Contains(sql, "FOREIGN KEY") {
 		t.Fatalf("operationSQL() contains database foreign key, want framework-level links only:\n%s", sql)
@@ -605,6 +610,25 @@ func coreSchemaEntities() []catalog.LoadedEntity {
 				},
 				Constraints: []schema.Constraint{
 					{Type: "unique", Fields: []string{"app", "name"}},
+				},
+			},
+		},
+		{
+			AppName: "core",
+			Path:    "apps/core/entities/patch-run.yml",
+			Entity: schema.Entity{
+				Name: "patch-run",
+				Fields: []schema.Field{
+					{Name: "app", Type: "link", Required: true, Index: true, Options: entityOption("app")},
+					{Name: "patch-id", Type: "text", Required: true, Index: true},
+					{Name: "path", Type: "text", Required: true},
+					{Name: "phase", Type: "select", Required: true, Index: true, Options: options("pre-sync", "post-sync")},
+					{Name: "checksum", Type: "text", Required: true},
+					{Name: "applied-at", Type: "datetime", Required: true},
+					{Name: "dygo-version", Type: "text"},
+				},
+				Constraints: []schema.Constraint{
+					{Type: "unique", Fields: []string{"app", "patch-id"}},
 				},
 			},
 		},
