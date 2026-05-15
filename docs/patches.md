@@ -266,7 +266,7 @@ dygo patches apply --phase post-sync --confirm development/dygo
 
 All commands default to `development` and support `--env staging` or `--env production`.
 
-`dygo patches plan` should:
+`dygo patches plan`:
 
 - discover patch files
 - validate schema and ordering
@@ -330,14 +330,17 @@ Patches do not create a generic `migrations` table.
 
 Patch execution tracking is Core app metadata or records. That tracking describes app lifecycle work, not a separate framework migration system.
 
-## Implementation Follow-Ups
+## Implementation Status
 
-The patch runner design implies separate implementation tasks:
+Implemented slices:
 
 - add Core patch ledger records
 - add patch discovery and YAML validation
 - add structured operation planners
 - add SQL escape hatch validation
 - add `dygo patches plan`
+
+Remaining slices:
+
 - add `dygo patches apply`
 - add docs and tests for pre-sync and post-sync workflows

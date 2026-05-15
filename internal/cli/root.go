@@ -44,6 +44,7 @@ type databaseRunner interface {
 	SchemaDump(context.Context, string, string) error
 }
 type schemaSyncRunner interface {
+	PatchPlan(context.Context, string, string, string) (db.PatchPlan, error)
 	Plan(context.Context, string, string) (db.SchemaPlan, error)
 	Prune(context.Context, string, string) (db.SchemaPruneResult, error)
 	PrunePlan(context.Context, string, string) (db.SchemaPrunePlan, error)
@@ -167,6 +168,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newServeCommand(ctx, stdout, stderr, serve, recordHooks))
 	root.AddCommand(newDBCommand(ctx, stdout, database))
 	root.AddCommand(newMigrateCommand(ctx, stdout, sync))
+	root.AddCommand(newPatchesCommand(ctx, stdout, sync))
 	root.AddCommand(newSchemaCommand(ctx, stdout, sync))
 	root.AddCommand(newSetupCommand(ctx, stdin, stdout, stderr, setup))
 	root.AddCommand(newFixturesCommand(ctx, stdout, fixture))

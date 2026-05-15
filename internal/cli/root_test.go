@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/db"
@@ -119,6 +120,8 @@ func TestRootHelpIncludesServeAndDB(t *testing.T) {
 		"Manage dygo database lifecycle",
 		"migrate",
 		"Sync dygo metadata to the database",
+		"patches",
+		"Plan explicit app patches",
 		"schema",
 		"Manage explicit schema cleanup",
 		"hooks",
@@ -1157,6 +1160,235 @@ func TestMigrateCommandRequiresSecret(t *testing.T) {
 	}
 	if fake.calls != 0 {
 		t.Fatalf("schema sync runner calls = %d, want 0", fake.calls)
+	}
+}
+
+func TestPatchesPlanCommandHelpDocumentsPhase(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"patches", "plan", "--help"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{})
+	if err != nil {
+		t.Fatalf("Run(patches plan --help) error = %v, want nil", err)
+	}
+	for _, want := range []string{
+		"Preview pending explicit app patches",
+		"--phase",
+		"Patch phase: pre-sync or post-sync",
+		"--env",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("patches plan help stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestPatchesPlanCommandRequiresPhaseBeforeRunner(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"patches", "plan"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err == nil {
+		t.Fatal("Run(patches plan) error = nil, want missing phase error")
+	}
+	if !strings.Contains(err.Error(), "patches plan requires --phase pre-sync or post-sync") {
+		t.Fatalf("Run(patches plan) error = %q, want phase error", err.Error())
+	}
+	if fake.patchPlanCalls != 0 {
+		t.Fatalf("patch plan calls = %d, want 0", fake.patchPlanCalls)
+	}
+}
+
+func TestPatchesPlanCommandRejectsInvalidPhaseBeforeRunner(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"patches", "plan", "--phase", "during-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err == nil {
+		t.Fatal("Run(patches plan --phase during-sync) error = nil, want invalid phase error")
+	}
+	if !strings.Contains(err.Error(), "patches plan --phase must be pre-sync or post-sync") {
+		t.Fatalf("Run(patches plan --phase during-sync) error = %q, want phase error", err.Error())
+	}
+	if fake.patchPlanCalls != 0 {
+		t.Fatalf("patch plan calls = %d, want 0", fake.patchPlanCalls)
+	}
+}
+
+func TestPatchesPlanCommandPrintsNoPatches(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{patchPlan: db.PatchPlan{Phase: db.PatchPhasePreSync}}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"patches", "plan", "--phase", "pre-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(patches plan) error = %v, want nil", err)
+	}
+	if stdout.String() != "no patches for pre-sync (development)\n" {
+		t.Fatalf("patches plan stdout = %q, want no patches output", stdout.String())
+	}
+	if fake.patchPlanRoot != root || fake.patchPlanDatabaseURL != databaseURL || fake.patchPlanPhase != db.PatchPhasePreSync {
+		t.Fatalf("patch plan call = root %q url %q phase %q, want %q %q %q", fake.patchPlanRoot, fake.patchPlanDatabaseURL, fake.patchPlanPhase, root, databaseURL, db.PatchPhasePreSync)
+	}
+	if fake.calls != 0 || fake.planCalls != 0 || fake.pruneCalls != 0 || fake.prunePlanCalls != 0 {
+		t.Fatalf("patches plan called non-patch runners: sync=%d plan=%d prune=%d prunePlan=%d", fake.calls, fake.planCalls, fake.pruneCalls, fake.prunePlanCalls)
+	}
+}
+
+func TestPatchesPlanCommandUsesEnvironment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{patchPlan: db.PatchPlan{Phase: db.PatchPhasePostSync}}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"patches", "plan", "--env", "staging", "--phase", "post-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(patches plan --env staging) error = %v, want nil", err)
+	}
+	if stdout.String() != "no patches for post-sync (staging)\n" {
+		t.Fatalf("patches plan stdout = %q, want staging output", stdout.String())
+	}
+	if fake.patchPlanDatabaseURL != databaseURL || fake.patchPlanPhase != db.PatchPhasePostSync {
+		t.Fatalf("patch plan call url/phase = %q/%q, want %q/%q", fake.patchPlanDatabaseURL, fake.patchPlanPhase, databaseURL, db.PatchPhasePostSync)
+	}
+}
+
+func TestPatchesPlanCommandPrintsPendingSQL(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{
+		patchPlan: db.PatchPlan{
+			Phase: db.PatchPhasePreSync,
+			Pending: []db.PlannedPatch{{
+				AppName:         "sales",
+				PatchID:         "0001_rename_email",
+				AppRelativePath: "patches/0001_rename_email.yml",
+				Description:     "Rename legacy customer email column.",
+				Operations: []db.PatchOperation{{
+					Type:        db.PatchOperationRenameField,
+					Description: "rename column sales_customer.customer_email to email",
+					SQL:         `ALTER TABLE "sales_customer" RENAME COLUMN "customer_email" TO "email"`,
+				}},
+			}},
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"patches", "plan", "--phase", "pre-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(patches plan) error = %v, want nil", err)
+	}
+	for _, want := range []string{
+		"patches plan (development, pre-sync)\n",
+		"pending patches: 1\n",
+		"applied patches: 0\n",
+		"- sales/0001_rename_email patches/0001_rename_email.yml\n",
+		"Rename legacy customer email column.\n",
+		`  - rename-field: rename column sales_customer.customer_email to email`,
+		`      ALTER TABLE "sales_customer" RENAME COLUMN "customer_email" TO "email"`,
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("patches plan stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestPatchesPlanCommandPrintsAppliedPatches(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	appliedAt := time.Date(2026, 5, 15, 10, 30, 0, 0, time.UTC)
+	fake := &fakeSchemaSyncRunner{
+		patchPlan: db.PatchPlan{
+			Phase: db.PatchPhasePreSync,
+			Applied: []db.AppliedPatch{{
+				AppName:         "sales",
+				PatchID:         "0000_previous",
+				AppRelativePath: "patches/0000_previous.yml",
+				Run: db.PatchRun{
+					AppliedAt:   appliedAt,
+					DygoVersion: "dev",
+				},
+			}},
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"patches", "plan", "--phase", "pre-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err != nil {
+		t.Fatalf("Run(patches plan) error = %v, want nil", err)
+	}
+	for _, want := range []string{
+		"pending patches: 0\n",
+		"applied patches: 1\n",
+		"- sales/0000_previous patches/0000_previous.yml applied 2026-05-15T10:30:00Z dygo dev\n",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("patches plan stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestPatchesPlanCommandReportsChecksumMismatch(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeSchemaSyncRunner{
+		patchPlanErr: db.PatchRunChecksumMismatchError{
+			AppName:         "sales",
+			PatchID:         "0001_rename_email",
+			AppliedChecksum: "old",
+			CurrentChecksum: "new",
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"patches", "plan", "--phase", "pre-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	if err == nil {
+		t.Fatal("Run(patches plan) error = nil, want checksum mismatch error")
+	}
+	for _, want := range []string{"plan patches", "patch run sales/0001_rename_email checksum mismatch"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run(patches plan) error = %q, want substring %q", err.Error(), want)
+		}
+	}
+	if fake.patchPlanCalls != 1 {
+		t.Fatalf("patch plan calls = %d, want 1", fake.patchPlanCalls)
 	}
 }
 
@@ -2526,6 +2758,8 @@ func (r *fakeDatabaseRunner) SchemaDump(_ context.Context, root string, database
 type fakeSchemaSyncRunner struct {
 	result               db.SchemaSyncResult
 	err                  error
+	patchPlan            db.PatchPlan
+	patchPlanErr         error
 	plan                 db.SchemaPlan
 	planErr              error
 	pruneResult          db.SchemaPruneResult
@@ -2540,10 +2774,22 @@ type fakeSchemaSyncRunner struct {
 	pruneDatabaseURL     string
 	prunePlanRoot        string
 	prunePlanDatabaseURL string
+	patchPlanRoot        string
+	patchPlanDatabaseURL string
+	patchPlanPhase       string
 	calls                int
+	patchPlanCalls       int
 	planCalls            int
 	pruneCalls           int
 	prunePlanCalls       int
+}
+
+func (r *fakeSchemaSyncRunner) PatchPlan(_ context.Context, root string, databaseURL string, phase string) (db.PatchPlan, error) {
+	r.patchPlanCalls++
+	r.patchPlanRoot = root
+	r.patchPlanDatabaseURL = databaseURL
+	r.patchPlanPhase = phase
+	return r.patchPlan, r.patchPlanErr
 }
 
 func (r *fakeSchemaSyncRunner) Plan(_ context.Context, root string, databaseURL string) (db.SchemaPlan, error) {
