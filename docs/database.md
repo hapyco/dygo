@@ -194,7 +194,10 @@ You can also manage the snapshot manually:
 
 ```sh
 go run ./cmd/dygo db schema dump
+go run ./cmd/dygo db schema check
 ```
+
+`db schema check` compares the committed `db/schema.sql` with a fresh live schema dump for the selected environment. It does not rewrite the snapshot; if it reports drift, run `dygo db schema dump` after confirming the live schema is the intended one.
 
 `db/schema.sql` is generated output. It is useful for review and debugging, but app Entity metadata remains the source of truth.
 

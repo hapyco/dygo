@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -674,6 +675,67 @@ func TestRecordRoutes(t *testing.T) {
 	}
 }
 
+func TestRecordListRouteParsesFiltersAndSort(t *testing.T) {
+	store := &fakeRecordStore{
+		list: db.RecordListResult{Records: []db.Record{}, Limit: 25, Offset: 5},
+	}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user?status=Open&enabled=true&sort=-created-at,name&limit=25&offset=5", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Records: store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("record list status = %d, want 200", response.StatusCode)
+	}
+	if store.listParams.Limit != 25 || store.listParams.Offset != 5 {
+		t.Fatalf("list params pagination = %+v, want limit 25 offset 5", store.listParams)
+	}
+	wantFilters := []db.RecordFilter{{Field: "enabled", Value: "true"}, {Field: "status", Value: "Open"}}
+	if !reflect.DeepEqual(store.listParams.Filters, wantFilters) {
+		t.Fatalf("list filters = %#v, want %#v", store.listParams.Filters, wantFilters)
+	}
+	wantSort := []db.RecordSort{{Field: "created-at", Desc: true}, {Field: "name"}}
+	if !reflect.DeepEqual(store.listParams.Sort, wantSort) {
+		t.Fatalf("list sort = %#v, want %#v", store.listParams.Sort, wantSort)
+	}
+}
+
+func TestRecordListRouteRejectsDuplicateFilter(t *testing.T) {
+	store := &fakeRecordStore{}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user?email=a@example.com&email=b@example.com", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Records: store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("duplicate filter status = %d, want 400", response.StatusCode)
+	}
+	if len(store.calls) != 0 {
+		t.Fatalf("record store calls = %v, want none", store.calls)
+	}
+}
+
+func TestRecordListRouteRejectsInvalidSort(t *testing.T) {
+	store := &fakeRecordStore{}
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user?sort=-", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore(), Records: store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid sort status = %d, want 400", response.StatusCode)
+	}
+	if len(store.calls) != 0 {
+		t.Fatalf("record store calls = %v, want none", store.calls)
+	}
+}
+
 func TestRecordActivityRoute(t *testing.T) {
 	authStore := validFakeAuthStore()
 	checker := &fakePermissionChecker{}
@@ -1101,11 +1163,13 @@ type fakeRecordStore struct {
 	createSource string
 	updateSource string
 	deleteSource string
+	listParams   db.RecordListParams
 	calls        []string
 }
 
-func (s *fakeRecordStore) ListRecords(context.Context, string, db.RecordListParams) (db.RecordListResult, error) {
+func (s *fakeRecordStore) ListRecords(_ context.Context, _ string, params db.RecordListParams) (db.RecordListResult, error) {
 	s.calls = append(s.calls, "list")
+	s.listParams = params
 	return s.list, s.listErr
 }
 

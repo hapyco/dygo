@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -1000,6 +1001,94 @@ func TestDBSchemaDumpCommand(t *testing.T) {
 	}
 	if fake.operation != "schema-dump" || fake.root != root || fake.databaseURL != databaseURL {
 		t.Fatalf("database runner = operation %q root %q URL %q, want schema dump/root/URL", fake.operation, fake.root, fake.databaseURL)
+	}
+}
+
+func TestDBSchemaHelpIncludesCheck(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"db", "schema", "--help"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, &fakeDatabaseRunner{}, &fakeSchemaSyncRunner{})
+	if err != nil {
+		t.Fatalf("Run(db schema --help) error = %v, want nil", err)
+	}
+	for _, want := range []string{"check", "Check db/schema.sql against the live database", "dump"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("db schema help = %q, want substring %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestDBSchemaCheckCommandDefaultsToDevelopment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeDatabaseRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"db", "schema", "check"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
+	if err != nil {
+		t.Fatalf("Run(db schema check) error = %v, want nil", err)
+	}
+	if stdout.String() != "schema snapshot is current: db/schema.sql (development)\n" {
+		t.Fatalf("db schema check stdout = %q, want current output", stdout.String())
+	}
+	if fake.operation != "schema-check" || fake.root != root || fake.databaseURL != databaseURL {
+		t.Fatalf("database runner = operation %q root %q URL %q, want schema check/root/URL", fake.operation, fake.root, fake.databaseURL)
+	}
+}
+
+func TestDBSchemaCheckCommandUsesEnvironment(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeDatabaseRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"db", "schema", "check", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
+	if err != nil {
+		t.Fatalf("Run(db schema check --env staging) error = %v, want nil", err)
+	}
+	if stdout.String() != "schema snapshot is current: db/schema.sql (staging)\n" {
+		t.Fatalf("db schema check stdout = %q, want current output", stdout.String())
+	}
+	if fake.operation != "schema-check" || fake.root != root || fake.databaseURL != databaseURL {
+		t.Fatalf("database runner = operation %q root %q URL %q, want schema check/root/URL", fake.operation, fake.root, fake.databaseURL)
+	}
+}
+
+func TestDBSchemaCheckCommandReportsDriftWithoutLeakingURL(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeDatabaseRunner{schemaCheckErr: fmt.Errorf("%w: db/schema.sql; run dygo db schema dump: %s", db.ErrSchemaSnapshotOutOfDate, databaseURL)}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServices(context.Background(), []string{"db", "schema", "check"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
+	if err == nil {
+		t.Fatal("Run(db schema check) error = nil, want drift error")
+	}
+	if !strings.Contains(err.Error(), "schema snapshot is out of date: db/schema.sql; run dygo db schema dump") {
+		t.Fatalf("Run(db schema check) error = %q, want drift context", err.Error())
+	}
+	if strings.Contains(err.Error(), "secret-password") || strings.Contains(err.Error(), databaseURL) {
+		t.Fatalf("Run(db schema check) error = %q, want redacted database URL", err.Error())
 	}
 }
 
@@ -2894,20 +2983,21 @@ func (r *fakeFixtureRunner) Apply(_ context.Context, root string, databaseURL st
 }
 
 type fakeDatabaseRunner struct {
-	checkErr      error
-	createResult  db.DatabaseResult
-	createErr     error
-	dropResult    db.DatabaseResult
-	dropErr       error
-	prepareResult db.SchemaSyncResult
-	prepareErr    error
-	resetResult   db.SchemaSyncResult
-	resetErr      error
-	schemaDumpErr error
-	operation     string
-	root          string
-	databaseURL   string
-	calls         int
+	checkErr       error
+	createResult   db.DatabaseResult
+	createErr      error
+	dropResult     db.DatabaseResult
+	dropErr        error
+	prepareResult  db.SchemaSyncResult
+	prepareErr     error
+	resetResult    db.SchemaSyncResult
+	resetErr       error
+	schemaCheckErr error
+	schemaDumpErr  error
+	operation      string
+	root           string
+	databaseURL    string
+	calls          int
 }
 
 func (r *fakeDatabaseRunner) Check(_ context.Context, databaseURL string) error {
@@ -2953,6 +3043,14 @@ func (r *fakeDatabaseRunner) SchemaDump(_ context.Context, root string, database
 	r.root = root
 	r.databaseURL = databaseURL
 	return r.schemaDumpErr
+}
+
+func (r *fakeDatabaseRunner) SchemaCheck(_ context.Context, root string, databaseURL string) error {
+	r.calls++
+	r.operation = "schema-check"
+	r.root = root
+	r.databaseURL = databaseURL
+	return r.schemaCheckErr
 }
 
 type fakeSchemaSyncRunner struct {

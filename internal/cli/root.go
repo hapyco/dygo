@@ -41,6 +41,7 @@ type databaseRunner interface {
 	Drop(context.Context, string) (db.DatabaseResult, error)
 	Prepare(context.Context, string, string) (db.SchemaSyncResult, error)
 	Reset(context.Context, string, string) (db.SchemaSyncResult, error)
+	SchemaCheck(context.Context, string, string) error
 	SchemaDump(context.Context, string, string) error
 }
 type schemaSyncRunner interface {
@@ -222,6 +223,10 @@ func (r checkBackedDatabaseRunner) Reset(ctx context.Context, root string, datab
 
 func (r checkBackedDatabaseRunner) SchemaDump(ctx context.Context, root string, databaseURL string) error {
 	return r.manager.SchemaDump(ctx, root, databaseURL)
+}
+
+func (r checkBackedDatabaseRunner) SchemaCheck(ctx context.Context, root string, databaseURL string) error {
+	return r.manager.SchemaCheck(ctx, root, databaseURL)
 }
 
 func newVersionCommand(stdout io.Writer) *cobra.Command {

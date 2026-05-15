@@ -18,7 +18,7 @@ Record API routes require a valid `dygo_session` cookie from the auth API and an
 ## API
 
 ```txt
-GET    /api/v1/records/{entity}?limit=50&offset=0
+GET    /api/v1/records/{entity}?limit=50&offset=0&status=Open&sort=-created-at,name
 GET    /api/v1/records/{entity}/{id}
 GET    /api/v1/records/{entity}/{id}/activity?limit=50&offset=0
 POST   /api/v1/records/{entity}
@@ -26,7 +26,23 @@ PATCH  /api/v1/records/{entity}/{id}
 DELETE /api/v1/records/{entity}/{id}
 ```
 
-List endpoints default to `limit=50` and `offset=0`. The maximum limit is `100`. Records are ordered by `id ASC`.
+List endpoints default to `limit=50` and `offset=0`. The maximum limit is `100`. Records are ordered by `id ASC` unless `sort` is provided.
+
+Exact filters use direct Field query params:
+
+```txt
+GET /api/v1/records/lead?status=Open&enabled=true
+```
+
+Filters support visible DB-backed Fields and system fields: `id`, `name`, `created-at`, and `updated-at`. The reserved query params `limit`, `offset`, and `sort` cannot be used as HTTP filter names in v1. Write-only fields such as `password` and non-storage fields such as `child-table` cannot be filtered.
+
+Sorting uses a comma-separated `sort` value. Prefix a field with `-` for descending order:
+
+```txt
+GET /api/v1/records/lead?sort=-created-at,name
+```
+
+dygo appends `id ASC` as a deterministic tie-breaker unless `id` is already in the sort list. `meta.count` is the number of Records in the returned page, not a total matching row count.
 
 Create and update bodies use a `data` envelope:
 
@@ -146,4 +162,4 @@ update -> update
 delete -> delete
 ```
 
-Administrator users are privileged through the permission engine. Sharing, row-level filtering, owner rules, and field-level permissions are future layers on the same engine.
+Administrator users are privileged through the permission engine. Sharing, row-level filtering, owner rules, field-level permissions, advanced list operators, saved views, and Studio list UI are future layers on the same engine.

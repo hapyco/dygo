@@ -45,8 +45,22 @@ type Record map[string]any
 
 // RecordListParams controls Record list pagination in hook code.
 type RecordListParams struct {
-	Limit  int
-	Offset int
+	Limit   int
+	Offset  int
+	Filters []RecordFilter
+	Sort    []RecordSort
+}
+
+// RecordFilter is one exact Record list filter on a metadata or system field.
+type RecordFilter struct {
+	Field string
+	Value string
+}
+
+// RecordSort is one Record list sort term on a metadata or system field.
+type RecordSort struct {
+	Field string
+	Desc  bool
 }
 
 // RecordListResult is a page of Records returned to hook code.

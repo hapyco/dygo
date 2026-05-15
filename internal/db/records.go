@@ -54,8 +54,22 @@ type RecordInput map[string]json.RawMessage
 
 // RecordListParams controls Record list pagination.
 type RecordListParams struct {
-	Limit  int
-	Offset int
+	Limit   int
+	Offset  int
+	Filters []RecordFilter
+	Sort    []RecordSort
+}
+
+// RecordFilter is one exact Record list filter on a metadata or system field.
+type RecordFilter struct {
+	Field string
+	Value string
+}
+
+// RecordSort is one Record list sort term on a metadata or system field.
+type RecordSort struct {
+	Field string
+	Desc  bool
 }
 
 // RecordListResult is a page of Records.
@@ -134,8 +148,18 @@ func (s RecordStore) ListRecordsByIdentity(ctx context.Context, appName string, 
 }
 
 func (s RecordStore) listRecords(ctx context.Context, layout recordLayout, entity string, params RecordListParams) (RecordListResult, error) {
-	sql := fmt.Sprintf("SELECT %s FROM %s ORDER BY %s ASC LIMIT $1 OFFSET $2", layout.selectList(), quoteIdent(layout.Table), quoteIdent("id"))
-	rows, err := s.queryer.Query(ctx, sql, params.Limit, params.Offset)
+	query, err := layout.listQuery(params)
+	if err != nil {
+		return RecordListResult{}, err
+	}
+	sql := fmt.Sprintf("SELECT %s FROM %s", layout.selectList(), quoteIdent(layout.Table))
+	if query.Where != "" {
+		sql += " WHERE " + query.Where
+	}
+	sql += " ORDER BY " + query.OrderBy
+	args := append(query.Args, params.Limit, params.Offset)
+	sql += fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args))
+	rows, err := s.queryer.Query(ctx, sql, args...)
 	if err != nil {
 		return RecordListResult{}, classifyRecordDBError(err, entity)
 	}
@@ -157,6 +181,12 @@ func (s RecordStore) listRecords(ctx context.Context, layout recordLayout, entit
 		return RecordListResult{}, classifyRecordDBError(err, entity)
 	}
 	return RecordListResult{Records: records, Limit: params.Limit, Offset: params.Offset, Count: len(records)}, nil
+}
+
+type recordListQuery struct {
+	Where   string
+	OrderBy string
+	Args    []any
 }
 
 // GetRecord returns one Record by id.
@@ -790,6 +820,156 @@ func (l recordLayout) recordFromValues(values []any) (Record, error) {
 	return record, nil
 }
 
+func (l recordLayout) listQuery(params RecordListParams) (recordListQuery, error) {
+	where, args, err := l.listWhere(params.Filters)
+	if err != nil {
+		return recordListQuery{}, err
+	}
+	orderBy, err := l.listOrderBy(params.Sort)
+	if err != nil {
+		return recordListQuery{}, err
+	}
+	return recordListQuery{Where: where, OrderBy: orderBy, Args: args}, nil
+}
+
+func (l recordLayout) listWhere(filters []RecordFilter) (string, []any, error) {
+	if len(filters) == 0 {
+		return "", nil, nil
+	}
+	filters = sortedRecordFilters(filters)
+	seen := map[string]struct{}{}
+	clauses := make([]string, 0, len(filters))
+	args := make([]any, 0, len(filters))
+	for _, filter := range filters {
+		fieldName := strings.TrimSpace(filter.Field)
+		if fieldName == "" {
+			return "", nil, recordError(RecordErrorInvalidRequest, "filter field is required", map[string]any{"entity": l.Entity}, nil)
+		}
+		if _, ok := seen[fieldName]; ok {
+			return "", nil, recordError(RecordErrorInvalidRequest, "filter field is duplicated", map[string]any{"entity": l.Entity, "field": fieldName}, nil)
+		}
+		seen[fieldName] = struct{}{}
+		field, err := l.listField(fieldName, "filter")
+		if err != nil {
+			return "", nil, err
+		}
+		value, err := recordListValue(field, filter.Value)
+		if err != nil {
+			return "", nil, err
+		}
+		args = append(args, value)
+		clauses = append(clauses, fmt.Sprintf("%s = %s", quoteIdent(field.Column), recordPlaceholder(len(args), field)))
+	}
+	return strings.Join(clauses, " AND "), args, nil
+}
+
+func (l recordLayout) listOrderBy(sortTerms []RecordSort) (string, error) {
+	if len(sortTerms) == 0 {
+		return quoteIdent("id") + " ASC", nil
+	}
+	seen := map[string]struct{}{}
+	terms := make([]string, 0, len(sortTerms)+1)
+	hasID := false
+	for _, sortTerm := range sortTerms {
+		fieldName := strings.TrimSpace(sortTerm.Field)
+		if fieldName == "" {
+			return "", recordError(RecordErrorInvalidRequest, "sort field is required", map[string]any{"entity": l.Entity}, nil)
+		}
+		if _, ok := seen[fieldName]; ok {
+			return "", recordError(RecordErrorInvalidRequest, "sort field is duplicated", map[string]any{"entity": l.Entity, "field": fieldName}, nil)
+		}
+		seen[fieldName] = struct{}{}
+		field, err := l.listField(fieldName, "sort")
+		if err != nil {
+			return "", err
+		}
+		direction := "ASC"
+		if sortTerm.Desc {
+			direction = "DESC"
+		}
+		if field.Name == "id" {
+			hasID = true
+		}
+		terms = append(terms, quoteIdent(field.Column)+" "+direction)
+	}
+	if !hasID {
+		terms = append(terms, quoteIdent("id")+" ASC")
+	}
+	return strings.Join(terms, ", "), nil
+}
+
+func (l recordLayout) listField(name string, operation string) (recordField, error) {
+	if field, ok := systemRecordListField(name); ok {
+		return field, nil
+	}
+	field, ok := l.FieldByName[name]
+	if !ok {
+		return recordField{}, recordError(RecordErrorInvalidRequest, "unknown field", map[string]any{"entity": l.Entity, "field": name, "operation": operation}, nil)
+	}
+	if !field.Storage {
+		return recordField{}, recordError(RecordErrorInvalidRequest, "field is not supported by record runtime", map[string]any{"entity": l.Entity, "field": name, "operation": operation}, nil)
+	}
+	if field.WriteOnly {
+		return recordField{}, recordError(RecordErrorInvalidRequest, "write-only field cannot be used in record lists", map[string]any{"entity": l.Entity, "field": name, "operation": operation}, nil)
+	}
+	return field, nil
+}
+
+func systemRecordListField(name string) (recordField, bool) {
+	switch name {
+	case "id":
+		return recordField{Name: "id", Type: "bigint", Column: "id", Storage: true}, true
+	case "name":
+		return recordField{Name: "name", Type: "text", Column: "name", Storage: true}, true
+	case "created-at":
+		return recordField{Name: "created-at", Type: "datetime", Column: "created_at", Storage: true}, true
+	case "updated-at":
+		return recordField{Name: "updated-at", Type: "datetime", Column: "updated_at", Storage: true}, true
+	default:
+		return recordField{}, false
+	}
+}
+
+func recordListValue(field recordField, value string) (any, error) {
+	switch field.Type {
+	case "text", "email", "phone", "long-text", "attachment", "select":
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil, recordError(RecordErrorValidation, "field filter is invalid", map[string]any{"field": field.Name}, err)
+		}
+		return recordDBValue(field, raw)
+	case "date":
+		if _, err := time.Parse("2006-01-02", value); err != nil {
+			return nil, recordError(RecordErrorValidation, "field must be a date", map[string]any{"field": field.Name}, err)
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil, recordError(RecordErrorValidation, "field filter is invalid", map[string]any{"field": field.Name}, err)
+		}
+		return recordDBValue(field, raw)
+	case "datetime":
+		if _, err := time.Parse(time.RFC3339, value); err != nil {
+			return nil, recordError(RecordErrorValidation, "field must be a datetime", map[string]any{"field": field.Name}, err)
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil, recordError(RecordErrorValidation, "field filter is invalid", map[string]any{"field": field.Name}, err)
+		}
+		return recordDBValue(field, raw)
+	case "time":
+		if _, err := time.Parse("15:04:05", value); err != nil {
+			return nil, recordError(RecordErrorValidation, "field must be a time", map[string]any{"field": field.Name}, err)
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil, recordError(RecordErrorValidation, "field filter is invalid", map[string]any{"field": field.Name}, err)
+		}
+		return recordDBValue(field, raw)
+	default:
+		return recordDBValue(field, json.RawMessage(value))
+	}
+}
+
 func (s RecordStore) createMutation(ctx context.Context, layout recordLayout, input RecordInput) (recordMutation, error) {
 	input = normalizeRecordInput(input)
 	if err := layout.validateCreateInput(input); err != nil {
@@ -1141,6 +1321,16 @@ func sortedRecordInputNames(input RecordInput) []string {
 	}
 	sortStrings(names)
 	return names
+}
+
+func sortedRecordFilters(filters []RecordFilter) []RecordFilter {
+	sorted := append([]RecordFilter(nil), filters...)
+	for i := 1; i < len(sorted); i++ {
+		for j := i; j > 0 && sorted[j].Field < sorted[j-1].Field; j-- {
+			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
+		}
+	}
+	return sorted
 }
 
 func sortStrings(values []string) {

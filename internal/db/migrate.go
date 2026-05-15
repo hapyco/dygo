@@ -1,7 +1,9 @@
 package db
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -13,6 +15,13 @@ import (
 )
 
 const SchemaPath = "db/schema.sql"
+
+var (
+	// ErrSchemaSnapshotMissing reports that db/schema.sql has not been generated yet.
+	ErrSchemaSnapshotMissing = errors.New("schema snapshot is missing")
+	// ErrSchemaSnapshotOutOfDate reports that db/schema.sql does not match the live schema dump.
+	ErrSchemaSnapshotOutOfDate = errors.New("schema snapshot is out of date")
+)
 
 // SchemaSyncResult reports the metadata schema synced by an operation.
 type SchemaSyncResult struct {
@@ -109,6 +118,36 @@ func (m Migrator) Prune(ctx context.Context, root string, databaseURL string) (S
 // DumpSchema writes db/schema.sql using the configured snapshotter.
 func (m Migrator) DumpSchema(ctx context.Context, root string, databaseURL string) error {
 	return m.dumpSchema(ctx, root, databaseURL)
+}
+
+// CheckSchemaSnapshot verifies db/schema.sql matches a fresh live schema dump.
+func (m Migrator) CheckSchemaSnapshot(ctx context.Context, root string, databaseURL string) error {
+	schemaPath := filepath.Join(root, filepath.FromSlash(SchemaPath))
+	current, err := os.ReadFile(schemaPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%w: %s; run dygo db schema dump", ErrSchemaSnapshotMissing, SchemaPath)
+		}
+		return fmt.Errorf("read schema snapshot: %w", err)
+	}
+
+	tmpRoot, err := os.MkdirTemp("", "dygo-schema-check-*")
+	if err != nil {
+		return fmt.Errorf("create temporary schema check root: %w", err)
+	}
+	defer os.RemoveAll(tmpRoot)
+
+	if err := m.dumpSchema(ctx, tmpRoot, databaseURL); err != nil {
+		return sanitizeError("dump schema for snapshot check", databaseURL, err)
+	}
+	fresh, err := os.ReadFile(filepath.Join(tmpRoot, filepath.FromSlash(SchemaPath)))
+	if err != nil {
+		return fmt.Errorf("read generated schema snapshot: %w", err)
+	}
+	if !bytes.Equal(current, fresh) {
+		return fmt.Errorf("%w: %s; run dygo db schema dump", ErrSchemaSnapshotOutOfDate, SchemaPath)
+	}
+	return nil
 }
 
 func (m Migrator) dumpSchema(ctx context.Context, root string, databaseURL string) error {

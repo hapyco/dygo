@@ -88,7 +88,7 @@ func (d recordData) store() db.RecordStore {
 }
 
 func (d recordData) List(ctx context.Context, appName string, entity string, params sdk.RecordListParams) (sdk.RecordListResult, error) {
-	result, err := d.store().ListRecordsByIdentity(ctx, appName, entity, db.RecordListParams(params))
+	result, err := d.store().ListRecordsByIdentity(ctx, appName, entity, dbRecordListParams(params))
 	if err != nil {
 		return sdk.RecordListResult{}, err
 	}
@@ -98,6 +98,26 @@ func (d recordData) List(ctx context.Context, appName string, entity string, par
 		Offset:  result.Offset,
 		Count:   result.Count,
 	}, nil
+}
+
+func dbRecordListParams(params sdk.RecordListParams) db.RecordListParams {
+	converted := db.RecordListParams{
+		Limit:  params.Limit,
+		Offset: params.Offset,
+	}
+	if len(params.Filters) > 0 {
+		converted.Filters = make([]db.RecordFilter, len(params.Filters))
+		for i, filter := range params.Filters {
+			converted.Filters[i] = db.RecordFilter{Field: filter.Field, Value: filter.Value}
+		}
+	}
+	if len(params.Sort) > 0 {
+		converted.Sort = make([]db.RecordSort, len(params.Sort))
+		for i, sortTerm := range params.Sort {
+			converted.Sort[i] = db.RecordSort{Field: sortTerm.Field, Desc: sortTerm.Desc}
+		}
+	}
+	return converted
 }
 
 func (d recordData) Get(ctx context.Context, appName string, entity string, id int64) (sdk.Record, error) {

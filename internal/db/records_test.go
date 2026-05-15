@@ -44,6 +44,115 @@ func TestRecordStoreListRecords(t *testing.T) {
 	}
 }
 
+func TestRecordStoreListRecordsFiltersAndSorts(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(1), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+
+	result, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{
+		Filters: []RecordFilter{
+			{Field: "enabled", Value: "true"},
+			{Field: "email", Value: "a@example.com"},
+		},
+		Sort: []RecordSort{
+			{Field: "full-name", Desc: true},
+			{Field: "created-at"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ListRecords(filters/sort) error = %v, want nil", err)
+	}
+	if result.Count != 1 {
+		t.Fatalf("ListRecords(filters/sort) count = %d, want 1", result.Count)
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	for _, want := range []string{
+		`WHERE "email" = $1 AND "enabled" = $2::boolean`,
+		`ORDER BY "full_name" DESC, "created_at" ASC, "id" ASC`,
+		`LIMIT $3 OFFSET $4`,
+	} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("list query = %q, want %q", lastQuery, want)
+		}
+	}
+	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{"a@example.com", true, 50, 0}) {
+		t.Fatalf("list args = %#v, want filter args then pagination", got)
+	}
+}
+
+func TestRecordStoreListRecordsSupportsSystemFiltersAndSortTieBreaker(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+
+	_, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{
+		Filters: []RecordFilter{
+			{Field: "id", Value: "7"},
+			{Field: "created-at", Value: "2026-05-07T12:00:00Z"},
+		},
+		Sort: []RecordSort{{Field: "updated-at", Desc: true}},
+	})
+	if err != nil {
+		t.Fatalf("ListRecords(system filters) error = %v, want nil", err)
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	for _, want := range []string{
+		`WHERE "created_at" = $1::timestamptz AND "id" = $2::bigint`,
+		`ORDER BY "updated_at" DESC, "id" ASC`,
+	} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("list query = %q, want %q", lastQuery, want)
+		}
+	}
+	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{"2026-05-07T12:00:00Z", int64(7), 50, 0}) {
+		t.Fatalf("list args = %#v, want system filter args", got)
+	}
+}
+
+func TestRecordStoreListRecordsSortByIDSkipsTieBreaker(t *testing.T) {
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows(nil))
+
+	_, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{Sort: []RecordSort{{Field: "id", Desc: true}}})
+	if err != nil {
+		t.Fatalf("ListRecords(sort id) error = %v, want nil", err)
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	if !strings.Contains(lastQuery, `ORDER BY "id" DESC LIMIT $1 OFFSET $2`) {
+		t.Fatalf("list query = %q, want id sort without tie-breaker", lastQuery)
+	}
+}
+
+func TestRecordStoreListRecordsByIdentityHonorsFiltersAndSort(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newLeadRecordQueryer()
+	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "New"},
+	}))
+
+	_, err := NewRecordStore(queryer).ListRecordsByIdentity(context.Background(), "crm", "lead", RecordListParams{
+		Filters: []RecordFilter{{Field: "status", Value: "New"}},
+		Sort:    []RecordSort{{Field: "status"}},
+	})
+	if err != nil {
+		t.Fatalf("ListRecordsByIdentity() error = %v, want nil", err)
+	}
+	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.name = $2`) {
+		t.Fatalf("metadata query = %q, want app/entity lookup", queryer.rowSQL[0])
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	for _, want := range []string{`FROM "crm_lead"`, `WHERE "status" = $1`, `ORDER BY "status" ASC, "id" ASC`} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("list query = %q, want %q", lastQuery, want)
+		}
+	}
+}
+
 func TestRecordStoreGetRecord(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
@@ -807,6 +916,33 @@ func TestRecordStoreInvalidPaginationAndIDs(t *testing.T) {
 
 	_, err = NewRecordStore(newUserRecordQueryer()).GetRecord(context.Background(), "user", 0)
 	assertRecordError(t, err, RecordErrorInvalidRequest, "")
+}
+
+func TestRecordStoreInvalidListFiltersAndSorts(t *testing.T) {
+	tests := []struct {
+		name    string
+		queryer *fakeRecordQueryer
+		params  RecordListParams
+		code    string
+	}{
+		{name: "unknown filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "missing", Value: "x"}}}, code: RecordErrorInvalidRequest},
+		{name: "write-only filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "password", Value: "secret"}}}, code: RecordErrorInvalidRequest},
+		{name: "non-storage filter", queryer: newLeadRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "contacts", Value: "1"}}}, code: RecordErrorInvalidRequest},
+		{name: "duplicate filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "email", Value: "a"}, {Field: "email", Value: "b"}}}, code: RecordErrorInvalidRequest},
+		{name: "invalid boolean filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "enabled", Value: "yes"}}}, code: RecordErrorValidation},
+		{name: "invalid datetime filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "created-at", Value: "May 7"}}}, code: RecordErrorValidation},
+		{name: "unknown sort", queryer: newUserRecordQueryer(), params: RecordListParams{Sort: []RecordSort{{Field: "missing"}}}, code: RecordErrorInvalidRequest},
+		{name: "write-only sort", queryer: newUserRecordQueryer(), params: RecordListParams{Sort: []RecordSort{{Field: "password"}}}, code: RecordErrorInvalidRequest},
+		{name: "non-storage sort", queryer: newLeadRecordQueryer(), params: RecordListParams{Sort: []RecordSort{{Field: "contacts"}}}, code: RecordErrorInvalidRequest},
+		{name: "duplicate sort", queryer: newUserRecordQueryer(), params: RecordListParams{Sort: []RecordSort{{Field: "email"}, {Field: "email", Desc: true}}}, code: RecordErrorInvalidRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewRecordStore(tt.queryer).ListRecords(context.Background(), "user", tt.params)
+			assertRecordError(t, err, tt.code, "")
+		})
+	}
 }
 
 func newUserRecordQueryer() *fakeRecordQueryer {

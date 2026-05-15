@@ -105,6 +105,11 @@ func (m Manager) SchemaDump(ctx context.Context, root string, databaseURL string
 	return m.Migrator.DumpSchema(ctx, root, databaseURL)
 }
 
+// SchemaCheck verifies db/schema.sql matches the live database schema dump.
+func (m Manager) SchemaCheck(ctx context.Context, root string, databaseURL string) error {
+	return m.Migrator.CheckSchemaSnapshot(ctx, root, databaseURL)
+}
+
 // DatabaseTarget is the database named by a PostgreSQL URL plus a maintenance URL.
 type DatabaseTarget struct {
 	Name           string

@@ -242,6 +242,57 @@ func TestNewRecordHookRegistryExposesTransactionalRecordData(t *testing.T) {
 	}
 }
 
+func TestRecordDataListPassesFiltersAndSortThroughHookQueryer(t *testing.T) {
+	t.Parallel()
+
+	queryer := newUserRecordDataMutationQueryer(userRecordRow("a@example.com", "A User", true))
+	var result sdk.RecordListResult
+	var listErr error
+	registry, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
+		func(registry sdk.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "list-users", func(ctx context.Context, dygo sdk.RecordHook) error {
+				result, listErr = dygo.Records.List(ctx, "core", "user", sdk.RecordListParams{
+					Filters: []sdk.RecordFilter{{Field: "enabled", Value: "true"}},
+					Sort:    []sdk.RecordSort{{Field: "full-name", Desc: true}},
+				})
+				return nil
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRecordHookRegistry() error = %v, want nil", err)
+	}
+
+	err = registry.Run(context.Background(), db.RecordHookContext{
+		Event:     db.RecordBeforeCreate,
+		Operation: sdk.RecordOperationCreate,
+		AppName:   "sales",
+		Entity:    "lead",
+		Queryer:   queryer,
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if listErr != nil {
+		t.Fatalf("Records.List() error = %v, want nil", listErr)
+	}
+	if result.Count != 1 || len(result.Records) != 1 {
+		t.Fatalf("Records.List() result = %+v, want one record", result)
+	}
+	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.name = $2`) {
+		t.Fatalf("Records.List() metadata query = %q, want app/entity lookup", queryer.rowSQL[0])
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	for _, want := range []string{`FROM "user"`, `WHERE "enabled" = $1::boolean`, `ORDER BY "full_name" DESC, "id" ASC`} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("Records.List() query = %q, want %q", lastQuery, want)
+		}
+	}
+	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{true, 50, 0}) {
+		t.Fatalf("Records.List() args = %#v, want filter and pagination args", got)
+	}
+}
+
 func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
 	t.Parallel()
 

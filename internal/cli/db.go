@@ -198,7 +198,35 @@ func newDBSchemaCommand(ctx context.Context, stdout io.Writer, database database
 		},
 	}
 
+	cmd.AddCommand(newDBSchemaCheckCommand(ctx, stdout, database))
 	cmd.AddCommand(newDBSchemaDumpCommand(ctx, stdout, database))
+
+	return cmd
+}
+
+func newDBSchemaCheckCommand(ctx context.Context, stdout io.Writer, database databaseRunner) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+
+	cmd := &cobra.Command{
+		Use:   "check",
+		Short: "Check db/schema.sql against the live database",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			env, root, databaseURL, err := databaseInputs(envName)
+			if err != nil {
+				return err
+			}
+			if err := database.SchemaCheck(ctx, root, databaseURL); err != nil {
+				return db.SanitizeDatabaseError("check database schema", databaseURL, err)
+			}
+			if _, err := fmt.Fprintf(stdout, "schema snapshot is current: db/schema.sql (%s)\n", env); err != nil {
+				return fmt.Errorf("write schema check output: %w", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
 
 	return cmd
 }

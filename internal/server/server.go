@@ -814,7 +814,7 @@ func (h recordHandler) listRecordActivity(w http.ResponseWriter, r *http.Request
 	if h.requireActivityStore(w) {
 		return
 	}
-	params, err := recordListParams(r)
+	params, err := recordPaginationParams(r)
 	if err != nil {
 		writeRecordError(w, err)
 		return
@@ -887,6 +887,36 @@ func activityRequestContext(r *http.Request) context.Context {
 }
 
 func recordListParams(r *http.Request) (db.RecordListParams, error) {
+	params, err := recordPaginationParams(r)
+	if err != nil {
+		return db.RecordListParams{}, err
+	}
+	values := r.URL.Query()
+	for name, rawValues := range values {
+		switch name {
+		case "limit", "offset":
+			continue
+		case "sort":
+			if len(rawValues) > 1 {
+				return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "sort must be provided once", Details: map[string]any{"sort": rawValues}}
+			}
+			sortTerms, err := recordSortParams(rawValues[0])
+			if err != nil {
+				return db.RecordListParams{}, err
+			}
+			params.Sort = sortTerms
+		default:
+			if len(rawValues) > 1 {
+				return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "filter field is duplicated", Details: map[string]any{"field": name}}
+			}
+			params.Filters = append(params.Filters, db.RecordFilter{Field: name, Value: rawValues[0]})
+		}
+	}
+	sortRecordFilters(params.Filters)
+	return params, nil
+}
+
+func recordPaginationParams(r *http.Request) (db.RecordListParams, error) {
 	params := db.RecordListParams{}
 	if value := strings.TrimSpace(r.URL.Query().Get("limit")); value != "" {
 		parsed, err := strconv.Atoi(value)
@@ -906,6 +936,38 @@ func recordListParams(r *http.Request) (db.RecordListParams, error) {
 		params.Offset = parsed
 	}
 	return params, nil
+}
+
+func recordSortParams(raw string) ([]db.RecordSort, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "sort field is required", Details: map[string]any{"sort": raw}}
+	}
+	parts := strings.Split(raw, ",")
+	sortTerms := make([]db.RecordSort, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "-" {
+			return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "sort field is required", Details: map[string]any{"sort": raw}}
+		}
+		desc := strings.HasPrefix(part, "-")
+		if desc {
+			part = strings.TrimSpace(strings.TrimPrefix(part, "-"))
+			if part == "" {
+				return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "sort field is required", Details: map[string]any{"sort": raw}}
+			}
+		}
+		sortTerms = append(sortTerms, db.RecordSort{Field: part, Desc: desc})
+	}
+	return sortTerms, nil
+}
+
+func sortRecordFilters(filters []db.RecordFilter) {
+	for i := 1; i < len(filters); i++ {
+		for j := i; j > 0 && filters[j].Field < filters[j-1].Field; j-- {
+			filters[j], filters[j-1] = filters[j-1], filters[j]
+		}
+	}
 }
 
 func recordIDParam(entity string, raw string) (int64, error) {
