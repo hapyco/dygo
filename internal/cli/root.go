@@ -44,6 +44,7 @@ type databaseRunner interface {
 	SchemaDump(context.Context, string, string) error
 }
 type schemaSyncRunner interface {
+	ApplyPatches(context.Context, string, string, string, string) (db.PatchApplyResult, error)
 	PatchPlan(context.Context, string, string, string) (db.PatchPlan, error)
 	Plan(context.Context, string, string) (db.SchemaPlan, error)
 	Prune(context.Context, string, string) (db.SchemaPruneResult, error)

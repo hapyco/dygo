@@ -139,7 +139,20 @@ App-owned fixtures can be applied after metadata sync. See [Fixtures](fixtures.m
 
 The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check changes are not inferred automatically. Those cases need an explicit app patch or, for plain metadata-orphaned objects, an explicit schema prune.
 
-See [Explicit Patches](patches.md) for the design model that maps unsafe planner diagnostics to app-owned patch work.
+See [Explicit Patches](patches.md) for the model that maps unsafe planner diagnostics to app-owned patch work.
+
+Explicit patches are planned and applied around metadata sync. They do not run automatically as part of `dygo migrate`:
+
+```sh
+go run ./cmd/dygo migrate plan
+go run ./cmd/dygo patches plan --phase pre-sync
+go run ./cmd/dygo patches apply --phase pre-sync --confirm development/dygo
+go run ./cmd/dygo migrate
+go run ./cmd/dygo patches plan --phase post-sync
+go run ./cmd/dygo patches apply --phase post-sync --confirm development/dygo
+```
+
+Patch apply uses the same typed confirmation shape as destructive DB and schema commands. It applies one pending patch per transaction, records a Core `patch-run` ledger row only after that patch succeeds, and refreshes `db/schema.sql` after a successful apply. dygo does not automate backups before patches yet; take and verify backups before applying patches to production.
 
 There is no SQL migration file path or `migrations` table in this model. dygo compares metadata intent with the database shape and moves the database forward through metadata.
 

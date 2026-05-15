@@ -6,7 +6,7 @@ dygo uses Entity metadata as the normal source for database shape.
 
 Explicit patches are the escape hatch for changes that metadata cannot infer safely. `dygo schema prune` is the separate command for intentionally dropping metadata-orphaned database objects after review.
 
-This document is the v1 patch runner design. The runner is not implemented yet.
+This document describes the v1 patch runner.
 
 ## Core Rule
 
@@ -219,7 +219,7 @@ SQL exists for real production needs, but it is a reviewed escape hatch, not the
 
 v1 applies one patch per transaction.
 
-For each pending patch, the runner should:
+For each pending patch, the runner:
 
 1. Load and validate the patch file.
 2. Check the patch ledger for an existing applied record.
@@ -233,13 +233,15 @@ If any operation fails, the transaction rolls back and no successful ledger row 
 
 Patches should be written to tolerate retries where practical, but v1 does not require every operation to be globally idempotent. Structured operations should validate the expected before/after shape and fail clearly when the database is not in the expected state.
 
+After a successful apply that ran at least one patch, dygo refreshes `db/schema.sql`. If the snapshot refresh fails after patches are committed, dygo reports the snapshot error; it does not roll back already committed patches.
+
 dygo does not automate backups before patches yet. Take and verify backups before applying patches to production.
 
 ## Patch Ledger
 
 Applied patches are tracked in Core metadata, not in a generic SQL migration table.
 
-The implementation should add a Core `patch-run` or equivalent record with at least:
+The Core `patch-run` record stores:
 
 | Field | Meaning |
 |---|---|
@@ -276,7 +278,7 @@ All commands default to `development` and support `--env staging` or `--env prod
 - fail on duplicate ids or checksum mismatches
 - perform no database writes
 
-`dygo patches apply` should:
+`dygo patches apply`:
 
 - require `--phase`
 - require typed confirmation using `<environment>/<database-name>`
@@ -332,15 +334,12 @@ Patch execution tracking is Core app metadata or records. That tracking describe
 
 ## Implementation Status
 
-Implemented slices:
+Implemented v1 slices:
 
 - add Core patch ledger records
 - add patch discovery and YAML validation
 - add structured operation planners
 - add SQL escape hatch validation
 - add `dygo patches plan`
-
-Remaining slices:
-
 - add `dygo patches apply`
 - add docs and tests for pre-sync and post-sync workflows

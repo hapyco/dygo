@@ -54,7 +54,11 @@ go run ./cmd/dygo db prepare
 go run ./cmd/dygo db reset --confirm development/dygo
 go run ./cmd/dygo db schema dump
 go run ./cmd/dygo migrate plan
+go run ./cmd/dygo patches plan --phase pre-sync
+go run ./cmd/dygo patches apply --phase pre-sync --confirm development/dygo
 go run ./cmd/dygo migrate
+go run ./cmd/dygo patches plan --phase post-sync
+go run ./cmd/dygo patches apply --phase post-sync --confirm development/dygo
 go run ./cmd/dygo fixtures apply
 go run ./cmd/dygo schema prune
 go run ./cmd/dygo schema prune --confirm development/dygo

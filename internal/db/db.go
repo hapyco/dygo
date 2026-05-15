@@ -88,6 +88,11 @@ func sanitizeError(message string, databaseURL string, err error) error {
 	return fmt.Errorf("%s: %s", message, detail)
 }
 
+// SanitizeDatabaseError wraps err with message while redacting database URL secrets.
+func SanitizeDatabaseError(message string, databaseURL string, err error) error {
+	return sanitizeError(message, databaseURL, err)
+}
+
 func redactionTargets(databaseURL string) []string {
 	var targets []string
 	if databaseURL != "" {

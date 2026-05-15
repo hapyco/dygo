@@ -15,7 +15,7 @@ import (
 func newPatchesCommand(ctx context.Context, stdout io.Writer, sync schemaSyncRunner) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "patches",
-		Short: "Plan explicit app patches",
+		Short: "Plan and apply explicit app patches",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -23,6 +23,7 @@ func newPatchesCommand(ctx context.Context, stdout io.Writer, sync schemaSyncRun
 	}
 
 	cmd.AddCommand(newPatchesPlanCommand(ctx, stdout, sync))
+	cmd.AddCommand(newPatchesApplyCommand(ctx, stdout, sync))
 
 	return cmd
 }
@@ -36,11 +37,8 @@ func newPatchesPlanCommand(ctx context.Context, stdout io.Writer, sync schemaSyn
 		Short: "Preview pending explicit app patches",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if phase == "" {
-				return fmt.Errorf("patches plan requires --phase %s or %s", db.PatchPhasePreSync, db.PatchPhasePostSync)
-			}
-			if phase != db.PatchPhasePreSync && phase != db.PatchPhasePostSync {
-				return fmt.Errorf("patches plan --phase must be %s or %s", db.PatchPhasePreSync, db.PatchPhasePostSync)
+			if err := requirePatchPhase("patches plan", phase); err != nil {
+				return err
 			}
 			env, root, databaseURL, err := databaseInputs(envName)
 			if err != nil {
@@ -61,6 +59,54 @@ func newPatchesPlanCommand(ctx context.Context, stdout io.Writer, sync schemaSyn
 	cmd.Flags().StringVar(&phase, "phase", phase, "Patch phase: pre-sync or post-sync")
 
 	return cmd
+}
+
+func newPatchesApplyCommand(ctx context.Context, stdout io.Writer, sync schemaSyncRunner) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+	phase := ""
+	confirm := ""
+
+	cmd := &cobra.Command{
+		Use:   "apply",
+		Short: "Apply pending explicit app patches",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if err := requirePatchPhase("patches apply", phase); err != nil {
+				return err
+			}
+			target, err := destructiveDatabaseTarget(envName)
+			if err != nil {
+				return err
+			}
+			if err := requireDestructiveConfirmation("patches apply", confirm, target); err != nil {
+				return err
+			}
+			result, err := sync.ApplyPatches(ctx, target.Root, target.DatabaseURL, phase, currentVersion())
+			if err != nil {
+				return db.SanitizeDatabaseError("apply patches", target.DatabaseURL, err)
+			}
+			if err := writePatchApplyResult(stdout, target.Env, result); err != nil {
+				return fmt.Errorf("write patches apply output: %w", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+	cmd.Flags().StringVar(&phase, "phase", phase, "Patch phase: pre-sync or post-sync")
+	cmd.Flags().StringVar(&confirm, "confirm", confirm, "Confirm patch application as <environment>/<database>")
+
+	return cmd
+}
+
+func requirePatchPhase(command string, phase string) error {
+	if phase == "" {
+		return fmt.Errorf("%s requires --phase %s or %s", command, db.PatchPhasePreSync, db.PatchPhasePostSync)
+	}
+	if phase != db.PatchPhasePreSync && phase != db.PatchPhasePostSync {
+		return fmt.Errorf("%s --phase must be %s or %s", command, db.PatchPhasePreSync, db.PatchPhasePostSync)
+	}
+	return nil
 }
 
 func writePatchPlan(stdout io.Writer, env secrets.Environment, plan db.PatchPlan) error {
@@ -121,6 +167,26 @@ func writePatchPlan(stdout io.Writer, env secrets.Environment, plan db.PatchPlan
 		}
 	}
 
+	return nil
+}
+
+func writePatchApplyResult(stdout io.Writer, env secrets.Environment, result db.PatchApplyResult) error {
+	if len(result.Applied) == 0 {
+		_, err := fmt.Fprintf(stdout, "no patches to apply for %s (%s)\n", result.Phase, env)
+		return err
+	}
+	label := "patch"
+	if len(result.Applied) != 1 {
+		label = "patches"
+	}
+	if _, err := fmt.Fprintf(stdout, "patches applied: %d %s (%s, %s)\n", len(result.Applied), label, env, result.Phase); err != nil {
+		return err
+	}
+	for _, run := range result.Applied {
+		if _, err := fmt.Fprintf(stdout, "- %s/%s\n", run.AppName, run.PatchID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
