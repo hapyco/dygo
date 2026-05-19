@@ -7,17 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"filippo.io/age"
 )
 
 func TestStoreLifecycle(t *testing.T) {
 	root := t.TempDir()
-	now := time.Date(2026, 5, 3, 8, 0, 0, 0, time.UTC)
-	store := NewStore(root).WithClock(func() time.Time {
-		return now
-	})
+	store := NewStore(root)
 
 	paths, err := store.Init(false)
 	if err != nil {
@@ -45,9 +41,6 @@ func TestStoreLifecycle(t *testing.T) {
 	}
 	if secret.Value != "postgres://local" {
 		t.Fatalf("Get().Value = %q, want %q", secret.Value, "postgres://local")
-	}
-	if secret.UpdatedAt != now.Format(time.RFC3339) {
-		t.Fatalf("Get().UpdatedAt = %q, want %q", secret.UpdatedAt, now.Format(time.RFC3339))
 	}
 
 	entries, err := store.List(EnvironmentDevelopment)
@@ -81,14 +74,14 @@ func TestStoreValidationFailures(t *testing.T) {
 	if _, err := ParseEnvironment("dev"); err == nil {
 		t.Fatal("ParseEnvironment(dev) error = nil, want error")
 	}
-	if err := ValidateSecretName("database_url"); err == nil {
-		t.Fatal("ValidateSecretName(database_url) error = nil, want error")
+	if err := ValidateSecretName("database..url"); err == nil {
+		t.Fatal("ValidateSecretName(database..url) error = nil, want error")
 	}
 
 	if _, err := store.Init(false); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
-	if err := store.Set(EnvironmentDevelopment, "database_url", "value"); err == nil {
+	if err := store.Set(EnvironmentDevelopment, "database..url", "value"); err == nil {
 		t.Fatal("Set(invalid name) error = nil, want error")
 	}
 
@@ -98,6 +91,33 @@ func TestStoreValidationFailures(t *testing.T) {
 	}
 	if err := store.Validate(EnvironmentDevelopment); err == nil {
 		t.Fatal("Validate() error = nil for missing manifest secret, want error")
+	}
+}
+
+func TestStoreResolvesNestedPlainYAMLSecrets(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	if _, err := store.Init(false); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	if err := store.SavePlaintext(EnvironmentDevelopment, []byte("database:\n  url: postgres://nested\n")); err != nil {
+		t.Fatalf("SavePlaintext(nested) error = %v", err)
+	}
+
+	secret, err := store.Get(EnvironmentDevelopment, "database.url")
+	if err != nil {
+		t.Fatalf("Get(database.url) error = %v", err)
+	}
+	if secret.Value != "postgres://nested" {
+		t.Fatalf("Get(database.url).Value = %q, want nested value", secret.Value)
+	}
+
+	configPath := filepath.Join(root, "configs", "app.yaml")
+	if err := os.WriteFile(configPath, []byte("database:\n  url:\n    secret: database.url\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(config) error = %v", err)
+	}
+	if err := store.Validate(EnvironmentDevelopment); err != nil {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 
@@ -204,7 +224,7 @@ func TestRotateKeyVerifiesStagedFilesBeforeReplacement(t *testing.T) {
 	store := newRotatableStore(t)
 	oldMaster, oldSecrets := readRotationState(t, store)
 	store.fileOps.writeFileAtomic = func(path string, data []byte, perm os.FileMode) error {
-		if strings.HasSuffix(path, "production.age.yaml.final.next") {
+		if strings.HasSuffix(path, "production.yml.age.final.next") {
 			data = []byte("not age armor")
 		}
 		return writeFileAtomic(path, data, perm)
@@ -223,7 +243,7 @@ func TestRotateKeyFailureBeforeMasterReplacementLeavesOldState(t *testing.T) {
 	store := newRotatableStore(t)
 	oldMaster, oldSecrets := readRotationState(t, store)
 	store.fileOps.rename = func(oldPath string, newPath string) error {
-		if strings.HasSuffix(oldPath, "development.age.yaml.dual.next") {
+		if strings.HasSuffix(oldPath, "development.yml.age.dual.next") {
 			return errors.New("injected dual replacement failure")
 		}
 		return os.Rename(oldPath, newPath)
@@ -267,7 +287,7 @@ func TestRotateKeyFailureAfterMasterReplacementUsesNewKey(t *testing.T) {
 	store := newRotatableStore(t)
 	oldMaster, _ := readRotationState(t, store)
 	store.fileOps.rename = func(oldPath string, newPath string) error {
-		if strings.HasSuffix(oldPath, "development.age.yaml.final.next") {
+		if strings.HasSuffix(oldPath, "development.yml.age.final.next") {
 			return errors.New("injected final replacement failure")
 		}
 		return os.Rename(oldPath, newPath)
@@ -414,7 +434,7 @@ func assertRotationErrorRedacted(t *testing.T, err error) {
 }
 
 func TestDecodeDocumentRejectsDuplicateSecretNames(t *testing.T) {
-	plaintext := []byte("version: 1\nenvironment: development\nsecrets:\n  DATABASE_URL:\n    value: first\n  DATABASE_URL:\n    value: second\n")
+	plaintext := []byte("database:\n  url: first\n  url: second\n")
 
 	if _, err := DecodeDocument(plaintext, EnvironmentDevelopment); err == nil {
 		t.Fatal("DecodeDocument() error = nil for duplicate secret names, want error")

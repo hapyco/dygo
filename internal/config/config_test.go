@@ -147,7 +147,7 @@ func TestDecodeValidatesResolvedConfig(t *testing.T) {
 		},
 		{
 			name: "invalid database secret",
-			body: "database:\n  driver: postgres\n  url:\n    secret: database_url\n",
+			body: "database:\n  driver: postgres\n  url:\n    secret: database..url\n",
 			want: "database.url.secret is invalid",
 		},
 	}

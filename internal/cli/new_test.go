@@ -50,9 +50,9 @@ func TestNewProjectCommandCreatesProject(t *testing.T) {
 		"go.mod",
 		"cmd/dygo/main.go",
 		"apps/my-company/app.yml",
-		"configs/secrets/development.age.yaml",
-		"configs/secrets/staging.age.yaml",
-		"configs/secrets/production.age.yaml",
+		"configs/secrets/development.yml.age",
+		"configs/secrets/staging.yml.age",
+		"configs/secrets/production.yml.age",
 		"master.key",
 		".dygo/apps/studio/ui/dist/index.html",
 	} {

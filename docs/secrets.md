@@ -11,9 +11,9 @@ Database credentials use the same model. Local development should store `DATABAS
 Committed files:
 
 ```txt
-configs/secrets/development.age.yaml
-configs/secrets/staging.age.yaml
-configs/secrets/production.age.yaml
+configs/secrets/development.yml.age
+configs/secrets/staging.yml.age
+configs/secrets/production.yml.age
 ```
 
 Ignored local files:
@@ -89,33 +89,36 @@ go run ./cmd/dygo secrets rotate-key --confirm my-company/master.key
 
 ## Decrypted Shape
 
-The encrypted file decrypts to YAML:
+The encrypted file decrypts to a plain YAML mapping, similar to Rails credentials:
 
 ```yaml
-version: 1
-environment: development
-secrets:
-  DATABASE_URL:
-    value: postgres://local
-    updated_at: 2026-05-03T08:00:00Z
+DATABASE_URL: postgres://local
+STRIPE_SECRET_KEY: sk_test_example
 ```
 
-Secret names must use uppercase letters, numbers, and underscores, starting with a letter.
+Nested YAML is allowed:
 
-Good:
+```yaml
+database:
+  url: postgres://local
+stripe:
+  secret_key: sk_test_example
+```
+
+Secret references use either root keys or dot-separated paths:
 
 ```txt
 DATABASE_URL
-STRIPE_SECRET_KEY
-S3_BUCKET_NAME
+database.url
+stripe.secret_key
 ```
 
-Bad:
+Secret references must be non-empty and cannot contain empty path segments.
 
 ```txt
-database_url
-dev-token
-1PASSWORD
+database..url
+.DATABASE_URL
+DATABASE_URL.
 ```
 
 ## Adding Database Credentials
@@ -126,15 +129,10 @@ Open the development secrets file:
 go run ./cmd/dygo secrets edit
 ```
 
-Add `DATABASE_URL` under `secrets`:
+Add `DATABASE_URL`:
 
 ```yaml
-version: 1
-environment: development
-secrets:
-  DATABASE_URL:
-    value: postgres://user:password@127.0.0.1:5432/dygo
-    updated_at: 2026-05-03T08:00:00Z
+DATABASE_URL: postgres://user:password@127.0.0.1:5432/dygo
 ```
 
 Then validate:
@@ -161,6 +159,14 @@ The project database config also references secrets:
 database:
   url:
     secret: DATABASE_URL
+```
+
+Nested references work the same way:
+
+```yaml
+database:
+  url:
+    secret: database.url
 ```
 
 ## Boundaries

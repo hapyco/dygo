@@ -178,9 +178,9 @@ my-company/
   configs/
     dygo.yaml
     secrets/
-      development.age.yaml
-      staging.age.yaml
-      production.age.yaml
+      development.yml.age
+      staging.yml.age
+      production.yml.age
 
   db/
     schema.sql

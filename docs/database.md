@@ -28,7 +28,7 @@ go run ./cmd/dygo secrets edit
 The value is encrypted into:
 
 ```txt
-configs/secrets/development.age.yaml
+configs/secrets/development.yml.age
 ```
 
 The local `master.key` at the project root decrypts and re-encrypts the file. Do not commit `master.key`.

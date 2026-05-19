@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -247,6 +248,12 @@ func runSecretsEditor(ctx context.Context, store secrets.Store, env secrets.Envi
 		data, err := os.ReadFile(tempPath)
 		if err != nil {
 			return fmt.Errorf("read edited secrets temp file: %w", err)
+		}
+		if bytes.Equal(data, plaintext) {
+			if _, err := fmt.Fprintf(stdout, "%s secrets unchanged\n", env); err != nil {
+				return fmt.Errorf("write edit output: %w", err)
+			}
+			return nil
 		}
 		if err := store.SavePlaintext(env, data); err == nil {
 			if _, err := fmt.Fprintf(stdout, "updated %s secrets\n", env); err != nil {

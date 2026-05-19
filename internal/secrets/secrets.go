@@ -9,10 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
@@ -20,29 +18,22 @@ import (
 )
 
 const (
-	documentVersion = 1
-
 	EnvironmentDevelopment Environment = "development"
 	EnvironmentStaging     Environment = "staging"
 	EnvironmentProduction  Environment = "production"
 )
 
-var secretNamePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
-
 // Environment names a supported dygo runtime environment.
 type Environment string
 
-// Secret contains one secret value and its metadata.
+// Secret contains one resolved secret value.
 type Secret struct {
-	Value     string `yaml:"value"`
-	UpdatedAt string `yaml:"updated_at"`
+	Value string
 }
 
 // Document is the decrypted YAML payload encrypted on disk.
 type Document struct {
-	Version     int               `yaml:"version"`
-	Environment Environment       `yaml:"environment"`
-	Secrets     map[string]Secret `yaml:"secrets"`
+	Values map[string]any
 }
 
 // Entry is a sorted secret listing item.
@@ -61,7 +52,6 @@ type Paths struct {
 // Store manages encrypted dygo secret files below a repository root.
 type Store struct {
 	root    string
-	clock   func() time.Time
 	fileOps fileOperations
 }
 
@@ -76,21 +66,7 @@ func NewStore(root string) Store {
 	if root == "" {
 		root = "."
 	}
-	return Store{
-		root: root,
-		clock: func() time.Time {
-			return time.Now().UTC()
-		},
-	}
-}
-
-// WithClock returns a copy of the store using the provided clock.
-func (s Store) WithClock(clock func() time.Time) Store {
-	if clock == nil {
-		return s
-	}
-	s.clock = clock
-	return s
+	return Store{root: root}
 }
 
 // ParseEnvironment validates and returns a supported environment.
@@ -113,10 +89,15 @@ func SupportedEnvironments() []Environment {
 	}
 }
 
-// ValidateSecretName checks the public identifier used to reference a secret.
+// ValidateSecretName checks the public path used to reference a secret.
 func ValidateSecretName(name string) error {
-	if !secretNamePattern.MatchString(name) {
-		return fmt.Errorf("invalid secret name %q: use uppercase letters, numbers, and underscores, starting with a letter", name)
+	if name == "" || strings.TrimSpace(name) != name {
+		return fmt.Errorf("invalid secret name %q: use a non-empty root key or dot-separated path", name)
+	}
+	for _, segment := range strings.Split(name, ".") {
+		if segment == "" {
+			return fmt.Errorf("invalid secret name %q: path segments cannot be empty", name)
+		}
 	}
 	return nil
 }
@@ -125,7 +106,7 @@ func ValidateSecretName(name string) error {
 func (s Store) Paths(env Environment) Paths {
 	envName := string(env)
 	return Paths{
-		SecretFile:    filepath.Join(s.root, "configs", "secrets", envName+".age.yaml"),
+		SecretFile:    filepath.Join(s.root, "configs", "secrets", envName+".yml.age"),
 		MasterKeyFile: filepath.Join(s.root, "master.key"),
 		TempDir:       filepath.Join(s.root, ".dygo", "secrets", "tmp"),
 	}
@@ -301,9 +282,7 @@ func (s Store) RotateKey() (Paths, error) {
 // NewDocument returns an empty secret document for env.
 func NewDocument(env Environment) Document {
 	return Document{
-		Version:     documentVersion,
-		Environment: env,
-		Secrets:     map[string]Secret{},
+		Values: map[string]any{},
 	}
 }
 
@@ -338,7 +317,7 @@ func (s Store) loadWithIdentity(env Environment, identity age.Identity) (Documen
 
 // Save validates and encrypts doc for env.
 func (s Store) Save(env Environment, doc Document) error {
-	if err := doc.Validate(env); err != nil {
+	if err := doc.Validate(); err != nil {
 		return err
 	}
 
@@ -388,10 +367,7 @@ func (s Store) Set(env Environment, name, value string) error {
 	if err != nil {
 		return err
 	}
-	doc.Secrets[name] = Secret{
-		Value:     value,
-		UpdatedAt: s.clock().Format(time.RFC3339),
-	}
+	doc.Set(name, value)
 	return s.Save(env, doc)
 }
 
@@ -404,11 +380,14 @@ func (s Store) Get(env Environment, name string) (Secret, error) {
 	if err != nil {
 		return Secret{}, err
 	}
-	secret, ok := doc.Secrets[name]
+	value, ok, err := doc.SecretValue(name)
+	if err != nil {
+		return Secret{}, err
+	}
 	if !ok {
 		return Secret{}, fmt.Errorf("secret %q is not defined for %s", name, env)
 	}
-	return secret, nil
+	return Secret{Value: value}, nil
 }
 
 // Remove deletes one secret.
@@ -420,10 +399,9 @@ func (s Store) Remove(env Environment, name string) error {
 	if err != nil {
 		return err
 	}
-	if _, ok := doc.Secrets[name]; !ok {
+	if ok := doc.Remove(name); !ok {
 		return fmt.Errorf("secret %q is not defined for %s", name, env)
 	}
-	delete(doc.Secrets, name)
 	return s.Save(env, doc)
 }
 
@@ -433,8 +411,8 @@ func (s Store) List(env Environment) ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]Entry, 0, len(doc.Secrets))
-	for name, secret := range doc.Secrets {
+	entries := make([]Entry, 0)
+	for name, secret := range doc.Flatten() {
 		entries = append(entries, Entry{Name: name, Secret: secret})
 	}
 	sort.Slice(entries, func(i, j int) bool {
@@ -457,7 +435,12 @@ func (s Store) Validate(env Environment) error {
 
 	var problems []string
 	for _, ref := range references {
-		if _, ok := doc.Secrets[ref.SecretName]; !ok {
+		_, ok, err := doc.SecretValue(ref.SecretName)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%s references non-scalar secret %q", ref.Path, ref.SecretName))
+			continue
+		}
+		if !ok {
 			problems = append(problems, fmt.Sprintf("%s references missing secret %q", ref.Path, ref.SecretName))
 		}
 	}
@@ -467,39 +450,20 @@ func (s Store) Validate(env Environment) error {
 	return nil
 }
 
-// Validate checks a decrypted document against its expected environment.
-func (d Document) Validate(env Environment) error {
-	if _, err := ParseEnvironment(string(env)); err != nil {
-		return err
-	}
-	if d.Version != documentVersion {
-		return fmt.Errorf("invalid secrets document version %d: want %d", d.Version, documentVersion)
-	}
-	if d.Environment != env {
-		return fmt.Errorf("invalid secrets document environment %q: want %q", d.Environment, env)
-	}
-	if d.Secrets == nil {
-		return fmt.Errorf("secrets map is required")
-	}
-	for name, secret := range d.Secrets {
-		if err := ValidateSecretName(name); err != nil {
-			return err
-		}
-		if secret.UpdatedAt != "" {
-			if _, err := time.Parse(time.RFC3339, secret.UpdatedAt); err != nil {
-				return fmt.Errorf("secret %q has invalid updated_at: %w", name, err)
-			}
-		}
+// Validate checks a decrypted plain YAML document.
+func (d Document) Validate() error {
+	if d.Values == nil {
+		return fmt.Errorf("secrets document must be a mapping")
 	}
 	return nil
 }
 
 // EncodeDocument returns canonical YAML bytes for doc.
 func EncodeDocument(doc Document) ([]byte, error) {
-	if doc.Secrets == nil {
-		doc.Secrets = map[string]Secret{}
+	if doc.Values == nil {
+		doc.Values = map[string]any{}
 	}
-	out, err := yaml.Marshal(doc)
+	out, err := yaml.Marshal(doc.Values)
 	if err != nil {
 		return nil, fmt.Errorf("encode secrets document: %w", err)
 	}
@@ -511,23 +475,116 @@ func DecodeDocument(data []byte, env Environment) (Document, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return Document{}, fmt.Errorf("secrets document is empty")
 	}
-	if err := rejectDuplicateSecretNames(data); err != nil {
+	if err := rejectDuplicateMappingKeys(data); err != nil {
 		return Document{}, err
 	}
 
-	var doc Document
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&doc); err != nil {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
 		return Document{}, fmt.Errorf("decode secrets document: %w", err)
 	}
-	if doc.Secrets == nil {
-		doc.Secrets = map[string]Secret{}
-	}
-	if err := doc.Validate(env); err != nil {
+	values, err := decodeRootMapping(&root)
+	if err != nil {
 		return Document{}, err
 	}
-	return doc, nil
+	return Document{Values: values}, nil
+}
+
+// Set stores a scalar value at a root key or dot-separated path.
+func (d *Document) Set(path string, value string) {
+	if d.Values == nil {
+		d.Values = map[string]any{}
+	}
+	parts := strings.Split(path, ".")
+	if len(parts) == 1 {
+		d.Values[path] = value
+		return
+	}
+	current := d.Values
+	for _, part := range parts[:len(parts)-1] {
+		next, ok := current[part].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			current[part] = next
+		}
+		current = next
+	}
+	current[parts[len(parts)-1]] = value
+}
+
+// SecretValue resolves a root key or dot-separated path to a scalar string value.
+func (d Document) SecretValue(path string) (string, bool, error) {
+	if err := ValidateSecretName(path); err != nil {
+		return "", false, err
+	}
+	value, ok := d.Lookup(path)
+	if !ok {
+		return "", false, nil
+	}
+	scalar, ok := scalarSecretValue(value)
+	if !ok {
+		return "", true, fmt.Errorf("secret %q must resolve to a scalar value", path)
+	}
+	return scalar, true, nil
+}
+
+// Lookup resolves an exact root key first, then a dot-separated nested path.
+func (d Document) Lookup(path string) (any, bool) {
+	if d.Values == nil {
+		return nil, false
+	}
+	if value, ok := d.Values[path]; ok {
+		return value, true
+	}
+	parts := strings.Split(path, ".")
+	var current any = d.Values
+	for _, part := range parts {
+		mapping, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current, ok = mapping[part]
+		if !ok {
+			return nil, false
+		}
+	}
+	return current, true
+}
+
+// Remove deletes a root key or dot-separated path.
+func (d *Document) Remove(path string) bool {
+	if d.Values == nil {
+		return false
+	}
+	if _, ok := d.Values[path]; ok {
+		delete(d.Values, path)
+		return true
+	}
+	parts := strings.Split(path, ".")
+	if len(parts) == 1 {
+		return false
+	}
+	current := d.Values
+	for _, part := range parts[:len(parts)-1] {
+		next, ok := current[part].(map[string]any)
+		if !ok {
+			return false
+		}
+		current = next
+	}
+	last := parts[len(parts)-1]
+	if _, ok := current[last]; !ok {
+		return false
+	}
+	delete(current, last)
+	return true
+}
+
+// Flatten returns scalar secrets by their root keys and dot-separated paths.
+func (d Document) Flatten() map[string]Secret {
+	out := map[string]Secret{}
+	flattenSecrets(out, "", d.Values)
+	return out
 }
 
 // Redact masks a secret value for human-facing output.
@@ -647,53 +704,146 @@ func collectEnvSecretReferences(path string, envNode *yaml.Node, references *[]M
 	}
 }
 
-func rejectDuplicateSecretNames(data []byte) error {
+func decodeRootMapping(root *yaml.Node) (map[string]any, error) {
+	if root.Kind == yaml.DocumentNode {
+		if len(root.Content) == 0 {
+			return nil, fmt.Errorf("secrets document is empty")
+		}
+		root = root.Content[0]
+	}
+	if root.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("secrets document must be a mapping")
+	}
+	value, err := decodeYAMLNode(root)
+	if err != nil {
+		return nil, err
+	}
+	mapping, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("secrets document must be a mapping")
+	}
+	return mapping, nil
+}
+
+func decodeYAMLNode(node *yaml.Node) (any, error) {
+	switch node.Kind {
+	case yaml.DocumentNode:
+		if len(node.Content) == 0 {
+			return nil, nil
+		}
+		return decodeYAMLNode(node.Content[0])
+	case yaml.MappingNode:
+		mapping := make(map[string]any, len(node.Content)/2)
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i]
+			if key.Kind != yaml.ScalarNode || key.Value == "" {
+				return nil, fmt.Errorf("secrets document mapping keys must be non-empty strings")
+			}
+			value, err := decodeYAMLNode(node.Content[i+1])
+			if err != nil {
+				return nil, err
+			}
+			mapping[key.Value] = value
+		}
+		return mapping, nil
+	case yaml.SequenceNode:
+		values := make([]any, 0, len(node.Content))
+		for _, child := range node.Content {
+			value, err := decodeYAMLNode(child)
+			if err != nil {
+				return nil, err
+			}
+			values = append(values, value)
+		}
+		return values, nil
+	case yaml.ScalarNode:
+		var value any
+		if err := node.Decode(&value); err != nil {
+			return nil, fmt.Errorf("decode secrets scalar: %w", err)
+		}
+		return value, nil
+	default:
+		return nil, nil
+	}
+}
+
+func scalarSecretValue(value any) (string, bool) {
+	switch v := value.(type) {
+	case nil:
+		return "", true
+	case string:
+		return v, true
+	case bool:
+		return fmt.Sprint(v), true
+	case int:
+		return fmt.Sprint(v), true
+	case int64:
+		return fmt.Sprint(v), true
+	case uint64:
+		return fmt.Sprint(v), true
+	case float64:
+		return fmt.Sprint(v), true
+	default:
+		return "", false
+	}
+}
+
+func flattenSecrets(out map[string]Secret, prefix string, value any) {
+	mapping, ok := value.(map[string]any)
+	if !ok {
+		if scalar, scalarOK := scalarSecretValue(value); scalarOK && prefix != "" {
+			out[prefix] = Secret{Value: scalar}
+		}
+		return
+	}
+	for key, child := range mapping {
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+		flattenSecrets(out, path, child)
+	}
+}
+
+func rejectDuplicateMappingKeys(data []byte) error {
 	var root yaml.Node
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return fmt.Errorf("parse secrets document: %w", err)
 	}
-	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
-		root = *root.Content[0]
-	}
-	if root.Kind != yaml.MappingNode {
-		return fmt.Errorf("secrets document must be a mapping")
-	}
+	return rejectDuplicateMappingKeysNode(&root, "")
+}
 
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value != "secrets" {
-			continue
-		}
-		secretsNode := root.Content[i+1]
-		if secretsNode.Kind != yaml.MappingNode {
+func rejectDuplicateMappingKeysNode(node *yaml.Node, path string) error {
+	if node.Kind == yaml.DocumentNode {
+		if len(node.Content) == 0 {
 			return nil
 		}
+		return rejectDuplicateMappingKeysNode(node.Content[0], path)
+	}
+	if node.Kind == yaml.MappingNode {
 		seen := map[string]struct{}{}
-		for j := 0; j+1 < len(secretsNode.Content); j += 2 {
-			name := secretsNode.Content[j].Value
-			if _, ok := seen[name]; ok {
-				return fmt.Errorf("duplicate secret name %q", name)
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i].Value
+			childPath := key
+			if path != "" {
+				childPath = path + "." + key
 			}
-			seen[name] = struct{}{}
+			if _, ok := seen[key]; ok {
+				return fmt.Errorf("duplicate secret key %q", childPath)
+			}
+			seen[key] = struct{}{}
+			if err := rejectDuplicateMappingKeysNode(node.Content[i+1], childPath); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, child := range node.Content {
+		if err := rejectDuplicateMappingKeysNode(child, path); err != nil {
+			return err
 		}
 	}
 	return nil
-}
-
-func loadIdentities(path string) ([]age.Identity, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("read identity key: %w", err)
-	}
-	defer file.Close()
-
-	identities, err := age.ParseIdentities(file)
-	if err != nil {
-		return nil, fmt.Errorf("parse identity key: %w", err)
-	}
-	if len(identities) == 0 {
-		return nil, fmt.Errorf("identity key %s does not contain any identities", path)
-	}
-	return identities, nil
 }
 
 func loadMasterIdentity(path string) (*age.HybridIdentity, error) {
@@ -766,7 +916,7 @@ func (s Store) rotationPaths(envs []Environment) rotationFileSet {
 		SecretRollback: make(map[Environment]string, len(envs)),
 	}
 	for _, env := range envs {
-		name := string(env) + ".age.yaml"
+		name := string(env) + ".yml.age"
 		paths.DualNext[env] = filepath.Join(base, name+".dual.next")
 		paths.FinalNext[env] = filepath.Join(base, name+".final.next")
 		paths.SecretRollback[env] = filepath.Join(base, name+".rollback")
@@ -933,44 +1083,7 @@ func (s Store) loadForRewrite(env Environment) (Document, error) {
 	if !exists(paths.SecretFile) {
 		return NewDocument(env), nil
 	}
-
-	if exists(paths.MasterKeyFile) {
-		doc, err := s.Load(env)
-		if err == nil {
-			return doc, nil
-		}
-	}
-
-	legacyKeyFile := filepath.Join(s.root, ".dygo", "secrets", "keys", string(env)+".agekey")
-	if exists(legacyKeyFile) {
-		doc, err := loadLegacyDocument(paths.SecretFile, legacyKeyFile, env)
-		if err == nil {
-			return doc, nil
-		}
-		return Document{}, err
-	}
-
-	return Document{}, fmt.Errorf("encrypted secrets file exists but no usable master.key or legacy environment key was found")
-}
-
-func loadLegacyDocument(secretFile string, keyFile string, env Environment) (Document, error) {
-	ciphertext, err := os.ReadFile(secretFile)
-	if err != nil {
-		return Document{}, fmt.Errorf("read encrypted secrets file: %w", err)
-	}
-	identities, err := loadIdentities(keyFile)
-	if err != nil {
-		return Document{}, err
-	}
-	plaintext, err := decryptArmored(ciphertext, identities)
-	if err != nil {
-		return Document{}, fmt.Errorf("decrypt legacy secrets for %s: %w", env, err)
-	}
-	doc, err := DecodeDocument(plaintext, env)
-	if err != nil {
-		return Document{}, err
-	}
-	return doc, nil
+	return s.Load(env)
 }
 
 func encryptArmored(plaintext []byte, recipients []age.Recipient) ([]byte, error) {

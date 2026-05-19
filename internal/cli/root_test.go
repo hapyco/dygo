@@ -2450,9 +2450,9 @@ func TestSecretsInitCommand(t *testing.T) {
 	for _, want := range []string{
 		"initialized secrets",
 		"key: master.key",
-		"configs/secrets/development.age.yaml",
-		"configs/secrets/staging.age.yaml",
-		"configs/secrets/production.age.yaml",
+		"configs/secrets/development.yml.age",
+		"configs/secrets/staging.yml.age",
+		"configs/secrets/production.yml.age",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("secrets init stdout = %q, want substring %q", output, want)
@@ -2483,12 +2483,7 @@ func TestSecretsEditDefaultsToDevelopment(t *testing.T) {
 	}
 	editor := writeEditorScript(t, root, `
 cat > "$1" <<'YAML'
-version: 1
-environment: development
-secrets:
-  DATABASE_URL:
-    value: postgres://development
-    updated_at: 2026-05-03T08:00:00Z
+DATABASE_URL: postgres://development
 YAML
 `)
 	t.Chdir(root)
@@ -2523,12 +2518,7 @@ if [ "$1" != "--flag" ]; then
   exit 12
 fi
 cat > "$2" <<'YAML'
-version: 1
-environment: staging
-secrets:
-  DATABASE_URL:
-    value: postgres://staging
-    updated_at: 2026-05-03T08:00:00Z
+DATABASE_URL: postgres://staging
 YAML
 `)
 	t.Chdir(root)
@@ -2551,6 +2541,42 @@ YAML
 	}
 }
 
+func TestSecretsEditUnchangedDoesNotRewrite(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	store := secrets.NewStore(root)
+	if _, err := store.Init(false); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
+	}
+	if err := store.Set(secrets.EnvironmentDevelopment, "DATABASE_URL", "postgres://development"); err != nil {
+		t.Fatalf("Set(development DATABASE_URL) error = %v", err)
+	}
+	secretFile := store.Paths(secrets.EnvironmentDevelopment).SecretFile
+	before, err := os.ReadFile(secretFile)
+	if err != nil {
+		t.Fatalf("ReadFile(secret before edit) error = %v", err)
+	}
+	editor := writeEditorScript(t, root, `:`)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = Run(context.Background(), []string{"secrets", "edit", "--editor", editor}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(secrets edit unchanged) error = %v, want nil", err)
+	}
+	if stdout.String() != "development secrets unchanged\n" {
+		t.Fatalf("secrets edit stdout = %q, want unchanged message", stdout.String())
+	}
+	after, err := os.ReadFile(secretFile)
+	if err != nil {
+		t.Fatalf("ReadFile(secret after edit) error = %v", err)
+	}
+	if !bytes.Equal(after, before) {
+		t.Fatal("development encrypted secrets changed after unchanged edit")
+	}
+}
+
 func TestSecretsEditInvalidYAMLDoesNotOverwrite(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -2563,11 +2589,7 @@ func TestSecretsEditInvalidYAMLDoesNotOverwrite(t *testing.T) {
 	}
 	editor := writeEditorScript(t, root, `
 cat > "$1" <<'YAML'
-version: 1
-environment: development
-secrets:
-  database_url:
-    value: bad
+- bad
 YAML
 `)
 	t.Chdir(root)
