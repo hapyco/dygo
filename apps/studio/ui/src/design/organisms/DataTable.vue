@@ -143,7 +143,6 @@ function updateVisibleRowSelection(selected: boolean) {
         class="data-table__empty-action"
         type="button"
         variant="secondary"
-        size="sm"
         @click="emit('emptyAction')"
       >
         <Plus :size="14" :stroke-width="1.9" aria-hidden="true" />
@@ -213,7 +212,6 @@ function updateVisibleRowSelection(selected: boolean) {
           v-if="hasMore || loadingMore"
           type="button"
           variant="secondary"
-          size="sm"
           :disabled="loading || loadingMore"
           :loading="loadingMore"
           @click="emit('loadMore')"

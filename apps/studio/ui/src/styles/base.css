@@ -35,6 +35,7 @@
   --studio-control-bg-hover: oklch(0.99 0.005 246);
   --studio-control-bg-disabled: oklch(0.955 0.007 246);
   --studio-control-bg-readonly: oklch(0.975 0.006 246);
+  --studio-control-height-xs: 30px;
   --studio-control-height-sm: 32px;
   --studio-control-height-md: 38px;
   --studio-radius-control: 7px;

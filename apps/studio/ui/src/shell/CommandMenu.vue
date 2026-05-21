@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
 .studio-command-menu__trigger {
   display: flex;
   width: 100%;
-  height: var(--studio-control-height-sm);
+  height: var(--studio-control-height-xs);
   min-width: 0;
   align-items: center;
   gap: 8px;

@@ -94,8 +94,8 @@ withDefaults(defineProps<{
 .studio-top-bar__notification {
   position: relative;
   display: inline-flex;
-  width: 32px;
-  height: 32px;
+  width: var(--studio-control-height-xs);
+  height: var(--studio-control-height-xs);
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;

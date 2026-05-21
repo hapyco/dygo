@@ -12,7 +12,7 @@ withDefaults(
   {
     type: 'button',
     variant: 'primary',
-    size: 'md',
+    size: 'xs',
     loading: false,
     disabled: false,
   },
@@ -36,14 +36,14 @@ withDefaults(
 <style scoped>
 .d-button {
   display: inline-flex;
-  min-height: var(--studio-control-height-md);
+  min-height: var(--studio-control-height-xs);
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid transparent;
   border-radius: var(--studio-radius-control);
-  padding: 0 14px;
-  font-size: 14px;
+  padding: 0 10px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1;
   transition:
@@ -55,9 +55,14 @@ withDefaults(
 
 .d-button[data-size='sm'] {
   min-height: var(--studio-control-height-sm);
-  gap: 6px;
   padding: 0 11px;
-  font-size: 13px;
+}
+
+.d-button[data-size='md'] {
+  min-height: var(--studio-control-height-md);
+  gap: 8px;
+  padding: 0 14px;
+  font-size: 14px;
 }
 
 .d-button:focus-visible {

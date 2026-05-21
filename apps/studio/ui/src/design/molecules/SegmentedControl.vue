@@ -50,15 +50,15 @@ function selectOption(option: SegmentedControlOption) {
 <style scoped>
 .segmented-control {
   display: inline-flex;
-  min-height: 38px;
+  min-height: var(--studio-control-height-xs);
   overflow: hidden;
   border: 1px solid var(--studio-border);
-  border-radius: 14px;
+  border-radius: var(--studio-radius-control);
   background: var(--studio-surface-raised);
 }
 
 .segmented-control__item {
-  min-width: 58px;
+  min-width: 48px;
   border: 0;
   border-left: 1px solid var(--studio-border);
   appearance: none;
@@ -66,10 +66,10 @@ function selectOption(option: SegmentedControlOption) {
   color: var(--studio-text-muted);
   cursor: pointer;
   font: inherit;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1;
-  padding: 0 14px;
+  padding: 0 12px;
 }
 
 .segmented-control__item:first-child {

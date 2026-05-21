@@ -139,8 +139,8 @@ const emit = defineEmits<{
 
 .studio-sidebar__collapse {
   display: inline-flex;
-  width: 34px;
-  height: 34px;
+  width: var(--studio-control-height-xs);
+  height: var(--studio-control-height-xs);
   align-items: center;
   justify-content: center;
   margin-top: auto;

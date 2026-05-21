@@ -70,6 +70,12 @@ defineEmits<{
   font-size: 13px;
 }
 
+.d-input[data-size='xs'] {
+  min-height: var(--studio-control-height-xs);
+  padding: 0 8px;
+  font-size: 13px;
+}
+
 .d-input::placeholder {
   color: var(--studio-text-subtle);
 }

@@ -11,7 +11,7 @@ withDefaults(defineProps<{
 }>(), {
   type: 'button',
   variant: 'secondary',
-  size: 'md',
+  size: 'xs',
   loading: false,
   disabled: false,
 })
@@ -35,8 +35,8 @@ withDefaults(defineProps<{
 <style scoped>
 .d-icon-button {
   display: inline-flex;
-  width: var(--studio-control-height-md);
-  height: var(--studio-control-height-md);
+  width: var(--studio-control-height-xs);
+  height: var(--studio-control-height-xs);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -53,6 +53,11 @@ withDefaults(defineProps<{
 .d-icon-button[data-size='sm'] {
   width: var(--studio-control-height-sm);
   height: var(--studio-control-height-sm);
+}
+
+.d-icon-button[data-size='md'] {
+  width: var(--studio-control-height-md);
+  height: var(--studio-control-height-md);
 }
 
 .d-icon-button:focus-visible {

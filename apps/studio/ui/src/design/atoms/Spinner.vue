@@ -37,6 +37,12 @@ withDefaults(defineProps<{
   border-width: 1.5px;
 }
 
+.d-spinner[data-size='xs'] {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+}
+
 @keyframes d-spinner-spin {
   to {
     transform: rotate(360deg);

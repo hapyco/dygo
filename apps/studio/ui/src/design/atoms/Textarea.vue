@@ -69,6 +69,12 @@ defineEmits<{
   font-size: 13px;
 }
 
+.d-textarea[data-size='xs'] {
+  min-height: 72px;
+  padding: 7px 8px;
+  font-size: 13px;
+}
+
 .d-textarea::placeholder {
   color: var(--studio-text-subtle);
 }

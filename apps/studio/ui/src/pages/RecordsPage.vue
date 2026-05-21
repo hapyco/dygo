@@ -5,7 +5,7 @@ import { ListFilter, Plus } from '@lucide/vue'
 
 import PageHeader from '@/shell/PageHeader.vue'
 import type { PageHeaderAction } from '@/shell/types'
-import RecordListView from '@/features/records/list/RecordListView.vue'
+import { RecordListRenderer } from '@/renderers/records'
 import { RouteName } from '@/router/routes'
 import { useMetadataStore } from '@/stores/metadata.store'
 
@@ -23,6 +23,10 @@ const entityLabel = computed(() => {
   return entityMeta.value?.label || humanizeEntity(props.entity)
 })
 
+function openNewRecord() {
+  void router.push({ name: RouteName.RecordNew, params: { entity: props.entity } })
+}
+
 const actions = computed<PageHeaderAction[]>(() => [
   {
     label: 'Filter',
@@ -35,9 +39,7 @@ const actions = computed<PageHeaderAction[]>(() => [
     icon: Plus,
     variant: 'primary',
     disabled: entityMetaStatus.value !== 'ready',
-    onSelect: () => {
-      void router.push({ name: RouteName.RecordNew, params: { entity: props.entity } })
-    },
+    onSelect: openNewRecord,
   },
 ])
 
@@ -64,7 +66,12 @@ function humanizeEntity(value: string): string {
       :actions="actions"
     />
 
-    <RecordListView :entity="props.entity" :entity-label="entityLabel" :fields="entityMeta?.fields ?? []" />
+    <RecordListRenderer
+      :entity="props.entity"
+      :entity-label="entityLabel"
+      :fields="entityMeta?.fields ?? []"
+      @create-record="openNewRecord"
+    />
   </section>
 </template>
 

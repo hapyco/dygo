@@ -96,7 +96,7 @@ async function submitLogin() {
           :disabled="loading"
         />
 
-        <Button class="login-form__submit" type="submit" :loading="loading" :disabled="!canSubmit">
+        <Button class="login-form__submit" type="submit" size="md" :loading="loading" :disabled="!canSubmit">
           Sign in
         </Button>
       </form>

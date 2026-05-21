@@ -116,6 +116,12 @@ function updateValue(value: unknown) {
   font-size: 13px;
 }
 
+.d-select[data-size='xs'] {
+  min-height: var(--studio-control-height-xs);
+  padding-inline: 8px;
+  font-size: 13px;
+}
+
 .d-select:hover:not([data-disabled]) {
   border-color: var(--studio-border-strong);
   background: var(--studio-control-bg-hover);

@@ -48,7 +48,6 @@ function runAction(action: PageHeaderAction) {
           :key="action.label"
           type="button"
           :variant="action.variant ?? 'secondary'"
-          size="sm"
           :disabled="action.disabled"
           :loading="action.loading"
           @click="runAction(action)"

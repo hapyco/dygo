@@ -1,4 +1,4 @@
-export type ControlSize = 'sm' | 'md'
+export type ControlSize = 'xs' | 'sm' | 'md'
 
 export type FieldOption = {
   value: string
