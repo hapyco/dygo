@@ -25,8 +25,26 @@
   --studio-warning: oklch(0.63 0.13 74);
   --studio-success: oklch(0.52 0.105 156);
   --studio-info: oklch(0.56 0.12 231);
+  --studio-danger-soft: oklch(0.975 0.014 28);
+  --studio-warning-soft: oklch(0.976 0.026 74);
+  --studio-success-soft: oklch(0.967 0.022 156);
+  --studio-info-soft: oklch(0.969 0.02 231);
+  --studio-accent-soft: oklch(0.954 0.026 248);
+  --studio-neutral-soft: oklch(0.962 0.008 246);
+  --studio-control-bg: var(--studio-surface);
+  --studio-control-bg-hover: oklch(0.99 0.005 246);
+  --studio-control-bg-disabled: oklch(0.955 0.007 246);
+  --studio-control-bg-readonly: oklch(0.975 0.006 246);
+  --studio-control-height-sm: 32px;
+  --studio-control-height-md: 38px;
+  --studio-radius-control: 7px;
+  --studio-radius-field: 8px;
+  --studio-radius-panel: 9px;
+  --studio-focus-ring: 0 0 0 3px oklch(0.61 0.16 248 / 0.16);
+  --studio-danger-ring: 0 0 0 3px oklch(0.55 0.15 28 / 0.14);
   --studio-shadow: 0 1px 2px oklch(0.225 0.018 246 / 0.08),
     0 18px 46px oklch(0.225 0.018 246 / 0.08);
+  --studio-shadow-control: 0 1px 1px oklch(0.225 0.018 246 / 0.045);
 }
 
 * {
@@ -60,7 +78,9 @@ button {
 }
 
 button:disabled,
-input:disabled {
+input:disabled,
+textarea:disabled,
+select:disabled {
   cursor: not-allowed;
 }
 

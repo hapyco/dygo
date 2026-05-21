@@ -1,14 +1,18 @@
 <script setup lang="ts">
+import type { ControlSize } from '../types'
+
 withDefaults(
   defineProps<{
     type?: 'button' | 'submit' | 'reset'
     variant?: 'primary' | 'secondary' | 'ghost'
+    size?: ControlSize
     loading?: boolean
     disabled?: boolean
   }>(),
   {
     type: 'button',
     variant: 'primary',
+    size: 'md',
     loading: false,
     disabled: false,
   },
@@ -20,6 +24,7 @@ withDefaults(
     class="d-button"
     :class="`d-button--${variant}`"
     :type="type"
+    :data-size="size"
     :disabled="disabled || loading"
     :aria-busy="loading ? 'true' : undefined"
   >
@@ -31,12 +36,12 @@ withDefaults(
 <style scoped>
 .d-button {
   display: inline-flex;
-  min-height: 36px;
+  min-height: var(--studio-control-height-md);
   align-items: center;
   justify-content: center;
   gap: 8px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--studio-radius-control);
   padding: 0 14px;
   font-size: 14px;
   font-weight: 600;
@@ -46,6 +51,13 @@ withDefaults(
     border-color 180ms ease,
     color 180ms ease,
     box-shadow 180ms ease;
+}
+
+.d-button[data-size='sm'] {
+  min-height: var(--studio-control-height-sm);
+  gap: 6px;
+  padding: 0 11px;
+  font-size: 13px;
 }
 
 .d-button:focus-visible {
@@ -68,13 +80,14 @@ withDefaults(
 
 .d-button--secondary {
   border-color: var(--studio-border);
-  background: var(--studio-surface);
+  background: var(--studio-control-bg);
+  box-shadow: var(--studio-shadow-control);
   color: var(--studio-text);
 }
 
 .d-button--secondary:hover:not(:disabled) {
   border-color: var(--studio-border-strong);
-  background: var(--studio-surface-raised);
+  background: var(--studio-control-bg-hover);
 }
 
 .d-button--ghost {

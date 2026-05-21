@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { Button, Checkbox, ErrorState, Field, Input } from '@dygo/ui'
+import { Button, CheckboxField, ErrorState, PasswordField, TextField } from '@dygo/ui'
 import { login } from './auth.api'
 import { setCurrentUser } from './session'
 
@@ -66,40 +66,34 @@ async function submitLogin() {
       <ErrorState v-if="error" :message="error" />
 
       <form class="login-form" @submit.prevent="submitLogin">
-        <Field id="studio-identifier" label="Email or username">
-          <template #default="{ id, invalid }">
-            <Input
-              :id="id"
-              v-model="identifier"
-              name="identifier"
-              autocomplete="username"
-              placeholder="you@example.com"
-              :invalid="invalid"
-              :disabled="loading"
-              required
-            />
-          </template>
-        </Field>
+        <TextField
+          id="studio-identifier"
+          v-model="identifier"
+          label="Email or username"
+          name="identifier"
+          autocomplete="username"
+          placeholder="you@example.com"
+          :disabled="loading"
+          required
+        />
 
-        <Field id="studio-password" label="Password">
-          <template #default="{ id, invalid }">
-            <Input
-              :id="id"
-              v-model="password"
-              name="password"
-              type="password"
-              autocomplete="current-password"
-              :invalid="invalid"
-              :disabled="loading"
-              required
-            />
-          </template>
-        </Field>
+        <PasswordField
+          id="studio-password"
+          v-model="password"
+          label="Password"
+          name="password"
+          autocomplete="current-password"
+          :disabled="loading"
+          required
+        />
 
-        <label class="login-form__remember">
-          <Checkbox v-model="remember" name="remember" :disabled="loading" />
-          <span>Remember this browser</span>
-        </label>
+        <CheckboxField
+          id="studio-remember"
+          v-model="remember"
+          label="Remember this browser"
+          name="remember"
+          :disabled="loading"
+        />
 
         <Button class="login-form__submit" type="submit" :loading="loading" :disabled="!canSubmit">
           Sign in
@@ -181,16 +175,6 @@ async function submitLogin() {
 .login-form {
   display: grid;
   gap: 16px;
-}
-
-.login-form__remember {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 9px;
-  color: var(--studio-text-muted);
-  font-size: 13px;
-  line-height: 1.3;
 }
 
 .login-form__submit {

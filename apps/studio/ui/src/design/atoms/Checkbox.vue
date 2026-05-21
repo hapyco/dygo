@@ -6,11 +6,17 @@ withDefaults(
     id?: string
     modelValue?: boolean
     name?: string
+    describedBy?: string
+    required?: boolean
     disabled?: boolean
+    readonly?: boolean
+    invalid?: boolean
   }>(),
   {
     modelValue: false,
     disabled: false,
+    readonly: false,
+    invalid: false,
   },
 )
 
@@ -25,7 +31,13 @@ defineEmits<{
     class="d-checkbox"
     :model-value="modelValue"
     :name="name"
-    :disabled="disabled"
+    :disabled="disabled || readonly"
+    :required="required"
+    :aria-invalid="invalid ? 'true' : undefined"
+    :aria-describedby="describedBy || undefined"
+    :aria-readonly="readonly ? 'true' : undefined"
+    :data-readonly="readonly ? '' : undefined"
+    :class="{ 'd-checkbox--invalid': invalid }"
     @update:model-value="$emit('update:modelValue', Boolean($event))"
   >
     <CheckboxIndicator class="d-checkbox__indicator">
@@ -46,8 +58,9 @@ defineEmits<{
   justify-content: center;
   border: 1px solid var(--studio-border-strong);
   border-radius: 5px;
-  background: var(--studio-surface);
+  background: var(--studio-control-bg);
   color: oklch(0.99 0.004 246);
+  box-shadow: var(--studio-shadow-control);
   transition:
     background-color 160ms ease,
     border-color 160ms ease,
@@ -70,6 +83,15 @@ defineEmits<{
 
 .d-checkbox[data-disabled] {
   opacity: 0.58;
+}
+
+.d-checkbox[data-readonly] {
+  background: var(--studio-control-bg-readonly);
+  opacity: 1;
+}
+
+.d-checkbox--invalid {
+  border-color: var(--studio-danger);
 }
 
 .d-checkbox__indicator {
