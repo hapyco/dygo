@@ -1,6 +1,7 @@
 name: user-role
 label: User Role
 description: Role assignment for a User.
+icon: users-round
 naming:
   strategy: random
 fields:

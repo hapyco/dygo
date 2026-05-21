@@ -17,6 +17,7 @@ type Entity struct {
 	Name        string       `yaml:"name"`
 	Label       string       `yaml:"label"`
 	Description string       `yaml:"description,omitempty"`
+	Icon        string       `yaml:"icon,omitempty"`
 	Route       Route        `yaml:"route,omitempty"`
 	Naming      Naming       `yaml:"naming,omitempty"`
 	Fields      []Field      `yaml:"fields"`

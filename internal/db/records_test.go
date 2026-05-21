@@ -130,7 +130,7 @@ func TestRecordStoreListRecordsSortByIDSkipsTieBreaker(t *testing.T) {
 func TestRecordStoreListRecordsByIdentityHonorsFiltersAndSort(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -179,7 +179,7 @@ func TestRecordStoreGetRecord(t *testing.T) {
 func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -206,7 +206,7 @@ func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
 func TestRecordStoreRouteSlugMethodsKeepUsingRouteSlugLookup(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -947,7 +947,7 @@ func TestRecordStoreInvalidListFiltersAndSorts(t *testing.T) {
 
 func newUserRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(10), "user", "user", "User", "User identity", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "user", "user", "User", "User identity", "user", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
@@ -963,7 +963,7 @@ func newUserRecordQueryer() *fakeRecordQueryer {
 
 func newLeadRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(20), "lead", "lead", "Lead", "Sales lead", []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		row: newFakeRow(int64(20), "lead", "lead", "Lead", "Sales lead", "contact", []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New","Qualified"]}`)},
@@ -977,7 +977,7 @@ func newLeadRecordQueryer() *fakeRecordQueryer {
 
 func newActivityRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(1), "activity", "activity", "Activity", "Timeline entry", []byte(`{"strategy":"random","length":16}`), "core", "Core"),
+		row: newFakeRow(int64(1), "activity", "activity", "Activity", "Timeline entry", "activity", []byte(`{"strategy":"random","length":16}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record"]}`)},

@@ -24,6 +24,7 @@ func TestBuildMetadataRecords(t *testing.T) {
 					Name:        "user",
 					Label:       "User",
 					Description: "User identity",
+					Icon:        "user",
 					Fields: []schema.Field{
 						{Name: "email", Label: "Email", Type: "email", Required: true, Unique: true, Index: true},
 						{Name: "enabled", Label: "Enabled", Type: "boolean", Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"}},
@@ -52,7 +53,7 @@ func TestBuildMetadataRecords(t *testing.T) {
 	if len(records.Apps) != 1 || records.Apps[0].Name != "core" || records.Apps[0].Status != "active" {
 		t.Fatalf("app records = %+v, want active core app", records.Apps)
 	}
-	if len(records.Entities) != 1 || records.Entities[0].Name != "user" || records.Entities[0].RouteSlug != "user" || records.Entities[0].AppName != "core" {
+	if len(records.Entities) != 1 || records.Entities[0].Name != "user" || records.Entities[0].RouteSlug != "user" || records.Entities[0].Icon != "user" || records.Entities[0].AppName != "core" {
 		t.Fatalf("entity records = %+v, want core/user", records.Entities)
 	}
 	if len(records.Fields) != 3 {

@@ -1,7 +1,7 @@
 export const RouteName = {
   Login: 'login',
   Home: 'home',
-  EntityList: 'entity-list',
+  EntityRecords: 'entity-records',
   RecordNew: 'record-new',
   RecordDetail: 'record-detail',
   NotFound: 'not-found',

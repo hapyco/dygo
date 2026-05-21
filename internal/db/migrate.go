@@ -194,11 +194,26 @@ func (s PgdumpSnapshotter) Dump(ctx context.Context, root string, databaseURL st
 	if err != nil {
 		return fmt.Errorf("dump schema with pg_dump: %w: %s", err, strings.TrimSpace(string(output)))
 	}
+	dumped, err := os.ReadFile(tmpPath)
+	if err != nil {
+		return fmt.Errorf("read schema snapshot: %w", err)
+	}
+	if err := os.WriteFile(tmpPath, normalizeSchemaSnapshot(dumped), 0o644); err != nil {
+		return fmt.Errorf("normalize schema snapshot: %w", err)
+	}
 	if err := os.Rename(tmpPath, schemaPath); err != nil {
 		return fmt.Errorf("write schema snapshot: %w", err)
 	}
 	cleanup = false
 	return nil
+}
+
+func normalizeSchemaSnapshot(data []byte) []byte {
+	trimmed := bytes.TrimRight(data, "\n")
+	if len(trimmed) == 0 {
+		return []byte{}
+	}
+	return append(trimmed, '\n')
 }
 
 func runPGDump(ctx context.Context, pgDump string, tmpPath string, connectionString string, password string, useRestrictKey bool) ([]byte, error) {

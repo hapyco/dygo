@@ -1,6 +1,7 @@
 name: entity
 label: Entity
 description: Registry entry for a known Entity definition.
+icon: boxes
 naming:
   strategy: field
   field: name
@@ -34,6 +35,10 @@ fields:
   - name: description
     label: Description
     type: long-text
+
+  - name: icon
+    label: Icon
+    type: text
 
   - name: naming
     label: Naming

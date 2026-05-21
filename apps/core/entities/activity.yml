@@ -1,6 +1,7 @@
 name: activity
 label: Activity
 description: Timeline entry for meaningful Record and system events.
+icon: activity
 naming:
   strategy: random
 fields:

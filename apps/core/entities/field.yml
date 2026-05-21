@@ -1,6 +1,7 @@
 name: field
 label: Field
 description: Field definition belonging to an Entity.
+icon: columns-3
 naming:
   strategy: random
 fields:

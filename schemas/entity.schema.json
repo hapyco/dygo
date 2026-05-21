@@ -15,6 +15,7 @@
     "description": {
       "type": "string"
     },
+    "icon": { "$ref": "#/$defs/icon" },
     "route": { "$ref": "#/$defs/route" },
     "naming": { "$ref": "#/$defs/naming" },
     "fields": {
@@ -37,6 +38,11 @@
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
     },
     "entityName": { "$ref": "#/$defs/kebabName" },
+    "icon": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Lucide icon name. Studio resolves lower-kebab names such as box or shield-check and component keys such as Box."
+    },
     "fieldType": {
       "type": "string",
       "enum": [

@@ -1,6 +1,7 @@
 name: constraint
 label: Constraint
 description: Top-level unique or check constraint definition belonging to an Entity.
+icon: shield-check
 naming:
   strategy: random
 fields:

@@ -1,6 +1,7 @@
 name: permission
 label: Permission
 description: Role access rule for an Entity.
+icon: key-round
 naming:
   strategy: random
 fields:

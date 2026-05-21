@@ -73,6 +73,8 @@ Entity names, field names, and field type names use kebab-case.
 
 dygo uses singular Entity names only. There is no separate required metadata for display plurals or storage plurals.
 
+`icon` is optional and should use a Lucide icon name, such as `box`, `user`, or `shield-check`. Studio resolves lower-kebab Lucide names and Vue component keys. Unknown icon names are non-fatal; Studio falls back to the Lucide `box` icon.
+
 The stable internal Entity identity is `{app, entity}`. Two apps may define the same Entity name, such as `crm/contact` and `support/contact`.
 
 The user-facing route slug is separate from that internal identity. `route.slug` is optional and defaults to Entity `name`. Route slugs must be globally unique across loaded apps and must not use Studio's reserved root slugs: `api`, `assets`, `health`, `login`, or `logout`. dygo fails validation on route slug conflicts instead of generating unstable numeric suffixes. If two apps both define `contact`, set one explicit slug, such as:

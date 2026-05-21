@@ -136,13 +136,14 @@ ALTER TABLE public."constraint" ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY
 CREATE TABLE public.entity (
     id bigint NOT NULL,
     name text NOT NULL,
-    route_slug text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     app_id bigint NOT NULL,
+    route_slug text NOT NULL,
     label text NOT NULL,
     description text,
-    naming jsonb
+    naming jsonb,
+    icon text
 );
 
 
@@ -816,13 +817,6 @@ CREATE INDEX constraint_type_idx ON public."constraint" USING btree (type);
 --
 
 CREATE INDEX entity_app_id_idx ON public.entity USING btree (app_id);
-
-
---
--- Name: entity_name_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX entity_name_idx ON public.entity USING btree (name);
 
 
 --

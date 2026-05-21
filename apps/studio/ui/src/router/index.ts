@@ -2,10 +2,10 @@ import { createRouter, createWebHistory, type NavigationGuardWithThis, type Rout
 
 import LoginPage from '@/features/auth/LoginPage.vue'
 import { loadCurrentUser } from '@/features/auth/session'
-import EntityListPage from '@/pages/EntityListPage.vue'
 import HomePage from '@/pages/HomePage.vue'
 import NotFoundPage from '@/pages/NotFoundPage.vue'
 import RecordFormPage from '@/pages/RecordFormPage.vue'
+import RecordsPage from '@/pages/RecordsPage.vue'
 import { isRootReservedSlug, routeParam, RouteName } from './routes'
 
 declare module 'vue-router' {
@@ -44,8 +44,8 @@ export const router = createRouter({
     },
     {
       path: '/:entity',
-      name: RouteName.EntityList,
-      component: EntityListPage,
+      name: RouteName.EntityRecords,
+      component: RecordsPage,
       beforeEnter: rejectReservedEntity,
       props: (route) => ({ entity: routeParam(route.params.entity as string | string[]) }),
     },

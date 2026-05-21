@@ -19,6 +19,9 @@ func TestDecode(t *testing.T) {
 	if entity.Name != "lead" {
 		t.Fatalf("Decode().Name = %q, want lead", entity.Name)
 	}
+	if entity.Icon != "contact" {
+		t.Fatalf("Decode().Icon = %q, want contact", entity.Icon)
+	}
 	if got := entity.EffectiveNaming(); got.Strategy != NamingStrategyRandom || got.Length != DefaultRandomNameLength {
 		t.Fatalf("Decode().EffectiveNaming() = %+v, want default random length", got)
 	}
@@ -876,6 +879,7 @@ func validEntityYAML() string {
 name: lead
 label: Lead
 description: Sales lead
+icon: contact
 fields:
   - name: full-name
     label: Full Name

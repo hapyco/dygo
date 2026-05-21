@@ -61,6 +61,8 @@ The `:entity` segment is the Entity route slug, not the app name plus Entity nam
 
 Route slug conflicts and reserved root slugs fail validation. dygo does not append numeric suffixes such as `contact-2`, because those URLs are unstable and unclear.
 
+Entity navigation icons come from optional Entity metadata `icon` values. Studio resolves Lucide names such as `box` or `shield-check`; missing or unknown names fall back to `box`.
+
 Record IDs are numeric in v1. Activity is shown inside the Record page instead of using a separate Studio URL.
 
 ## Design Rule

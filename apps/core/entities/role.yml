@@ -1,6 +1,7 @@
 name: role
 label: Role
 description: Named permission group.
+icon: shield
 naming:
   strategy: field
   field: name

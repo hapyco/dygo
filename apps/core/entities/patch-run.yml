@@ -1,6 +1,7 @@
 name: patch-run
 label: Patch Run
 description: Ledger entry for one successfully applied app patch.
+icon: git-pull-request-arrow
 naming:
   strategy: random
 fields:

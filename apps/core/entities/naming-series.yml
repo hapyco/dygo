@@ -1,6 +1,7 @@
 name: naming-series
 label: Naming Series
 description: Transactional counter state for series-based Record names.
+icon: hash
 naming:
   strategy: field
   field: key
