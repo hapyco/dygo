@@ -95,7 +95,7 @@ const { sidebarCollapsed } = storeToRefs(navigationStore)
   grid-column: 2;
   grid-row: 2;
   overflow: hidden;
-  padding: 0 var(--studio-shell-sheet-right-gutter) var(--studio-shell-bottom-gutter) 0;
+  padding: 0 var(--studio-shell-sheet-right-gutter) 0 0;
 }
 
 @media (max-width: 720px) {
@@ -117,7 +117,7 @@ const { sidebarCollapsed } = storeToRefs(navigationStore)
   .studio-shell__sheet {
     grid-column: 1;
     grid-row: 3;
-    padding: 0 12px 12px;
+    padding: 0 12px 0;
   }
 }
 </style>

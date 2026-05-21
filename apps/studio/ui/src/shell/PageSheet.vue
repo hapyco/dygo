@@ -56,7 +56,7 @@ const hasHeaderActions = computed(() => props.showActions && (props.actions.leng
   overflow-x: hidden;
   overflow-y: auto;
   border: 1px solid var(--studio-border);
-  border-radius: var(--studio-radius-sheet);
+  border-radius: var(--studio-radius-sheet) var(--studio-radius-sheet) 0 0;
   background: var(--studio-surface);
   box-shadow: var(--studio-shadow-sheet);
 }
@@ -67,7 +67,7 @@ const hasHeaderActions = computed(() => props.showActions && (props.actions.leng
 
 @media (max-width: 720px) {
   .studio-page-sheet {
-    border-radius: var(--studio-radius-sheet);
+    border-radius: var(--studio-radius-sheet) var(--studio-radius-sheet) 0 0;
   }
 
   .studio-page-sheet__header {
