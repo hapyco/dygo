@@ -40,11 +40,17 @@
   --studio-radius-control: 7px;
   --studio-radius-field: 8px;
   --studio-radius-panel: 9px;
+  --studio-radius-sheet: 12px;
+  --studio-shell-header-height: 50px;
+  --studio-shell-sidebar-width: 220px;
+  --studio-shell-gutter: 24px;
   --studio-focus-ring: 0 0 0 3px oklch(0.61 0.16 248 / 0.16);
   --studio-danger-ring: 0 0 0 3px oklch(0.55 0.15 28 / 0.14);
   --studio-shadow: 0 1px 2px oklch(0.225 0.018 246 / 0.08),
     0 18px 46px oklch(0.225 0.018 246 / 0.08);
   --studio-shadow-control: 0 1px 1px oklch(0.225 0.018 246 / 0.045);
+  --studio-shadow-sheet: 0 1px 1px oklch(0.225 0.018 246 / 0.04),
+    0 24px 64px oklch(0.225 0.018 246 / 0.07);
 }
 
 * {
@@ -90,11 +96,9 @@ select:disabled {
 
 .studio-page {
   display: grid;
-  min-height: 100vh;
   align-content: start;
   gap: 10px;
-  background: var(--studio-bg);
-  padding: 40px;
+  padding: 38px 42px;
 }
 
 .studio-page__eyebrow {
@@ -125,7 +129,7 @@ select:disabled {
 
 @media (max-width: 720px) {
   .studio-page {
-    padding: 24px;
+    padding: 28px 24px;
   }
 }
 

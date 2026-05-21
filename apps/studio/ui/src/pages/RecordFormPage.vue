@@ -7,7 +7,7 @@ const props = defineProps<{
 </script>
 
 <template>
-  <main class="studio-page" aria-labelledby="record-form-title">
+  <section class="studio-page" aria-labelledby="record-form-title">
     <p class="studio-page__eyebrow">{{ props.mode === 'new' ? 'New Record' : 'Record' }}</p>
     <h1 id="record-form-title">
       <template v-if="props.mode === 'new'">New {{ props.entity }}</template>
@@ -16,5 +16,5 @@ const props = defineProps<{
     <p class="studio-page__summary">
       This route is reserved for the metadata-powered Record form. Activity will appear inside this Record page.
     </p>
-  </main>
+  </section>
 </template>
