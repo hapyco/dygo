@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { storeToRefs } from 'pinia'
 
+import { useNavigationStore } from '@/stores/navigation.store'
 import type { ShellNavItem } from './types'
 import PageSheet from './PageSheet.vue'
 import Sidebar from './Sidebar.vue'
@@ -21,7 +22,8 @@ withDefaults(defineProps<{
   navItems: () => [],
 })
 
-const sidebarCollapsed = ref(false)
+const navigationStore = useNavigationStore()
+const { sidebarCollapsed } = storeToRefs(navigationStore)
 </script>
 
 <template>

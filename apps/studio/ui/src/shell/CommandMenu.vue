@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { RouterLink } from 'vue-router'
 import {
   ChartNoAxesColumn,
@@ -11,7 +12,10 @@ import {
   Workflow,
 } from '@lucide/vue'
 
-const open = ref(false)
+import { useNavigationStore } from '@/stores/navigation.store'
+
+const navigationStore = useNavigationStore()
+const { commandMenuOpen } = storeToRefs(navigationStore)
 const searchInput = ref<HTMLInputElement | null>(null)
 
 const commands = [
@@ -23,13 +27,13 @@ const commands = [
 ]
 
 async function openMenu() {
-  open.value = true
+  navigationStore.openCommandMenu()
   await nextTick()
   searchInput.value?.focus()
 }
 
 function closeMenu() {
-  open.value = false
+  navigationStore.closeCommandMenu()
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -39,7 +43,7 @@ function handleKeydown(event: KeyboardEvent) {
     return
   }
 
-  if (event.key === 'Escape' && open.value) {
+  if (event.key === 'Escape' && commandMenuOpen.value) {
     event.preventDefault()
     closeMenu()
   }
@@ -60,7 +64,7 @@ onBeforeUnmount(() => {
       class="studio-command-menu__trigger"
       type="button"
       aria-haspopup="dialog"
-      :aria-expanded="open"
+      :aria-expanded="commandMenuOpen"
       @click="openMenu"
     >
       <Search class="studio-command-menu__search-icon" :size="14" :stroke-width="1.8" aria-hidden="true" />
@@ -74,7 +78,7 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <div
-        v-if="open"
+        v-if="commandMenuOpen"
         class="studio-command-menu__overlay"
         role="presentation"
         @click.self="closeMenu"

@@ -1,20 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, watch, type Component } from 'vue'
+import { computed, watch, type Component } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import * as LucideIcons from '@lucide/vue'
 
-import { loadCurrentUser } from '@/features/auth/session'
-import type { CurrentUser } from '@/features/auth/auth.api'
-import { listEntities, MetadataApiError, type MetadataEntity } from '@/features/metadata/metadata.api'
 import { routeParam, RouteName } from '@/router/routes'
 import Shell from '@/shell/Shell.vue'
 import type { ShellNavItem } from '@/shell/types'
+import { useAuthStore } from '@/stores/auth.store'
+import { useMetadataStore } from '@/stores/metadata.store'
 
 const route = useRoute()
-const currentUser = ref<CurrentUser | null>(null)
-const entities = ref<MetadataEntity[]>([])
-const entitiesLoading = ref(false)
-const entitiesError = ref('')
+const authStore = useAuthStore()
+const metadataStore = useMetadataStore()
 
 const usesShell = computed(() => !route.meta.public)
 const currentEntity = computed(() => {
@@ -30,7 +27,7 @@ const lucideIconRegistry = LucideIcons as unknown as Record<string, Component | 
 const fallbackEntityIcon = LucideIcons.Box as Component
 
 const navItems = computed<ShellNavItem[]>(() => {
-  return entities.value.map((entity) => {
+  return metadataStore.entities.map((entity) => {
     const slug = entity['route-slug'] || entity.name
 
     return {
@@ -42,38 +39,21 @@ const navItems = computed<ShellNavItem[]>(() => {
   })
 })
 
-const userName = computed(() => currentUser.value?.['full-name'] || currentUser.value?.email || 'Studio user')
+const userName = computed(() => authStore.currentUser?.['full-name'] || authStore.currentUser?.email || 'Studio user')
 
 watch(
   usesShell,
   async (enabled) => {
     if (!enabled) {
-      currentUser.value = null
-      entities.value = []
-      entitiesError.value = ''
-      entitiesLoading.value = false
       return
     }
 
-    currentUser.value = await loadCurrentUser()
-    if (!currentUser.value) {
-      entities.value = []
-      entitiesError.value = ''
-      entitiesLoading.value = false
+    const user = await authStore.loadCurrentUser()
+    if (!user) {
       return
     }
 
-    entitiesLoading.value = true
-    entitiesError.value = ''
-
-    try {
-      entities.value = await listEntities()
-    } catch (error) {
-      entities.value = []
-      entitiesError.value = error instanceof MetadataApiError ? error.message : 'Studio could not load entities.'
-    } finally {
-      entitiesLoading.value = false
-    }
+    await metadataStore.loadEntities()
   },
   { immediate: true },
 )
@@ -118,13 +98,13 @@ function humanizeEntity(value: string): string {
   <RouterView v-if="!usesShell" />
   <Shell v-else :user-name="userName" :nav-items="navItems">
     <template #sidebar>
-      <div v-if="entitiesLoading" class="studio-entity-nav-state">
+      <div v-if="metadataStore.entitiesStatus === 'loading'" class="studio-entity-nav-state">
         Loading entities
       </div>
-      <div v-else-if="entitiesError" class="studio-entity-nav-state">
-        {{ entitiesError }}
+      <div v-else-if="metadataStore.entitiesError" class="studio-entity-nav-state">
+        {{ metadataStore.entitiesError.message }}
       </div>
-      <div v-else-if="entities.length === 0" class="studio-entity-nav-state">
+      <div v-else-if="metadataStore.entities.length === 0" class="studio-entity-nav-state">
         No entities yet
       </div>
     </template>

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import DataTable from '@/design/organisms/DataTable.vue'
-import type { DataTableColumn } from '@/design/types'
+import type { DataTableColumn, DataTableRowKey } from '@/design/types'
 import type { MetadataField } from '@/features/metadata/metadata.api'
-import { listRecords, RecordApiError, type RecordData } from '@/features/records/records.api'
 import { RouteName } from '@/router/routes'
+import { useRecordsStore } from '@/stores/records.store'
 
 const props = defineProps<{
   entity: string
@@ -15,13 +15,7 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
-const pageSize = ref(20)
-const records = ref<RecordData[]>([])
-const selectedRecordKeys = ref<Array<string | number>>([])
-const loading = ref(false)
-const loadingMore = ref(false)
-const error = ref('')
-const totalRecords = ref(0)
+const recordsStore = useRecordsStore()
 
 const columns = computed<DataTableColumn[]>(() => {
   const seen = new Set<string>()
@@ -41,60 +35,27 @@ const columns = computed<DataTableColumn[]>(() => {
   })
 })
 
-const hasMore = computed(() => records.value.length < totalRecords.value && !error.value)
+const recordState = computed(() => recordsStore.entityState(props.entity))
+const loading = computed(() => recordState.value.status === 'loading')
+const error = computed(() => recordState.value.error?.message ?? '')
+const hasMore = computed(() => (
+  recordState.value.rows.length < recordState.value.total && !recordState.value.error
+))
 
 watch(
   () => props.entity,
-  () => {
-    void loadInitialRecords()
+  (entity) => {
+    void recordsStore.loadInitial(entity)
   },
   { immediate: true },
 )
 
-async function loadInitialRecords() {
-  loading.value = true
-  error.value = ''
-  records.value = []
-  selectedRecordKeys.value = []
-  totalRecords.value = 0
-
-  try {
-    const result = await listRecords(props.entity, { limit: pageSize.value, offset: 0 })
-    records.value = result.data
-    totalRecords.value = result.meta.total ?? result.data.length
-  } catch (caught) {
-    error.value = caught instanceof RecordApiError ? caught.message : 'Studio could not load records.'
-  } finally {
-    loading.value = false
-  }
-}
-
-async function loadMoreRecords() {
-  if (loading.value || loadingMore.value || !hasMore.value) {
-    return
-  }
-
-  loadingMore.value = true
-  error.value = ''
-
-  try {
-    const result = await listRecords(props.entity, { limit: pageSize.value, offset: records.value.length })
-    records.value = [...records.value, ...result.data]
-    totalRecords.value = result.meta.total ?? records.value.length
-  } catch (caught) {
-    error.value = caught instanceof RecordApiError ? caught.message : 'Studio could not load more records.'
-  } finally {
-    loadingMore.value = false
-  }
-}
-
 function updatePageSize(value: number) {
-  pageSize.value = value
-  void loadInitialRecords()
+  void recordsStore.setPageSize(props.entity, value)
 }
 
-function updateSelectedRecordKeys(value: Array<string | number>) {
-  selectedRecordKeys.value = value
+function updateSelectedRecordKeys(value: DataTableRowKey[]) {
+  recordsStore.setSelectedRowKeys(props.entity, value)
 }
 
 function createFirstRecord() {
@@ -105,20 +66,20 @@ function createFirstRecord() {
 <template>
   <DataTable
     :columns="columns"
-    :rows="records"
+    :rows="recordState.rows"
     :loading="loading"
-    :loading-more="loadingMore"
+    :loading-more="recordState.loadingMore"
     :error="error"
-    :page-size="pageSize"
-    :total-rows="totalRecords"
+    :page-size="recordState.pageSize"
+    :total-rows="recordState.total"
     :has-more="hasMore"
     selectable
-    :selected-row-keys="selectedRecordKeys"
+    :selected-row-keys="recordState.selectedRowKeys"
     :empty-title="`No ${entityLabel} records exist.`"
     empty-action-label="Add first record"
     @update:page-size="updatePageSize"
     @update:selected-row-keys="updateSelectedRecordKeys"
-    @load-more="loadMoreRecords"
+    @load-more="recordsStore.loadMore(props.entity)"
     @empty-action="createFirstRecord"
   />
 </template>

@@ -1,11 +1,12 @@
 import { createRouter, createWebHistory, type NavigationGuardWithThis, type RouteLocationRaw } from 'vue-router'
 
 import LoginPage from '@/features/auth/LoginPage.vue'
-import { loadCurrentUser } from '@/features/auth/session'
 import HomePage from '@/pages/HomePage.vue'
 import NotFoundPage from '@/pages/NotFoundPage.vue'
 import RecordFormPage from '@/pages/RecordFormPage.vue'
 import RecordsPage from '@/pages/RecordsPage.vue'
+import { useAuthStore } from '@/stores/auth.store'
+import { pinia } from '@/stores/pinia'
 import { isRootReservedSlug, routeParam, RouteName } from './routes'
 
 declare module 'vue-router' {
@@ -80,7 +81,8 @@ export const router = createRouter({
 })
 
 router.beforeEach(async (to): Promise<RouteLocationRaw | undefined> => {
-  const user = await loadCurrentUser()
+  const authStore = useAuthStore(pinia)
+  const user = await authStore.loadCurrentUser()
 
   if (to.meta.redirectIfAuthenticated && user) {
     return { name: RouteName.Home }

@@ -30,11 +30,13 @@ type CurrentUserEnvelope = {
 
 export class AuthApiError extends Error {
   readonly code: string
+  readonly details?: Record<string, unknown>
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
     super(message)
     this.name = 'AuthApiError'
     this.code = code
+    this.details = details
   }
 }
 
@@ -57,7 +59,7 @@ export async function login(input: LoginInput): Promise<CurrentUser> {
   const payload = await parseJSON<LoginEnvelope & ApiErrorEnvelope>(response)
 
   if (!response.ok) {
-    throw new AuthApiError(payload.error?.code ?? 'login_failed', loginErrorMessage(payload))
+    throw new AuthApiError(payload.error?.code ?? 'login_failed', loginErrorMessage(payload), payload.error?.details)
   }
 
   return payload.data
@@ -72,7 +74,7 @@ export async function getCurrentUser(): Promise<CurrentUser> {
   const payload = await parseJSON<CurrentUserEnvelope & ApiErrorEnvelope>(response)
 
   if (!response.ok) {
-    throw new AuthApiError(payload.error?.code ?? 'unauthenticated', currentUserErrorMessage(payload))
+    throw new AuthApiError(payload.error?.code ?? 'unauthenticated', currentUserErrorMessage(payload), payload.error?.details)
   }
 
   return payload.data

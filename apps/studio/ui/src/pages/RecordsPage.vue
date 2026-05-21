@@ -1,20 +1,23 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ListFilter, Plus } from '@lucide/vue'
 
-import { getEntityMeta, type MetadataEntityMeta } from '@/features/metadata/metadata.api'
 import PageHeader from '@/shell/PageHeader.vue'
 import type { PageHeaderAction } from '@/shell/types'
 import RecordListView from '@/features/records/list/RecordListView.vue'
 import { RouteName } from '@/router/routes'
+import { useMetadataStore } from '@/stores/metadata.store'
 
 const props = defineProps<{
   entity: string
 }>()
 
 const router = useRouter()
-const entityMeta = ref<MetadataEntityMeta | null>(null)
+const metadataStore = useMetadataStore()
+
+const entityMeta = computed(() => metadataStore.entityMeta(props.entity))
+const entityMetaStatus = computed(() => metadataStore.entityMetaStatus(props.entity))
 
 const entityLabel = computed(() => {
   return entityMeta.value?.label || humanizeEntity(props.entity)
@@ -31,7 +34,7 @@ const actions = computed<PageHeaderAction[]>(() => [
     label: 'New record',
     icon: Plus,
     variant: 'primary',
-    disabled: !entityMeta.value,
+    disabled: entityMetaStatus.value !== 'ready',
     onSelect: () => {
       void router.push({ name: RouteName.RecordNew, params: { entity: props.entity } })
     },
@@ -41,13 +44,7 @@ const actions = computed<PageHeaderAction[]>(() => [
 watch(
   () => props.entity,
   async (entity) => {
-    entityMeta.value = null
-
-    try {
-      entityMeta.value = await getEntityMeta(entity)
-    } catch {
-      entityMeta.value = null
-    }
+    await metadataStore.loadEntityMeta(entity)
   },
   { immediate: true },
 )

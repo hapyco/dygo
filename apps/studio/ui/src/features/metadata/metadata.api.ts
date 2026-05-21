@@ -43,11 +43,13 @@ type DataEnvelope<T> = {
 
 export class MetadataApiError extends Error {
   readonly code: string
+  readonly details?: Record<string, unknown>
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
     super(message)
     this.name = 'MetadataApiError'
     this.code = code
+    this.details = details
   }
 }
 
@@ -60,7 +62,7 @@ export async function listEntities(): Promise<MetadataEntity[]> {
   const payload = await parseJSON<DataEnvelope<MetadataEntity[]> & ApiErrorEnvelope>(response)
 
   if (!response.ok) {
-    throw new MetadataApiError(payload.error?.code ?? 'metadata_failed', metadataErrorMessage(payload))
+    throw new MetadataApiError(payload.error?.code ?? 'metadata_failed', metadataErrorMessage(payload), payload.error?.details)
   }
 
   return payload.data
@@ -75,7 +77,7 @@ export async function getEntityMeta(entity: string): Promise<MetadataEntityMeta>
   const payload = await parseJSON<DataEnvelope<MetadataEntityMeta> & ApiErrorEnvelope>(response)
 
   if (!response.ok) {
-    throw new MetadataApiError(payload.error?.code ?? 'metadata_failed', metadataErrorMessage(payload))
+    throw new MetadataApiError(payload.error?.code ?? 'metadata_failed', metadataErrorMessage(payload), payload.error?.details)
   }
 
   return payload.data

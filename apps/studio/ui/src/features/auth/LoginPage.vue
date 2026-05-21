@@ -4,10 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { Button, CheckboxField, ErrorState, PasswordField, TextField } from '@dygo/ui'
 import { login } from './auth.api'
-import { setCurrentUser } from './session'
+import { useAuthStore } from '@/stores/auth.store'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const identifier = ref('')
 const password = ref('')
 const remember = ref(false)
@@ -38,7 +39,7 @@ async function submitLogin() {
       password: password.value,
       remember: remember.value,
     })
-    setCurrentUser(user)
+    authStore.setCurrentUser(user)
     await router.replace(redirectPath())
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : 'Sign in failed. Try again.'

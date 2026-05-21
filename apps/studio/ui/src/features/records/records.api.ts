@@ -24,11 +24,13 @@ type ListEnvelope<T> = {
 
 export class RecordApiError extends Error {
   readonly code: string
+  readonly details?: Record<string, unknown>
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
     super(message)
     this.name = 'RecordApiError'
     this.code = code
+    this.details = details
   }
 }
 
@@ -46,7 +48,7 @@ export async function listRecords(entity: string, params: { limit: number; offse
   const payload = await parseJSON<ListEnvelope<RecordData[]> & ApiErrorEnvelope>(response)
 
   if (!response.ok) {
-    throw new RecordApiError(payload.error?.code ?? 'records_failed', recordErrorMessage(payload))
+    throw new RecordApiError(payload.error?.code ?? 'records_failed', recordErrorMessage(payload), payload.error?.details)
   }
 
   return payload
