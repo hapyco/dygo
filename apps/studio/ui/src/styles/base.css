@@ -1,19 +1,22 @@
+@import url("https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap");
 @import "tailwindcss";
 
 :root {
   color-scheme: light;
   font-family:
-    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    "Google Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "GRAD" -50;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --studio-bg: oklch(0.972 0.006 246);
+  --studio-bg: oklch(97.31% 0.000 0);
   --studio-surface: oklch(0.995 0.004 246);
   --studio-surface-raised: oklch(0.988 0.006 246);
   --studio-sidebar: oklch(0.946 0.009 246);
-  --studio-border: oklch(0.872 0.014 246);
+  --studio-border: oklch(94.01% 0.000 0);
   --studio-border-strong: oklch(0.72 0.022 246);
   --studio-text: oklch(0.225 0.018 246);
   --studio-text-muted: oklch(0.455 0.024 246);
@@ -40,10 +43,12 @@
   --studio-radius-control: 7px;
   --studio-radius-field: 8px;
   --studio-radius-panel: 9px;
-  --studio-radius-sheet: 12px;
+  --studio-radius-sheet: 8px;
   --studio-shell-header-height: 50px;
   --studio-shell-sidebar-width: 220px;
   --studio-shell-gutter: 24px;
+  --studio-shell-sheet-right-gutter: 16px;
+  --studio-shell-bottom-gutter: 16px;
   --studio-focus-ring: 0 0 0 3px oklch(0.61 0.16 248 / 0.16);
   --studio-danger-ring: 0 0 0 3px oklch(0.55 0.15 28 / 0.14);
   --studio-shadow: 0 1px 2px oklch(0.225 0.018 246 / 0.08),

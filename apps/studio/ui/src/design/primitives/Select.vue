@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Check, ChevronDown } from '@lucide/vue'
 import {
   SelectContent,
   SelectIcon,
@@ -61,7 +62,9 @@ function updateValue(value: unknown) {
       :aria-readonly="readonly ? 'true' : undefined"
     >
       <SelectValue :placeholder="placeholder ?? 'Select'" />
-      <SelectIcon class="d-select__icon" aria-hidden="true" />
+      <SelectIcon class="d-select__icon" aria-hidden="true">
+        <ChevronDown :size="15" :stroke-width="1.8" />
+      </SelectIcon>
     </SelectTrigger>
 
     <SelectPortal>
@@ -75,7 +78,9 @@ function updateValue(value: unknown) {
             :disabled="option.disabled"
           >
             <SelectItemText>{{ option.label }}</SelectItemText>
-            <SelectItemIndicator class="d-select-item__indicator" />
+            <SelectItemIndicator class="d-select-item__indicator">
+              <Check :size="13" :stroke-width="2" aria-hidden="true" />
+            </SelectItemIndicator>
           </SelectItem>
         </SelectViewport>
       </SelectContent>
@@ -143,13 +148,11 @@ function updateValue(value: unknown) {
 }
 
 .d-select__icon {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
   color: var(--studio-text-subtle);
-  transform: translateY(-2px) rotate(45deg);
 }
 
 .d-select-content {
@@ -197,11 +200,9 @@ function updateValue(value: unknown) {
 .d-select-item__indicator {
   position: absolute;
   right: 9px;
-  width: 8px;
-  height: 5px;
-  border-bottom: 1.5px solid currentColor;
-  border-left: 1.5px solid currentColor;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--studio-accent-strong);
-  transform: rotate(-45deg);
 }
 </style>

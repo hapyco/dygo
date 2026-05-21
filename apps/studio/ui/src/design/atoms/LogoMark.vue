@@ -25,11 +25,11 @@ withDefaults(defineProps<{
   border: 1px solid var(--studio-border);
   border-radius: 8px;
   background: var(--studio-surface);
-  color: var(--studio-accent-strong);
-  box-shadow: var(--studio-shadow-control);
+  color: var(--studio-text);
   font-size: 16px;
   font-weight: 800;
   letter-spacing: 0;
   line-height: 1;
+  text-transform: uppercase;
 }
 </style>

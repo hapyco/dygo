@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PageHeader from '@/shell/PageHeader.vue'
+
 defineProps<{
   entity: string
 }>()
@@ -6,10 +8,11 @@ defineProps<{
 
 <template>
   <section class="studio-page" aria-labelledby="entity-list-title">
-    <p class="studio-page__eyebrow">Entity list</p>
-    <h1 id="entity-list-title">{{ entity }}</h1>
-    <p class="studio-page__summary">
-      This route is reserved for the metadata-powered list renderer for {{ entity }} Records.
-    </p>
+    <PageHeader
+      title-id="entity-list-title"
+      eyebrow="Entity list"
+      :title="entity"
+      :summary="`This route is reserved for the metadata-powered list renderer for ${entity} Records.`"
+    />
   </section>
 </template>

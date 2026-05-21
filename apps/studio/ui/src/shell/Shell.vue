@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+
 import type { ShellNavItem } from './types'
 import PageSheet from './PageSheet.vue'
 import Sidebar from './Sidebar.vue'
@@ -18,10 +20,12 @@ withDefaults(defineProps<{
   userName: 'Studio user',
   navItems: () => [],
 })
+
+const sidebarCollapsed = ref(false)
 </script>
 
 <template>
-  <div class="studio-shell">
+  <div class="studio-shell" :class="{ 'studio-shell--sidebar-collapsed': sidebarCollapsed }">
     <TopBar
       class="studio-shell__header"
       :brand-label="brandLabel"
@@ -35,7 +39,11 @@ withDefaults(defineProps<{
       </template>
     </TopBar>
 
-    <Sidebar class="studio-shell__sidebar" :items="navItems">
+    <Sidebar
+      v-model:collapsed="sidebarCollapsed"
+      class="studio-shell__sidebar"
+      :items="navItems"
+    >
       <slot name="sidebar" />
     </Sidebar>
 
@@ -58,6 +66,10 @@ withDefaults(defineProps<{
     var(--studio-bg);
 }
 
+.studio-shell--sidebar-collapsed {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
 .studio-shell__header {
   grid-column: 1 / -1;
   grid-row: 1;
@@ -74,7 +86,7 @@ withDefaults(defineProps<{
   min-width: 0;
   grid-column: 2;
   grid-row: 2;
-  padding: 0 var(--studio-shell-gutter) var(--studio-shell-gutter) 0;
+  padding: 0 var(--studio-shell-sheet-right-gutter) var(--studio-shell-bottom-gutter) 0;
 }
 
 @media (max-width: 720px) {

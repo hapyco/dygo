@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Bell } from '@lucide/vue'
+
 import LogoMark from '@/design/atoms/LogoMark.vue'
 import Breadcrumbs from './Breadcrumbs.vue'
 import CommandMenu from './CommandMenu.vue'
@@ -32,7 +34,7 @@ withDefaults(defineProps<{
       <div class="studio-top-bar__right">
         <slot name="actions" />
         <button class="studio-top-bar__notification" type="button" aria-label="Notifications">
-          <span aria-hidden="true" />
+          <Bell :size="16" :stroke-width="1.8" aria-hidden="true" />
         </button>
         <UserMenu :user-name="userName" :user-avatar-url="userAvatarUrl" />
       </div>
@@ -114,38 +116,6 @@ withDefaults(defineProps<{
 .studio-top-bar__notification:focus-visible {
   outline: 2px solid var(--studio-focus);
   outline-offset: 2px;
-}
-
-.studio-top-bar__notification span {
-  position: relative;
-  width: 13px;
-  height: 14px;
-  border: 1.6px solid currentColor;
-  border-bottom: 0;
-  border-radius: 8px 8px 5px 5px;
-}
-
-.studio-top-bar__notification span::before {
-  position: absolute;
-  top: -3px;
-  left: 4px;
-  width: 3px;
-  height: 3px;
-  border-radius: 999px;
-  background: currentColor;
-  content: '';
-}
-
-.studio-top-bar__notification span::after {
-  position: absolute;
-  right: 3px;
-  bottom: -4px;
-  left: 3px;
-  height: 1.6px;
-  border-radius: 999px;
-  background: currentColor;
-  box-shadow: 2px 3px 0 -1px currentColor;
-  content: '';
 }
 
 @media (max-width: 720px) {

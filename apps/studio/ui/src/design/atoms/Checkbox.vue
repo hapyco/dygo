@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Check } from '@lucide/vue'
 import { CheckboxIndicator, CheckboxRoot } from 'reka-ui'
 
 withDefaults(
@@ -41,9 +42,7 @@ defineEmits<{
     @update:model-value="$emit('update:modelValue', Boolean($event))"
   >
     <CheckboxIndicator class="d-checkbox__indicator">
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M6.5 11.2 3.4 8.1l1.1-1.1 2 2 5-5 1.1 1.1-6.1 6.1Z" />
-      </svg>
+      <Check :size="13" :stroke-width="2.4" aria-hidden="true" />
     </CheckboxIndicator>
   </CheckboxRoot>
 </template>
@@ -100,11 +99,5 @@ defineEmits<{
   height: 14px;
   align-items: center;
   justify-content: center;
-}
-
-.d-checkbox__indicator svg {
-  width: 13px;
-  height: 13px;
-  fill: currentColor;
 }
 </style>

@@ -16,7 +16,7 @@ const initials = computed(() => {
     return 'SU'
   }
 
-  return words.slice(0, 2).map((word) => word[0]?.toUpperCase()).join('')
+  return words.slice(0, 2).map((word) => word[0]?.toUpperCase()).join('').toUpperCase()
 })
 </script>
 
@@ -38,11 +38,8 @@ const initials = computed(() => {
   overflow: hidden;
   border: 1px solid var(--studio-border);
   border-radius: 999px;
-  background:
-    radial-gradient(circle at 32% 24%, oklch(0.88 0.036 74), transparent 32%),
-    linear-gradient(135deg, oklch(0.42 0.035 246), oklch(0.25 0.03 246));
-  color: oklch(0.99 0.004 246);
-  box-shadow: var(--studio-shadow-control);
+  background: var(--studio-surface);
+  color: var(--studio-text);
 }
 
 .d-avatar[data-size='sm'] {
@@ -61,6 +58,7 @@ const initials = computed(() => {
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 .d-avatar[data-size='sm'] .d-avatar__fallback {

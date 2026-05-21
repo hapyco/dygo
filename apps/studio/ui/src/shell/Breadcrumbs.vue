@@ -1,7 +1,11 @@
+<script setup lang="ts">
+import { Home } from '@lucide/vue'
+</script>
+
 <template>
   <nav class="studio-breadcrumbs" aria-label="Breadcrumb">
     <a class="studio-breadcrumbs__home" href="/" aria-label="Home">
-      <span class="studio-breadcrumbs__home-icon" aria-hidden="true" />
+      <Home class="studio-breadcrumbs__home-icon" :size="16" :stroke-width="1.8" aria-hidden="true" />
     </a>
   </nav>
 </template>
@@ -40,23 +44,6 @@
 }
 
 .studio-breadcrumbs__home-icon {
-  position: relative;
-  width: 14px;
-  height: 12px;
-  border: 1.6px solid currentColor;
-  border-top: 0;
-  border-radius: 2px;
-}
-
-.studio-breadcrumbs__home-icon::before {
-  position: absolute;
-  top: -6px;
-  left: 1px;
-  width: 9px;
-  height: 9px;
-  border-left: 1.6px solid currentColor;
-  border-top: 1.6px solid currentColor;
-  content: '';
-  transform: rotate(45deg);
+  flex: 0 0 auto;
 }
 </style>

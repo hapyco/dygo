@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Search } from '@lucide/vue'
+
 import Input from '../atoms/Input.vue'
 import type { ControlSize } from '../types'
 
@@ -24,7 +26,7 @@ defineEmits<{
 
 <template>
   <div class="d-search-box" role="search">
-    <span class="d-search-box__icon" aria-hidden="true" />
+    <Search class="d-search-box__icon" :size="14" :stroke-width="1.8" aria-hidden="true" />
     <Input
       :id="id"
       class="d-search-box__input"
@@ -51,25 +53,9 @@ defineEmits<{
   z-index: 1;
   top: 50%;
   left: 11px;
-  width: 13px;
-  height: 13px;
-  border: 1.7px solid var(--studio-text-subtle);
-  border-radius: 999px;
+  color: var(--studio-text-subtle);
   transform: translateY(-50%);
   pointer-events: none;
-}
-
-.d-search-box__icon::after {
-  position: absolute;
-  right: -4px;
-  bottom: -3px;
-  width: 6px;
-  height: 1.7px;
-  border-radius: 999px;
-  background: var(--studio-text-subtle);
-  content: '';
-  transform: rotate(45deg);
-  transform-origin: center;
 }
 
 .d-search-box__input {
