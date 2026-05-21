@@ -1,4 +1,14 @@
-export type { BadgeVariant, ControlSize, FieldOption, TextInputType } from './types'
+export type {
+  BadgeVariant,
+  ControlSize,
+  DataTableColumn,
+  DataTableRow,
+  DataTableRowKey,
+  FieldOption,
+  SegmentedControlOption,
+  SegmentedControlValue,
+  TextInputType,
+} from './types'
 export { default as Avatar } from './atoms/Avatar.vue'
 export { default as Badge } from './atoms/Badge.vue'
 export { default as Button } from './atoms/Button.vue'
@@ -21,7 +31,9 @@ export { default as FormSection } from './molecules/FormSection.vue'
 export { default as PasswordField } from './molecules/PasswordField.vue'
 export { default as RadioGroupField } from './molecules/RadioGroupField.vue'
 export { default as SearchBox } from './molecules/SearchBox.vue'
+export { default as SegmentedControl } from './molecules/SegmentedControl.vue'
 export { default as SelectField } from './molecules/SelectField.vue'
 export { default as SwitchField } from './molecules/SwitchField.vue'
 export { default as TextareaField } from './molecules/TextareaField.vue'
 export { default as TextField } from './molecules/TextField.vue'
+export { default as DataTable } from './organisms/DataTable.vue'

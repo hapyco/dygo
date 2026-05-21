@@ -49,32 +49,55 @@
   --studio-shell-gutter: 24px;
   --studio-shell-sheet-right-gutter: 16px;
   --studio-shell-bottom-gutter: 16px;
+  --studio-page-padding: 16px;
   --studio-focus-ring: 0 0 0 3px oklch(0.61 0.16 248 / 0.16);
   --studio-danger-ring: 0 0 0 3px oklch(0.55 0.15 28 / 0.14);
   --studio-shadow: 0 1px 2px oklch(0.225 0.018 246 / 0.08),
     0 18px 46px oklch(0.225 0.018 246 / 0.08);
   --studio-shadow-control: 0 1px 1px oklch(0.225 0.018 246 / 0.045);
-  --studio-shadow-sheet: 0 1px 1px oklch(0.225 0.018 246 / 0.04),
-    0 24px 64px oklch(0.225 0.018 246 / 0.07);
+  --studio-shadow-sheet: 0 0 1px oklch(0.225 0.018 246 / 0.035),
+    0 0 24px oklch(0.225 0.018 246 / 0.045);
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-color: oklch(0.58 0.018 246 / 0.32) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 0;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: oklch(0.58 0.018 246 / 0.32);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.48 0.022 246 / 0.44);
 }
 
 html {
   min-width: 320px;
-  min-height: 100%;
+  height: 100%;
   background: var(--studio-bg);
+  overflow: hidden;
 }
 
 body {
   min-width: 320px;
-  min-height: 100vh;
+  height: 100%;
   margin: 0;
   background: var(--studio-bg);
   color: var(--studio-text);
   font-size: 14px;
+  overflow: hidden;
 }
 
 button,
@@ -96,14 +119,15 @@ select:disabled {
 }
 
 #app {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
 }
 
 .studio-page {
   display: grid;
   align-content: start;
   gap: 10px;
-  padding: 38px 42px;
+  padding: var(--studio-page-padding);
 }
 
 .studio-page__eyebrow {
@@ -130,12 +154,6 @@ select:disabled {
   color: var(--studio-text-muted);
   font-size: 14px;
   line-height: 1.55;
-}
-
-@media (max-width: 720px) {
-  .studio-page {
-    padding: 28px 24px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

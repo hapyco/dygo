@@ -26,7 +26,7 @@ PATCH  /api/v1/records/{entity}/{id}
 DELETE /api/v1/records/{entity}/{id}
 ```
 
-List endpoints default to `limit=50` and `offset=0`. The maximum limit is `100`. Records are ordered by `id ASC` unless `sort` is provided.
+List endpoints default to `limit=50` and `offset=0`. The maximum limit is `2500`. Records are ordered by `id ASC` unless `sort` is provided.
 
 Exact filters use direct Field query params:
 

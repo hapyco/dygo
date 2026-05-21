@@ -58,9 +58,11 @@ const sidebarCollapsed = ref(false)
 <style scoped>
 .studio-shell {
   display: grid;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   grid-template-columns: var(--studio-shell-sidebar-width) minmax(0, 1fr);
   grid-template-rows: var(--studio-shell-header-height) minmax(0, 1fr);
+  overflow: hidden;
   background:
     linear-gradient(180deg, oklch(0.982 0.006 246), var(--studio-bg) 34%),
     var(--studio-bg);
@@ -78,14 +80,19 @@ const sidebarCollapsed = ref(false)
 .studio-shell__sidebar {
   grid-column: 1;
   grid-row: 2;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .studio-shell__sheet {
   position: relative;
   z-index: 1;
+  display: grid;
+  min-height: 0;
   min-width: 0;
   grid-column: 2;
   grid-row: 2;
+  overflow: hidden;
   padding: 0 var(--studio-shell-sheet-right-gutter) var(--studio-shell-bottom-gutter) 0;
 }
 

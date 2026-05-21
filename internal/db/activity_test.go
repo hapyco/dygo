@@ -106,7 +106,7 @@ func TestActivityReaderValidationErrors(t *testing.T) {
 		wantCode string
 	}{
 		{name: "invalid id", recordID: 0, wantCode: RecordErrorInvalidRequest},
-		{name: "invalid limit", recordID: 1, params: RecordListParams{Limit: 101}, wantCode: RecordErrorInvalidRequest},
+		{name: "invalid limit", recordID: 1, params: RecordListParams{Limit: 2501}, wantCode: RecordErrorInvalidRequest},
 		{name: "invalid offset", recordID: 1, params: RecordListParams{Offset: -1}, wantCode: RecordErrorInvalidRequest},
 	}
 

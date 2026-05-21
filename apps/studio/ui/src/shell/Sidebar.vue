@@ -63,6 +63,7 @@ const emit = defineEmits<{
   min-height: 0;
   min-width: 0;
   flex-direction: column;
+  overflow: hidden;
   padding: 18px 14px 24px var(--studio-shell-gutter);
   transition: padding 160ms ease;
 }
@@ -74,7 +75,12 @@ const emit = defineEmits<{
 
 .studio-sidebar__nav {
   display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: start;
   gap: 4px;
+  grid-auto-rows: min-content;
+  overflow-y: auto;
   width: 100%;
 }
 
@@ -160,6 +166,7 @@ const emit = defineEmits<{
 @media (max-width: 720px) {
   .studio-sidebar {
     display: block;
+    overflow: visible;
     padding: 0 14px 12px;
   }
 

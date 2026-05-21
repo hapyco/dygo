@@ -911,7 +911,7 @@ func TestRecordStoreMapsMetadataSchemaErrors(t *testing.T) {
 }
 
 func TestRecordStoreInvalidPaginationAndIDs(t *testing.T) {
-	_, err := NewRecordStore(newUserRecordQueryer()).ListRecords(context.Background(), "user", RecordListParams{Limit: 101})
+	_, err := NewRecordStore(newUserRecordQueryer()).ListRecords(context.Background(), "user", RecordListParams{Limit: 2501})
 	assertRecordError(t, err, RecordErrorInvalidRequest, "")
 
 	_, err = NewRecordStore(newUserRecordQueryer()).GetRecord(context.Background(), "user", 0)

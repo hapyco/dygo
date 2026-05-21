@@ -1,5 +1,42 @@
 <script setup lang="ts">
-import { Home } from '@lucide/vue'
+import { computed } from 'vue'
+import { ChevronRight, Home } from '@lucide/vue'
+import { useRoute } from 'vue-router'
+
+import { RouteName } from '@/router/routes'
+
+const route = useRoute()
+
+const currentCrumb = computed(() => {
+  if (route.name === RouteName.Home) {
+    return ''
+  }
+
+  const entity = route.params.entity
+  if (typeof entity === 'string' && entity.length > 0) {
+    if (route.name === RouteName.RecordNew) {
+      return `New ${humanize(entity)}`
+    }
+
+    if (route.name === RouteName.RecordDetail && typeof route.params.id === 'string') {
+      return `${humanize(entity)} ${route.params.id}`
+    }
+
+    return humanize(entity)
+  }
+
+  if (typeof route.name === 'string') {
+    return humanize(route.name)
+  }
+
+  return ''
+})
+
+function humanize(value: string): string {
+  return value
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
 </script>
 
 <template>
@@ -7,13 +44,19 @@ import { Home } from '@lucide/vue'
     <a class="studio-breadcrumbs__home" href="/" aria-label="Home">
       <Home class="studio-breadcrumbs__home-icon" :size="16" :stroke-width="1.8" aria-hidden="true" />
     </a>
+    <template v-if="currentCrumb">
+      <ChevronRight class="studio-breadcrumbs__separator" :size="14" :stroke-width="1.8" aria-hidden="true" />
+      <span class="studio-breadcrumbs__current" aria-current="page">{{ currentCrumb }}</span>
+    </template>
   </nav>
 </template>
 
 <style scoped>
 .studio-breadcrumbs {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
+  gap: 6px;
 }
 
 .studio-breadcrumbs__home {
@@ -45,5 +88,21 @@ import { Home } from '@lucide/vue'
 
 .studio-breadcrumbs__home-icon {
   flex: 0 0 auto;
+}
+
+.studio-breadcrumbs__separator {
+  flex: 0 0 auto;
+  color: var(--studio-text-subtle);
+}
+
+.studio-breadcrumbs__current {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--studio-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

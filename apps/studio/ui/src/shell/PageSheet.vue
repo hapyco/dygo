@@ -12,8 +12,6 @@ const props = withDefaults(defineProps<{
   showActions?: boolean
   title?: string
   titleId?: string
-  eyebrow?: string
-  summary?: string
   actions?: PageHeaderAction[]
 }>(), {
   showHeader: false,
@@ -24,9 +22,7 @@ const props = withDefaults(defineProps<{
 
 const slots = useSlots()
 
-const hasHeaderEyebrow = computed(() => Boolean(props.eyebrow || slots.eyebrow))
 const hasHeaderTitle = computed(() => props.showTitle && Boolean(props.title || slots.title))
-const hasHeaderSummary = computed(() => Boolean(props.summary || slots.summary))
 const hasHeaderActions = computed(() => props.showActions && (props.actions.length > 0 || Boolean(slots.actions)))
 </script>
 
@@ -37,22 +33,12 @@ const hasHeaderActions = computed(() => props.showActions && (props.actions.leng
       class="studio-page-sheet__header"
       :title="props.title"
       :title-id="props.titleId"
-      :eyebrow="props.eyebrow"
-      :summary="props.summary"
       :actions="props.actions"
-      :show-eyebrow="hasHeaderEyebrow"
       :show-title="hasHeaderTitle"
-      :show-summary="hasHeaderSummary"
       :show-actions="hasHeaderActions"
     >
-      <template #eyebrow>
-        <slot name="eyebrow" />
-      </template>
       <template #title>
         <slot name="title" />
-      </template>
-      <template #summary>
-        <slot name="summary" />
       </template>
       <template #actions>
         <slot name="actions" />
@@ -65,8 +51,10 @@ const hasHeaderActions = computed(() => props.showActions && (props.actions.leng
 
 <style scoped>
 .studio-page-sheet {
-  min-height: calc(100vh - var(--studio-shell-header-height) - var(--studio-shell-bottom-gutter));
-  overflow: hidden;
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--studio-border);
   border-radius: var(--studio-radius-sheet);
   background: var(--studio-surface);
@@ -79,7 +67,6 @@ const hasHeaderActions = computed(() => props.showActions && (props.actions.leng
 
 @media (max-width: 720px) {
   .studio-page-sheet {
-    min-height: calc(100vh - var(--studio-shell-header-height) - 82px);
     border-radius: var(--studio-radius-sheet);
   }
 

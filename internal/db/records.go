@@ -28,7 +28,7 @@ const (
 
 const (
 	defaultRecordLimit = 50
-	maxRecordLimit     = 100
+	maxRecordLimit     = 2500
 	randomNameRetries  = 5
 )
 
@@ -1121,7 +1121,7 @@ func normalizeRecordListParams(params RecordListParams) (RecordListParams, error
 		params.Limit = defaultRecordLimit
 	}
 	if params.Limit < 0 || params.Limit > maxRecordLimit {
-		return RecordListParams{}, recordError(RecordErrorInvalidRequest, "limit must be between 1 and 100", map[string]any{"limit": params.Limit}, nil)
+		return RecordListParams{}, recordError(RecordErrorInvalidRequest, "limit must be between 1 and 2500", map[string]any{"limit": params.Limit}, nil)
 	}
 	if params.Offset < 0 {
 		return RecordListParams{}, recordError(RecordErrorInvalidRequest, "offset must be greater than or equal to 0", map[string]any{"offset": params.Offset}, nil)

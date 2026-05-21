@@ -924,7 +924,7 @@ func recordPaginationParams(r *http.Request) (db.RecordListParams, error) {
 			return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "limit must be an integer", Details: map[string]any{"limit": value}, Err: err}
 		}
 		if parsed <= 0 {
-			return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "limit must be between 1 and 100", Details: map[string]any{"limit": parsed}}
+			return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "limit must be between 1 and 2500", Details: map[string]any{"limit": parsed}}
 		}
 		params.Limit = parsed
 	}
