@@ -601,6 +601,7 @@ func TestRecordRoutes(t *testing.T) {
 			Limit:   50,
 			Offset:  0,
 			Count:   1,
+			Total:   1,
 		},
 		record: db.Record{"id": int64(1), "email": "a@example.com"},
 	}
@@ -612,7 +613,7 @@ func TestRecordRoutes(t *testing.T) {
 		status int
 		want   string
 	}{
-		{method: http.MethodGet, path: "/api/v1/records/user", status: http.StatusOK, want: `"meta":{"limit":50,"offset":0,"count":1}`},
+		{method: http.MethodGet, path: "/api/v1/records/user", status: http.StatusOK, want: `"meta":{"limit":50,"offset":0,"count":1,"total":1}`},
 		{method: http.MethodGet, path: "/api/v1/records/user/1", status: http.StatusOK, want: `"email":"a@example.com"`},
 		{method: http.MethodPost, path: "/api/v1/records/user", body: `{"data":{"email":"a@example.com"}}`, status: http.StatusCreated, want: `"data":`},
 		{method: http.MethodPatch, path: "/api/v1/records/user/1", body: `{"data":{"email":"b@example.com"}}`, status: http.StatusOK, want: `"data":`},

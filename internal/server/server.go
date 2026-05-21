@@ -432,6 +432,7 @@ type recordListMeta struct {
 	Limit  int `json:"limit"`
 	Offset int `json:"offset"`
 	Count  int `json:"count"`
+	Total  int `json:"total,omitempty"`
 }
 
 type errorEnvelope struct {
@@ -709,7 +710,7 @@ func (h recordHandler) listRecords(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, listEnvelope{
 		Data: result.Records,
-		Meta: recordListMeta{Limit: result.Limit, Offset: result.Offset, Count: result.Count},
+		Meta: recordListMeta{Limit: result.Limit, Offset: result.Offset, Count: result.Count, Total: result.Total},
 	})
 }
 

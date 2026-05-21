@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Inbox, Plus } from '@lucide/vue'
 
 import Button from '@/design/atoms/Button.vue'
 import Checkbox from '@/design/atoms/Checkbox.vue'
@@ -19,8 +20,11 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   loadingMore?: boolean
   error?: string
+  emptyTitle?: string
   emptyMessage?: string
+  emptyActionLabel?: string
   pageSize: number
+  totalRows?: number
   pageSizeOptions?: number[]
   hasMore?: boolean
   selectable?: boolean
@@ -30,7 +34,9 @@ const props = withDefaults(defineProps<{
   loading: false,
   loadingMore: false,
   error: '',
-  emptyMessage: 'No records found.',
+  emptyTitle: 'No records exist.',
+  emptyMessage: '',
+  emptyActionLabel: '',
   pageSizeOptions: () => [20, 100, 500, 2500],
   hasMore: false,
   selectable: false,
@@ -41,6 +47,7 @@ const emit = defineEmits<{
   'update:pageSize': [value: number]
   'update:selectedRowKeys': [value: DataTableRowKey[]]
   loadMore: []
+  emptyAction: []
 }>()
 
 const columnSpan = computed(() => Math.max(props.columns.length + (props.selectable ? 1 : 0), 1))
@@ -54,6 +61,10 @@ const selectedRowKeySet = computed(() => new Set(props.selectedRowKeys))
 const visibleRowKeys = computed(() => props.rows.map((row, index) => rowIdentifier(row, index)))
 const allVisibleRowsSelected = computed(() => (
   visibleRowKeys.value.length > 0 && visibleRowKeys.value.every((key) => selectedRowKeySet.value.has(key))
+))
+const isEmpty = computed(() => !props.loading && !props.error && props.rows.length === 0)
+const footerCountText = computed(() => (
+  typeof props.totalRows === 'number' ? `${props.rows.length} of ${props.totalRows}` : `${props.rows.length} loaded`
 ))
 
 function rowIdentifier(row: DataTableRow, index: number): DataTableRowKey {
@@ -121,7 +132,26 @@ function updateVisibleRowSelection(selected: boolean) {
 
 <template>
   <section class="data-table" aria-label="Records table">
-    <div class="data-table__scroller">
+    <div v-if="isEmpty" class="data-table__empty">
+      <div class="data-table__empty-icon" aria-hidden="true">
+        <Inbox :size="22" :stroke-width="1.7" />
+      </div>
+      <p class="data-table__empty-title">{{ emptyTitle }}</p>
+      <p v-if="emptyMessage" class="data-table__empty-message">{{ emptyMessage }}</p>
+      <Button
+        v-if="emptyActionLabel"
+        class="data-table__empty-action"
+        type="button"
+        variant="secondary"
+        size="sm"
+        @click="emit('emptyAction')"
+      >
+        <Plus :size="14" :stroke-width="1.9" aria-hidden="true" />
+        {{ emptyActionLabel }}
+      </Button>
+    </div>
+
+    <div v-else class="data-table__scroller">
       <div class="data-table__x-scroller">
         <table class="data-table__table">
           <thead>
@@ -150,11 +180,6 @@ function updateVisibleRowSelection(selected: boolean) {
                 {{ error }}
               </td>
             </tr>
-            <tr v-else-if="rows.length === 0">
-              <td :colspan="columnSpan" class="data-table__state">
-                {{ emptyMessage }}
-              </td>
-            </tr>
             <tr v-for="(row, index) in rows" v-else :key="rowIdentifier(row, index)">
               <td v-if="selectable" class="data-table__select-cell">
                 <Checkbox
@@ -173,7 +198,7 @@ function updateVisibleRowSelection(selected: boolean) {
       </div>
     </div>
 
-    <footer class="data-table__footer">
+    <footer v-if="!isEmpty" class="data-table__footer">
       <SegmentedControl
         :model-value="pageSize"
         :options="pageSizeControlOptions"
@@ -183,12 +208,13 @@ function updateVisibleRowSelection(selected: boolean) {
       />
 
       <div class="data-table__footer-right">
-        <span class="data-table__count">{{ rows.length }} loaded</span>
+        <span class="data-table__count">{{ footerCountText }}</span>
         <Button
+          v-if="hasMore || loadingMore"
           type="button"
           variant="secondary"
           size="sm"
-          :disabled="loading || loadingMore || !hasMore"
+          :disabled="loading || loadingMore"
           :loading="loadingMore"
           @click="emit('loadMore')"
         >
@@ -285,6 +311,47 @@ function updateVisibleRowSelection(selected: boolean) {
 
 .data-table__state--error {
   color: var(--studio-danger);
+}
+
+.data-table__empty {
+  display: grid;
+  min-height: 260px;
+  align-content: start;
+  justify-items: center;
+  padding: 196px 16px 44px;
+  text-align: center;
+}
+
+.data-table__empty-icon {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-surface-raised);
+  color: var(--studio-text-subtle);
+}
+
+.data-table__empty-title {
+  margin: 12px 0 0;
+  color: var(--studio-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.data-table__empty-message {
+  max-width: 42ch;
+  margin: 6px 0 0;
+  color: var(--studio-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.data-table__empty-action {
+  margin-top: 14px;
 }
 
 .data-table__footer {

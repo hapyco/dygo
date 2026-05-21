@@ -6,6 +6,7 @@ export type RecordListMeta = {
   limit: number
   offset: number
   count: number
+  total?: number
 }
 
 type ApiErrorEnvelope = {

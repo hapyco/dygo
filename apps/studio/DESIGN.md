@@ -56,7 +56,7 @@ Suggested token roles:
 Use a product UI sans stack:
 
 ```css
-font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 ```
 
 Use fixed rem sizes, not viewport-scaled type.

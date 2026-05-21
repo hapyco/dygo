@@ -78,6 +78,7 @@ type RecordListResult struct {
 	Limit   int
 	Offset  int
 	Count   int
+	Total   int
 }
 
 // RecordError reports stable Record runtime failures for API mapping.
@@ -152,7 +153,7 @@ func (s RecordStore) listRecords(ctx context.Context, layout recordLayout, entit
 	if err != nil {
 		return RecordListResult{}, err
 	}
-	sql := fmt.Sprintf("SELECT %s FROM %s", layout.selectList(), quoteIdent(layout.Table))
+	sql := fmt.Sprintf("SELECT %s, COUNT(*) OVER() FROM %s", layout.selectList(), quoteIdent(layout.Table))
 	if query.Where != "" {
 		sql += " WHERE " + query.Where
 	}
@@ -166,10 +167,18 @@ func (s RecordStore) listRecords(ctx context.Context, layout recordLayout, entit
 	defer rows.Close()
 
 	records := []Record{}
+	total := 0
 	for rows.Next() {
 		values, err := rows.Values()
 		if err != nil {
 			return RecordListResult{}, recordError(RecordErrorInternal, "read record row failed", map[string]any{"entity": entity}, err)
+		}
+		if len(values) == layout.recordValueCount()+1 {
+			total, err = scanRecordTotal(values[len(values)-1], entity)
+			if err != nil {
+				return RecordListResult{}, err
+			}
+			values = values[:len(values)-1]
 		}
 		record, err := layout.recordFromValues(values)
 		if err != nil {
@@ -180,7 +189,10 @@ func (s RecordStore) listRecords(ctx context.Context, layout recordLayout, entit
 	if err := rows.Err(); err != nil {
 		return RecordListResult{}, classifyRecordDBError(err, entity)
 	}
-	return RecordListResult{Records: records, Limit: params.Limit, Offset: params.Offset, Count: len(records)}, nil
+	if total == 0 {
+		total = len(records)
+	}
+	return RecordListResult{Records: records, Limit: params.Limit, Offset: params.Offset, Count: len(records), Total: total}, nil
 }
 
 type recordListQuery struct {
@@ -793,13 +805,18 @@ func (l recordLayout) selectList() string {
 	return strings.Join(columns, ", ")
 }
 
-func (l recordLayout) recordFromValues(values []any) (Record, error) {
+func (l recordLayout) recordValueCount() int {
 	expected := 4
 	for _, field := range l.Fields {
 		if field.Storage && !field.WriteOnly && !field.SystemName {
 			expected++
 		}
 	}
+	return expected
+}
+
+func (l recordLayout) recordFromValues(values []any) (Record, error) {
+	expected := l.recordValueCount()
 	if len(values) != expected {
 		return nil, recordError(RecordErrorInternal, "record column count did not match metadata", map[string]any{"entity": l.Entity, "expected": expected, "actual": len(values)}, nil)
 	}
@@ -818,6 +835,22 @@ func (l recordLayout) recordFromValues(values []any) (Record, error) {
 		index++
 	}
 	return record, nil
+}
+
+func scanRecordTotal(value any, entity string) (int, error) {
+	switch total := value.(type) {
+	case int:
+		return total, nil
+	case int32:
+		return int(total), nil
+	case int64:
+		if total > int64(math.MaxInt) {
+			return 0, recordError(RecordErrorInternal, "record total count is too large", map[string]any{"entity": entity}, nil)
+		}
+		return int(total), nil
+	default:
+		return 0, recordError(RecordErrorInternal, "record total count type was invalid", map[string]any{"entity": entity, "type": fmt.Sprintf("%T", value)}, nil)
+	}
 }
 
 func (l recordLayout) listQuery(params RecordListParams) (recordListQuery, error) {
