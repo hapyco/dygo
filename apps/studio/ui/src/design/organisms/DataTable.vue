@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Inbox, Plus } from '@lucide/vue'
+import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Inbox, Plus } from '@lucide/vue'
 
 import Button from '@/design/atoms/Button.vue'
 import Checkbox from '@/design/atoms/Checkbox.vue'
+import Spinner from '@/design/atoms/Spinner.vue'
 import SegmentedControl from '@/design/molecules/SegmentedControl.vue'
 import type {
   DataTableColumn,
   DataTableRow,
   DataTableRowKey,
+  DataTableSort,
+  DataTableSortDirection,
   SegmentedControlOption,
   SegmentedControlValue,
 } from '@/design/types'
@@ -27,6 +30,8 @@ const props = withDefaults(defineProps<{
   totalRows?: number
   pageSizeOptions?: number[]
   hasMore?: boolean
+  sort?: DataTableSort | null
+  footerError?: string
   selectable?: boolean
   selectedRowKeys?: DataTableRowKey[]
 }>(), {
@@ -39,6 +44,8 @@ const props = withDefaults(defineProps<{
   emptyActionLabel: '',
   pageSizeOptions: () => [20, 100, 500, 2500],
   hasMore: false,
+  sort: null,
+  footerError: '',
   selectable: false,
   selectedRowKeys: () => [],
 })
@@ -46,11 +53,11 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'update:pageSize': [value: number]
   'update:selectedRowKeys': [value: DataTableRowKey[]]
+  'update:sort': [value: DataTableSort | null]
   loadMore: []
   emptyAction: []
 }>()
 
-const columnSpan = computed(() => Math.max(props.columns.length + (props.selectable ? 1 : 0), 1))
 const pageSizeControlOptions = computed<SegmentedControlOption[]>(() => (
   props.pageSizeOptions.map((option) => ({
     value: option,
@@ -63,9 +70,12 @@ const allVisibleRowsSelected = computed(() => (
   visibleRowKeys.value.length > 0 && visibleRowKeys.value.every((key) => selectedRowKeySet.value.has(key))
 ))
 const isEmpty = computed(() => !props.loading && !props.error && props.rows.length === 0)
+const isBlockingState = computed(() => props.rows.length === 0 && (props.loading || Boolean(props.error)))
+const showFooter = computed(() => !isEmpty.value && !isBlockingState.value)
 const footerCountText = computed(() => (
   typeof props.totalRows === 'number' ? `${props.rows.length} of ${props.totalRows}` : `${props.rows.length} loaded`
 ))
+const controlsDisabled = computed(() => props.loading || props.loadingMore)
 
 function rowIdentifier(row: DataTableRow, index: number): DataTableRowKey {
   const value = row[props.rowKey]
@@ -101,6 +111,50 @@ function updatePageSize(value: SegmentedControlValue) {
   if (Number.isFinite(nextValue)) {
     emit('update:pageSize', nextValue)
   }
+}
+
+function sortDirectionForColumn(column: DataTableColumn): DataTableSortDirection | null {
+  if (props.sort?.key !== column.key) {
+    return null
+  }
+
+  return props.sort.direction
+}
+
+function ariaSortForColumn(column: DataTableColumn): 'ascending' | 'descending' | 'none' | undefined {
+  if (!column.sortable) {
+    return undefined
+  }
+
+  const direction = sortDirectionForColumn(column)
+  if (direction === 'asc') {
+    return 'ascending'
+  }
+
+  if (direction === 'desc') {
+    return 'descending'
+  }
+
+  return 'none'
+}
+
+function updateSort(column: DataTableColumn) {
+  if (!column.sortable || controlsDisabled.value) {
+    return
+  }
+
+  const currentDirection = sortDirectionForColumn(column)
+  if (!currentDirection) {
+    emit('update:sort', { key: column.key, direction: 'asc' })
+    return
+  }
+
+  if (currentDirection === 'asc') {
+    emit('update:sort', { key: column.key, direction: 'desc' })
+    return
+  }
+
+  emit('update:sort', null)
 }
 
 function updateRowSelection(key: DataTableRowKey, selected: boolean) {
@@ -150,6 +204,20 @@ function updateVisibleRowSelection(selected: boolean) {
       </Button>
     </div>
 
+    <div v-else-if="isBlockingState" class="data-table__blocking-state">
+      <Spinner
+        v-if="loading"
+        size="sm"
+        label="Loading records"
+      />
+      <div v-else class="data-table__blocking-icon" aria-hidden="true">
+        <AlertCircle :size="22" :stroke-width="1.7" />
+      </div>
+      <p class="data-table__blocking-title">
+        {{ loading ? 'Loading records' : error }}
+      </p>
+    </div>
+
     <div v-else class="data-table__scroller">
       <div class="data-table__x-scroller">
         <table class="data-table__table">
@@ -163,27 +231,34 @@ function updateVisibleRowSelection(selected: boolean) {
                   @update:model-value="updateVisibleRowSelection"
                 />
               </th>
-              <th v-for="column in columns" :key="column.key" scope="col">
-                {{ column.label }}
+              <th
+                v-for="column in columns"
+                :key="column.key"
+                scope="col"
+                :aria-sort="ariaSortForColumn(column)"
+              >
+                <button
+                  v-if="column.sortable"
+                  class="data-table__header-button"
+                  type="button"
+                  :disabled="controlsDisabled"
+                  @click="updateSort(column)"
+                >
+                  <span>{{ column.label }}</span>
+                  <ArrowUp v-if="sortDirectionForColumn(column) === 'asc'" :size="13" :stroke-width="1.9" aria-hidden="true" />
+                  <ArrowDown v-else-if="sortDirectionForColumn(column) === 'desc'" :size="13" :stroke-width="1.9" aria-hidden="true" />
+                  <ArrowUpDown v-else :size="13" :stroke-width="1.9" aria-hidden="true" />
+                </button>
+                <span v-else>{{ column.label }}</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            <tr v-if="loading">
-              <td :colspan="columnSpan" class="data-table__state">
-                Loading records
-              </td>
-            </tr>
-            <tr v-else-if="error">
-              <td :colspan="columnSpan" class="data-table__state data-table__state--error">
-                {{ error }}
-              </td>
-            </tr>
-            <tr v-for="(row, index) in rows" v-else :key="rowIdentifier(row, index)">
+            <tr v-for="(row, index) in rows" :key="rowIdentifier(row, index)">
               <td v-if="selectable" class="data-table__select-cell">
                 <Checkbox
                   :model-value="selectedRowKeySet.has(rowIdentifier(row, index))"
-                  :disabled="loading || loadingMore"
+                  :disabled="controlsDisabled"
                   :aria-label="`Select record ${index + 1}`"
                   @update:model-value="(selected) => updateRowSelection(rowIdentifier(row, index), selected)"
                 />
@@ -197,22 +272,23 @@ function updateVisibleRowSelection(selected: boolean) {
       </div>
     </div>
 
-    <footer v-if="!isEmpty" class="data-table__footer">
+    <footer v-if="showFooter" class="data-table__footer">
       <SegmentedControl
         :model-value="pageSize"
         :options="pageSizeControlOptions"
-        :disabled="loading || loadingMore"
+        :disabled="controlsDisabled"
         aria-label="Rows to load"
         @update:model-value="updatePageSize"
       />
 
       <div class="data-table__footer-right">
+        <span v-if="footerError" class="data-table__footer-error">{{ footerError }}</span>
         <span class="data-table__count">{{ footerCountText }}</span>
         <Button
           v-if="hasMore || loadingMore"
           type="button"
           variant="secondary"
-          :disabled="loading || loadingMore"
+          :disabled="controlsDisabled"
           :loading="loadingMore"
           @click="emit('loadMore')"
         >
@@ -289,6 +365,34 @@ function updateVisibleRowSelection(selected: boolean) {
   line-height: 1.2;
 }
 
+.data-table__header-button {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+  padding: 0;
+}
+
+.data-table__header-button:hover:not(:disabled) {
+  color: var(--studio-text);
+}
+
+.data-table__header-button:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 2px;
+}
+
+.data-table__header-button:disabled {
+  cursor: default;
+}
+
 .data-table td {
   color: var(--studio-text-muted);
   font-size: 13px;
@@ -299,16 +403,6 @@ function updateVisibleRowSelection(selected: boolean) {
 .data-table tbody tr:hover td {
   background: var(--studio-surface-raised);
   color: var(--studio-text);
-}
-
-.data-table__state {
-  height: 104px;
-  color: var(--studio-text-subtle);
-  text-align: center;
-}
-
-.data-table__state--error {
-  color: var(--studio-danger);
 }
 
 .data-table__empty {
@@ -352,6 +446,36 @@ function updateVisibleRowSelection(selected: boolean) {
   margin-top: 14px;
 }
 
+.data-table__blocking-state {
+  display: grid;
+  min-height: 260px;
+  align-content: start;
+  justify-items: center;
+  padding: 196px 16px 44px;
+  text-align: center;
+}
+
+.data-table__blocking-icon {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid oklch(0.55 0.15 28 / 0.24);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-danger-soft);
+  color: var(--studio-danger);
+}
+
+.data-table__blocking-title {
+  max-width: 46ch;
+  margin: 12px 0 0;
+  color: var(--studio-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
 .data-table__footer {
   display: flex;
   min-height: 48px;
@@ -366,6 +490,16 @@ function updateVisibleRowSelection(selected: boolean) {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+}
+
+.data-table__footer-error {
+  max-width: 34ch;
+  overflow: hidden;
+  color: var(--studio-danger);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .data-table__count {

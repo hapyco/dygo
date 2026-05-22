@@ -1,3 +1,5 @@
+import type { DataTableSort } from '@/design/types'
+
 export type RecordValue = unknown
 
 export type RecordData = Record<string, RecordValue>
@@ -34,11 +36,21 @@ export class RecordApiError extends Error {
   }
 }
 
-export async function listRecords(entity: string, params: { limit: number; offset: number }): Promise<ListEnvelope<RecordData[]>> {
+export type ListRecordsParams = {
+  limit: number
+  offset: number
+  sort?: DataTableSort | null
+}
+
+export async function listRecords(entity: string, params: ListRecordsParams): Promise<ListEnvelope<RecordData[]>> {
   const query = new URLSearchParams({
     limit: String(params.limit),
     offset: String(params.offset),
   })
+
+  if (params.sort) {
+    query.set('sort', `${params.sort.direction === 'desc' ? '-' : ''}${params.sort.key}`)
+  }
 
   const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}?${query.toString()}`, {
     method: 'GET',

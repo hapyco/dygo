@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 
-import type { DataTableRowKey } from '@/design/types'
+import type { DataTableRowKey, DataTableSort } from '@/design/types'
 import { listRecords, RecordApiError, type RecordData } from '@/features/records/records.api'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
 
@@ -17,10 +17,12 @@ export type RecordEntityState = {
   rows: RecordData[]
   total: number
   pageSize: number
+  sort: DataTableSort | null
   selectedRowKeys: DataTableRowKey[]
   status: LoadStatus
   loadingMore: boolean
   error: StoreError | null
+  loadMoreError: StoreError | null
   stale: boolean
 }
 
@@ -35,10 +37,12 @@ function newRecordEntityState(pageSize: number): RecordEntityState {
     rows: [],
     total: 0,
     pageSize,
+    sort: null,
     selectedRowKeys: [],
     status: 'idle',
     loadingMore: false,
     error: null,
+    loadMoreError: null,
     stale: false,
   }
 }
@@ -62,6 +66,10 @@ function writeStoredPageSize(pageSize: number) {
   }
 
   window.localStorage.setItem(pageSizeStorageKey, String(pageSize))
+}
+
+function sortsEqual(left: DataTableSort | null, right: DataTableSort | null): boolean {
+  return left?.key === right?.key && left?.direction === right?.direction
 }
 
 export const useRecordsStore = defineStore('records', {
@@ -104,11 +112,12 @@ export const useRecordsStore = defineStore('records', {
 
       state.status = 'loading'
       state.error = null
+      state.loadMoreError = null
       state.rows = []
       state.total = 0
       state.selectedRowKeys = []
 
-      const request = listRecords(entity, { limit: state.pageSize, offset: 0 })
+      const request = listRecords(entity, { limit: state.pageSize, offset: 0, sort: state.sort })
         .then((result) => {
           state.rows = result.data
           state.total = result.meta.total ?? result.data.length
@@ -123,6 +132,7 @@ export const useRecordsStore = defineStore('records', {
           state.total = 0
           state.selectedRowKeys = []
           state.error = normalized
+          state.loadMoreError = null
           state.status = error instanceof RecordApiError ? statusForError(normalized) : 'error'
           return state
         })
@@ -142,18 +152,17 @@ export const useRecordsStore = defineStore('records', {
       }
 
       state.loadingMore = true
-      state.error = null
+      state.loadMoreError = null
 
       try {
-        const result = await listRecords(entity, { limit: state.pageSize, offset: state.rows.length })
+        const result = await listRecords(entity, { limit: state.pageSize, offset: state.rows.length, sort: state.sort })
         state.rows = [...state.rows, ...result.data]
         state.total = result.meta.total ?? state.rows.length
         state.status = state.rows.length === 0 ? 'empty' : 'ready'
         state.stale = false
       } catch (error: unknown) {
         const normalized = storeError(error, 'Studio could not load more records.')
-        state.error = normalized
-        state.status = error instanceof RecordApiError ? statusForError(normalized) : 'error'
+        state.loadMoreError = normalized
       } finally {
         state.loadingMore = false
       }
@@ -163,6 +172,19 @@ export const useRecordsStore = defineStore('records', {
 
     async setPageSize(entity: string, pageSize: number): Promise<RecordEntityState> {
       this.setGlobalPageSize(pageSize)
+      return this.loadInitial(entity, { force: true })
+    },
+
+    async setSort(entity: string, sort: DataTableSort | null): Promise<RecordEntityState> {
+      const state = this.ensureEntity(entity)
+      if (sortsEqual(state.sort, sort)) {
+        return state
+      }
+
+      state.sort = sort
+      state.selectedRowKeys = []
+      state.loadMoreError = null
+      state.stale = true
       return this.loadInitial(entity, { force: true })
     },
 

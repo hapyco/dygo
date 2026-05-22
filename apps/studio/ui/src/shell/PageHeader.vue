@@ -74,7 +74,7 @@ function runAction(action: PageHeaderAction) {
   gap: 16px;
   margin: calc(var(--studio-page-padding) * -1) calc(var(--studio-page-padding) * -1) 0;
   border-bottom: 1px solid var(--studio-border);
-  padding: var(--studio-page-padding);
+  padding: 10px var(--studio-page-padding);
 }
 
 .studio-page-header--with-actions {

@@ -13,11 +13,43 @@ export type TextInputType = 'text' | 'email' | 'password' | 'number' | 'date' | 
 export type DataTableColumn = {
   key: string
   label: string
+  sortable?: boolean
 }
 
 export type DataTableRow = Record<string, unknown>
 
 export type DataTableRowKey = string | number
+
+export type DataTableSortDirection = 'asc' | 'desc'
+
+export type DataTableSort = {
+  key: string
+  direction: DataTableSortDirection
+}
+
+export type DropdownMenuItem =
+  | {
+      type: 'item'
+      key: string
+      label: string
+      disabled?: boolean
+    }
+  | {
+      type: 'checkbox'
+      key: string
+      label: string
+      checked: boolean
+      disabled?: boolean
+    }
+  | {
+      type: 'label'
+      key: string
+      label: string
+    }
+  | {
+      type: 'separator'
+      key: string
+    }
 
 export type SegmentedControlValue = string | number
 

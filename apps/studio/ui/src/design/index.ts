@@ -4,6 +4,9 @@ export type {
   DataTableColumn,
   DataTableRow,
   DataTableRowKey,
+  DataTableSort,
+  DataTableSortDirection,
+  DropdownMenuItem,
   FieldOption,
   SegmentedControlOption,
   SegmentedControlValue,
@@ -21,6 +24,7 @@ export { default as LogoMark } from './atoms/LogoMark.vue'
 export { default as Spinner } from './atoms/Spinner.vue'
 export { default as Textarea } from './atoms/Textarea.vue'
 export { default as RadioGroup } from './primitives/RadioGroup.vue'
+export { default as DropdownMenu } from './primitives/DropdownMenu.vue'
 export { default as Select } from './primitives/Select.vue'
 export { default as Switch } from './primitives/Switch.vue'
 export { default as CheckboxField } from './molecules/CheckboxField.vue'

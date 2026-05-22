@@ -12,16 +12,17 @@ export type RecordListColumn = DataTableColumn & {
 export function buildRecordListColumns(fields: MetadataField[]): RecordListColumn[] {
   const seen = new Set<string>()
   const columns: RecordListColumn[] = [
-    { key: 'name', label: 'Name', source: 'name', cellType: 'text' },
+    { key: 'name', label: 'Name', source: 'name', cellType: 'text', sortable: true },
     ...fields.map((field) => ({
       key: field.name,
       label: field.label || field.name,
       source: 'field' as const,
       cellType: 'text' as const,
+      sortable: true,
       field,
     })),
-    { key: 'created-at', label: 'Created At', source: 'system', cellType: 'text' },
-    { key: 'updated-at', label: 'Updated At', source: 'system', cellType: 'text' },
+    { key: 'created-at', label: 'Created At', source: 'system', cellType: 'text', sortable: true },
+    { key: 'updated-at', label: 'Updated At', source: 'system', cellType: 'text', sortable: true },
   ]
 
   return columns.filter((column) => {
