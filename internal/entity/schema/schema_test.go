@@ -16,8 +16,8 @@ func TestDecode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode() error = %v, want nil", err)
 	}
-	if entity.Name != "lead" {
-		t.Fatalf("Decode().Name = %q, want lead", entity.Name)
+	if entity.Name != "" {
+		t.Fatalf("Decode().Name = %q, want empty path-derived name before LoadFile", entity.Name)
 	}
 	if entity.Icon != "contact" {
 		t.Fatalf("Decode().Icon = %q, want contact", entity.Icon)
@@ -46,14 +46,16 @@ func TestDecode(t *testing.T) {
 	if !entity.Fields[2].Index {
 		t.Fatal("Decode().Fields[2].Index = false, want true")
 	}
-	if len(entity.Indexes) != 1 || entity.Indexes[0].EffectiveName(entity) != "by-company-status" {
+	named := entity
+	named.Name = "lead"
+	if len(entity.Indexes) != 1 || entity.Indexes[0].EffectiveName(named) != "by-company-status" {
 		t.Fatalf("Decode().Indexes = %+v, want named index", entity.Indexes)
 	}
 	if len(entity.Constraints) != 2 {
 		t.Fatalf("Decode().Constraints len = %d, want 2", len(entity.Constraints))
 	}
-	if entity.Constraints[0].EffectiveName(entity) != "lead-company-status-key" {
-		t.Fatalf("unique constraint name = %q, want lead-company-status-key", entity.Constraints[0].EffectiveName(entity))
+	if entity.Constraints[0].EffectiveName(named) != "lead-company-status-key" {
+		t.Fatalf("unique constraint name = %q, want lead-company-status-key", entity.Constraints[0].EffectiveName(named))
 	}
 	if entity.Constraints[1].Value.Value != "Lost" {
 		t.Fatalf("check constraint value = %q, want Lost", entity.Constraints[1].Value.Value)
@@ -77,11 +79,27 @@ func TestLoadFile(t *testing.T) {
 	}
 }
 
+func TestLoadFileRejectsInvalidEntityFilename(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "BadName.yml")
+	if err := os.WriteFile(path, []byte(validEntityYAML()), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, err := LoadFile(path, fieldtype.DefaultRegistry())
+	if err == nil {
+		t.Fatal("LoadFile() error = nil, want invalid filename error")
+	}
+	if !strings.Contains(err.Error(), `entity filename "BadName.yml" must be kebab-case`) {
+		t.Fatalf("LoadFile() error = %q, want invalid filename context", err.Error())
+	}
+}
+
 func TestDecodeSingleEntity(t *testing.T) {
 	t.Parallel()
 
 	entity, err := Decode([]byte(`
-name: invoice-settings
 label: Invoice Settings
 is-single: true
 fields:
@@ -110,7 +128,6 @@ func TestDecodeSingleEntityValidationErrors(t *testing.T) {
 		{
 			name: "underscore key rejected",
 			body: `
-name: invoice-settings
 label: Invoice Settings
 is_single: true
 fields:
@@ -123,7 +140,6 @@ fields:
 		{
 			name: "explicit naming rejected",
 			body: `
-name: invoice-settings
 label: Invoice Settings
 is-single: true
 naming:
@@ -138,7 +154,6 @@ fields:
 		{
 			name: "required field needs default",
 			body: `
-name: invoice-settings
 label: Invoice Settings
 is-single: true
 fields:
@@ -152,7 +167,6 @@ fields:
 		{
 			name: "required field rejects null default",
 			body: `
-name: invoice-settings
 label: Invoice Settings
 is-single: true
 fields:
@@ -197,7 +211,6 @@ func TestDecodeWithCustomFieldType(t *testing.T) {
 	}
 
 	entity, err := Decode([]byte(`
-name: review
 label: Review
 fields:
   - name: score
@@ -224,7 +237,6 @@ func TestDecodeNamingStrategies(t *testing.T) {
 		{
 			name: "random",
 			body: `
-name: ticket
 label: Ticket
 naming:
   strategy: random
@@ -239,7 +251,6 @@ fields:
 		{
 			name: "field",
 			body: `
-name: user
 label: User
 naming:
   strategy: field
@@ -256,7 +267,6 @@ fields:
 		{
 			name: "series",
 			body: `
-name: sales-invoice
 label: Sales Invoice
 naming:
   strategy: series
@@ -271,7 +281,6 @@ fields:
 		{
 			name: "reserved name field",
 			body: `
-name: role
 label: Role
 fields:
   - name: name
@@ -285,7 +294,6 @@ fields:
 		{
 			name: "name field allowed as naming source",
 			body: `
-name: role
 label: Role
 naming:
   strategy: field
@@ -302,7 +310,6 @@ fields:
 		{
 			name: "invalid random length",
 			body: `
-name: ticket
 label: Ticket
 naming:
   strategy: random
@@ -317,7 +324,6 @@ fields:
 		{
 			name: "field source must be unique",
 			body: `
-name: user
 label: User
 naming:
   strategy: field
@@ -333,7 +339,6 @@ fields:
 		{
 			name: "series requires counter",
 			body: `
-name: invoice
 label: Invoice
 naming:
   strategy: series
@@ -383,24 +388,23 @@ func TestDecodeRejectsInvalidEntitySchemas(t *testing.T) {
 			body: `
 description: Missing required fields
 `,
-			wantError: "name is required",
+			wantError: "label is required",
 		},
 		{
-			name: "invalid entity name",
+			name: "top-level name rejected",
 			body: `
-name: BadName
-label: Bad
+name: lead
+label: Lead
 fields:
   - name: title
     label: Title
     type: text
 `,
-			wantError: "must be kebab-case",
+			wantError: "top-level name is not allowed",
 		},
 		{
 			name: "missing fields",
 			body: `
-name: lead
 label: Lead
 `,
 			wantError: "at least one field",
@@ -408,7 +412,6 @@ label: Lead
 		{
 			name: "invalid route slug",
 			body: `
-name: lead
 label: Lead
 route:
   slug: BadSlug
@@ -422,7 +425,6 @@ fields:
 		{
 			name: "duplicate field names",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: title
@@ -437,18 +439,16 @@ fields:
 		{
 			name: "field validation includes line",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: title
     type: text
 `,
-			wantError: "line 4",
+			wantError: "line 3",
 		},
 		{
 			name: "unknown field type",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: title
@@ -460,7 +460,6 @@ fields:
 		{
 			name: "unknown yaml field",
 			body: `
-name: lead
 label: Lead
 unknown: true
 fields:
@@ -473,9 +472,8 @@ fields:
 		{
 			name: "duplicate yaml key",
 			body: `
-name: lead
-name: duplicate
 label: Lead
+label: Lead Again
 fields:
   - name: title
     label: Title
@@ -486,7 +484,6 @@ fields:
 		{
 			name: "select missing values",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: status
@@ -498,7 +495,6 @@ fields:
 		{
 			name: "link missing entity",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: company
@@ -508,14 +504,26 @@ fields:
 			wantError: "entity is required",
 		},
 		{
-			name: "child table invalid entity",
+			name: "child table field type rejected",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: contacts
     label: Contacts
     type: child-table
+    options:
+      entity: lead-contact
+`,
+			wantError: "unknown type",
+		},
+		{
+			name: "collection invalid entity",
+			body: `
+label: Lead
+fields:
+  - name: contacts
+    label: Contacts
+    type: collection
     options:
       entity: LeadContact
 `,
@@ -524,7 +532,6 @@ fields:
 		{
 			name: "unique unsupported",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: details
@@ -537,7 +544,6 @@ fields:
 		{
 			name: "password unique unsupported",
 			body: `
-name: user
 label: User
 fields:
   - name: password
@@ -550,7 +556,6 @@ fields:
 		{
 			name: "default unsupported",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: payload
@@ -563,7 +568,6 @@ fields:
 		{
 			name: "password default unsupported",
 			body: `
-name: user
 label: User
 fields:
   - name: password
@@ -576,7 +580,6 @@ fields:
 		{
 			name: "index unsupported",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: details
@@ -589,7 +592,6 @@ fields:
 		{
 			name: "password index unsupported",
 			body: `
-name: user
 label: User
 fields:
   - name: password
@@ -602,7 +604,6 @@ fields:
 		{
 			name: "password options unsupported",
 			body: `
-name: user
 label: User
 fields:
   - name: password
@@ -616,7 +617,6 @@ fields:
 		{
 			name: "top-level index password unsupported",
 			body: `
-name: user
 label: User
 fields:
   - name: password
@@ -630,7 +630,6 @@ indexes:
 		{
 			name: "top-level unique password unsupported",
 			body: `
-name: user
 label: User
 fields:
   - name: password
@@ -648,7 +647,6 @@ constraints:
 		{
 			name: "invalid top-level index name",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: status
@@ -663,7 +661,6 @@ indexes:
 		{
 			name: "index missing fields",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: status
@@ -677,7 +674,6 @@ indexes:
 		{
 			name: "index duplicate field references",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: status
@@ -691,7 +687,6 @@ indexes:
 		{
 			name: "index unknown field",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: status
@@ -705,7 +700,6 @@ indexes:
 		{
 			name: "index unsupported field type",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: details
@@ -719,7 +713,6 @@ indexes:
 		{
 			name: "duplicate generated index names",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: status
@@ -734,7 +727,6 @@ indexes:
 		{
 			name: "unique constraint requires two fields",
 			body: `
-name: user-role
 label: User Role
 fields:
   - name: user
@@ -751,7 +743,6 @@ constraints:
 		{
 			name: "unique constraint unknown field",
 			body: `
-name: user-role
 label: User Role
 fields:
   - name: user
@@ -769,7 +760,6 @@ constraints:
 		{
 			name: "unique constraint unsupported field type",
 			body: `
-name: report
 label: Report
 fields:
   - name: payload
@@ -787,7 +777,6 @@ constraints:
 		{
 			name: "check constraint unknown operator",
 			body: `
-name: invoice
 label: Invoice
 fields:
   - name: amount
@@ -804,7 +793,6 @@ constraints:
 		{
 			name: "check constraint missing value",
 			body: `
-name: invoice
 label: Invoice
 fields:
   - name: amount
@@ -820,7 +808,6 @@ constraints:
 		{
 			name: "check constraint in requires list",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: status
@@ -837,7 +824,6 @@ constraints:
 		{
 			name: "check constraint unsupported field type",
 			body: `
-name: event
 label: Event
 fields:
   - name: payload
@@ -854,7 +840,6 @@ constraints:
 		{
 			name: "check constraint password unsupported",
 			body: `
-name: user
 label: User
 fields:
   - name: password
@@ -871,7 +856,6 @@ constraints:
 		{
 			name: "field check invalid operator",
 			body: `
-name: invoice
 label: Invoice
 fields:
   - name: amount
@@ -886,7 +870,6 @@ fields:
 		{
 			name: "field check missing value",
 			body: `
-name: invoice
 label: Invoice
 fields:
   - name: amount
@@ -900,7 +883,6 @@ fields:
 		{
 			name: "field check in requires list",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: status
@@ -915,7 +897,6 @@ fields:
 		{
 			name: "field check unsupported field type",
 			body: `
-name: user
 label: User
 fields:
   - name: password
@@ -930,7 +911,6 @@ fields:
 		{
 			name: "invalid constraint name",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: status
@@ -949,7 +929,6 @@ constraints:
 		{
 			name: "unknown constraint type",
 			body: `
-name: lead
 label: Lead
 fields:
   - name: status
@@ -981,7 +960,6 @@ constraints:
 
 func validEntityYAML() string {
 	return strings.TrimSpace(`
-name: lead
 label: Lead
 description: Sales lead
 icon: contact
@@ -1010,7 +988,7 @@ fields:
       entity: company
   - name: contacts
     label: Contacts
-    type: child-table
+    type: collection
     options:
       entity: lead-contact
 indexes:

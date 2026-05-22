@@ -53,8 +53,8 @@ func TestMetadataReaderGetApp(t *testing.T) {
 func TestMetadataReaderListEntities(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
 		rows: []pgx.Rows{newFakeRows([][]any{
-			{"app", "app", "App", "Runtime state", "package", false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
-			{"user", "user", "User", "User identity", "user", true, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
+			{"app", "app", "App", "Runtime state", "package", false, false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
+			{"user", "user", "User", "User identity", "user", true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
 		})},
 	}
 
@@ -72,7 +72,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 
 func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(10), "user", "user", "User", "User identity", "user", true, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "user", "user", "User", "User identity", "user", true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, true, nil, nil, 1, []byte(`{"entity":"user"}`)},
@@ -114,7 +114,7 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 
 func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		row: newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New"]}`)},

@@ -27,9 +27,11 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 		"create table patch_run",
 		"add column entity.app_id",
 		"add column entity.is_single",
+		"add column entity.is_collection",
 		"add column patch_run.app_id",
 		"create index entity_app_id_idx on entity.app_id",
 		"create index entity_is_single_idx on entity.is_single",
+		"create index entity_is_collection_idx on entity.is_collection",
 		"add unique constraint patch_run_app_patch_id_key on patch_run(app_id, patch_id)",
 		"add unique constraint app_name_key on app.name",
 		"add check constraint app_status_check on app.status",
@@ -631,14 +633,14 @@ func TestBuildMetadataSchemaPlanReportsChildTableUnsupported(t *testing.T) {
 		Entity: schema.Entity{
 			Name: "lead",
 			Fields: []schema.Field{
-				{Name: "contacts", Type: "child-table", Options: entityOption("lead-contact")},
+				{Name: "contacts", Type: "collection", Options: entityOption("lead-contact")},
 			},
 		},
 	}}, LiveSchema{Tables: map[string]liveTable{}})
 	if err != nil {
 		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
 	}
-	assertContains(t, plan.BlockerError().Error(), "child-table storage is not supported")
+	assertContains(t, plan.BlockerError().Error(), "collection storage is not supported")
 }
 
 func TestBuildMetadataSchemaPlanScopesNonCoreTablesByApp(t *testing.T) {
@@ -705,6 +707,7 @@ func coreSchemaEntities() []catalog.LoadedEntity {
 					{Name: "name", Type: "text", Required: true, Index: true},
 					{Name: "route-slug", Type: "text", Required: true, Unique: true, Index: true},
 					{Name: "is-single", Type: "boolean", Required: true, Index: true, Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "false"}},
+					{Name: "is-collection", Type: "boolean", Required: true, Index: true, Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "false"}},
 				},
 				Constraints: []schema.Constraint{
 					{Type: "unique", Fields: []string{"app", "name"}},

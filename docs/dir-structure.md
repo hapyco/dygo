@@ -108,7 +108,7 @@ It owns users, roles, permissions, sessions, installed apps, Entity/Field/Index/
 
 `apps/studio` is the first-party UI app.
 
-It owns the Studio shell, navigation, command menu, Spaces UI, global renderers for lists and records, form and field renderers, child table rendering, saved views UI, jobs UI, audit log UI, settings UI, frontend stores, and the metadata API client.
+It owns the Studio shell, navigation, command menu, Spaces UI, global renderers for lists and records, form and field renderers, collection rendering, saved views UI, jobs UI, audit log UI, settings UI, frontend stores, and the metadata API client.
 
 ## Business App Shape
 

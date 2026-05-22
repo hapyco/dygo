@@ -431,8 +431,8 @@ func validateRecord(file LoadedFile, fields map[string]db.MetadataField, record 
 		if !ok {
 			return fmt.Errorf("%s:%d: unknown fixture field %q", file.Path, value.Line, name)
 		}
-		if field.Type == "child-table" {
-			return fmt.Errorf("%s:%d: fixture field %q uses unsupported child-table storage", file.Path, value.Line, name)
+		if field.Type == "collection" {
+			return fmt.Errorf("%s:%d: fixture field %q uses unsupported collection storage", file.Path, value.Line, name)
 		}
 		if field.Type == "link" {
 			if _, err := decodeLinkReference(value.Node); err != nil {
@@ -569,8 +569,8 @@ func validateMatchRule(match []string, meta db.MetadataEntityMeta, fields map[st
 		if !ok {
 			return fmt.Errorf("fixture match field %q does not exist on Entity %q", name, meta.Name)
 		}
-		if field.Type == "child-table" {
-			return fmt.Errorf("fixture match field %q uses unsupported child-table storage", name)
+		if field.Type == "collection" {
+			return fmt.Errorf("fixture match field %q uses unsupported collection storage", name)
 		}
 	}
 	if len(match) == 1 {

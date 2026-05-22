@@ -1,4 +1,3 @@
-name: country
 label: Country
 description: Country defaults used by system configuration and localization.
 icon: flag

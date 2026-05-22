@@ -18,6 +18,7 @@ The repository also includes `.vscode/settings.json` with YAML schema mappings f
 ```txt
 apps/*/app.yml
 apps/*/entities/*.yml
+apps/*/entities/*/*.yml
 apps/*/fixtures/*.yml
 configs/dygo.yaml
 ```

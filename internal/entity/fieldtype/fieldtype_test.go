@@ -25,7 +25,7 @@ func TestDefaultRegistryContainsBuiltIns(t *testing.T) {
 		"time",
 		"select",
 		"link",
-		"child-table",
+		"collection",
 		"attachment",
 		"json",
 	} {

@@ -5,9 +5,8 @@
   "description": "Schema for dygo Entity YAML files. Runtime validation in Go remains authoritative.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "label", "fields"],
+  "required": ["label", "fields"],
   "properties": {
-    "name": { "$ref": "#/$defs/entityName" },
     "label": {
       "type": "string",
       "minLength": 1
@@ -66,7 +65,7 @@
         "time",
         "select",
         "link",
-        "child-table",
+        "collection",
         "attachment",
         "json"
       ]
@@ -169,7 +168,7 @@
         },
         {
           "if": {
-            "properties": { "type": { "enum": ["link", "child-table"] } },
+            "properties": { "type": { "enum": ["link", "collection"] } },
             "required": ["type"]
           },
           "then": {
@@ -183,7 +182,7 @@
           "if": {
             "properties": {
               "type": {
-                "not": { "enum": ["select", "link", "child-table"] }
+                "not": { "enum": ["select", "link", "collection"] }
               }
             },
             "required": ["type"]

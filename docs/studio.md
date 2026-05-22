@@ -33,7 +33,7 @@ Studio owns:
 - global record renderer
 - global form renderer
 - field renderers
-- child table renderer
+- collection renderer
 - saved views UI
 - jobs UI
 - audit log UI

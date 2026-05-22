@@ -2,14 +2,13 @@
 
 Entities define business object structure in dygo.
 
-The Entity catalog loads Entity files from discovered apps. During `dygo migrate` and `dygo db prepare`, dygo uses this metadata to create or update PostgreSQL tables. Core is not a separate schema path; Core tables come from `apps/core/entities/*.yml` the same way business app tables come from their Entity files.
+The Entity catalog loads Entity files from discovered apps. During `dygo migrate` and `dygo db prepare`, dygo uses this metadata to create or update PostgreSQL tables. Core is not a separate schema path; Core tables come from `apps/core/entities/` the same way business app tables come from their Entity files.
 
-Entity metadata is still the contract layer. The generic Record API reads persisted metadata and uses it to operate saved Records. Permission enforcement, Studio views, child table storage, and richer runtime behavior are handled by later framework layers.
+Entity metadata is still the contract layer. The generic Record API reads persisted metadata and uses it to operate saved Records. Permission enforcement, Studio views, collection row storage, and richer runtime behavior are handled by later framework layers.
 
 ## Example
 
 ```yaml
-name: lead
 label: Lead
 description: Sales lead
 route:
@@ -52,7 +51,7 @@ fields:
 
   - name: contacts
     label: Contacts
-    type: child-table
+    type: collection
     options:
       entity: lead-contact
 
@@ -67,9 +66,13 @@ constraints:
 
 ## Rules
 
-Entity `name`, `label`, and at least one field are required.
+Entity identity comes from the file path. The YAML file must not contain top-level `name`.
+
+The simple form `entities/<entity>.yml` defines Entity `<entity>`. The folder form `entities/<entity>/<entity>.yml` defines the same parent Entity. Both forms are equivalent, but an app cannot define both for the same Entity.
 
 Entity names, field names, and field type names use kebab-case.
+
+`label` and at least one field are required.
 
 dygo uses singular Entity names only. There is no separate required metadata for display plurals or storage plurals.
 
@@ -79,10 +82,9 @@ dygo uses singular Entity names only. There is no separate required metadata for
 
 Single Entities cannot define explicit `naming`; dygo owns the singleton Record name. Every required stored field on a Single Entity must define a non-null default so `dygo migrate` can seed the row deterministically.
 
-Single Entities cannot be targets of `link` or `child-table` fields because there is no meaningful Record selection. A Single Entity may still contain link fields to normal Entities.
+Single Entities cannot be targets of `link` or `collection` fields because there is no meaningful Record selection. A Single Entity may still contain link fields to normal Entities.
 
 ```yaml
-name: invoice-settings
 label: Invoice Settings
 is-single: true
 fields:
@@ -106,7 +108,37 @@ Studio record pages use `/{route-slug}` at the root. The route does not prepend 
 
 When dygo needs a SQL table name from Entity metadata, Core tables keep their historical singular names, such as `user` and `entity`. Non-Core app tables are app-scoped by default, so `crm/lead` maps to `crm_lead` and `support/contact` maps to `support_contact`.
 
-Current metadata-driven schema sync supports scalar fields, `select`, `link`, and `password` fields. `child-table` parsing is supported, but child table storage is deferred until the record model is designed.
+## Collection Entities
+
+Collection row Entities are defined by folder position. Inside an Entity folder, the self-named YAML file defines the parent Entity. Any other `.yml` file in that folder defines a collection Entity.
+
+```txt
+entities/invoice/
+  invoice.yml       -> invoice, standard Entity
+  invoice-item.yml  -> invoice-item, collection Entity
+  invoice-tax.yml   -> invoice-tax, collection Entity
+```
+
+The parent still declares usage with a `type: collection` field:
+
+```yaml
+fields:
+  - name: items
+    label: Items
+    type: collection
+    options:
+      entity: invoice-item
+```
+
+Collection row Entities do not use `kind: collection`. Folder location implies collection ownership, and the filename still defines the Entity name. dygo does not automatically prefix collection Entity names.
+
+A collection Entity must be referenced by exactly one collection field in its parent Entity file. If a collection file exists but the parent does not reference it, validation fails. If more than one parent field references it, validation fails.
+
+Collection Entities are non-routeable, hidden from normal Studio navigation, cannot be targets of `link` fields, and must be same-app parent-owned collection targets in v1. Collection fields cannot target normal or Single Entities.
+
+Special folder parent filenames are not supported: `entity.yml`, `_entity.yml`, and `index.yml`. Use the self-named parent file instead, such as `entities/invoice/invoice.yml`.
+
+Current metadata-driven schema sync supports scalar fields, `select`, `link`, and `password` fields. `collection` parsing is supported, but collection row storage is deferred until the record collection model is implemented.
 
 Field `name`, `label`, and `type` are required.
 
@@ -209,7 +241,7 @@ Index and constraint names are optional. If omitted, dygo derives deterministic 
 
 Supported field check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, and `not-in`. Field checks must use structured metadata, not raw SQL.
 
-Check fields must be DB-backed scalar fields. `password`, `child-table`, `json`, `attachment`, and `link` checks are not supported in v1.
+Check fields must be DB-backed scalar fields. `password`, `collection`, `json`, `attachment`, and `link` checks are not supported in v1.
 
 During `dygo migrate`, Entity naming metadata is upserted into the Core `entity` table. Field metadata is upserted into the Core `field` table with field-name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
 
@@ -217,7 +249,7 @@ Type-specific settings live under `options`.
 
 `select` fields require non-empty `options.values`.
 
-`link` and `child-table` fields require `options.entity`. `options.app` is optional. When omitted, dygo resolves the target in the current app first; otherwise the target Entity name must be globally unambiguous. Set `options.app` for cross-app links or ambiguous target names:
+`link` and `collection` fields require `options.entity`. For `link`, `options.app` is optional. When omitted, dygo resolves the target in the current app first; otherwise the target Entity name must be globally unambiguous. Set `options.app` for cross-app links or ambiguous target names:
 
 ```yaml
 options:
@@ -226,6 +258,8 @@ options:
 ```
 
 `link` fields are framework-level relationships. They create indexed storage columns and dygo validates linked Records at runtime, but v1 does not create database foreign key constraints for links.
+
+`collection` fields must target a collection Entity owned by the same parent Entity folder. Cross-app collection ownership is not supported in v1.
 
 ## Built-In Field Types
 
@@ -245,7 +279,7 @@ datetime
 time
 select
 link
-child-table
+collection
 attachment
 json
 ```
@@ -262,9 +296,11 @@ Entity files belong to an app's manifest-defined `entities` directory. By defaul
 entities
 ```
 
-dygo loads regular `*.yml` files from the immediate directory only. Missing `entities` directories are allowed for apps that do not define Entities yet.
+dygo loads root `*.yml` files and one-level Entity folders. Missing `entities` directories are allowed for apps that do not define Entities yet.
 
 Entity identities are unique per app. Two different apps may use the same Entity name when their route slugs are unique.
+
+Moving a file without changing its basename does not move data because Entity identity is unchanged. Renaming a file changes Entity identity and requires explicit patch or migration handling.
 
 Validate discovered Entity metadata from the current project:
 
@@ -275,10 +311,10 @@ go run ./cmd/dygo entities validate
 
 `entities list` prints a tree grouped by app name.
 
-`entities validate` checks Entity syntax, field types, duplicate app-owned Entity identities, duplicate route slugs, `link` or `child-table` targets, and top-level `hooks/<entity>.go` filenames for each app.
+`entities validate` checks Entity syntax, path-derived names, field types, duplicate app-owned Entity identities, duplicate route slugs, `link` or `collection` targets, collection ownership, and top-level `hooks/<entity>.go` filenames for each app.
 
 Both commands discover the dygo project root before loading apps, so they can be run from nested directories inside a project.
 
-`link` and `child-table` targets use `{app, entity}` identity when `options.app` is set. Without `options.app`, dygo resolves same-app targets first, then a single globally unambiguous target. If no Entity matches or multiple external apps match, validation fails.
+`link` targets use `{app, entity}` identity when `options.app` is set. Without `options.app`, dygo resolves same-app targets first, then a single globally unambiguous target. If no Entity matches or multiple external apps match, validation fails. `collection` targets must resolve to a same-app collection Entity owned by the current Entity folder.
 
 Validation errors include the app name, Entity name, field name when relevant, file path, and a best-effort YAML line number.

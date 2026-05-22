@@ -374,17 +374,17 @@ func TestBuildPatchOperationPlanReportsValidationErrors(t *testing.T) {
 			want: "target table sales_account already exists",
 		},
 		{
-			name: "child table storage",
+			name: "collection storage",
 			patch: testLoadedPatch(t, "sales", "0001_bad", `  - type: backfill-field
     entity: customer
     field: contacts
     value: x
 `),
 			entities: []catalog.LoadedEntity{
-				testEntity("sales", "customer", schema.Field{Name: "contacts", Type: "child-table"}),
+				testEntity("sales", "customer", schema.Field{Name: "contacts", Type: "collection"}),
 			},
 			live: liveWithTables("sales_customer", nil),
-			want: "child-table storage is not supported",
+			want: "collection storage is not supported",
 		},
 		{
 			name: "system column drop",

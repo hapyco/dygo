@@ -1,4 +1,3 @@
-name: index
 label: Index
 description: Top-level non-unique index definition belonging to an Entity.
 icon: list-tree

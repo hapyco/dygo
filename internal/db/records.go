@@ -152,6 +152,9 @@ func (s RecordStore) listRecords(ctx context.Context, layout recordLayout, entit
 	if layout.IsSingle {
 		return RecordListResult{}, singleRecordOperationError(layout, "list")
 	}
+	if layout.IsCollection {
+		return RecordListResult{}, collectionRecordOperationError(layout, "list")
+	}
 	query, err := layout.listQuery(params)
 	if err != nil {
 		return RecordListResult{}, err
@@ -302,6 +305,9 @@ func (s RecordStore) UpdateSingleRecord(ctx context.Context, entity string, inpu
 }
 
 func (s RecordStore) findRecordWithLayout(ctx context.Context, layout recordLayout, entity string, match RecordInput) (Record, error) {
+	if layout.IsCollection {
+		return nil, collectionRecordOperationError(layout, "read")
+	}
 	if err := layout.validateMatchFields(match); err != nil {
 		return nil, err
 	}
@@ -382,6 +388,9 @@ func (s RecordStore) createRecordByIdentity(ctx context.Context, appName string,
 func (s RecordStore) createRecordWithLayout(ctx context.Context, layout recordLayout, input RecordInput) (Record, error) {
 	if layout.IsSingle {
 		return nil, singleRecordOperationError(layout, "create")
+	}
+	if layout.IsCollection {
+		return nil, collectionRecordOperationError(layout, "create")
 	}
 	input = cloneRecordInput(input)
 	hookCtx := newRecordHookContext(RecordBeforeValidate, layout)
@@ -626,6 +635,9 @@ func (s RecordStore) deleteRecordWithLayout(ctx context.Context, layout recordLa
 	if layout.IsSingle {
 		return singleRecordOperationError(layout, "delete")
 	}
+	if layout.IsCollection {
+		return collectionRecordOperationError(layout, "delete")
+	}
 	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
 	if err != nil {
 		return err
@@ -672,6 +684,9 @@ func (s RecordStore) getSingleRecordWithLayout(ctx context.Context, layout recor
 }
 
 func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayout, id int64) (Record, error) {
+	if layout.IsCollection {
+		return nil, collectionRecordOperationError(layout, "read")
+	}
 	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent("id"))
 	record, err := s.queryOneRecord(ctx, layout, sql, id)
 	if err != nil {
@@ -687,6 +702,10 @@ func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayou
 
 func singleRecordOperationError(layout recordLayout, operation string) RecordError {
 	return recordError(RecordErrorInvalidRequest, fmt.Sprintf("single Entity records cannot use %s through this endpoint", operation), map[string]any{"entity": layout.RouteSlug, "operation": operation}, nil)
+}
+
+func collectionRecordOperationError(layout recordLayout, operation string) RecordError {
+	return recordError(RecordErrorInvalidRequest, fmt.Sprintf("collection Entity records cannot use %s through normal record endpoints", operation), map[string]any{"entity": layout.RouteSlug, "operation": operation}, nil)
 }
 
 func (s RecordStore) queryReturningRecord(ctx context.Context, layout recordLayout, sql string, args []any, notFoundWhenEmpty bool) (Record, error) {
@@ -770,16 +789,17 @@ func (s RecordStore) runRecordHooks(ctx context.Context, hookCtx RecordHookConte
 }
 
 type recordLayout struct {
-	EntityID    int64
-	AppName     string
-	Entity      string
-	RouteSlug   string
-	Label       string
-	IsSingle    bool
-	Table       string
-	Naming      recordNaming
-	Fields      []recordField
-	FieldByName map[string]recordField
+	EntityID     int64
+	AppName      string
+	Entity       string
+	RouteSlug    string
+	Label        string
+	IsSingle     bool
+	IsCollection bool
+	Table        string
+	Naming       recordNaming
+	Fields       []recordField
+	FieldByName  map[string]recordField
 }
 
 type recordField struct {
@@ -813,15 +833,16 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 		return recordLayout{}, recordError(RecordErrorInternal, "entity naming metadata is invalid", map[string]any{"entity": meta.Name}, err)
 	}
 	layout := recordLayout{
-		EntityID:    meta.ID,
-		AppName:     meta.App.Name,
-		Entity:      meta.Name,
-		RouteSlug:   meta.RouteSlug,
-		Label:       meta.Label,
-		IsSingle:    meta.IsSingle,
-		Table:       entityTableName(meta.App.Name, meta.Name),
-		Naming:      naming,
-		FieldByName: map[string]recordField{},
+		EntityID:     meta.ID,
+		AppName:      meta.App.Name,
+		Entity:       meta.Name,
+		RouteSlug:    meta.RouteSlug,
+		Label:        meta.Label,
+		IsSingle:     meta.IsSingle,
+		IsCollection: meta.IsCollection,
+		Table:        entityTableName(meta.App.Name, meta.Name),
+		Naming:       naming,
+		FieldByName:  map[string]recordField{},
 	}
 	for _, metadataField := range meta.Fields {
 		field := recordField{
@@ -829,7 +850,7 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 			Type:      metadataField.Type,
 			Required:  metadataField.Required,
 			Default:   metadataField.Default,
-			Storage:   metadataField.Type != "child-table",
+			Storage:   metadataField.Type != "collection",
 			WriteOnly: metadataField.Type == "password",
 			SystemName: metadataField.Name == "name" &&
 				naming.Strategy == "field" &&

@@ -323,7 +323,7 @@ records:
 			want: "unknown fixture field",
 		},
 		{
-			name: "unsupported child table",
+			name: "unsupported collection",
 			body: `
 entity: lead
 match: [name]
@@ -331,7 +331,7 @@ records:
   - name: sample
     contacts: []
 `,
-			want: "unsupported child-table",
+			want: "unsupported collection",
 		},
 		{
 			name: "missing link target",
@@ -474,7 +474,7 @@ func newFakeStore() *fakeStore {
 		MetadataEntity: db.MetadataEntity{Name: "lead"},
 		Fields: []db.MetadataField{
 			{Name: "name", Type: "text", Unique: true, Required: true},
-			{Name: "contacts", Type: "child-table"},
+			{Name: "contacts", Type: "collection"},
 		},
 	}
 	return store

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
@@ -13,17 +14,18 @@ import (
 
 // Entity describes one dygo business object definition.
 type Entity struct {
-	Line        int          `yaml:"-"`
-	Name        string       `yaml:"name"`
-	Label       string       `yaml:"label"`
-	Description string       `yaml:"description,omitempty"`
-	Icon        string       `yaml:"icon,omitempty"`
-	IsSingle    bool         `yaml:"is-single,omitempty"`
-	Route       Route        `yaml:"route,omitempty"`
-	Naming      Naming       `yaml:"naming,omitempty"`
-	Fields      []Field      `yaml:"fields"`
-	Indexes     []Index      `yaml:"indexes,omitempty"`
-	Constraints []Constraint `yaml:"constraints,omitempty"`
+	Line         int          `yaml:"-"`
+	Name         string       `yaml:"-"`
+	Label        string       `yaml:"label"`
+	Description  string       `yaml:"description,omitempty"`
+	Icon         string       `yaml:"icon,omitempty"`
+	IsSingle     bool         `yaml:"is-single,omitempty"`
+	IsCollection bool         `yaml:"-"`
+	Route        Route        `yaml:"route,omitempty"`
+	Naming       Naming       `yaml:"naming,omitempty"`
+	Fields       []Field      `yaml:"fields"`
+	Indexes      []Index      `yaml:"indexes,omitempty"`
+	Constraints  []Constraint `yaml:"constraints,omitempty"`
 }
 
 // Route describes the user-facing Studio route metadata for an Entity.
@@ -137,6 +139,11 @@ func LoadFile(path string, registry fieldtype.Registry) (Entity, error) {
 	if err != nil {
 		return Entity{}, fmt.Errorf("load entity schema %s: %w", path, err)
 	}
+	name, err := entityNameFromPath(path)
+	if err != nil {
+		return Entity{}, fmt.Errorf("load entity schema %s: %w", path, err)
+	}
+	entity.Name = name
 	return entity, nil
 }
 
@@ -164,9 +171,7 @@ func Decode(data []byte, registry fieldtype.Registry) (Entity, error) {
 func (e Entity) Validate(registry fieldtype.Registry) error {
 	var problems []string
 
-	if strings.TrimSpace(e.Name) == "" {
-		problems = append(problems, withLine(e.Line, "name is required"))
-	} else if !fieldtype.IsName(e.Name) {
+	if strings.TrimSpace(e.Name) != "" && !fieldtype.IsName(e.Name) {
 		problems = append(problems, withLine(e.Line, fmt.Sprintf("name %q must be kebab-case", e.Name)))
 	}
 	if strings.TrimSpace(e.Label) == "" {
@@ -245,7 +250,7 @@ func hasExplicitNaming(naming Naming) bool {
 }
 
 func validateSingleFieldDefault(field Field, problems *[]string) {
-	if !field.Required || field.Type == "child-table" {
+	if !field.Required || field.Type == "collection" {
 		return
 	}
 	if field.Default.Kind == 0 {
@@ -394,7 +399,7 @@ func validateSeriesPattern(pattern string) error {
 }
 
 func isStoredFieldType(fieldType string) bool {
-	return fieldType != "child-table"
+	return fieldType != "collection"
 }
 
 func isWriteOnlyFieldType(fieldType string) bool {
@@ -722,7 +727,21 @@ func inspectSource(data []byte) (sourceMap, error) {
 	if err := rejectDuplicateKeysNode(&root, "$"); err != nil {
 		return sourceMap{}, err
 	}
+	if line, ok := topLevelKeyLine(&root, "name"); ok {
+		return sourceMap{}, fmt.Errorf("line %d: top-level name is not allowed; Entity name comes from the file path", line)
+	}
 	return buildSourceMap(&root), nil
+}
+
+func entityNameFromPath(path string) (string, error) {
+	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("entity filename must not be empty")
+	}
+	if !fieldtype.IsName(name) {
+		return "", fmt.Errorf("entity filename %q must be kebab-case", filepath.Base(path))
+	}
+	return name, nil
 }
 
 func buildSourceMap(root *yaml.Node) sourceMap {
@@ -779,6 +798,20 @@ func documentMapping(node *yaml.Node) *yaml.Node {
 		return node
 	}
 	return nil
+}
+
+func topLevelKeyLine(root *yaml.Node, name string) (int, bool) {
+	mapping := documentMapping(root)
+	if mapping == nil {
+		return 0, false
+	}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		key := mapping.Content[i]
+		if key.Value == name {
+			return key.Line, true
+		}
+	}
+	return 0, false
 }
 
 func rejectDuplicateKeysNode(node *yaml.Node, location string) error {

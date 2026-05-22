@@ -108,10 +108,11 @@ dygo has one normal schema input:
 
 ```txt
 apps/*/entities/*.yml
+apps/*/entities/*/*.yml
   desired table schema
 ```
 
-During `dygo migrate` and `dygo db prepare`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/*.yml` is the source for Core tables such as `app`, `activity`, `entity`, `field`, `index`, `constraint`, `naming-series`, `patch-run`, `user`, `role`, `permission`, and `session`.
+During `dygo migrate` and `dygo db prepare`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/` is the source for Core tables such as `app`, `activity`, `entity`, `field`, `index`, `constraint`, `naming-series`, `patch-run`, `user`, `role`, `permission`, and `session`.
 
 Preview metadata sync:
 
@@ -203,4 +204,4 @@ go run ./cmd/dygo db schema check
 
 ## Boundaries
 
-The schema sync foundation creates tables and persists metadata. The generic Record API, fixture runner, session auth, and Activity writer can read and write DB-backed fields through that metadata. Activity is append-only Record history for product timelines; compliance-grade audit logging, app lifecycle patches, child table storage, and destructive metadata transitions are still separate layers.
+The schema sync foundation creates tables and persists metadata. The generic Record API, fixture runner, session auth, and Activity writer can read and write DB-backed fields through that metadata. Activity is append-only Record history for product timelines; compliance-grade audit logging, app lifecycle patches, collection row storage, and destructive metadata transitions are still separate layers.

@@ -771,8 +771,8 @@ func entityTableName(appName string, entityName string) string {
 }
 
 func columnForField(field schema.Field) (string, error) {
-	if field.Type == "child-table" {
-		return "", fmt.Errorf("child-table storage is not supported by metadata schema sync yet")
+	if field.Type == "collection" {
+		return "", fmt.Errorf("collection storage is not supported by metadata schema sync yet")
 	}
 	name := strings.ReplaceAll(field.Name, "-", "_")
 	switch field.Type {
@@ -809,8 +809,8 @@ func columnType(owner catalog.LoadedEntity, field schema.Field, targets schemaTa
 			return "", err
 		}
 		return "bigint", nil
-	case "child-table":
-		return "", fmt.Errorf("child-table storage is not supported by metadata schema sync yet")
+	case "collection":
+		return "", fmt.Errorf("collection storage is not supported by metadata schema sync yet")
 	default:
 		return "", fmt.Errorf("unsupported field type %q", field.Type)
 	}

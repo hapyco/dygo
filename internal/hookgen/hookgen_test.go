@@ -250,7 +250,7 @@ func writeTestApp(t *testing.T, root string, name string, extra string) {
 
 func writeTestEntity(t *testing.T, root string, appName string, entityName string) {
 	t.Helper()
-	body := "name: " + entityName + "\nlabel: " + strings.ToUpper(entityName[:1]) + entityName[1:] + "\nfields:\n  - name: title\n    label: Title\n    type: text\n"
+	body := "label: " + strings.ToUpper(entityName[:1]) + entityName[1:] + "\nfields:\n  - name: title\n    label: Title\n    type: text\n"
 	writeTestFile(t, filepath.Join(root, "apps", appName, "entities", entityName+".yml"), body)
 }
 

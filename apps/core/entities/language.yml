@@ -1,4 +1,3 @@
-name: language
 label: Language
 description: Supported language for dygo runtime and Studio localization.
 icon: languages

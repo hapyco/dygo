@@ -41,8 +41,8 @@ func builtIns() []Definition {
 			Validate:      EntityOptions,
 		},
 		{
-			Name:          "child-table",
-			Label:         "Child Table",
+			Name:          "collection",
+			Label:         "Record Collection",
 			AllowRequired: true,
 			AllowUnique:   false,
 			AllowDefault:  false,

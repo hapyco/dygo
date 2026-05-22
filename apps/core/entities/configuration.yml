@@ -1,4 +1,3 @@
-name: configuration
 label: Configuration
 description: System-wide configuration for dygo runtime and Studio behavior.
 icon: settings-2

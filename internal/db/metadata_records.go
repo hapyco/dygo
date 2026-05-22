@@ -37,14 +37,15 @@ type appRecord struct {
 }
 
 type entityRecord struct {
-	AppName     string
-	Name        string
-	RouteSlug   string
-	Label       string
-	Description string
-	Icon        string
-	IsSingle    bool
-	Naming      []byte
+	AppName      string
+	Name         string
+	RouteSlug    string
+	Label        string
+	Description  string
+	Icon         string
+	IsSingle     bool
+	IsCollection bool
+	Naming       []byte
 }
 
 type fieldRecord struct {
@@ -116,8 +117,8 @@ RETURNING id`, app.Name, app.Label, app.Version, app.Status).Scan(&id); err != n
 		}
 		var id int64
 		if err := tx.QueryRow(ctx, `
-INSERT INTO "entity" (app_id, name, route_slug, label, description, icon, is_single, naming)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO "entity" (app_id, name, route_slug, label, description, icon, is_single, is_collection, naming)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (app_id, name) DO UPDATE
 SET app_id = EXCLUDED.app_id,
 	name = EXCLUDED.name,
@@ -126,9 +127,10 @@ SET app_id = EXCLUDED.app_id,
 	description = EXCLUDED.description,
 	icon = EXCLUDED.icon,
 	is_single = EXCLUDED.is_single,
+	is_collection = EXCLUDED.is_collection,
 	naming = EXCLUDED.naming,
 	updated_at = now()
-RETURNING id`, appID, entity.Name, entity.RouteSlug, entity.Label, entity.Description, entity.Icon, entity.IsSingle, entity.Naming).Scan(&id); err != nil {
+RETURNING id`, appID, entity.Name, entity.RouteSlug, entity.Label, entity.Description, entity.Icon, entity.IsSingle, entity.IsCollection, entity.Naming).Scan(&id); err != nil {
 			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %s/%s: %w", entity.AppName, entity.Name, err)
 		}
 		entityIDs[entityKey(entity.AppName, entity.Name)] = id
@@ -282,14 +284,15 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			}
 		}
 		records.Entities = append(records.Entities, entityRecord{
-			AppName:     loaded.AppName,
-			Name:        loaded.Entity.Name,
-			RouteSlug:   loaded.Entity.EffectiveRouteSlug(),
-			Label:       loaded.Entity.Label,
-			Description: loaded.Entity.Description,
-			Icon:        strings.TrimSpace(loaded.Entity.Icon),
-			IsSingle:    loaded.Entity.IsSingle,
-			Naming:      namingJSON,
+			AppName:      loaded.AppName,
+			Name:         loaded.Entity.Name,
+			RouteSlug:    loaded.Entity.EffectiveRouteSlug(),
+			Label:        loaded.Entity.Label,
+			Description:  loaded.Entity.Description,
+			Icon:         strings.TrimSpace(loaded.Entity.Icon),
+			IsSingle:     loaded.Entity.IsSingle,
+			IsCollection: loaded.IsCollection() || loaded.Entity.IsCollection,
+			Naming:       namingJSON,
 		})
 		for index, field := range loaded.Entity.Fields {
 			defaultJSON, err := fieldDefaultJSON(field.Default)

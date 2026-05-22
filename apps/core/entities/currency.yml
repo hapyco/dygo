@@ -1,4 +1,3 @@
-name: currency
 label: Currency
 description: Currency codes and formatting defaults for monetary values.
 icon: circle-dollar-sign

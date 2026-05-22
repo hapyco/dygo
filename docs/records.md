@@ -41,7 +41,7 @@ Exact filters use direct Field query params:
 GET /api/v1/records/lead?status=Open&enabled=true
 ```
 
-Filters support visible DB-backed Fields and system fields: `id`, `name`, `created-at`, and `updated-at`. The reserved query params `limit`, `offset`, and `sort` cannot be used as HTTP filter names in v1. Write-only fields such as `password` and non-storage fields such as `child-table` cannot be filtered.
+Filters support visible DB-backed Fields and system fields: `id`, `name`, `created-at`, and `updated-at`. The reserved query params `limit`, `offset`, and `sort` cannot be used as HTTP filter names in v1. Write-only fields such as `password` and non-storage fields such as `collection` cannot be filtered.
 
 Sorting uses a comma-separated `sort` value. Prefix a field with `-` for descending order:
 
@@ -122,7 +122,7 @@ json
 
 `password` fields accept plaintext strings in create and update requests, hash them before storage, and are never returned in list or detail responses.
 
-`child-table` is not writable through Record APIs yet.
+`collection` is not writable through Record APIs yet.
 
 ## Activity History
 

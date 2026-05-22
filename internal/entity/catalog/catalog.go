@@ -15,10 +15,11 @@ import (
 
 // LoadedEntity is one Entity loaded from an owning app.
 type LoadedEntity struct {
-	AppName string
-	AppDir  string
-	Path    string
-	Entity  schema.Entity
+	AppName          string
+	AppDir           string
+	Path             string
+	Entity           schema.Entity
+	CollectionParent string
 }
 
 // Key returns the stable internal Entity identity.
@@ -29,6 +30,11 @@ func (e LoadedEntity) Key() string {
 // RouteSlug returns the globally unique Studio route slug for the Entity.
 func (e LoadedEntity) RouteSlug() string {
 	return e.Entity.EffectiveRouteSlug()
+}
+
+// IsCollection reports whether the Entity is an owned collection row Entity.
+func (e LoadedEntity) IsCollection() bool {
+	return strings.TrimSpace(e.CollectionParent) != ""
 }
 
 // EntityKey returns a stable key for an app-owned Entity identity.
@@ -99,33 +105,117 @@ func (c Catalog) discoverApp(app manifest.LoadedApp) ([]LoadedEntity, error) {
 	}
 
 	var entities []LoadedEntity
+	rootFiles := map[string]string{}
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
+		path := filepath.Join(entitiesDir, entry.Name())
+		if entry.IsDir() {
+			discovered, err := c.discoverEntityFolder(app, entitiesDir, entry.Name(), rootFiles)
+			if err != nil {
+				return nil, err
+			}
+			entities = append(entities, discovered...)
 			continue
 		}
-
+		if filepath.Ext(entry.Name()) != ".yml" {
+			continue
+		}
 		info, err := entry.Info()
 		if err != nil {
-			return nil, fmt.Errorf("stat entity for app %q from %s: %w", app.Manifest.Name, filepath.Join(entitiesDir, entry.Name()), err)
+			return nil, fmt.Errorf("stat entity for app %q from %s: %w", app.Manifest.Name, path, err)
 		}
 		if !info.Mode().IsRegular() {
 			continue
 		}
-
-		path := filepath.Join(entitiesDir, entry.Name())
-		entity, err := schema.LoadFile(path, c.fieldTypes)
+		entity, err := c.loadEntityFile(app, path, "")
 		if err != nil {
-			return nil, fmt.Errorf("load entity for app %q from %s: %w", app.Manifest.Name, path, err)
+			return nil, err
 		}
-		entities = append(entities, LoadedEntity{
-			AppName: app.Manifest.Name,
-			AppDir:  app.Dir,
-			Path:    path,
-			Entity:  entity,
-		})
+		rootFiles[entity.Entity.Name] = path
+		entities = append(entities, entity)
 	}
 
 	return entities, nil
+}
+
+func (c Catalog) discoverEntityFolder(app manifest.LoadedApp, entitiesDir string, folderName string, rootFiles map[string]string) ([]LoadedEntity, error) {
+	folderPath := filepath.Join(entitiesDir, folderName)
+	parentPath := filepath.Join(folderPath, folderName+".yml")
+	entries, err := os.ReadDir(folderPath)
+	if err != nil {
+		return nil, fmt.Errorf("read entity folder for app %q from %s: %w", app.Manifest.Name, folderPath, err)
+	}
+
+	hasEntityFiles := false
+	hasParent := false
+	var entities []LoadedEntity
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("stat entity for app %q from %s: %w", app.Manifest.Name, filepath.Join(folderPath, entry.Name()), err)
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		hasEntityFiles = true
+		name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		path := filepath.Join(folderPath, entry.Name())
+		if isForbiddenFolderEntityFilename(name) {
+			return nil, fmt.Errorf("load entity for app %q from %s: folder Entity files must use %s.yml for the parent or a collection Entity filename", app.Manifest.Name, path, folderName)
+		}
+		if name == folderName {
+			hasParent = true
+			if rootPath, ok := rootFiles[name]; ok {
+				return nil, fmt.Errorf("Entity %q is defined twice. Use either %s or %s.", name, appRelativePath(app.Dir, rootPath), appRelativePath(app.Dir, path))
+			}
+			entity, err := c.loadEntityFile(app, path, "")
+			if err != nil {
+				return nil, err
+			}
+			entities = append(entities, entity)
+			continue
+		}
+		entity, err := c.loadEntityFile(app, path, folderName)
+		if err != nil {
+			return nil, err
+		}
+		entities = append(entities, entity)
+	}
+
+	if hasEntityFiles && !hasParent {
+		for _, entity := range entities {
+			if entity.IsCollection() {
+				return nil, fmt.Errorf("%s requires parent Entity file %s", appRelativePath(app.Dir, entity.Path), appRelativePath(app.Dir, parentPath))
+			}
+		}
+		return nil, fmt.Errorf("%s requires parent Entity file %s", appRelativePath(app.Dir, folderPath), appRelativePath(app.Dir, parentPath))
+	}
+
+	return entities, nil
+}
+
+func (c Catalog) loadEntityFile(app manifest.LoadedApp, path string, collectionParent string) (LoadedEntity, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return LoadedEntity{}, fmt.Errorf("stat entity for app %q from %s: %w", app.Manifest.Name, path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return LoadedEntity{}, nil
+	}
+	entity, err := schema.LoadFile(path, c.fieldTypes)
+	if err != nil {
+		return LoadedEntity{}, fmt.Errorf("load entity for app %q from %s: %w", app.Manifest.Name, path, err)
+	}
+	entity.IsCollection = collectionParent != ""
+	return LoadedEntity{
+		AppName:          app.Manifest.Name,
+		AppDir:           app.Dir,
+		Path:             path,
+		Entity:           entity,
+		CollectionParent: collectionParent,
+	}, nil
 }
 
 func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
@@ -134,7 +224,12 @@ func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
 	seenRouteSlugs := map[string]LoadedEntity{}
 	for _, entity := range entities {
 		if previous, ok := seenIdentities[entity.Key()]; ok {
-			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q duplicates Entity identity from %s", entity.AppName, entity.Entity.Name, location(previous.Path, previous.Entity.Line))))
+			if simpleFolderDuplicate(entity, previous) {
+				simplePath, folderPath := duplicateParentPaths(entity, previous)
+				problems = append(problems, fmt.Sprintf("Entity %q is defined twice. Use either %s or %s.", entity.Entity.Name, simplePath, folderPath))
+			} else {
+				problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q duplicates Entity identity from %s", entity.AppName, entity.Entity.Name, location(previous.Path, previous.Entity.Line))))
+			}
 		} else {
 			seenIdentities[entity.Key()] = entity
 		}
@@ -163,14 +258,19 @@ func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
 
 func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
 	targets := newTargetIndex(entities)
+	collectionRefs := map[string][]collectionReference{}
 
 	for _, entity := range entities {
 		for _, field := range entity.Entity.Fields {
-			if field.Type != "link" && field.Type != "child-table" {
+			if field.Type != "link" && field.Type != "collection" {
 				continue
 			}
 			targetName := field.Options.Entity
 			if targetName == "" {
+				continue
+			}
+			if field.Type == "collection" && strings.TrimSpace(field.Options.App) != "" && field.Options.App != entity.AppName {
+				*problems = append(*problems, fieldDiagnostic(entity, field, "collection fields must target a collection Entity in the same app"))
 				continue
 			}
 
@@ -180,11 +280,50 @@ func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
 				continue
 			}
 			if target.Entity.IsSingle {
-				*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("links to single Entity %q; single Entities cannot be link targets", target.Entity.Name)))
+				if field.Type == "collection" {
+					*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("targets single Entity %q, but collection fields must target a collection Entity defined in this Entity folder", target.Entity.Name)))
+				} else {
+					*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("links to single Entity %q; single Entities cannot be link targets", target.Entity.Name)))
+				}
 				continue
+			}
+			if field.Type == "link" && target.IsCollection() {
+				*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("links to collection Entity %q; collection Entities cannot be link targets", target.Entity.Name)))
+				continue
+			}
+			if field.Type == "collection" {
+				if !target.IsCollection() {
+					*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("targets Entity %q, but collection fields must target a collection Entity defined in this Entity folder", target.Entity.Name)))
+					continue
+				}
+				if target.AppName != entity.AppName || target.CollectionParent != entity.Entity.Name {
+					*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("targets collection Entity %q owned by %q; expected collection Entity owned by %q", target.Entity.Name, target.CollectionParent, entity.Entity.Name)))
+					continue
+				}
+				collectionRefs[target.Key()] = append(collectionRefs[target.Key()], collectionReference{Owner: entity, Field: field})
 			}
 		}
 	}
+
+	for _, entity := range entities {
+		if !entity.IsCollection() {
+			continue
+		}
+		refs := collectionRefs[entity.Key()]
+		switch len(refs) {
+		case 0:
+			*problems = append(*problems, fmt.Sprintf("collection Entity %q is defined under %s but is not used by any collection field in %s", entity.Entity.Name, entity.CollectionParent, parentEntityPath(entity)))
+		case 1:
+			continue
+		default:
+			*problems = append(*problems, fmt.Sprintf("collection Entity %q is referenced by more than one collection field in %s", entity.Entity.Name, parentEntityPath(entity)))
+		}
+	}
+}
+
+type collectionReference struct {
+	Owner LoadedEntity
+	Field schema.Field
 }
 
 func validateHookFiles(apps []manifest.LoadedApp, entities []LoadedEntity, problems *[]string) error {
@@ -295,6 +434,52 @@ func suggestedRouteSlug(entity LoadedEntity) string {
 		return entity.Entity.Name
 	}
 	return entity.AppName + "-" + entity.Entity.Name
+}
+
+func isForbiddenFolderEntityFilename(name string) bool {
+	switch name {
+	case "entity", "_entity", "index":
+		return true
+	default:
+		return false
+	}
+}
+
+func simpleFolderDuplicate(left LoadedEntity, right LoadedEntity) bool {
+	return isSimpleFolderPair(left, right) || isSimpleFolderPair(right, left)
+}
+
+func isSimpleFolderPair(simple LoadedEntity, folder LoadedEntity) bool {
+	return !simple.IsCollection() &&
+		!folder.IsCollection() &&
+		filepath.Base(simple.Path) == simple.Entity.Name+".yml" &&
+		filepath.Base(filepath.Dir(folder.Path)) == folder.Entity.Name &&
+		filepath.Base(folder.Path) == folder.Entity.Name+".yml"
+}
+
+func duplicateParentPaths(left LoadedEntity, right LoadedEntity) (string, string) {
+	if isFolderParent(left) {
+		return appRelativePath(right.AppDir, right.Path), appRelativePath(left.AppDir, left.Path)
+	}
+	return appRelativePath(left.AppDir, left.Path), appRelativePath(right.AppDir, right.Path)
+}
+
+func isFolderParent(entity LoadedEntity) bool {
+	return !entity.IsCollection() &&
+		filepath.Base(filepath.Dir(entity.Path)) == entity.Entity.Name &&
+		filepath.Base(entity.Path) == entity.Entity.Name+".yml"
+}
+
+func parentEntityPath(entity LoadedEntity) string {
+	return appRelativePath(entity.AppDir, filepath.Join(filepath.Dir(entity.Path), entity.CollectionParent+".yml"))
+}
+
+func appRelativePath(appDir string, path string) string {
+	relative, err := filepath.Rel(appDir, path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	return filepath.ToSlash(relative)
 }
 
 // ValidationError reports one or more Entity catalog validation problems.

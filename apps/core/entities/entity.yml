@@ -1,4 +1,3 @@
-name: entity
 label: Entity
 description: Registry entry for a known Entity definition.
 icon: boxes
@@ -42,6 +41,13 @@ fields:
 
   - name: is-single
     label: Is Single
+    type: boolean
+    required: true
+    default: false
+    index: true
+
+  - name: is-collection
+    label: Is Collection
     type: boolean
     required: true
     default: false

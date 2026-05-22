@@ -234,7 +234,8 @@ CREATE TABLE public.entity (
     description text,
     naming jsonb,
     icon text,
-    is_single boolean DEFAULT false NOT NULL
+    is_single boolean DEFAULT false NOT NULL,
+    is_collection boolean DEFAULT false NOT NULL
 );
 
 
@@ -1038,6 +1039,13 @@ CREATE INDEX entity_app_id_idx ON public.entity USING btree (app_id);
 --
 
 CREATE INDEX entity_is_single_idx ON public.entity USING btree (is_single);
+
+
+--
+-- Name: entity_is_collection_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX entity_is_collection_idx ON public.entity USING btree (is_collection);
 
 
 --

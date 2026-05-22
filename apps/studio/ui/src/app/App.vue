@@ -27,16 +27,18 @@ const lucideIconRegistry = LucideIcons as unknown as Record<string, Component | 
 const fallbackEntityIcon = LucideIcons.Box as Component
 
 const navItems = computed<ShellNavItem[]>(() => {
-  return metadataStore.entities.map((entity) => {
-    const slug = entity['route-slug'] || entity.name
+  return metadataStore.entities
+    .filter((entity) => !entity['is-collection'])
+    .map((entity) => {
+      const slug = entity['route-slug'] || entity.name
 
-    return {
-      label: entity.label || humanizeEntity(slug),
-      to: `/${slug}`,
-      icon: iconForEntity(entity.icon),
-      current: isEntityRoute(slug),
-    }
-  })
+      return {
+        label: entity.label || humanizeEntity(slug),
+        to: `/${slug}`,
+        icon: iconForEntity(entity.icon),
+        current: isEntityRoute(slug),
+      }
+    })
 })
 
 const userName = computed(() => authStore.currentUser?.['full-name'] || authStore.currentUser?.email || 'Studio user')

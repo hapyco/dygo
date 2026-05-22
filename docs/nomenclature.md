@@ -28,8 +28,8 @@ Technical implementation details may still use words such as document when they 
 | Saved instance of an Entity | Record |
 | Stable Record identifier | name |
 | Internal numeric Record identity | id |
-| Repeating structured data inside a Record | Child Table |
-| One item inside a Child Table | Row |
+| Repeating structured data inside a Record | Record Collection |
+| One item inside a Record Collection | Row |
 | Installable package | App |
 | Field inside an Entity | Field |
 | Search/filter/sort state | Saved View |
@@ -55,10 +55,10 @@ The Studio contains Spaces.
 
 A Space organizes work around a business function.
 
-An Entity defines Fields and Child Tables. Apps attach Permissions, Hooks, Fixtures, and Patches around Entities.
+An Entity defines Fields and Record Collections. Apps attach Permissions, Hooks, Fixtures, and Patches around Entities.
 
 A Record is saved data created from an Entity.
 
-A Child Table contains Rows inside a Record.
+A Record Collection contains Rows inside a Record.
 
 The Studio globally renders Entities and Records.

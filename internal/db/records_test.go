@@ -130,7 +130,7 @@ func TestRecordStoreListRecordsSortByIDSkipsTieBreaker(t *testing.T) {
 func TestRecordStoreListRecordsByIdentityHonorsFiltersAndSort(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -179,7 +179,7 @@ func TestRecordStoreGetRecord(t *testing.T) {
 func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -206,7 +206,7 @@ func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
 func TestRecordStoreRouteSlugMethodsKeepUsingRouteSlugLookup(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -340,6 +340,55 @@ func TestRecordStoreRejectsSingleEntityCollectionMutations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.run(NewRecordStore(newSingleSettingsRecordQueryer()))
+			assertRecordError(t, err, RecordErrorInvalidRequest, "")
+		})
+	}
+}
+
+func TestRecordStoreRejectsCollectionEntityNormalEndpoints(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(RecordStore) error
+	}{
+		{
+			name: "list",
+			run: func(store RecordStore) error {
+				_, err := store.ListRecords(context.Background(), "invoice-item", RecordListParams{})
+				return err
+			},
+		},
+		{
+			name: "get",
+			run: func(store RecordStore) error {
+				_, err := store.GetRecord(context.Background(), "invoice-item", 1)
+				return err
+			},
+		},
+		{
+			name: "find",
+			run: func(store RecordStore) error {
+				_, err := store.FindRecord(context.Background(), "invoice-item", recordInput(map[string]string{"item-code": `"SKU-1"`}))
+				return err
+			},
+		},
+		{
+			name: "create",
+			run: func(store RecordStore) error {
+				_, err := store.CreateRecord(context.Background(), "invoice-item", recordInput(map[string]string{"item-code": `"SKU-1"`}))
+				return err
+			},
+		},
+		{
+			name: "delete",
+			run: func(store RecordStore) error {
+				return store.DeleteRecord(context.Background(), "invoice-item", 1)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run(NewRecordStore(newCollectionRecordQueryer()))
 			assertRecordError(t, err, RecordErrorInvalidRequest, "")
 		})
 	}
@@ -927,7 +976,7 @@ func TestRecordStoreValidationErrors(t *testing.T) {
 			wantField: "status",
 		},
 		{
-			name:      "child table write",
+			name:      "collection write",
 			entity:    "lead",
 			queryer:   newLeadRecordQueryer(),
 			input:     recordInput(map[string]string{"status": `"New"`, "contacts": `[]`}),
@@ -1031,7 +1080,7 @@ func TestRecordStoreInvalidListFiltersAndSorts(t *testing.T) {
 
 func newUserRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(10), "user", "user", "User", "User identity", "user", false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "user", "user", "User", "User identity", "user", false, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
@@ -1047,11 +1096,11 @@ func newUserRecordQueryer() *fakeRecordQueryer {
 
 func newLeadRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(20), "lead", "lead", "Lead", "Sales lead", "contact", false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		row: newFakeRow(int64(20), "lead", "lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New","Qualified"]}`)},
-				{"contacts", "Contacts", "child-table", false, false, false, nil, nil, 2, []byte(`{"entity":"lead-contact"}`)},
+				{"contacts", "Contacts", "collection", false, false, false, nil, nil, 2, []byte(`{"entity":"lead-contact"}`)},
 			}),
 			newFakeRows(nil),
 			newFakeRows(nil),
@@ -1062,7 +1111,7 @@ func newLeadRecordQueryer() *fakeRecordQueryer {
 func newSingleSettingsRecordQueryer() *fakeRecordQueryer {
 	now := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(30), "invoice-settings", "invoice-settings", "Invoice Settings", "Invoice defaults", "settings", true, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
+		row: newFakeRow(int64(30), "invoice-settings", "invoice-settings", "Invoice Settings", "Invoice defaults", "settings", true, false, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"default-due-days", "Default Due Days", "int", true, false, false, []byte("30"), nil, 1, nil},
@@ -1076,9 +1125,22 @@ func newSingleSettingsRecordQueryer() *fakeRecordQueryer {
 	}
 }
 
+func newCollectionRecordQueryer() *fakeRecordQueryer {
+	return &fakeRecordQueryer{
+		row: newFakeRow(int64(40), "invoice-item", "invoice-item", "Invoice Item", "Invoice line item", "list", false, true, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
+		rows: []pgx.Rows{
+			newFakeRows([][]any{
+				{"item-code", "Item Code", "text", true, false, false, nil, nil, 1, nil},
+			}),
+			newFakeRows(nil),
+			newFakeRows(nil),
+		},
+	}
+}
+
 func newActivityRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(1), "activity", "activity", "Activity", "Timeline entry", "activity", false, []byte(`{"strategy":"random","length":16}`), "core", "Core"),
+		row: newFakeRow(int64(1), "activity", "activity", "Activity", "Timeline entry", "activity", false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record"]}`)},
