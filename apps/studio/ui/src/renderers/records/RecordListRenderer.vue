@@ -6,6 +6,7 @@ import DataTable from '@/design/organisms/DataTable.vue'
 import DropdownMenu from '@/design/primitives/DropdownMenu.vue'
 import type { DataTableRowKey, DataTableSort, DropdownMenuItem } from '@/design/types'
 import type { MetadataField } from '@/features/metadata/metadata.api'
+import PageToolbar from '@/shell/PageToolbar.vue'
 import { useRecordsStore } from '@/stores/records.store'
 import { buildRecordListColumns } from './columns'
 
@@ -127,19 +128,21 @@ function writeHiddenColumnKeys(entity: string, keys: string[]) {
 
 <template>
   <section class="record-list-renderer" aria-label="Record list view">
-    <div v-if="showToolbar" class="record-list-renderer__toolbar">
-      <DropdownMenu
-        label="Columns"
-        :items="columnMenuItems"
-        @select="selectColumnMenuItem"
-        @update:checked="updateColumnVisibility"
-      >
-        <template #trigger>
-          <Columns3 :size="14" :stroke-width="1.8" aria-hidden="true" />
-          Columns
-        </template>
-      </DropdownMenu>
-    </div>
+    <PageToolbar v-if="showToolbar">
+      <template #right>
+        <DropdownMenu
+          label="Columns"
+          :items="columnMenuItems"
+          @select="selectColumnMenuItem"
+          @update:checked="updateColumnVisibility"
+        >
+          <template #trigger>
+            <Columns3 :size="14" :stroke-width="1.8" aria-hidden="true" />
+            Columns
+          </template>
+        </DropdownMenu>
+      </template>
+    </PageToolbar>
 
     <DataTable
       :columns="visibleColumns"
@@ -176,13 +179,5 @@ function writeHiddenColumnKeys(entity: string, keys: string[]) {
 
 .record-list-renderer :deep(.data-table) {
   flex: 1 1 auto;
-}
-
-.record-list-renderer__toolbar {
-  display: flex;
-  min-width: 0;
-  justify-content: flex-end;
-  border-bottom: 1px solid var(--studio-border);
-  padding: 8px 12px;
 }
 </style>
