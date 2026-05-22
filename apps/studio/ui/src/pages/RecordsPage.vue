@@ -59,10 +59,9 @@ function humanizeEntity(value: string): string {
 </script>
 
 <template>
-  <section class="studio-page records-page" aria-labelledby="records-page-title">
+  <section class="studio-page records-page" :aria-label="entityLabel">
     <PageHeader
-      title-id="records-page-title"
-      :title="entityLabel"
+      :show-title="false"
       :actions="actions"
     />
 

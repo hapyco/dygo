@@ -2,7 +2,6 @@
 import { Bell } from '@lucide/vue'
 
 import LogoMark from '@/design/atoms/LogoMark.vue'
-import Breadcrumbs from './Breadcrumbs.vue'
 import CommandMenu from './CommandMenu.vue'
 import UserMenu from './UserMenu.vue'
 
@@ -28,7 +27,6 @@ withDefaults(defineProps<{
     </div>
 
     <div class="studio-top-bar__bar">
-      <Breadcrumbs class="studio-top-bar__breadcrumbs" />
       <CommandMenu class="studio-top-bar__search" />
 
       <div class="studio-top-bar__right">
@@ -73,19 +71,19 @@ withDefaults(defineProps<{
 .studio-top-bar__bar {
   display: grid;
   min-width: 0;
-  grid-template-columns: auto minmax(0, 1fr) minmax(220px, 312px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 312px) auto;
   align-items: center;
   gap: 14px;
   padding-right: var(--studio-shell-gutter);
 }
 
 .studio-top-bar__search {
-  grid-column: 3;
+  grid-column: 2;
 }
 
 .studio-top-bar__right {
   display: inline-flex;
-  grid-column: 4;
+  grid-column: 3;
   align-items: center;
   justify-self: end;
   gap: 10px;
@@ -135,7 +133,6 @@ withDefaults(defineProps<{
     padding: 0;
   }
 
-  .studio-top-bar__breadcrumbs,
   .studio-top-bar__search {
     display: none;
   }

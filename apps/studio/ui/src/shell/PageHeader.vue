@@ -2,15 +2,18 @@
 import { computed, useSlots } from 'vue'
 
 import Button from '@/design/atoms/Button.vue'
+import Breadcrumbs from './Breadcrumbs.vue'
 import type { PageHeaderAction } from './types'
 
 const props = withDefaults(defineProps<{
   title?: string
   titleId?: string
+  showBreadcrumbs?: boolean
   showTitle?: boolean
   showActions?: boolean
   actions?: PageHeaderAction[]
 }>(), {
+  showBreadcrumbs: true,
   showTitle: true,
   showActions: true,
   actions: () => [],
@@ -18,7 +21,9 @@ const props = withDefaults(defineProps<{
 
 const slots = useSlots()
 
+const hasBreadcrumbs = computed(() => props.showBreadcrumbs)
 const hasTitle = computed(() => props.showTitle && Boolean(props.title || slots.title))
+const hasMain = computed(() => hasBreadcrumbs.value || hasTitle.value)
 const hasActions = computed(() => props.showActions && (props.actions.length > 0 || Boolean(slots.actions)))
 
 function runAction(action: PageHeaderAction) {
@@ -35,7 +40,8 @@ function runAction(action: PageHeaderAction) {
     class="studio-page-header"
     :class="{ 'studio-page-header--with-actions': hasActions }"
   >
-    <div class="studio-page-header__main">
+    <div v-if="hasMain" class="studio-page-header__main">
+      <Breadcrumbs v-if="hasBreadcrumbs" class="studio-page-header__breadcrumbs" />
       <h1 v-if="hasTitle" :id="props.titleId" class="studio-page-header__title">
         <slot name="title">{{ props.title }}</slot>
       </h1>
@@ -83,6 +89,12 @@ function runAction(action: PageHeaderAction) {
 }
 
 .studio-page-header__main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.studio-page-header__breadcrumbs {
   min-width: 0;
 }
 
