@@ -11,12 +11,12 @@ import { RouteName } from '@/router/routes'
 import PageHeader from '@/shell/PageHeader.vue'
 import type { PageHeaderAction } from '@/shell/types'
 import { useMetadataStore } from '@/stores/metadata.store'
-import { useRecordsStore } from '@/stores/records.store'
+import { singleRecordKey, useRecordsStore } from '@/stores/records.store'
 
 const props = defineProps<{
   entity: string
   recordName?: string
-  mode: 'new' | 'record'
+  mode: 'new' | 'record' | 'single'
 }>()
 
 type ConvertedValue = {
@@ -33,7 +33,15 @@ const baseline = ref<RecordData>({})
 const fieldErrors = ref<Record<string, string>>({})
 const localError = ref('')
 
-const recordStateKey = computed(() => (props.mode === 'new' ? 'new' : props.recordName ?? ''))
+const recordStateKey = computed(() => {
+  if (props.mode === 'new') {
+    return 'new'
+  }
+  if (props.mode === 'single') {
+    return singleRecordKey
+  }
+  return props.recordName ?? ''
+})
 const recordState = computed(() => recordsStore.recordState(props.entity, recordStateKey.value))
 const entityMeta = computed(() => metadataStore.entityMeta(props.entity))
 const entityMetaStatus = computed(() => metadataStore.entityMetaStatus(props.entity))
@@ -41,6 +49,7 @@ const entityMetaError = computed(() => metadataStore.entityMetaError(props.entit
 const fields = computed(() => entityMeta.value?.fields ?? [])
 const entityLabel = computed(() => entityMeta.value?.label || humanizeEntity(props.entity))
 const isNew = computed(() => props.mode === 'new')
+const isSingle = computed(() => props.mode === 'single')
 const loading = computed(() => (
   entityMetaStatus.value === 'idle'
   || entityMetaStatus.value === 'loading'
@@ -75,9 +84,16 @@ watch(
   async ([entity, mode, recordName]) => {
     fieldErrors.value = {}
     localError.value = ''
-    await metadataStore.loadEntityMeta(entity)
+    const meta = await metadataStore.loadEntityMeta(entity)
 
-    if (mode === 'record' && recordName) {
+    if (meta?.['is-single'] && mode !== 'single') {
+      await router.replace({ name: RouteName.EntityRecords, params: { entity } })
+      return
+    }
+
+    if (mode === 'single') {
+      await recordsStore.loadSingleRecord(entity)
+    } else if (mode === 'record' && recordName) {
       await recordsStore.loadRecordByName(entity, recordName)
     } else if (mode === 'new') {
       recordsStore.resetRecordForm(entity, 'new')
@@ -135,11 +151,13 @@ async function saveRecord() {
   try {
     const record = isNew.value
       ? await recordsStore.createRecord(props.entity, payload)
-      : await recordsStore.updateRecord(props.entity, props.recordName ?? '', currentRecordID(), payload)
+      : isSingle.value
+        ? await recordsStore.updateSingleRecord(props.entity, payload)
+        : await recordsStore.updateRecord(props.entity, props.recordName ?? '', currentRecordID(), payload)
 
     resetToRecord(record)
     const nextName = typeof record.name === 'string' ? record.name : ''
-    if (nextName && (isNew.value || nextName !== props.recordName)) {
+    if (!isSingle.value && nextName && (isNew.value || nextName !== props.recordName)) {
       await router.replace({ name: RouteName.RecordDetail, params: { entity: props.entity, recordName: nextName } })
     }
   } catch {

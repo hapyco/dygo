@@ -149,6 +149,9 @@ func (s RecordStore) ListRecordsByIdentity(ctx context.Context, appName string, 
 }
 
 func (s RecordStore) listRecords(ctx context.Context, layout recordLayout, entity string, params RecordListParams) (RecordListResult, error) {
+	if layout.IsSingle {
+		return RecordListResult{}, singleRecordOperationError(layout, "list")
+	}
 	query, err := layout.listQuery(params)
 	if err != nil {
 		return RecordListResult{}, err
@@ -264,6 +267,40 @@ func (s RecordStore) FindRecordByIdentity(ctx context.Context, appName string, e
 	return s.findRecordWithLayout(ctx, layout, identity, match)
 }
 
+// GetSingleRecord returns the framework-owned singleton Record for a single Entity.
+func (s RecordStore) GetSingleRecord(ctx context.Context, entity string) (Record, error) {
+	if err := s.requireQueryer(); err != nil {
+		return nil, err
+	}
+	layout, err := s.recordLayout(ctx, entity)
+	if err != nil {
+		return nil, err
+	}
+	return s.getSingleRecordWithLayout(ctx, layout)
+}
+
+// UpdateSingleRecord partially updates the framework-owned singleton Record for a single Entity.
+func (s RecordStore) UpdateSingleRecord(ctx context.Context, entity string, input RecordInput) (Record, error) {
+	if err := s.requireQueryer(); err != nil {
+		return nil, err
+	}
+	return s.withRecordMutation(ctx, func(store RecordStore) (Record, error) {
+		layout, err := store.recordLayout(ctx, entity)
+		if err != nil {
+			return nil, err
+		}
+		record, err := store.getSingleRecordWithLayout(ctx, layout)
+		if err != nil {
+			return nil, err
+		}
+		id, err := activityRecordID(record)
+		if err != nil {
+			return nil, err
+		}
+		return store.updateRecordWithLayout(ctx, layout, id, input)
+	})
+}
+
 func (s RecordStore) findRecordWithLayout(ctx context.Context, layout recordLayout, entity string, match RecordInput) (Record, error) {
 	if err := layout.validateMatchFields(match); err != nil {
 		return nil, err
@@ -343,6 +380,9 @@ func (s RecordStore) createRecordByIdentity(ctx context.Context, appName string,
 }
 
 func (s RecordStore) createRecordWithLayout(ctx context.Context, layout recordLayout, input RecordInput) (Record, error) {
+	if layout.IsSingle {
+		return nil, singleRecordOperationError(layout, "create")
+	}
 	input = cloneRecordInput(input)
 	hookCtx := newRecordHookContext(RecordBeforeValidate, layout)
 	hookCtx.Operation = activityOperationCreate
@@ -583,6 +623,9 @@ func (s RecordStore) deleteRecordByIdentity(ctx context.Context, appName string,
 }
 
 func (s RecordStore) deleteRecordWithLayout(ctx context.Context, layout recordLayout, entity string, id int64) error {
+	if layout.IsSingle {
+		return singleRecordOperationError(layout, "delete")
+	}
 	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
 	if err != nil {
 		return err
@@ -620,6 +663,14 @@ func (s RecordStore) queryOneRecord(ctx context.Context, layout recordLayout, sq
 	return s.queryReturningRecord(ctx, layout, sql, args, true)
 }
 
+func (s RecordStore) getSingleRecordWithLayout(ctx context.Context, layout recordLayout) (Record, error) {
+	if !layout.IsSingle {
+		return nil, recordError(RecordErrorInvalidRequest, "entity is not single", map[string]any{"entity": layout.RouteSlug}, nil)
+	}
+	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent("name"))
+	return s.queryOneRecord(ctx, layout, sql, layout.Entity)
+}
+
 func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayout, id int64) (Record, error) {
 	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent("id"))
 	record, err := s.queryOneRecord(ctx, layout, sql, id)
@@ -632,6 +683,10 @@ func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayou
 		return nil, err
 	}
 	return record, nil
+}
+
+func singleRecordOperationError(layout recordLayout, operation string) RecordError {
+	return recordError(RecordErrorInvalidRequest, fmt.Sprintf("single Entity records cannot use %s through this endpoint", operation), map[string]any{"entity": layout.RouteSlug, "operation": operation}, nil)
 }
 
 func (s RecordStore) queryReturningRecord(ctx context.Context, layout recordLayout, sql string, args []any, notFoundWhenEmpty bool) (Record, error) {
@@ -720,6 +775,7 @@ type recordLayout struct {
 	Entity      string
 	RouteSlug   string
 	Label       string
+	IsSingle    bool
 	Table       string
 	Naming      recordNaming
 	Fields      []recordField
@@ -762,6 +818,7 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 		Entity:      meta.Name,
 		RouteSlug:   meta.RouteSlug,
 		Label:       meta.Label,
+		IsSingle:    meta.IsSingle,
 		Table:       entityTableName(meta.App.Name, meta.Name),
 		Naming:      naming,
 		FieldByName: map[string]recordField{},

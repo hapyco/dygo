@@ -25,6 +25,7 @@ func TestBuildMetadataRecords(t *testing.T) {
 					Label:       "User",
 					Description: "User identity",
 					Icon:        "user",
+					IsSingle:    true,
 					Fields: []schema.Field{
 						{Name: "email", Label: "Email", Type: "email", Required: true, Unique: true, Index: true},
 						{Name: "enabled", Label: "Enabled", Type: "boolean", Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"}},
@@ -53,8 +54,11 @@ func TestBuildMetadataRecords(t *testing.T) {
 	if len(records.Apps) != 1 || records.Apps[0].Name != "core" || records.Apps[0].Status != "active" {
 		t.Fatalf("app records = %+v, want active core app", records.Apps)
 	}
-	if len(records.Entities) != 1 || records.Entities[0].Name != "user" || records.Entities[0].RouteSlug != "user" || records.Entities[0].Icon != "user" || records.Entities[0].AppName != "core" {
+	if len(records.Entities) != 1 || records.Entities[0].Name != "user" || records.Entities[0].RouteSlug != "user" || records.Entities[0].Icon != "user" || records.Entities[0].AppName != "core" || !records.Entities[0].IsSingle {
 		t.Fatalf("entity records = %+v, want core/user", records.Entities)
+	}
+	if records.Entities[0].Naming != nil {
+		t.Fatalf("single entity naming metadata = %s, want nil", records.Entities[0].Naming)
 	}
 	if len(records.Fields) != 3 {
 		t.Fatalf("field records count = %d, want 3", len(records.Fields))

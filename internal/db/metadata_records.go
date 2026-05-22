@@ -43,6 +43,7 @@ type entityRecord struct {
 	Label       string
 	Description string
 	Icon        string
+	IsSingle    bool
 	Naming      []byte
 }
 
@@ -115,8 +116,8 @@ RETURNING id`, app.Name, app.Label, app.Version, app.Status).Scan(&id); err != n
 		}
 		var id int64
 		if err := tx.QueryRow(ctx, `
-INSERT INTO "entity" (app_id, name, route_slug, label, description, icon, naming)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO "entity" (app_id, name, route_slug, label, description, icon, is_single, naming)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (app_id, name) DO UPDATE
 SET app_id = EXCLUDED.app_id,
 	name = EXCLUDED.name,
@@ -124,9 +125,10 @@ SET app_id = EXCLUDED.app_id,
 	label = EXCLUDED.label,
 	description = EXCLUDED.description,
 	icon = EXCLUDED.icon,
+	is_single = EXCLUDED.is_single,
 	naming = EXCLUDED.naming,
 	updated_at = now()
-RETURNING id`, appID, entity.Name, entity.RouteSlug, entity.Label, entity.Description, entity.Icon, entity.Naming).Scan(&id); err != nil {
+RETURNING id`, appID, entity.Name, entity.RouteSlug, entity.Label, entity.Description, entity.Icon, entity.IsSingle, entity.Naming).Scan(&id); err != nil {
 			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %s/%s: %w", entity.AppName, entity.Name, err)
 		}
 		entityIDs[entityKey(entity.AppName, entity.Name)] = id
@@ -271,9 +273,13 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 		})
 	}
 	for _, loaded := range metadata.Entities {
-		namingJSON, err := entityNamingJSON(loaded.Entity.EffectiveNaming())
-		if err != nil {
-			return metadataRecordSet{}, fmt.Errorf("build entity metadata %s/%s naming: %w", loaded.AppName, loaded.Entity.Name, err)
+		var namingJSON []byte
+		if !loaded.Entity.IsSingle {
+			var err error
+			namingJSON, err = entityNamingJSON(loaded.Entity.EffectiveNaming())
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build entity metadata %s/%s naming: %w", loaded.AppName, loaded.Entity.Name, err)
+			}
 		}
 		records.Entities = append(records.Entities, entityRecord{
 			AppName:     loaded.AppName,
@@ -282,6 +288,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			Label:       loaded.Entity.Label,
 			Description: loaded.Entity.Description,
 			Icon:        strings.TrimSpace(loaded.Entity.Icon),
+			IsSingle:    loaded.Entity.IsSingle,
 			Naming:      namingJSON,
 		})
 		for index, field := range loaded.Entity.Fields {

@@ -681,6 +681,63 @@ func TestRecordRoutes(t *testing.T) {
 	}
 }
 
+func TestSingleRecordRoutes(t *testing.T) {
+	store := &fakeRecordStore{
+		record: db.Record{"id": int64(7), "name": "invoice-settings", "default-due-days": int64(30)},
+	}
+	checker := &fakePermissionChecker{}
+
+	tests := []struct {
+		method string
+		path   string
+		body   string
+		status int
+		want   string
+		call   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/records/invoice-settings/single", status: http.StatusOK, want: `"name":"invoice-settings"`, call: "single"},
+		{method: http.MethodPatch, path: "/api/v1/records/invoice-settings/single", body: `{"data":{"default-due-days":45}}`, status: http.StatusOK, want: `"data":`, call: "update-single"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			request := authenticatedRequest(tt.method, tt.path, tt.body)
+			recorder := httptest.NewRecorder()
+
+			NewRouter(Options{Auth: validFakeAuthStore(), Records: store, Permissions: checker}).ServeHTTP(recorder, request)
+
+			response := recorder.Result()
+			defer response.Body.Close()
+			if response.StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", response.StatusCode, tt.status)
+			}
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("ReadAll(single record body) error = %v", err)
+			}
+			if !contains(string(body), tt.want) {
+				t.Fatalf("body = %s, want %q", string(body), tt.want)
+			}
+			if store.calls[len(store.calls)-1] != tt.call {
+				t.Fatalf("last store call = %q, want %q", store.calls[len(store.calls)-1], tt.call)
+			}
+		})
+	}
+	if string(store.updated["default-due-days"]) != "45" {
+		t.Fatalf("single updated input = %#v, want default-due-days", store.updated)
+	}
+	wantPermissions := []permissions.Request{
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "invoice-settings", Action: permissions.ActionRead},
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "invoice-settings", Action: permissions.ActionUpdate},
+	}
+	if !reflect.DeepEqual(checker.requests, wantPermissions) {
+		t.Fatalf("permission requests = %+v, want %+v", checker.requests, wantPermissions)
+	}
+	if store.updateActor != 7 || store.updateSource != db.ActivitySourceAPI {
+		t.Fatalf("single update actor/source = %d/%q, want API user", store.updateActor, store.updateSource)
+	}
+}
+
 func TestRecordListRouteParsesFiltersAndSort(t *testing.T) {
 	store := &fakeRecordStore{
 		list: db.RecordListResult{Records: []db.Record{}, Limit: 25, Offset: 5},
@@ -1153,26 +1210,28 @@ func (s *fakeMetadataStore) GetEntityMeta(context.Context, string) (db.MetadataE
 }
 
 type fakeRecordStore struct {
-	list         db.RecordListResult
-	listErr      error
-	record       db.Record
-	getErr       error
-	findErr      error
-	createErr    error
-	updateErr    error
-	deleteErr    error
-	findMatch    db.RecordInput
-	created      db.RecordInput
-	updated      db.RecordInput
-	deletedID    int64
-	createActor  int64
-	updateActor  int64
-	deleteActor  int64
-	createSource string
-	updateSource string
-	deleteSource string
-	listParams   db.RecordListParams
-	calls        []string
+	list            db.RecordListResult
+	listErr         error
+	record          db.Record
+	getErr          error
+	findErr         error
+	singleErr       error
+	createErr       error
+	updateErr       error
+	updateSingleErr error
+	deleteErr       error
+	findMatch       db.RecordInput
+	created         db.RecordInput
+	updated         db.RecordInput
+	deletedID       int64
+	createActor     int64
+	updateActor     int64
+	deleteActor     int64
+	createSource    string
+	updateSource    string
+	deleteSource    string
+	listParams      db.RecordListParams
+	calls           []string
 }
 
 func (s *fakeRecordStore) ListRecords(_ context.Context, _ string, params db.RecordListParams) (db.RecordListResult, error) {
@@ -1192,6 +1251,11 @@ func (s *fakeRecordStore) FindRecord(_ context.Context, _ string, match db.Recor
 	return s.record, s.findErr
 }
 
+func (s *fakeRecordStore) GetSingleRecord(context.Context, string) (db.Record, error) {
+	s.calls = append(s.calls, "single")
+	return s.record, s.singleErr
+}
+
 func (s *fakeRecordStore) CreateRecord(ctx context.Context, _ string, input db.RecordInput) (db.Record, error) {
 	s.calls = append(s.calls, "create")
 	s.created = input
@@ -1206,6 +1270,14 @@ func (s *fakeRecordStore) UpdateRecord(ctx context.Context, _ string, _ int64, i
 	s.updateActor, _ = db.ActivityActorFromContext(ctx)
 	s.updateSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.record, s.updateErr
+}
+
+func (s *fakeRecordStore) UpdateSingleRecord(ctx context.Context, _ string, input db.RecordInput) (db.Record, error) {
+	s.calls = append(s.calls, "update-single")
+	s.updated = input
+	s.updateActor, _ = db.ActivityActorFromContext(ctx)
+	s.updateSource, _ = db.ActivitySourceFromContext(ctx)
+	return s.record, s.updateSingleErr
 }
 
 func (s *fakeRecordStore) DeleteRecord(ctx context.Context, _ string, id int64) error {

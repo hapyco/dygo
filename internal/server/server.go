@@ -57,8 +57,10 @@ type RecordStore interface {
 	ListRecords(context.Context, string, db.RecordListParams) (db.RecordListResult, error)
 	GetRecord(context.Context, string, int64) (db.Record, error)
 	FindRecord(context.Context, string, db.RecordInput) (db.Record, error)
+	GetSingleRecord(context.Context, string) (db.Record, error)
 	CreateRecord(context.Context, string, db.RecordInput) (db.Record, error)
 	UpdateRecord(context.Context, string, int64, db.RecordInput) (db.Record, error)
+	UpdateSingleRecord(context.Context, string, db.RecordInput) (db.Record, error)
 	DeleteRecord(context.Context, string, int64) error
 }
 
@@ -686,7 +688,9 @@ func registerRecordRoutes(router chi.Router, store RecordStore, activity Activit
 		records.Post("/", handler.createRecord)
 		records.Get("/{id}/activity", handler.listRecordActivity)
 		records.Get("/name/{name}", handler.getRecordByName)
+		records.Get("/single", handler.getSingleRecord)
 		records.Get("/{id}", handler.getRecord)
+		records.Patch("/single", handler.updateSingleRecord)
 		records.Patch("/{id}", handler.updateRecord)
 		records.Delete("/{id}", handler.deleteRecord)
 	})
@@ -767,6 +771,22 @@ func (h recordHandler) getRecordByName(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dataEnvelope{Data: record})
 }
 
+func (h recordHandler) getSingleRecord(w http.ResponseWriter, r *http.Request) {
+	if h.requireStore(w) {
+		return
+	}
+	entity := chi.URLParam(r, "entity")
+	if !h.authorize(w, r, entity, permissions.ActionRead, 0) {
+		return
+	}
+	record, err := h.store.GetSingleRecord(r.Context(), entity)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: record})
+}
+
 func (h recordHandler) createRecord(w http.ResponseWriter, r *http.Request) {
 	if h.requireStore(w) {
 		return
@@ -807,6 +827,27 @@ func (h recordHandler) updateRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	record, err := h.store.UpdateRecord(activityRequestContext(r), entity, id, input)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: record})
+}
+
+func (h recordHandler) updateSingleRecord(w http.ResponseWriter, r *http.Request) {
+	if h.requireStore(w) {
+		return
+	}
+	entity := chi.URLParam(r, "entity")
+	if !h.authorize(w, r, entity, permissions.ActionUpdate, 0) {
+		return
+	}
+	input, err := decodeRecordInput(r)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	record, err := h.store.UpdateSingleRecord(activityRequestContext(r), entity, input)
 	if err != nil {
 		writeRecordError(w, err)
 		return

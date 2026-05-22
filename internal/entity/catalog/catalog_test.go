@@ -248,6 +248,68 @@ fields:
 	}
 }
 
+func TestValidateRejectsSingleEntityFieldTargets(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeFile(t, filepath.Join(app.Dir, "entities", "invoice-settings.yml"), `
+name: invoice-settings
+label: Invoice Settings
+is-single: true
+fields:
+  - name: default-due-days
+    label: Default Due Days
+    type: int
+    required: true
+    default: 30
+`)
+	entityPath := filepath.Join(app.Dir, "entities", "invoice.yml")
+	writeFile(t, entityPath, `
+name: invoice
+label: Invoice
+fields:
+  - name: settings
+    label: Settings
+    type: link
+    options:
+      entity: invoice-settings
+`)
+
+	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want single target error")
+	}
+	for _, want := range []string{entityPath + ":4", `field "settings"`, `single Entity "invoice-settings"`, `cannot be link targets`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
+func TestValidateAllowsSingleEntityToLinkToNormalEntity(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeEntity(t, filepath.Join(app.Dir, "entities", "customer.yml"), "customer")
+	writeFile(t, filepath.Join(app.Dir, "entities", "invoice-settings.yml"), `
+name: invoice-settings
+label: Invoice Settings
+is-single: true
+fields:
+  - name: default-customer
+    label: Default Customer
+    type: link
+    options:
+      entity: customer
+`)
+
+	if _, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
 func TestValidateRejectsMissingFieldTarget(t *testing.T) {
 	t.Parallel()
 

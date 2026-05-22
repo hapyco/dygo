@@ -40,6 +40,13 @@ fields:
     label: Icon
     type: text
 
+  - name: is-single
+    label: Is Single
+    type: boolean
+    required: true
+    default: false
+    index: true
+
   - name: naming
     label: Naming
     type: json

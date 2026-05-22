@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertCircle, ArrowDown, ArrowUp, Inbox, Plus } from '@lucide/vue'
+import { AlertCircle, ArrowDown, ArrowUp, Inbox, LockKeyhole, LogIn, Plus } from '@lucide/vue'
 
 import Button from '@/design/atoms/Button.vue'
 import Checkbox from '@/design/atoms/Checkbox.vue'
@@ -12,17 +12,26 @@ import type {
   DataTableRowKey,
   DataTableSort,
   DataTableSortDirection,
+  DataTableState,
   SegmentedControlOption,
   SegmentedControlValue,
 } from '@/design/types'
+
+type StateContent = {
+  title: string
+  message: string
+}
 
 const props = withDefaults(defineProps<{
   columns: DataTableColumn[]
   rows: DataTableRow[]
   rowKey?: string
+  state?: DataTableState
   loading?: boolean
   loadingMore?: boolean
   error?: string
+  stateTitle?: string
+  stateMessage?: string
   emptyTitle?: string
   emptyMessage?: string
   emptyActionLabel?: string
@@ -37,9 +46,12 @@ const props = withDefaults(defineProps<{
   rowActivatable?: boolean
 }>(), {
   rowKey: 'id',
+  state: undefined,
   loading: false,
   loadingMore: false,
   error: '',
+  stateTitle: '',
+  stateMessage: '',
   emptyTitle: 'No records exist.',
   emptyMessage: '',
   emptyActionLabel: '',
@@ -72,9 +84,81 @@ const visibleRowKeys = computed(() => props.rows.map((row, index) => rowIdentifi
 const allVisibleRowsSelected = computed(() => (
   visibleRowKeys.value.length > 0 && visibleRowKeys.value.every((key) => selectedRowKeySet.value.has(key))
 ))
-const isEmpty = computed(() => !props.loading && !props.error && props.rows.length === 0)
-const isBlockingState = computed(() => props.rows.length === 0 && (props.loading || Boolean(props.error)))
-const showFooter = computed(() => !isEmpty.value && !isBlockingState.value)
+const effectiveState = computed<DataTableState>(() => {
+  if (props.state) {
+    return props.state
+  }
+
+  if (props.loading) {
+    return 'loading'
+  }
+
+  if (props.error) {
+    return 'error'
+  }
+
+  if (props.rows.length === 0) {
+    return 'empty'
+  }
+
+  return 'ready'
+})
+const stateContent = computed<StateContent>(() => {
+  switch (effectiveState.value) {
+    case 'loading':
+      return {
+        title: props.stateTitle || 'Loading records',
+        message: props.stateMessage,
+      }
+    case 'empty':
+      return {
+        title: props.stateTitle || props.emptyTitle,
+        message: props.stateMessage || props.emptyMessage,
+      }
+    case 'forbidden':
+      return {
+        title: props.stateTitle || 'Access restricted',
+        message: props.stateMessage || 'You do not have permission to view this record list.',
+      }
+    case 'unauthenticated':
+      return {
+        title: props.stateTitle || 'Sign in required',
+        message: props.stateMessage || 'Sign in to load this record list.',
+      }
+    case 'error':
+      return {
+        title: props.stateTitle || 'Records could not load',
+        message: props.stateMessage || props.error,
+      }
+    case 'ready':
+    default:
+      return {
+        title: '',
+        message: '',
+      }
+  }
+})
+const isEmpty = computed(() => effectiveState.value === 'empty')
+const isBlockingState = computed(() => (
+  props.rows.length === 0 && ['loading', 'forbidden', 'unauthenticated', 'error'].includes(effectiveState.value)
+))
+const showFooter = computed(() => props.rows.length > 0 && !isBlockingState.value)
+const selectedRowCount = computed(() => props.selectedRowKeys.length)
+const showBulkBar = computed(() => props.selectable && selectedRowCount.value > 0 && !isBlockingState.value)
+const selectedRowCountText = computed(() => (
+  selectedRowCount.value === 1 ? '1 record selected' : `${selectedRowCount.value} records selected`
+))
+const statePanelRole = computed(() => {
+  if (effectiveState.value === 'loading') {
+    return 'status'
+  }
+
+  if (effectiveState.value === 'empty') {
+    return undefined
+  }
+
+  return 'alert'
+})
 const footerCountText = computed(() => (
   typeof props.totalRows === 'number' ? `${props.rows.length} of ${props.totalRows}` : `${props.rows.length} loaded`
 ))
@@ -186,8 +270,25 @@ function updateVisibleRowSelection(selected: boolean) {
   emit('update:selectedRowKeys', Array.from(nextKeys))
 }
 
-function activateRow(row: DataTableRow, index: number) {
+function clearSelection() {
+  emit('update:selectedRowKeys', [])
+}
+
+function activationCameFromControl(event: Event): boolean {
+  const target = event.target
+  if (!(target instanceof Element)) {
+    return false
+  }
+
+  return Boolean(target.closest('a, button, input, select, textarea, [role="button"], [role="checkbox"], [data-row-control]'))
+}
+
+function activateRow(row: DataTableRow, index: number, event: MouseEvent | KeyboardEvent) {
   if (!props.rowActivatable || controlsDisabled.value) {
+    return
+  }
+
+  if (activationCameFromControl(event)) {
     return
   }
 
@@ -196,16 +297,26 @@ function activateRow(row: DataTableRow, index: number) {
 </script>
 
 <template>
-  <section class="data-table" aria-label="Records table">
-    <div v-if="isEmpty" class="data-table__empty">
-      <div class="data-table__empty-icon" aria-hidden="true">
+  <section
+    class="data-table"
+    aria-label="Records table"
+    :aria-busy="effectiveState === 'loading' ? 'true' : undefined"
+  >
+    <div
+      v-if="isEmpty"
+      class="data-table__state"
+      data-state="empty"
+      :role="statePanelRole"
+      aria-live="polite"
+    >
+      <div class="data-table__state-icon" aria-hidden="true">
         <Inbox :size="22" :stroke-width="1.7" />
       </div>
-      <p class="data-table__empty-title">{{ emptyTitle }}</p>
-      <p v-if="emptyMessage" class="data-table__empty-message">{{ emptyMessage }}</p>
+      <p class="data-table__state-title">{{ stateContent.title }}</p>
+      <p v-if="stateContent.message" class="data-table__state-message">{{ stateContent.message }}</p>
       <Button
         v-if="emptyActionLabel"
-        class="data-table__empty-action"
+        class="data-table__state-action"
         type="button"
         variant="secondary"
         @click="emit('emptyAction')"
@@ -215,18 +326,25 @@ function activateRow(row: DataTableRow, index: number) {
       </Button>
     </div>
 
-    <div v-else-if="isBlockingState" class="data-table__blocking-state">
+    <div
+      v-else-if="isBlockingState"
+      class="data-table__state"
+      :data-state="effectiveState"
+      :role="statePanelRole"
+      :aria-live="effectiveState === 'loading' ? 'polite' : 'assertive'"
+    >
       <Spinner
-        v-if="loading"
+        v-if="effectiveState === 'loading'"
         size="sm"
-        label="Loading records"
+        :label="stateContent.title"
       />
-      <div v-else class="data-table__blocking-icon" aria-hidden="true">
-        <AlertCircle :size="22" :stroke-width="1.7" />
+      <div v-else class="data-table__state-icon" aria-hidden="true">
+        <LockKeyhole v-if="effectiveState === 'forbidden'" :size="22" :stroke-width="1.7" />
+        <LogIn v-else-if="effectiveState === 'unauthenticated'" :size="22" :stroke-width="1.7" />
+        <AlertCircle v-else :size="22" :stroke-width="1.7" />
       </div>
-      <p class="data-table__blocking-title">
-        {{ loading ? 'Loading records' : error }}
-      </p>
+      <p class="data-table__state-title">{{ stateContent.title }}</p>
+      <p v-if="stateContent.message" class="data-table__state-message">{{ stateContent.message }}</p>
     </div>
 
     <div v-else class="data-table__scroller">
@@ -237,7 +355,7 @@ function activateRow(row: DataTableRow, index: number) {
               <th v-if="selectable" class="data-table__select-cell" scope="col">
                 <Checkbox
                   :model-value="allVisibleRowsSelected"
-                  :disabled="loading || rows.length === 0"
+                  :disabled="controlsDisabled || rows.length === 0"
                   aria-label="Select all records"
                   @update:model-value="updateVisibleRowSelection"
                 />
@@ -267,13 +385,23 @@ function activateRow(row: DataTableRow, index: number) {
             <tr
               v-for="(row, index) in rows"
               :key="rowIdentifier(row, index)"
-              :class="{ 'data-table__row--activatable': rowActivatable }"
+              :class="{
+                'data-table__row--activatable': rowActivatable,
+                'data-table__row--selected': selectable && selectedRowKeySet.has(rowIdentifier(row, index)),
+              }"
+              :aria-selected="selectable ? selectedRowKeySet.has(rowIdentifier(row, index)) : undefined"
               :tabindex="rowActivatable && !controlsDisabled ? 0 : undefined"
-              @click="activateRow(row, index)"
-              @keydown.enter.prevent="activateRow(row, index)"
-              @keydown.space.prevent="activateRow(row, index)"
+              @click="(event) => activateRow(row, index, event)"
+              @keydown.enter.prevent="(event) => activateRow(row, index, event)"
+              @keydown.space.prevent="(event) => activateRow(row, index, event)"
             >
-              <td v-if="selectable" class="data-table__select-cell" @click.stop @keydown.stop>
+              <td
+                v-if="selectable"
+                class="data-table__select-cell"
+                data-row-control
+                @click.stop
+                @keydown.stop
+              >
                 <Checkbox
                   :model-value="selectedRowKeySet.has(rowIdentifier(row, index))"
                   :disabled="controlsDisabled"
@@ -287,6 +415,31 @@ function activateRow(row: DataTableRow, index: number) {
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <div
+      v-if="showBulkBar"
+      class="data-table__bulk-bar"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="data-table__bulk-count">{{ selectedRowCountText }}</span>
+      <div class="data-table__bulk-actions">
+        <Button
+          type="button"
+          variant="ghost"
+          :disabled="controlsDisabled"
+          @click="clearSelection"
+        >
+          Clear selection
+        </Button>
+        <Button type="button" variant="secondary" disabled>
+          Export
+        </Button>
+        <Button type="button" variant="secondary" disabled>
+          Delete
+        </Button>
       </div>
     </div>
 
@@ -322,7 +475,7 @@ function activateRow(row: DataTableRow, index: number) {
   display: grid;
   min-height: 0;
   min-width: 0;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
 }
 
 .data-table__scroller {
@@ -432,7 +585,16 @@ function activateRow(row: DataTableRow, index: number) {
   outline-offset: -2px;
 }
 
-.data-table__empty {
+.data-table__row--selected td {
+  background: var(--studio-accent-soft);
+  color: var(--studio-text);
+}
+
+.data-table__row--selected:hover td {
+  background: oklch(0.941 0.034 248);
+}
+
+.data-table__state {
   display: grid;
   min-height: 260px;
   align-content: start;
@@ -441,7 +603,7 @@ function activateRow(row: DataTableRow, index: number) {
   text-align: center;
 }
 
-.data-table__empty-icon {
+.data-table__state-icon {
   display: inline-flex;
   width: 38px;
   height: 38px;
@@ -453,7 +615,20 @@ function activateRow(row: DataTableRow, index: number) {
   color: var(--studio-text-subtle);
 }
 
-.data-table__empty-title {
+.data-table__state[data-state='forbidden'] .data-table__state-icon,
+.data-table__state[data-state='unauthenticated'] .data-table__state-icon {
+  border-color: oklch(0.56 0.12 231 / 0.24);
+  background: var(--studio-info-soft);
+  color: var(--studio-info);
+}
+
+.data-table__state[data-state='error'] .data-table__state-icon {
+  border-color: oklch(0.55 0.15 28 / 0.24);
+  background: var(--studio-danger-soft);
+  color: var(--studio-danger);
+}
+
+.data-table__state-title {
   margin: 12px 0 0;
   color: var(--studio-text);
   font-size: 14px;
@@ -461,7 +636,7 @@ function activateRow(row: DataTableRow, index: number) {
   line-height: 1.3;
 }
 
-.data-table__empty-message {
+.data-table__state-message {
   max-width: 42ch;
   margin: 6px 0 0;
   color: var(--studio-text-muted);
@@ -469,38 +644,32 @@ function activateRow(row: DataTableRow, index: number) {
   line-height: 1.45;
 }
 
-.data-table__empty-action {
+.data-table__state-action {
   margin-top: 14px;
 }
 
-.data-table__blocking-state {
-  display: grid;
-  min-height: 260px;
-  align-content: start;
-  justify-items: center;
-  padding: 196px 16px 44px;
-  text-align: center;
-}
-
-.data-table__blocking-icon {
-  display: inline-flex;
-  width: 38px;
-  height: 38px;
+.data-table__bulk-bar {
+  display: flex;
+  min-height: 48px;
   align-items: center;
-  justify-content: center;
-  border: 1px solid oklch(0.55 0.15 28 / 0.24);
-  border-radius: var(--studio-radius-control);
-  background: var(--studio-danger-soft);
-  color: var(--studio-danger);
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--studio-border);
+  background: var(--studio-surface);
+  padding: 8px 12px;
 }
 
-.data-table__blocking-title {
-  max-width: 46ch;
-  margin: 12px 0 0;
-  color: var(--studio-text-muted);
+.data-table__bulk-count {
+  color: var(--studio-text);
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1.45;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.data-table__bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .data-table__footer {
@@ -536,6 +705,16 @@ function activateRow(row: DataTableRow, index: number) {
 }
 
 @media (max-width: 720px) {
+  .data-table__bulk-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .data-table__bulk-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
   .data-table__footer {
     align-items: stretch;
     flex-direction: column;

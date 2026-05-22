@@ -26,8 +26,10 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 		"create table entity",
 		"create table patch_run",
 		"add column entity.app_id",
+		"add column entity.is_single",
 		"add column patch_run.app_id",
 		"create index entity_app_id_idx on entity.app_id",
+		"create index entity_is_single_idx on entity.is_single",
 		"add unique constraint patch_run_app_patch_id_key on patch_run(app_id, patch_id)",
 		"add unique constraint app_name_key on app.name",
 		"add check constraint app_status_check on app.status",
@@ -405,6 +407,76 @@ func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) 
 	assertContains(t, sql, `ALTER TABLE "sales_deal" ADD CONSTRAINT "deal_amount_gte_check" CHECK ("amount" >= 0)`)
 }
 
+func TestBuildMetadataSchemaPlanAddsSingleEntityNameCheck(t *testing.T) {
+	entity := catalog.LoadedEntity{
+		AppName: "sales",
+		Path:    "apps/sales/entities/invoice-settings.yml",
+		Entity: schema.Entity{
+			Name:     "invoice-settings",
+			IsSingle: true,
+			Fields: []schema.Field{
+				{Name: "default-due-days", Type: "int", Required: true, Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: "30"}},
+			},
+		},
+	}
+
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{}})
+	if err != nil {
+		t.Fatalf("BuildMetadataSchemaPlan(single) error = %v, want nil", err)
+	}
+	if plan.HasBlockers() {
+		t.Fatalf("BuildMetadataSchemaPlan(single) diagnostics = %v, want none", plan.Diagnostics)
+	}
+
+	descriptions := operationDescriptions(plan)
+	assertContains(t, descriptions, "add check constraint sales_invoice_settings_single_check on sales_invoice_settings.name")
+	assertContains(t, operationSQL(plan), `CHECK ("name" = 'invoice-settings')`)
+}
+
+func TestBuildMetadataSchemaPlanBlocksNonEmptySingleEntityConversion(t *testing.T) {
+	entity := catalog.LoadedEntity{
+		AppName: "sales",
+		Path:    "apps/sales/entities/invoice-settings.yml",
+		Entity: schema.Entity{
+			Name:     "invoice-settings",
+			IsSingle: true,
+			Fields: []schema.Field{
+				{Name: "default-due-days", Type: "int", Required: true, Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: "30"}},
+			},
+		},
+	}
+	inspectedTable := liveSchemaTable("sales_invoice_settings",
+		map[string]liveColumn{
+			"id":               {Name: "id", Type: "bigint", Nullable: false},
+			"name":             {Name: "name", Type: "text", Nullable: false},
+			"created_at":       {Name: "created_at", Type: "timestamptz", Nullable: false},
+			"updated_at":       {Name: "updated_at", Type: "timestamptz", Nullable: false},
+			"default_due_days": {Name: "default_due_days", Type: "integer", Nullable: false, HasDefault: true, DefaultSQL: "30"},
+		},
+		map[string]liveConstraint{
+			"sales_invoice_settings_pkey":     {Name: "sales_invoice_settings_pkey", Type: "primary-key"},
+			"sales_invoice_settings_name_key": {Name: "sales_invoice_settings_name_key", Type: "unique"},
+		},
+		nil,
+	)
+	inspectedTable.RowStateKnown = true
+	inspectedTable.HasRows = true
+
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity}, LiveSchema{Tables: map[string]liveTable{
+		"sales_invoice_settings": inspectedTable,
+	}})
+	if err != nil {
+		t.Fatalf("BuildMetadataSchemaPlan(single conversion) error = %v, want nil", err)
+	}
+	if !plan.HasBlockers() {
+		t.Fatal("BuildMetadataSchemaPlan(single conversion) blockers = false, want true")
+	}
+	if got := plan.Diagnostics[0].Kind; got != "single-entity-conversion" {
+		t.Fatalf("BuildMetadataSchemaPlan(single conversion) diagnostic kind = %q, want single-entity-conversion", got)
+	}
+	assertContains(t, plan.BlockerError().Error(), "cannot be converted to a single Entity")
+}
+
 func TestBuildMetadataSchemaPlanDoesNotCreateLinkForeignKeys(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "core",
@@ -595,6 +667,31 @@ func TestApplyMetadataSchemaPlanRejectsBlockersBeforeExecution(t *testing.T) {
 	assertContains(t, err.Error(), SchemaBlockerHelp)
 }
 
+func TestSeedSingleEntityRecords(t *testing.T) {
+	tx := &fakeRecordTx{fakeRecordQueryer: &fakeRecordQueryer{}}
+	entities := []catalog.LoadedEntity{
+		{
+			AppName: "sales",
+			Entity:  schema.Entity{Name: "invoice-settings", IsSingle: true},
+		},
+		{
+			AppName: "sales",
+			Entity:  schema.Entity{Name: "invoice"},
+		},
+	}
+
+	if err := seedSingleEntityRecords(context.Background(), tx, entities); err != nil {
+		t.Fatalf("seedSingleEntityRecords() error = %v, want nil", err)
+	}
+	if len(tx.execSQL) != 1 {
+		t.Fatalf("seedSingleEntityRecords() exec count = %d, want 1", len(tx.execSQL))
+	}
+	assertContains(t, tx.execSQL[0], `INSERT INTO "sales_invoice_settings" ("name") VALUES ($1) ON CONFLICT ("name") DO NOTHING`)
+	if len(tx.execArg) != 1 || len(tx.execArg[0]) != 1 || tx.execArg[0][0] != "invoice-settings" {
+		t.Fatalf("seedSingleEntityRecords() args = %#v, want invoice-settings", tx.execArg)
+	}
+}
+
 func coreSchemaEntities() []catalog.LoadedEntity {
 	return []catalog.LoadedEntity{
 		appEntity(),
@@ -607,6 +704,7 @@ func coreSchemaEntities() []catalog.LoadedEntity {
 					{Name: "app", Type: "link", Required: true, Index: true, Options: entityOption("app")},
 					{Name: "name", Type: "text", Required: true, Index: true},
 					{Name: "route-slug", Type: "text", Required: true, Unique: true, Index: true},
+					{Name: "is-single", Type: "boolean", Required: true, Index: true, Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "false"}},
 				},
 				Constraints: []schema.Constraint{
 					{Type: "unique", Fields: []string{"app", "name"}},

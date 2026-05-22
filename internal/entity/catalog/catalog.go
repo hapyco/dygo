@@ -174,8 +174,13 @@ func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
 				continue
 			}
 
-			if _, err := targets.resolve(entity, field.Options.App, targetName); err != nil {
+			target, err := targets.resolve(entity, field.Options.App, targetName)
+			if err != nil {
 				*problems = append(*problems, fieldDiagnostic(entity, field, err.Error()))
+				continue
+			}
+			if target.Entity.IsSingle {
+				*problems = append(*problems, fieldDiagnostic(entity, field, fmt.Sprintf("links to single Entity %q; single Entities cannot be link targets", target.Entity.Name)))
 				continue
 			}
 		}

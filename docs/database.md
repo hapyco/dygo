@@ -129,7 +129,7 @@ go run ./cmd/dygo migrate
 
 Before applying changes, dygo builds a schema plan from metadata and compares it with the live PostgreSQL `public` schema. The plan classifies safe operations separately from unsafe or unsupported drift.
 
-Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Each metadata-backed table has system `id`, `name`, `created_at`, and `updated_at` columns; the Record `name` column is generated from Entity `naming` metadata. Composite indexes and composite unique constraints come from top-level Entity metadata; single-field structured checks come from Field metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
+Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Each metadata-backed table has system `id`, `name`, `created_at`, and `updated_at` columns; the Record `name` column is generated from Entity `naming` metadata except for Single Entities, where it is fixed to the Entity name. Composite indexes and composite unique constraints come from top-level Entity metadata; single-field structured checks come from Field metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
 
 Existing early-development databases created before system Record names may report a missing `name` system column. That is treated as unsupported drift because dygo cannot safely invent stable names for existing rows without an explicit patch or reset.
 

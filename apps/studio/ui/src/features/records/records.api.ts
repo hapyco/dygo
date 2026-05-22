@@ -90,6 +90,21 @@ export async function getRecordByName(entity: string, recordName: string): Promi
   return payload.data
 }
 
+export async function getSingleRecord(entity: string): Promise<RecordData> {
+  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}/single`, {
+    method: 'GET',
+    credentials: 'include',
+  })
+
+  const payload = await parseJSON<DataEnvelope<RecordData> & ApiErrorEnvelope>(response)
+
+  if (!response.ok) {
+    throw new RecordApiError(payload.error?.code ?? 'single_record_lookup_failed', recordErrorMessage(payload), payload.error?.details)
+  }
+
+  return payload.data
+}
+
 export async function createRecord(entity: string, data: RecordData): Promise<RecordData> {
   const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}`, {
     method: 'POST',
@@ -119,6 +134,23 @@ export async function updateRecord(entity: string, id: string | number, data: Re
 
   if (!response.ok) {
     throw new RecordApiError(payload.error?.code ?? 'record_update_failed', recordErrorMessage(payload), payload.error?.details)
+  }
+
+  return payload.data
+}
+
+export async function updateSingleRecord(entity: string, data: RecordData): Promise<RecordData> {
+  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}/single`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ data }),
+  })
+
+  const payload = await parseJSON<DataEnvelope<RecordData> & ApiErrorEnvelope>(response)
+
+  if (!response.ok) {
+    throw new RecordApiError(payload.error?.code ?? 'single_record_update_failed', recordErrorMessage(payload), payload.error?.details)
   }
 
   return payload.data

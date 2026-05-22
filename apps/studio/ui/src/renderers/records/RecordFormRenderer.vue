@@ -18,7 +18,7 @@ const props = withDefaults(defineProps<{
   entityLabel: string
   fields: MetadataField[]
   record?: RecordData | null
-  mode: 'new' | 'record'
+  mode: 'new' | 'record' | 'single'
   modelValue: RecordData
   fieldErrors?: Record<string, string>
   disabled?: boolean
@@ -51,7 +51,7 @@ function labelForField(field: MetadataField): string {
 }
 
 function isReadonlyField(field: MetadataField): boolean {
-  return props.mode === 'record' && field.name === 'name'
+  return props.mode !== 'new' && field.name === 'name'
 }
 
 function textValue(field: MetadataField): string {

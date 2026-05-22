@@ -53,8 +53,8 @@ func TestMetadataReaderGetApp(t *testing.T) {
 func TestMetadataReaderListEntities(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
 		rows: []pgx.Rows{newFakeRows([][]any{
-			{"app", "app", "App", "Runtime state", "package", []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
-			{"user", "user", "User", "User identity", "user", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
+			{"app", "app", "App", "Runtime state", "package", false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
+			{"user", "user", "User", "User identity", "user", true, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
 		})},
 	}
 
@@ -62,7 +62,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntities() error = %v, want nil", err)
 	}
-	if len(entities) != 2 || entities[0].Name != "app" || entities[0].Icon != "package" || entities[0].App.Name != "core" || entities[1].Name != "user" || entities[1].RouteSlug != "user" {
+	if len(entities) != 2 || entities[0].Name != "app" || entities[0].Icon != "package" || entities[0].App.Name != "core" || entities[0].IsSingle || entities[1].Name != "user" || entities[1].RouteSlug != "user" || !entities[1].IsSingle {
 		t.Fatalf("ListEntities() = %+v, want core entities", entities)
 	}
 	if !strings.Contains(queryer.queries[0], `JOIN "app"`) || !strings.Contains(queryer.queries[0], "ORDER BY a.name, e.name") {
@@ -72,7 +72,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 
 func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(10), "user", "user", "User", "User identity", "user", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "user", "user", "User", "User identity", "user", true, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, true, nil, nil, 1, []byte(`{"entity":"user"}`)},
@@ -92,7 +92,7 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEntityMeta() error = %v, want nil", err)
 	}
-	if meta.Name != "user" || meta.Icon != "user" || meta.App.Name != "core" {
+	if meta.Name != "user" || meta.Icon != "user" || meta.App.Name != "core" || !meta.IsSingle {
 		t.Fatalf("GetEntityMeta() = %+v, want core/user", meta.MetadataEntity)
 	}
 	if len(meta.Fields) != 2 || meta.Fields[0].Name != "email" || string(meta.Fields[0].Options) != `{"entity":"user"}` {
@@ -114,7 +114,7 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 
 func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		row: newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New"]}`)},

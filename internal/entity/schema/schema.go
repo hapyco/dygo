@@ -18,6 +18,7 @@ type Entity struct {
 	Label       string       `yaml:"label"`
 	Description string       `yaml:"description,omitempty"`
 	Icon        string       `yaml:"icon,omitempty"`
+	IsSingle    bool         `yaml:"is-single,omitempty"`
 	Route       Route        `yaml:"route,omitempty"`
 	Naming      Naming       `yaml:"naming,omitempty"`
 	Fields      []Field      `yaml:"fields"`
@@ -187,6 +188,9 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	fieldTypes := map[string]fieldtype.Definition{}
 	for _, field := range e.Fields {
 		validateField(field, registry, seenFields, &problems)
+		if e.IsSingle {
+			validateSingleFieldDefault(field, &problems)
+		}
 		if field.Name != "" {
 			seenFields[field.Name] = struct{}{}
 			fields[field.Name] = field
@@ -197,6 +201,13 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	}
 	validateIndexes(e, fields, fieldTypes, &problems)
 	validateConstraints(e, fields, fieldTypes, &problems)
+	if e.IsSingle && hasExplicitNaming(e.Naming) {
+		line := e.Naming.Line
+		if line == 0 {
+			line = e.Line
+		}
+		problems = append(problems, withLine(line, "single Entities do not support explicit naming"))
+	}
 	validateNaming(e, fields, fieldTypes, &problems)
 
 	if len(problems) > 0 {
@@ -223,6 +234,31 @@ func (e Entity) EffectiveNaming() Naming {
 		naming.Length = DefaultRandomNameLength
 	}
 	return naming
+}
+
+func hasExplicitNaming(naming Naming) bool {
+	return naming.Line != 0 ||
+		strings.TrimSpace(naming.Strategy) != "" ||
+		naming.Length != 0 ||
+		strings.TrimSpace(naming.Field) != "" ||
+		strings.TrimSpace(naming.Pattern) != ""
+}
+
+func validateSingleFieldDefault(field Field, problems *[]string) {
+	if !field.Required || field.Type == "child-table" {
+		return
+	}
+	if field.Default.Kind == 0 {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("single Entity required field %q must define a non-null default", field.Name)))
+		return
+	}
+	if field.Default.Kind != yaml.ScalarNode {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("single Entity required field %q default must be scalar", field.Name)))
+		return
+	}
+	if field.Default.Tag == "!!null" {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("single Entity required field %q default must not be null", field.Name)))
+	}
 }
 
 func validateNaming(entity Entity, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, problems *[]string) {

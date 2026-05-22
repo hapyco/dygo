@@ -91,6 +91,9 @@ func applyMetadataSchemaPlanAndRecords(ctx context.Context, pool *pgxpool.Pool, 
 	if _, err := persistMetadataRecords(ctx, tx, metadata); err != nil {
 		return SchemaSyncResult{}, err
 	}
+	if err := seedSingleEntityRecords(ctx, tx, metadata.Entities); err != nil {
+		return SchemaSyncResult{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return SchemaSyncResult{}, fmt.Errorf("commit metadata schema transaction: %w", err)
 	}
@@ -103,6 +106,23 @@ func executeSchemaPlan(ctx context.Context, tx pgx.Tx, plan SchemaPlan) error {
 	for _, operation := range plan.Operations {
 		if _, err := tx.Exec(ctx, operation.SQL); err != nil {
 			return fmt.Errorf("apply metadata schema operation %q: %w", operation.Description, err)
+		}
+	}
+	return nil
+}
+
+func seedSingleEntityRecords(ctx context.Context, tx pgx.Tx, entities []catalog.LoadedEntity) error {
+	for _, entity := range entities {
+		if !entity.Entity.IsSingle {
+			continue
+		}
+		table, err := tableName(entity)
+		if err != nil {
+			return fmt.Errorf("seed single Entity %s/%s: %w", entity.AppName, entity.Entity.Name, err)
+		}
+		sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES ($1) ON CONFLICT (%s) DO NOTHING", quoteIdent(table), quoteIdent("name"), quoteIdent("name"))
+		if _, err := tx.Exec(ctx, sql, entity.Entity.Name); err != nil {
+			return fmt.Errorf("seed single Entity %s/%s: %w", entity.AppName, entity.Entity.Name, err)
 		}
 	}
 	return nil

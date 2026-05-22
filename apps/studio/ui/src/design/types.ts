@@ -27,6 +27,8 @@ export type DataTableSort = {
   direction: DataTableSortDirection
 }
 
+export type DataTableState = 'ready' | 'loading' | 'empty' | 'forbidden' | 'unauthenticated' | 'error'
+
 export type DropdownMenuItem =
   | {
       type: 'item'

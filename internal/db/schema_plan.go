@@ -217,6 +217,10 @@ func BuildMetadataSchemaPlan(entities []catalog.LoadedEntity, live LiveSchema) (
 					}
 					continue
 				}
+				if constraint.UnsafeWhenMissingOnNonEmpty && liveTable.RowStateKnown && liveTable.HasRows {
+					plan.Diagnostics = append(plan.Diagnostics, unsafeDiagnostic(constraint.MissingOnNonEmptyKind, table.Name, constraint.MissingOnNonEmptyColumn, constraint.Name, constraint.MissingOnNonEmptyDiagnostic, constraint.Source))
+					continue
+				}
 			}
 			constraints = append(constraints, SchemaOperation{
 				Classification: SchemaOperationSafe,
@@ -281,11 +285,15 @@ type desiredIndex struct {
 }
 
 type desiredConstraint struct {
-	Name       string
-	Type       string
-	Columns    []string
-	Definition string
-	Source     string
+	Name                        string
+	Type                        string
+	Columns                     []string
+	Definition                  string
+	Source                      string
+	UnsafeWhenMissingOnNonEmpty bool
+	MissingOnNonEmptyKind       string
+	MissingOnNonEmptyColumn     string
+	MissingOnNonEmptyDiagnostic string
 }
 
 func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) {
@@ -334,6 +342,9 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 				Definition: fmt.Sprintf("UNIQUE (%s)", quoteIdentList([]string{"name"})),
 				Source:     entitySource(loaded),
 			})
+		}
+		if loaded.Entity.IsSingle {
+			desiredTable.Constraints = append(desiredTable.Constraints, singleEntityNameConstraint(table, loaded))
 		}
 
 		fieldColumns := map[string]string{}
@@ -499,6 +510,20 @@ func validateDesiredObjectNames(table desiredTable) error {
 
 func requiresSystemNameUniqueConstraint(entity catalog.LoadedEntity) bool {
 	return !(entity.AppName == "core" && entity.Entity.Name == "entity")
+}
+
+func singleEntityNameConstraint(table string, entity catalog.LoadedEntity) desiredConstraint {
+	return desiredConstraint{
+		Name:                        constraintName(table, "single", "check"),
+		Type:                        "check",
+		Columns:                     []string{"name"},
+		Definition:                  fmt.Sprintf("CHECK (%s = %s)", quoteIdent("name"), quoteLiteral(entity.Entity.Name)),
+		Source:                      entitySource(entity),
+		UnsafeWhenMissingOnNonEmpty: true,
+		MissingOnNonEmptyKind:       "single-entity-conversion",
+		MissingOnNonEmptyColumn:     "name",
+		MissingOnNonEmptyDiagnostic: fmt.Sprintf("table %q already has rows and cannot be converted to a single Entity without an explicit patch or reset", table),
+	}
 }
 
 func compareColumn(plan *SchemaPlan, table string, desired desiredColumn, live liveColumn) {

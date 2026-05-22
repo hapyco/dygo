@@ -16,6 +16,11 @@
       "type": "string"
     },
     "icon": { "$ref": "#/$defs/icon" },
+    "is-single": {
+      "type": "boolean",
+      "default": false,
+      "description": "Marks the Entity as a framework-owned singleton with exactly one Record."
+    },
     "route": { "$ref": "#/$defs/route" },
     "naming": { "$ref": "#/$defs/naming" },
     "fields": {

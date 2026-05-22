@@ -75,6 +75,24 @@ dygo uses singular Entity names only. There is no separate required metadata for
 
 `icon` is optional and should use a Lucide icon name, such as `box`, `user`, or `shield-check`. Studio resolves lower-kebab Lucide names and Vue component keys. Unknown icon names are non-fatal; Studio falls back to the Lucide `box` icon.
 
+`is-single: true` marks an Entity as a singleton settings/config surface. Single Entities have exactly one framework-owned Record whose system `name` is the Entity name. dygo seeds that Record during metadata sync, Studio opens the form directly instead of a list, and normal create/delete/list operations are not used.
+
+Single Entities cannot define explicit `naming`; dygo owns the singleton Record name. Every required stored field on a Single Entity must define a non-null default so `dygo migrate` can seed the row deterministically.
+
+Single Entities cannot be targets of `link` or `child-table` fields because there is no meaningful Record selection. A Single Entity may still contain link fields to normal Entities.
+
+```yaml
+name: invoice-settings
+label: Invoice Settings
+is-single: true
+fields:
+  - name: default-due-days
+    label: Default Due Days
+    type: int
+    required: true
+    default: 30
+```
+
 The stable internal Entity identity is `{app, entity}`. Two apps may define the same Entity name, such as `crm/contact` and `support/contact`.
 
 The user-facing route slug is separate from that internal identity. `route.slug` is optional and defaults to Entity `name`. Route slugs must be globally unique across loaded apps and must not use Studio's reserved root slugs: `api`, `assets`, `health`, `login`, or `logout`. dygo fails validation on route slug conflicts instead of generating unstable numeric suffixes. If two apps both define `contact`, set one explicit slug, such as:

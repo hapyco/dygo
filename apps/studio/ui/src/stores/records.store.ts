@@ -4,9 +4,11 @@ import type { DataTableRowKey, DataTableSort } from '@/design/types'
 import {
   createRecord as createRecordRequest,
   getRecordByName,
+  getSingleRecord,
   listRecords,
   RecordApiError,
   updateRecord as updateRecordRequest,
+  updateSingleRecord as updateSingleRecordRequest,
   type RecordData,
 } from '@/features/records/records.api'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
@@ -14,6 +16,7 @@ import { statusForError, storeError, type LoadStatus, type StoreError } from './
 const defaultPageSize = 20
 const pageSizeStorageKey = 'dygo.studio.records.pageSize'
 const allowedPageSizes = new Set([20, 100, 500, 2500])
+export const singleRecordKey = '__single__'
 
 type LoadInitialOptions = {
   pageSize?: number
@@ -235,6 +238,47 @@ export const useRecordsStore = defineStore('records', {
       return request
     },
 
+    async loadSingleRecord(entity: string, options: LoadOptions = {}): Promise<RecordFormState> {
+      const state = this.ensureRecord(entity, singleRecordKey)
+
+      if (!options.force && state.status === 'ready') {
+        return state
+      }
+
+      const key = recordStateKey(entity, singleRecordKey)
+      const pending = this.pendingRecordByKey[key]
+      if (pending && !options.force) {
+        return pending
+      }
+
+      state.status = 'loading'
+      state.error = null
+      state.saveError = null
+      state.record = null
+
+      const request = getSingleRecord(entity)
+        .then((record) => {
+          state.record = record
+          state.status = 'ready'
+          state.error = null
+          return state
+        })
+        .catch((error: unknown) => {
+          const normalized = storeError(error, 'Studio could not load these settings.')
+          state.record = null
+          state.error = normalized
+          state.saveError = null
+          state.status = error instanceof RecordApiError ? statusForError(normalized) : 'error'
+          return state
+        })
+        .finally(() => {
+          this.pendingRecordByKey[key] = undefined
+        })
+
+      this.pendingRecordByKey[key] = request
+      return request
+    },
+
     async createRecord(entity: string, data: RecordData): Promise<RecordData> {
       const state = this.ensureRecord(entity, 'new')
       state.saving = true
@@ -272,6 +316,28 @@ export const useRecordsStore = defineStore('records', {
         return record
       } catch (error: unknown) {
         const normalized = storeError(error, 'Studio could not save this record.')
+        state.saveError = normalized
+        throw error
+      } finally {
+        state.saving = false
+      }
+    },
+
+    async updateSingleRecord(entity: string, data: RecordData): Promise<RecordData> {
+      const state = this.ensureRecord(entity, singleRecordKey)
+      state.saving = true
+      state.saveError = null
+
+      try {
+        const record = await updateSingleRecordRequest(entity, data)
+        state.record = record
+        state.status = 'ready'
+        state.error = null
+        this.cacheNamedRecord(entity, record)
+        this.markEntityStale(entity)
+        return record
+      } catch (error: unknown) {
+        const normalized = storeError(error, 'Studio could not save these settings.')
         state.saveError = normalized
         throw error
       } finally {

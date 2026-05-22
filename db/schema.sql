@@ -143,7 +143,8 @@ CREATE TABLE public.entity (
     label text NOT NULL,
     description text,
     naming jsonb,
-    icon text
+    icon text,
+    is_single boolean DEFAULT false NOT NULL
 );
 
 
@@ -817,6 +818,13 @@ CREATE INDEX constraint_type_idx ON public."constraint" USING btree (type);
 --
 
 CREATE INDEX entity_app_id_idx ON public.entity USING btree (app_id);
+
+
+--
+-- Name: entity_is_single_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX entity_is_single_idx ON public.entity USING btree (is_single);
 
 
 --

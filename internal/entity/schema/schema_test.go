@@ -77,6 +77,111 @@ func TestLoadFile(t *testing.T) {
 	}
 }
 
+func TestDecodeSingleEntity(t *testing.T) {
+	t.Parallel()
+
+	entity, err := Decode([]byte(`
+name: invoice-settings
+label: Invoice Settings
+is-single: true
+fields:
+  - name: default-due-days
+    label: Default Due Days
+    type: int
+    required: true
+    default: 30
+`), fieldtype.DefaultRegistry())
+	if err != nil {
+		t.Fatalf("Decode(single) error = %v, want nil", err)
+	}
+	if !entity.IsSingle {
+		t.Fatal("Decode(single).IsSingle = false, want true")
+	}
+}
+
+func TestDecodeSingleEntityValidationErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		body      string
+		wantError string
+	}{
+		{
+			name: "underscore key rejected",
+			body: `
+name: invoice-settings
+label: Invoice Settings
+is_single: true
+fields:
+  - name: default-due-days
+    label: Default Due Days
+    type: int
+`,
+			wantError: "is_single",
+		},
+		{
+			name: "explicit naming rejected",
+			body: `
+name: invoice-settings
+label: Invoice Settings
+is-single: true
+naming:
+  strategy: random
+fields:
+  - name: default-due-days
+    label: Default Due Days
+    type: int
+`,
+			wantError: "single Entities do not support explicit naming",
+		},
+		{
+			name: "required field needs default",
+			body: `
+name: invoice-settings
+label: Invoice Settings
+is-single: true
+fields:
+  - name: default-due-days
+    label: Default Due Days
+    type: int
+    required: true
+`,
+			wantError: `required field "default-due-days" must define a non-null default`,
+		},
+		{
+			name: "required field rejects null default",
+			body: `
+name: invoice-settings
+label: Invoice Settings
+is-single: true
+fields:
+  - name: default-due-days
+    label: Default Due Days
+    type: int
+    required: true
+    default: null
+`,
+			wantError: `required field "default-due-days" default must not be null`,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Decode([]byte(tt.body), fieldtype.DefaultRegistry())
+			if err == nil {
+				t.Fatal("Decode(single invalid) error = nil, want error")
+			}
+			if !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("Decode(single invalid) error = %q, want substring %q", err.Error(), tt.wantError)
+			}
+		})
+	}
+}
+
 func TestDecodeWithCustomFieldType(t *testing.T) {
 	t.Parallel()
 

@@ -478,7 +478,7 @@ type recordDataMutationQueryer struct {
 
 func newUserRecordDataMutationQueryer(recordRows ...[]any) *recordDataMutationQueryer {
 	queryer := &recordDataMutationQueryer{
-		row: newRecordDataMutationRow(int64(10), "user", "user", "User", "User identity", "user", []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newRecordDataMutationRow(int64(10), "user", "user", "User", "User identity", "user", false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newRecordDataMutationRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},

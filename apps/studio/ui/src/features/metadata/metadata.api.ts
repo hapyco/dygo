@@ -9,6 +9,7 @@ export type MetadataEntity = {
   label: string
   description: string
   icon?: string
+  'is-single': boolean
   app: MetadataAppRef
 }
 

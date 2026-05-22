@@ -4,7 +4,7 @@ import { Columns3 } from '@lucide/vue'
 
 import DataTable from '@/design/organisms/DataTable.vue'
 import DropdownMenu from '@/design/primitives/DropdownMenu.vue'
-import type { DataTableRowKey, DataTableSort, DropdownMenuItem } from '@/design/types'
+import type { DataTableRowKey, DataTableSort, DataTableState, DropdownMenuItem } from '@/design/types'
 import type { MetadataField } from '@/features/metadata/metadata.api'
 import PageToolbar from '@/shell/PageToolbar.vue'
 import { useRecordsStore } from '@/stores/records.store'
@@ -33,6 +33,60 @@ const recordState = computed(() => recordsStore.entityState(props.entity))
 const loading = computed(() => recordState.value.status === 'idle' || recordState.value.status === 'loading')
 const error = computed(() => recordState.value.error?.message ?? '')
 const footerError = computed(() => recordState.value.loadMoreError?.message ?? '')
+const tableState = computed<DataTableState>(() => {
+  if (loading.value) {
+    return 'loading'
+  }
+
+  if (recordState.value.status === 'forbidden') {
+    return 'forbidden'
+  }
+
+  if (recordState.value.status === 'unauthenticated') {
+    return 'unauthenticated'
+  }
+
+  if (recordState.value.status === 'empty') {
+    return 'empty'
+  }
+
+  if (recordState.value.status === 'error' || error.value) {
+    return 'error'
+  }
+
+  return 'ready'
+})
+const tableStateTitle = computed(() => {
+  switch (tableState.value) {
+    case 'loading':
+      return `Loading ${props.entityLabel} records`
+    case 'empty':
+      return `No ${props.entityLabel} records exist.`
+    case 'forbidden':
+      return `You cannot view ${props.entityLabel} records.`
+    case 'unauthenticated':
+      return 'Sign in to view records.'
+    case 'error':
+      return `${props.entityLabel} records could not load.`
+    case 'ready':
+    default:
+      return ''
+  }
+})
+const tableStateMessage = computed(() => {
+  switch (tableState.value) {
+    case 'empty':
+      return 'Create the first record to start using this Entity.'
+    case 'forbidden':
+    case 'unauthenticated':
+    case 'error':
+      return error.value
+    case 'loading':
+    case 'ready':
+    default:
+      return ''
+  }
+})
 const hasMore = computed(() => (
   recordState.value.rows.length < recordState.value.total && !recordState.value.error
 ))
@@ -148,6 +202,9 @@ function writeHiddenColumnKeys(entity: string, keys: string[]) {
     <DataTable
       :columns="visibleColumns"
       :rows="recordState.rows"
+      :state="tableState"
+      :state-title="tableStateTitle"
+      :state-message="tableStateMessage"
       :loading="loading"
       :loading-more="recordState.loadingMore"
       :error="error"
@@ -158,7 +215,6 @@ function writeHiddenColumnKeys(entity: string, keys: string[]) {
       :sort="recordState.sort"
       selectable
       :selected-row-keys="recordState.selectedRowKeys"
-      :empty-title="`No ${entityLabel} records exist.`"
       empty-action-label="Add first record"
       row-activatable
       @update:page-size="updatePageSize"
