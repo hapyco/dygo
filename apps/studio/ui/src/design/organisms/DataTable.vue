@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Inbox, Plus } from '@lucide/vue'
+import { AlertCircle, ArrowDown, ArrowUp, Inbox, Plus } from '@lucide/vue'
 
 import Button from '@/design/atoms/Button.vue'
 import Checkbox from '@/design/atoms/Checkbox.vue'
@@ -258,7 +258,6 @@ function activateRow(row: DataTableRow, index: number) {
                   <span>{{ column.label }}</span>
                   <ArrowUp v-if="sortDirectionForColumn(column) === 'asc'" :size="13" :stroke-width="1.9" aria-hidden="true" />
                   <ArrowDown v-else-if="sortDirectionForColumn(column) === 'desc'" :size="13" :stroke-width="1.9" aria-hidden="true" />
-                  <ArrowUpDown v-else :size="13" :stroke-width="1.9" aria-hidden="true" />
                 </button>
                 <span v-else>{{ column.label }}</span>
               </th>

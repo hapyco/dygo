@@ -76,21 +76,18 @@ export async function listRecords(entity: string, params: ListRecordsParams): Pr
 }
 
 export async function getRecordByName(entity: string, recordName: string): Promise<RecordData> {
-  const result = await listRecords(entity, {
-    limit: 2,
-    offset: 0,
-    filters: { name: recordName },
+  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}/name/${encodeURIComponent(recordName)}`, {
+    method: 'GET',
+    credentials: 'include',
   })
 
-  if (result.data.length === 0) {
-    throw new RecordApiError('not_found', 'Studio could not find this record.', { entity, name: recordName })
+  const payload = await parseJSON<DataEnvelope<RecordData> & ApiErrorEnvelope>(response)
+
+  if (!response.ok) {
+    throw new RecordApiError(payload.error?.code ?? 'record_lookup_failed', recordErrorMessage(payload), payload.error?.details)
   }
 
-  if (result.data.length > 1) {
-    throw new RecordApiError('validation', 'Studio found more than one record with this name.', { entity, name: recordName })
-  }
-
-  return result.data[0]
+  return payload.data
 }
 
 export async function createRecord(entity: string, data: RecordData): Promise<RecordData> {

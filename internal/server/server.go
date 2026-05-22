@@ -56,6 +56,7 @@ type MetadataStore interface {
 type RecordStore interface {
 	ListRecords(context.Context, string, db.RecordListParams) (db.RecordListResult, error)
 	GetRecord(context.Context, string, int64) (db.Record, error)
+	FindRecord(context.Context, string, db.RecordInput) (db.Record, error)
 	CreateRecord(context.Context, string, db.RecordInput) (db.Record, error)
 	UpdateRecord(context.Context, string, int64, db.RecordInput) (db.Record, error)
 	DeleteRecord(context.Context, string, int64) error
@@ -684,6 +685,7 @@ func registerRecordRoutes(router chi.Router, store RecordStore, activity Activit
 		records.Get("/", handler.listRecords)
 		records.Post("/", handler.createRecord)
 		records.Get("/{id}/activity", handler.listRecordActivity)
+		records.Get("/name/{name}", handler.getRecordByName)
 		records.Get("/{id}", handler.getRecord)
 		records.Patch("/{id}", handler.updateRecord)
 		records.Delete("/{id}", handler.deleteRecord)
@@ -728,6 +730,36 @@ func (h recordHandler) getRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	record, err := h.store.GetRecord(r.Context(), entity, id)
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: record})
+}
+
+func (h recordHandler) getRecordByName(w http.ResponseWriter, r *http.Request) {
+	if h.requireStore(w) {
+		return
+	}
+	entity := chi.URLParam(r, "entity")
+	if !h.authorize(w, r, entity, permissions.ActionRead, 0) {
+		return
+	}
+	name, err := url.PathUnescape(chi.URLParam(r, "name"))
+	if err != nil {
+		writeRecordError(w, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "record name must be URL encoded", Details: map[string]any{"entity": entity}, Err: err})
+		return
+	}
+	if strings.TrimSpace(name) == "" {
+		writeRecordError(w, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "record name is required", Details: map[string]any{"entity": entity}})
+		return
+	}
+	rawName, err := json.Marshal(name)
+	if err != nil {
+		writeRecordError(w, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "record name must be valid JSON", Details: map[string]any{"entity": entity, "name": name}, Err: err})
+		return
+	}
+	record, err := h.store.FindRecord(r.Context(), entity, db.RecordInput{"name": rawName})
 	if err != nil {
 		writeRecordError(w, err)
 		return

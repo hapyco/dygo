@@ -20,6 +20,7 @@ Record API routes require a valid `dygo_session` cookie from the auth API and an
 ```txt
 GET    /api/v1/records/{entity}?limit=50&offset=0&status=Open&sort=-created-at,name
 GET    /api/v1/records/{entity}/{id}
+GET    /api/v1/records/{entity}/name/{name}
 GET    /api/v1/records/{entity}/{id}/activity?limit=50&offset=0
 POST   /api/v1/records/{entity}
 PATCH  /api/v1/records/{entity}/{id}
@@ -27,6 +28,8 @@ DELETE /api/v1/records/{entity}/{id}
 ```
 
 List endpoints default to `limit=50` and `offset=0`. The maximum limit is `2500`. Records are ordered by `id ASC` unless `sort` is provided.
+
+Use `GET /api/v1/records/{entity}/name/{name}` to read exactly one Record by its stable system `name`. URL-encode `{name}` as a path segment.
 
 Exact filters use direct Field query params:
 

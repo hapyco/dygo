@@ -615,6 +615,7 @@ func TestRecordRoutes(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/api/v1/records/user", status: http.StatusOK, want: `"meta":{"limit":50,"offset":0,"count":1,"total":1}`},
 		{method: http.MethodGet, path: "/api/v1/records/user/1", status: http.StatusOK, want: `"email":"a@example.com"`},
+		{method: http.MethodGet, path: "/api/v1/records/user/name/a%40example.com", status: http.StatusOK, want: `"email":"a@example.com"`},
 		{method: http.MethodPost, path: "/api/v1/records/user", body: `{"data":{"email":"a@example.com"}}`, status: http.StatusCreated, want: `"data":`},
 		{method: http.MethodPatch, path: "/api/v1/records/user/1", body: `{"data":{"email":"b@example.com"}}`, status: http.StatusOK, want: `"data":`},
 		{method: http.MethodDelete, path: "/api/v1/records/user/1", status: http.StatusOK, want: `"deleted":true`},
@@ -650,6 +651,9 @@ func TestRecordRoutes(t *testing.T) {
 	if string(store.updated["email"]) != `"b@example.com"` {
 		t.Fatalf("updated input = %#v, want email", store.updated)
 	}
+	if string(store.findMatch["name"]) != `"a@example.com"` {
+		t.Fatalf("find match = %#v, want name", store.findMatch)
+	}
 	if store.deletedID != 1 {
 		t.Fatalf("deleted id = %d, want 1", store.deletedID)
 	}
@@ -662,6 +666,7 @@ func TestRecordRoutes(t *testing.T) {
 	wantPermissions := []permissions.Request{
 		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead},
 		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead, RecordID: 1},
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead},
 		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionCreate},
 		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionUpdate, RecordID: 1},
 		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionDelete, RecordID: 1},
@@ -1152,9 +1157,11 @@ type fakeRecordStore struct {
 	listErr      error
 	record       db.Record
 	getErr       error
+	findErr      error
 	createErr    error
 	updateErr    error
 	deleteErr    error
+	findMatch    db.RecordInput
 	created      db.RecordInput
 	updated      db.RecordInput
 	deletedID    int64
@@ -1177,6 +1184,12 @@ func (s *fakeRecordStore) ListRecords(_ context.Context, _ string, params db.Rec
 func (s *fakeRecordStore) GetRecord(context.Context, string, int64) (db.Record, error) {
 	s.calls = append(s.calls, "get")
 	return s.record, s.getErr
+}
+
+func (s *fakeRecordStore) FindRecord(_ context.Context, _ string, match db.RecordInput) (db.Record, error) {
+	s.calls = append(s.calls, "find")
+	s.findMatch = match
+	return s.record, s.findErr
 }
 
 func (s *fakeRecordStore) CreateRecord(ctx context.Context, _ string, input db.RecordInput) (db.Record, error) {

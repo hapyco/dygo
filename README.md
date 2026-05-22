@@ -95,6 +95,7 @@ GET /api/v1/entities
 GET /api/v1/entities/{entity}/meta
 GET /api/v1/records/{entity}
 GET /api/v1/records/{entity}/{id}
+GET /api/v1/records/{entity}/name/{name}
 GET /api/v1/records/{entity}/{id}/activity
 POST /api/v1/records/{entity}
 PATCH /api/v1/records/{entity}/{id}

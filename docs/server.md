@@ -104,6 +104,7 @@ The first Record API is also generic and metadata-powered:
 ```txt
 GET    /api/v1/records/{entity}?limit=50&offset=0&status=Open&sort=-created-at,name
 GET    /api/v1/records/{entity}/{id}
+GET    /api/v1/records/{entity}/name/{name}
 GET    /api/v1/records/{entity}/{id}/activity?limit=50&offset=0
 POST   /api/v1/records/{entity}
 PATCH  /api/v1/records/{entity}/{id}
@@ -111,6 +112,8 @@ DELETE /api/v1/records/{entity}/{id}
 ```
 
 Record APIs read persisted Core metadata to map Entity route slugs, Field names, and storage columns. `{entity}` is the route slug, defaulting to Entity `name`. Run `dygo migrate` before serving Records so metadata tables and Entity storage tables are in sync.
+
+`GET /api/v1/records/{entity}/name/{name}` returns one Record by system `name`; URL-encode `{name}` as a path segment.
 
 Record request bodies use a `data` envelope:
 
