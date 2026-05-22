@@ -24,6 +24,10 @@ type ListEnvelope<T> = {
   meta: RecordListMeta
 }
 
+type DataEnvelope<T> = {
+  data: T
+}
+
 export class RecordApiError extends Error {
   readonly code: string
   readonly details?: Record<string, unknown>
@@ -40,6 +44,7 @@ export type ListRecordsParams = {
   limit: number
   offset: number
   sort?: DataTableSort | null
+  filters?: Record<string, string>
 }
 
 export async function listRecords(entity: string, params: ListRecordsParams): Promise<ListEnvelope<RecordData[]>> {
@@ -51,6 +56,10 @@ export async function listRecords(entity: string, params: ListRecordsParams): Pr
   if (params.sort) {
     query.set('sort', `${params.sort.direction === 'desc' ? '-' : ''}${params.sort.key}`)
   }
+
+  Object.entries(params.filters ?? {}).forEach(([key, value]) => {
+    query.set(key, value)
+  })
 
   const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}?${query.toString()}`, {
     method: 'GET',
@@ -64,6 +73,58 @@ export async function listRecords(entity: string, params: ListRecordsParams): Pr
   }
 
   return payload
+}
+
+export async function getRecordByName(entity: string, recordName: string): Promise<RecordData> {
+  const result = await listRecords(entity, {
+    limit: 2,
+    offset: 0,
+    filters: { name: recordName },
+  })
+
+  if (result.data.length === 0) {
+    throw new RecordApiError('not_found', 'Studio could not find this record.', { entity, name: recordName })
+  }
+
+  if (result.data.length > 1) {
+    throw new RecordApiError('validation', 'Studio found more than one record with this name.', { entity, name: recordName })
+  }
+
+  return result.data[0]
+}
+
+export async function createRecord(entity: string, data: RecordData): Promise<RecordData> {
+  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data }),
+  })
+
+  const payload = await parseJSON<DataEnvelope<RecordData> & ApiErrorEnvelope>(response)
+
+  if (!response.ok) {
+    throw new RecordApiError(payload.error?.code ?? 'record_create_failed', recordErrorMessage(payload), payload.error?.details)
+  }
+
+  return payload.data
+}
+
+export async function updateRecord(entity: string, id: string | number, data: RecordData): Promise<RecordData> {
+  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}/${encodeURIComponent(String(id))}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data }),
+  })
+
+  const payload = await parseJSON<DataEnvelope<RecordData> & ApiErrorEnvelope>(response)
+
+  if (!response.ok) {
+    throw new RecordApiError(payload.error?.code ?? 'record_update_failed', recordErrorMessage(payload), payload.error?.details)
+  }
+
+  return payload.data
 }
 
 async function parseJSON<T>(response: Response): Promise<T> {

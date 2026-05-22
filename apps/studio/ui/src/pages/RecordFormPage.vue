@@ -1,28 +1,416 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { Plus, RotateCcw, Save } from '@lucide/vue'
 
+import { ErrorState, Spinner } from '@/design'
+import type { MetadataField } from '@/features/metadata/metadata.api'
+import type { RecordData } from '@/features/records/records.api'
+import { RecordFormRenderer } from '@/renderers/records'
+import { RouteName } from '@/router/routes'
 import PageHeader from '@/shell/PageHeader.vue'
+import type { PageHeaderAction } from '@/shell/types'
+import { useMetadataStore } from '@/stores/metadata.store'
+import { useRecordsStore } from '@/stores/records.store'
 
 const props = defineProps<{
   entity: string
-  id?: string
-  mode: 'new' | 'detail'
+  recordName?: string
+  mode: 'new' | 'record'
 }>()
 
-const pageTitle = computed(() => {
-  if (props.mode === 'new') {
-    return `New ${props.entity}`
+type ConvertedValue = {
+  skip?: boolean
+  value?: unknown
+}
+
+const router = useRouter()
+const metadataStore = useMetadataStore()
+const recordsStore = useRecordsStore()
+
+const draft = ref<RecordData>({})
+const baseline = ref<RecordData>({})
+const fieldErrors = ref<Record<string, string>>({})
+const localError = ref('')
+
+const recordStateKey = computed(() => (props.mode === 'new' ? 'new' : props.recordName ?? ''))
+const recordState = computed(() => recordsStore.recordState(props.entity, recordStateKey.value))
+const entityMeta = computed(() => metadataStore.entityMeta(props.entity))
+const entityMetaStatus = computed(() => metadataStore.entityMetaStatus(props.entity))
+const entityMetaError = computed(() => metadataStore.entityMetaError(props.entity))
+const fields = computed(() => entityMeta.value?.fields ?? [])
+const entityLabel = computed(() => entityMeta.value?.label || humanizeEntity(props.entity))
+const isNew = computed(() => props.mode === 'new')
+const loading = computed(() => (
+  entityMetaStatus.value === 'idle'
+  || entityMetaStatus.value === 'loading'
+  || (!isNew.value && (recordState.value.status === 'idle' || recordState.value.status === 'loading'))
+))
+const saving = computed(() => recordState.value.saving)
+const blockingError = computed(() => entityMetaError.value?.message ?? recordState.value.error?.message ?? '')
+const saveError = computed(() => localError.value || recordState.value.saveError?.message || '')
+const showForm = computed(() => Boolean(entityMeta.value) && (isNew.value || Boolean(recordState.value.record)))
+const dirty = computed(() => fields.value.some((field) => !draftValuesEqual(draft.value[field.name], baseline.value[field.name])))
+const canSave = computed(() => showForm.value && dirty.value && !loading.value && !saving.value)
+const actions = computed<PageHeaderAction[]>(() => [
+  {
+    label: 'Reset',
+    icon: RotateCcw,
+    variant: 'secondary',
+    disabled: !dirty.value || loading.value || saving.value,
+    onSelect: resetDraft,
+  },
+  {
+    label: isNew.value ? 'Create record' : 'Save',
+    icon: isNew.value ? Plus : Save,
+    variant: 'primary',
+    disabled: !canSave.value,
+    loading: saving.value,
+    onSelect: saveRecord,
+  },
+])
+
+watch(
+  () => [props.entity, props.mode, props.recordName] as const,
+  async ([entity, mode, recordName]) => {
+    fieldErrors.value = {}
+    localError.value = ''
+    await metadataStore.loadEntityMeta(entity)
+
+    if (mode === 'record' && recordName) {
+      await recordsStore.loadRecordByName(entity, recordName)
+    } else if (mode === 'new') {
+      recordsStore.resetRecordForm(entity, 'new')
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => [entityMeta.value, recordState.value.record, props.mode] as const,
+  ([meta, record, mode]) => {
+    if (!meta) {
+      return
+    }
+
+    const nextDraft = mode === 'new'
+      ? draftFromDefaults(meta.fields)
+      : draftFromRecord(meta.fields, record)
+
+    draft.value = nextDraft
+    baseline.value = { ...nextDraft }
+    fieldErrors.value = {}
+    localError.value = ''
+  },
+  { immediate: true },
+)
+
+function resetDraft() {
+  draft.value = { ...baseline.value }
+  fieldErrors.value = {}
+  localError.value = ''
+}
+
+function updateDraft(value: RecordData) {
+  draft.value = value
+}
+
+async function saveRecord() {
+  if (!canSave.value) {
+    return
   }
 
-  return `${props.entity} ${props.id}`
-})
+  fieldErrors.value = {}
+  localError.value = ''
+
+  const payload = buildSubmitPayload()
+  if (Object.keys(fieldErrors.value).length > 0) {
+    return
+  }
+
+  if (Object.keys(payload).length === 0) {
+    return
+  }
+
+  try {
+    const record = isNew.value
+      ? await recordsStore.createRecord(props.entity, payload)
+      : await recordsStore.updateRecord(props.entity, props.recordName ?? '', currentRecordID(), payload)
+
+    resetToRecord(record)
+    const nextName = typeof record.name === 'string' ? record.name : ''
+    if (nextName && (isNew.value || nextName !== props.recordName)) {
+      await router.replace({ name: RouteName.RecordDetail, params: { entity: props.entity, recordName: nextName } })
+    }
+  } catch {
+    // The store owns the API error shape for display.
+  }
+}
+
+function currentRecordID(): string | number {
+  const id = recordState.value.record?.id
+  if (typeof id === 'string' || typeof id === 'number') {
+    return id
+  }
+
+  localError.value = 'This record is missing its internal ID.'
+  throw new Error('record id is missing')
+}
+
+function buildSubmitPayload(): RecordData {
+  const payload: RecordData = {}
+  const errors: Record<string, string> = {}
+
+  fields.value.forEach((field) => {
+    if (field.name === 'id' || field.name === 'created-at' || field.name === 'updated-at') {
+      return
+    }
+
+    if (!isNew.value && field.name === 'name') {
+      return
+    }
+
+    if (!isNew.value && draftValuesEqual(draft.value[field.name], baseline.value[field.name])) {
+      return
+    }
+
+    const converted = convertSubmitValue(field, draft.value[field.name], errors)
+    if (!converted.skip) {
+      payload[field.name] = converted.value
+    }
+  })
+
+  fieldErrors.value = errors
+  return payload
+}
+
+function convertSubmitValue(field: MetadataField, value: unknown, errors: Record<string, string>): ConvertedValue {
+  switch (field.type) {
+    case 'password':
+      if (typeof value !== 'string' || value.length === 0) {
+        return { skip: true }
+      }
+      return { value }
+    case 'boolean':
+      return { value: value === true }
+    case 'int':
+    case 'bigint':
+    case 'link':
+      return integerSubmitValue(field, value, errors)
+    case 'decimal':
+    case 'currency':
+      return numberSubmitValue(field, value, errors)
+    case 'json':
+      return jsonSubmitValue(field, value, errors)
+    case 'select':
+      if ((value === undefined || value === null || value === '') && field.required) {
+        errors[field.name] = 'Select a value.'
+        return { skip: true }
+      }
+      return stringSubmitValue(field, value)
+    case 'text':
+    case 'email':
+    case 'phone':
+    case 'long-text':
+    case 'attachment':
+    case 'date':
+    case 'datetime':
+    case 'time':
+      return stringSubmitValue(field, value)
+    default:
+      return { skip: true }
+  }
+}
+
+function stringSubmitValue(field: MetadataField, value: unknown): ConvertedValue {
+  const text = value === null || value === undefined ? '' : String(value)
+  if (isNew.value && text === '' && !field.required) {
+    return { skip: true }
+  }
+
+  return { value: text }
+}
+
+function integerSubmitValue(field: MetadataField, value: unknown, errors: Record<string, string>): ConvertedValue {
+  if (value === null || value === undefined || value === '') {
+    if (field.required) {
+      errors[field.name] = 'Enter an integer.'
+    }
+    return { skip: true }
+  }
+
+  const number = Number(value)
+  if (!Number.isInteger(number)) {
+    errors[field.name] = 'Enter an integer.'
+    return { skip: true }
+  }
+
+  return { value: number }
+}
+
+function numberSubmitValue(field: MetadataField, value: unknown, errors: Record<string, string>): ConvertedValue {
+  if (value === null || value === undefined || value === '') {
+    if (field.required) {
+      errors[field.name] = 'Enter a number.'
+    }
+    return { skip: true }
+  }
+
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    errors[field.name] = 'Enter a number.'
+    return { skip: true }
+  }
+
+  return { value: number }
+}
+
+function jsonSubmitValue(field: MetadataField, value: unknown, errors: Record<string, string>): ConvertedValue {
+  if (value === null || value === undefined || value === '') {
+    if (field.required) {
+      errors[field.name] = 'Enter valid JSON.'
+    }
+    return { skip: true }
+  }
+
+  if (typeof value !== 'string') {
+    return { value }
+  }
+
+  try {
+    return { value: JSON.parse(value) }
+  } catch {
+    errors[field.name] = 'Enter valid JSON.'
+    return { skip: true }
+  }
+}
+
+function resetToRecord(record: RecordData) {
+  const nextDraft = draftFromRecord(fields.value, record)
+  draft.value = nextDraft
+  baseline.value = { ...nextDraft }
+}
+
+function draftFromDefaults(metadataFields: MetadataField[]): RecordData {
+  return metadataFields.reduce<RecordData>((next, field) => {
+    next[field.name] = initialFieldValue(field, null)
+    return next
+  }, {})
+}
+
+function draftFromRecord(metadataFields: MetadataField[], record: RecordData | null): RecordData {
+  return metadataFields.reduce<RecordData>((next, field) => {
+    next[field.name] = initialFieldValue(field, record)
+    return next
+  }, {})
+}
+
+function initialFieldValue(field: MetadataField, record: RecordData | null): unknown {
+  if (field.type === 'password') {
+    return ''
+  }
+
+  const recordValue = record?.[field.name]
+  if (recordValue !== undefined && recordValue !== null) {
+    return field.type === 'json' ? displayJSON(recordValue) : recordValue
+  }
+
+  if (field.default !== undefined) {
+    return field.type === 'json' ? displayJSON(field.default) : field.default
+  }
+
+  if (field.type === 'boolean') {
+    return false
+  }
+
+  return ''
+}
+
+function displayJSON(value: unknown): string {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  return JSON.stringify(value, null, 2)
+}
+
+function draftValuesEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left ?? '') === JSON.stringify(right ?? '')
+}
+
+function humanizeEntity(value: string): string {
+  return value
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
 </script>
 
 <template>
-  <section class="studio-page" aria-labelledby="record-form-title">
+  <section class="studio-page record-form-page" :aria-label="entityLabel">
     <PageHeader
-      title-id="record-form-title"
-      :title="pageTitle"
+      :show-title="false"
+      :actions="actions"
     />
+
+    <div class="record-form-page__body">
+      <div v-if="loading" class="record-form-page__state">
+        <Spinner size="sm" label="Loading record" />
+        <p>Loading record</p>
+      </div>
+
+      <ErrorState
+        v-else-if="blockingError && !showForm"
+        title="Record unavailable"
+        :message="blockingError"
+      />
+
+      <template v-else-if="entityMeta">
+        <ErrorState
+          v-if="saveError"
+          title="Record not saved"
+          :message="saveError"
+        />
+
+        <RecordFormRenderer
+          :entity="props.entity"
+          :entity-label="entityLabel"
+          :fields="fields"
+          :record="recordState.record"
+          :mode="props.mode"
+          :model-value="draft"
+          :field-errors="fieldErrors"
+          :disabled="saving"
+          @update:model-value="updateDraft"
+        />
+      </template>
+    </div>
   </section>
 </template>
+
+<style scoped>
+.record-form-page {
+  gap: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.record-form-page__body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.record-form-page__state {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 196px 16px 44px;
+}
+
+.record-form-page__state p {
+  margin: 0;
+  color: var(--studio-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+</style>

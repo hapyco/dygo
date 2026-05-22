@@ -27,6 +27,15 @@ function openNewRecord() {
   void router.push({ name: RouteName.RecordNew, params: { entity: props.entity } })
 }
 
+function openRecord(row: Record<string, unknown>) {
+  const recordName = row.name
+  if (typeof recordName !== 'string' || recordName.length === 0) {
+    return
+  }
+
+  void router.push({ name: RouteName.RecordDetail, params: { entity: props.entity, recordName } })
+}
+
 const actions = computed<PageHeaderAction[]>(() => [
   {
     label: 'Filter',
@@ -70,6 +79,7 @@ function humanizeEntity(value: string): string {
       :entity-label="entityLabel"
       :fields="entityMeta?.fields ?? []"
       @create-record="openNewRecord"
+      @open-record="openRecord"
     />
   </section>
 </template>

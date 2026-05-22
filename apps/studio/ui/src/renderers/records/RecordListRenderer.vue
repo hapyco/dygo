@@ -18,6 +18,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'create-record': []
+  'open-record': [row: Record<string, unknown>]
 }>()
 
 const recordsStore = useRecordsStore()
@@ -159,9 +160,11 @@ function writeHiddenColumnKeys(entity: string, keys: string[]) {
       :selected-row-keys="recordState.selectedRowKeys"
       :empty-title="`No ${entityLabel} records exist.`"
       empty-action-label="Add first record"
+      row-activatable
       @update:page-size="updatePageSize"
       @update:selected-row-keys="updateSelectedRowKeys"
       @update:sort="updateSort"
+      @row-activate="(row) => emit('open-record', row)"
       @load-more="recordsStore.loadMore(props.entity)"
       @empty-action="emit('create-record')"
     />

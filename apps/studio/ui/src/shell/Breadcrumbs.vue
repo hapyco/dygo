@@ -7,19 +7,35 @@ import { RouteName } from '@/router/routes'
 
 const route = useRoute()
 
+const entitySlug = computed(() => {
+  const entity = route.params.entity
+  return typeof entity === 'string' && entity.length > 0 ? entity : ''
+})
+
+const entityCrumb = computed(() => {
+  if (
+    entitySlug.value
+    && (route.name === RouteName.RecordNew || route.name === RouteName.RecordDetail)
+  ) {
+    return humanize(entitySlug.value)
+  }
+
+  return ''
+})
+
 const currentCrumb = computed(() => {
   if (route.name === RouteName.Home) {
     return ''
   }
 
-  const entity = route.params.entity
-  if (typeof entity === 'string' && entity.length > 0) {
+  const entity = entitySlug.value
+  if (entity.length > 0) {
     if (route.name === RouteName.RecordNew) {
-      return `New ${humanize(entity)}`
+      return 'New record'
     }
 
-    if (route.name === RouteName.RecordDetail && typeof route.params.id === 'string') {
-      return `${humanize(entity)} ${route.params.id}`
+    if (route.name === RouteName.RecordDetail && typeof route.params.recordName === 'string') {
+      return route.params.recordName
     }
 
     return humanize(entity)
@@ -44,6 +60,12 @@ function humanize(value: string): string {
     <a class="studio-breadcrumbs__home" href="/" aria-label="Home">
       <Home class="studio-breadcrumbs__home-icon" :size="16" :stroke-width="1.8" aria-hidden="true" />
     </a>
+    <template v-if="entityCrumb">
+      <ChevronRight class="studio-breadcrumbs__separator" :size="14" :stroke-width="1.8" aria-hidden="true" />
+      <RouterLink class="studio-breadcrumbs__link" :to="{ name: RouteName.EntityRecords, params: { entity: entitySlug } }">
+        {{ entityCrumb }}
+      </RouterLink>
+    </template>
     <template v-if="currentCrumb">
       <ChevronRight class="studio-breadcrumbs__separator" :size="14" :stroke-width="1.8" aria-hidden="true" />
       <span class="studio-breadcrumbs__current" aria-current="page">{{ currentCrumb }}</span>
@@ -82,6 +104,28 @@ function humanize(value: string): string {
 }
 
 .studio-breadcrumbs__home:focus-visible {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 2px;
+}
+
+.studio-breadcrumbs__link {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--studio-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-breadcrumbs__link:hover {
+  color: var(--studio-text);
+}
+
+.studio-breadcrumbs__link:focus-visible {
+  border-radius: 4px;
   outline: 2px solid var(--studio-focus);
   outline-offset: 2px;
 }

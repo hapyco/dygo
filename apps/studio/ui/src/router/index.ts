@@ -61,14 +61,14 @@ export const router = createRouter({
       }),
     },
     {
-      path: '/:entity/:id(\\d+)',
+      path: '/:entity/:recordName',
       name: RouteName.RecordDetail,
       component: RecordFormPage,
       beforeEnter: rejectReservedEntity,
       props: (route) => ({
         entity: routeParam(route.params.entity as string | string[]),
-        id: routeParam(route.params.id as string | string[]),
-        mode: 'detail',
+        recordName: routeParam(route.params.recordName as string | string[]),
+        mode: 'record',
       }),
     },
     {

@@ -1,7 +1,14 @@
 import { defineStore } from 'pinia'
 
 import type { DataTableRowKey, DataTableSort } from '@/design/types'
-import { listRecords, RecordApiError, type RecordData } from '@/features/records/records.api'
+import {
+  createRecord as createRecordRequest,
+  getRecordByName,
+  listRecords,
+  RecordApiError,
+  updateRecord as updateRecordRequest,
+  type RecordData,
+} from '@/features/records/records.api'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
 
 const defaultPageSize = 20
@@ -10,6 +17,10 @@ const allowedPageSizes = new Set([20, 100, 500, 2500])
 
 type LoadInitialOptions = {
   pageSize?: number
+  force?: boolean
+}
+
+type LoadOptions = {
   force?: boolean
 }
 
@@ -26,10 +37,20 @@ export type RecordEntityState = {
   stale: boolean
 }
 
+export type RecordFormState = {
+  record: RecordData | null
+  status: LoadStatus
+  saving: boolean
+  error: StoreError | null
+  saveError: StoreError | null
+}
+
 type RecordsState = {
   pageSize: number
   byEntity: Record<string, RecordEntityState>
   pendingInitialByEntity: Record<string, Promise<RecordEntityState> | undefined>
+  byRecord: Record<string, RecordFormState>
+  pendingRecordByKey: Record<string, Promise<RecordFormState> | undefined>
 }
 
 function newRecordEntityState(pageSize: number): RecordEntityState {
@@ -45,6 +66,20 @@ function newRecordEntityState(pageSize: number): RecordEntityState {
     loadMoreError: null,
     stale: false,
   }
+}
+
+function newRecordFormState(): RecordFormState {
+  return {
+    record: null,
+    status: 'idle',
+    saving: false,
+    error: null,
+    saveError: null,
+  }
+}
+
+function recordStateKey(entity: string, recordName: string): string {
+  return JSON.stringify([entity, recordName])
 }
 
 function readStoredPageSize(): number {
@@ -77,11 +112,17 @@ export const useRecordsStore = defineStore('records', {
     pageSize: readStoredPageSize(),
     byEntity: {},
     pendingInitialByEntity: {},
+    byRecord: {},
+    pendingRecordByKey: {},
   }),
 
   getters: {
     entityState: (state) => (entity: string): RecordEntityState => (
       state.byEntity[entity] ?? newRecordEntityState(state.pageSize)
+    ),
+
+    recordState: (state) => (entity: string, recordName: string): RecordFormState => (
+      state.byRecord[recordStateKey(entity, recordName)] ?? newRecordFormState()
     ),
   },
 
@@ -92,6 +133,15 @@ export const useRecordsStore = defineStore('records', {
       }
 
       return this.byEntity[entity]
+    },
+
+    ensureRecord(entity: string, recordName: string): RecordFormState {
+      const key = recordStateKey(entity, recordName)
+      if (!this.byRecord[key]) {
+        this.byRecord[key] = newRecordFormState()
+      }
+
+      return this.byRecord[key]
     },
 
     async loadInitial(entity: string, options: LoadInitialOptions = {}): Promise<RecordEntityState> {
@@ -142,6 +192,106 @@ export const useRecordsStore = defineStore('records', {
 
       this.pendingInitialByEntity[entity] = request
       return request
+    },
+
+    async loadRecordByName(entity: string, recordName: string, options: LoadOptions = {}): Promise<RecordFormState> {
+      const state = this.ensureRecord(entity, recordName)
+
+      if (!options.force && state.status === 'ready') {
+        return state
+      }
+
+      const key = recordStateKey(entity, recordName)
+      const pending = this.pendingRecordByKey[key]
+      if (pending && !options.force) {
+        return pending
+      }
+
+      state.status = 'loading'
+      state.error = null
+      state.saveError = null
+      state.record = null
+
+      const request = getRecordByName(entity, recordName)
+        .then((record) => {
+          state.record = record
+          state.status = 'ready'
+          state.error = null
+          return state
+        })
+        .catch((error: unknown) => {
+          const normalized = storeError(error, 'Studio could not load this record.')
+          state.record = null
+          state.error = normalized
+          state.saveError = null
+          state.status = error instanceof RecordApiError ? statusForError(normalized) : 'error'
+          return state
+        })
+        .finally(() => {
+          this.pendingRecordByKey[key] = undefined
+        })
+
+      this.pendingRecordByKey[key] = request
+      return request
+    },
+
+    async createRecord(entity: string, data: RecordData): Promise<RecordData> {
+      const state = this.ensureRecord(entity, 'new')
+      state.saving = true
+      state.saveError = null
+
+      try {
+        const record = await createRecordRequest(entity, data)
+        state.record = record
+        state.status = 'ready'
+        state.error = null
+        this.cacheNamedRecord(entity, record)
+        this.markEntityStale(entity)
+        return record
+      } catch (error: unknown) {
+        const normalized = storeError(error, 'Studio could not create this record.')
+        state.saveError = normalized
+        throw error
+      } finally {
+        state.saving = false
+      }
+    },
+
+    async updateRecord(entity: string, recordName: string, id: string | number, data: RecordData): Promise<RecordData> {
+      const state = this.ensureRecord(entity, recordName)
+      state.saving = true
+      state.saveError = null
+
+      try {
+        const record = await updateRecordRequest(entity, id, data)
+        state.record = record
+        state.status = 'ready'
+        state.error = null
+        this.cacheNamedRecord(entity, record)
+        this.markEntityStale(entity)
+        return record
+      } catch (error: unknown) {
+        const normalized = storeError(error, 'Studio could not save this record.')
+        state.saveError = normalized
+        throw error
+      } finally {
+        state.saving = false
+      }
+    },
+
+    cacheNamedRecord(entity: string, record: RecordData) {
+      if (typeof record.name !== 'string' || record.name.length === 0) {
+        return
+      }
+
+      const key = recordStateKey(entity, record.name)
+      this.byRecord[key] = {
+        record,
+        status: 'ready',
+        saving: false,
+        error: null,
+        saveError: null,
+      }
     },
 
     async loadMore(entity: string): Promise<RecordEntityState> {
@@ -210,6 +360,21 @@ export const useRecordsStore = defineStore('records', {
     setSelectedRowKeys(entity: string, keys: DataTableRowKey[]) {
       const state = this.ensureEntity(entity)
       state.selectedRowKeys = keys
+    },
+
+    markEntityStale(entity: string) {
+      const state = this.byEntity[entity]
+      if (!state) {
+        return
+      }
+
+      state.stale = true
+    },
+
+    resetRecordForm(entity: string, recordName: string) {
+      const key = recordStateKey(entity, recordName)
+      this.byRecord[key] = newRecordFormState()
+      this.pendingRecordByKey[key] = undefined
     },
 
     resetEntity(entity: string) {

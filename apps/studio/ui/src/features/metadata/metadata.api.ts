@@ -19,6 +19,8 @@ export type MetadataField = {
   required: boolean
   unique: boolean
   index: boolean
+  default?: unknown
+  check?: unknown
   position: number
   options?: unknown
 }

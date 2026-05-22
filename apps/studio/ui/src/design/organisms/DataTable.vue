@@ -34,6 +34,7 @@ const props = withDefaults(defineProps<{
   footerError?: string
   selectable?: boolean
   selectedRowKeys?: DataTableRowKey[]
+  rowActivatable?: boolean
 }>(), {
   rowKey: 'id',
   loading: false,
@@ -48,12 +49,14 @@ const props = withDefaults(defineProps<{
   footerError: '',
   selectable: false,
   selectedRowKeys: () => [],
+  rowActivatable: false,
 })
 
 const emit = defineEmits<{
   'update:pageSize': [value: number]
   'update:selectedRowKeys': [value: DataTableRowKey[]]
   'update:sort': [value: DataTableSort | null]
+  'row-activate': [row: DataTableRow, key: DataTableRowKey]
   loadMore: []
   emptyAction: []
 }>()
@@ -182,6 +185,14 @@ function updateVisibleRowSelection(selected: boolean) {
 
   emit('update:selectedRowKeys', Array.from(nextKeys))
 }
+
+function activateRow(row: DataTableRow, index: number) {
+  if (!props.rowActivatable || controlsDisabled.value) {
+    return
+  }
+
+  emit('row-activate', row, rowIdentifier(row, index))
+}
 </script>
 
 <template>
@@ -254,8 +265,16 @@ function updateVisibleRowSelection(selected: boolean) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(row, index) in rows" :key="rowIdentifier(row, index)">
-              <td v-if="selectable" class="data-table__select-cell">
+            <tr
+              v-for="(row, index) in rows"
+              :key="rowIdentifier(row, index)"
+              :class="{ 'data-table__row--activatable': rowActivatable }"
+              :tabindex="rowActivatable && !controlsDisabled ? 0 : undefined"
+              @click="activateRow(row, index)"
+              @keydown.enter.prevent="activateRow(row, index)"
+              @keydown.space.prevent="activateRow(row, index)"
+            >
+              <td v-if="selectable" class="data-table__select-cell" @click.stop @keydown.stop>
                 <Checkbox
                   :model-value="selectedRowKeySet.has(rowIdentifier(row, index))"
                   :disabled="controlsDisabled"
@@ -403,6 +422,15 @@ function updateVisibleRowSelection(selected: boolean) {
 .data-table tbody tr:hover td {
   background: var(--studio-surface-raised);
   color: var(--studio-text);
+}
+
+.data-table__row--activatable {
+  cursor: pointer;
+}
+
+.data-table__row--activatable:focus-visible {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: -2px;
 }
 
 .data-table__empty {
