@@ -1,0 +1,6 @@
+entity: language
+match: [code]
+records:
+  - name: "English"
+    code: "en"
+    enabled: true

@@ -94,6 +94,36 @@ ALTER TABLE public.app ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: configuration; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.configuration (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    country_id bigint,
+    language_id bigint,
+    currency_id bigint,
+    CONSTRAINT configuration_single_check CHECK ((name = 'configuration'::text))
+);
+
+
+--
+-- Name: configuration_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.configuration ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.configuration_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: constraint; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -121,6 +151,66 @@ CREATE TABLE public."constraint" (
 
 ALTER TABLE public."constraint" ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME public.constraint_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: country; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.country (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    code text NOT NULL
+);
+
+
+--
+-- Name: country_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.country ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.country_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: currency; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.currency (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    code text NOT NULL,
+    numeric_code text,
+    display_name text,
+    symbol text,
+    minor_unit_digits integer DEFAULT 2,
+    cash_rounding_increment numeric,
+    enabled boolean DEFAULT true
+);
+
+
+--
+-- Name: currency_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.currency ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.currency_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -221,6 +311,34 @@ CREATE TABLE public.index (
 
 ALTER TABLE public.index ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME public.index_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: language; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.language (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    code text NOT NULL,
+    enabled boolean DEFAULT true
+);
+
+
+--
+-- Name: language_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.language ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.language_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -481,6 +599,22 @@ ALTER TABLE ONLY public.app
 
 
 --
+-- Name: configuration configuration_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.configuration
+    ADD CONSTRAINT configuration_name_key UNIQUE (name);
+
+
+--
+-- Name: configuration configuration_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.configuration
+    ADD CONSTRAINT configuration_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: constraint constraint_entity_constraint_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -502,6 +636,54 @@ ALTER TABLE ONLY public."constraint"
 
 ALTER TABLE ONLY public."constraint"
     ADD CONSTRAINT constraint_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: country country_code_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.country
+    ADD CONSTRAINT country_code_key UNIQUE (code);
+
+
+--
+-- Name: country country_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.country
+    ADD CONSTRAINT country_name_key UNIQUE (name);
+
+
+--
+-- Name: country country_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.country
+    ADD CONSTRAINT country_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: currency currency_code_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.currency
+    ADD CONSTRAINT currency_code_key UNIQUE (code);
+
+
+--
+-- Name: currency currency_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.currency
+    ADD CONSTRAINT currency_name_key UNIQUE (name);
+
+
+--
+-- Name: currency currency_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.currency
+    ADD CONSTRAINT currency_pkey PRIMARY KEY (id);
 
 
 --
@@ -574,6 +756,30 @@ ALTER TABLE ONLY public.index
 
 ALTER TABLE ONLY public.index
     ADD CONSTRAINT index_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: language language_code_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.language
+    ADD CONSTRAINT language_code_key UNIQUE (code);
+
+
+--
+-- Name: language language_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.language
+    ADD CONSTRAINT language_name_key UNIQUE (name);
+
+
+--
+-- Name: language language_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.language
+    ADD CONSTRAINT language_pkey PRIMARY KEY (id);
 
 
 --
@@ -814,6 +1020,13 @@ CREATE INDEX constraint_type_idx ON public."constraint" USING btree (type);
 
 
 --
+-- Name: currency_enabled_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX currency_enabled_idx ON public.currency USING btree (enabled);
+
+
+--
 -- Name: entity_app_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -867,6 +1080,13 @@ CREATE INDEX index_entity_id_idx ON public.index USING btree (entity_id);
 --
 
 CREATE INDEX index_index_name_idx ON public.index USING btree (index_name);
+
+
+--
+-- Name: language_enabled_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX language_enabled_idx ON public.language USING btree (enabled);
 
 
 --

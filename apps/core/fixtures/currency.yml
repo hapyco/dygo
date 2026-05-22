@@ -1,0 +1,82 @@
+entity: currency
+match: [code]
+records:
+  - code: "GBP"
+    numeric-code: "826"
+    display-name: "British Pound"
+    symbol: "£"
+    minor-unit-digits: 2
+    cash-rounding-increment: null
+    enabled: true
+
+  - code: "AED"
+    numeric-code: "784"
+    display-name: "United Arab Emirates Dirham"
+    symbol: "د.إ"
+    minor-unit-digits: 2
+    cash-rounding-increment: null
+    enabled: true
+
+  - code: "CHF"
+    numeric-code: "756"
+    display-name: "Swiss Franc"
+    symbol: "Fr"
+    minor-unit-digits: 2
+    cash-rounding-increment: 0.05
+    enabled: true
+
+  - code: "PKR"
+    numeric-code: "586"
+    display-name: "Pakistani Rupee"
+    symbol: "₨"
+    minor-unit-digits: 2
+    cash-rounding-increment: null
+    enabled: true
+
+  - code: "JPY"
+    numeric-code: "392"
+    display-name: "Japanese Yen"
+    symbol: "¥"
+    minor-unit-digits: 0
+    cash-rounding-increment: null
+    enabled: true
+
+  - code: "INR"
+    numeric-code: "356"
+    display-name: "Indian Rupee"
+    symbol: "₹"
+    minor-unit-digits: 2
+    cash-rounding-increment: null
+    enabled: true
+
+  - code: "USD"
+    numeric-code: "840"
+    display-name: "US Dollar"
+    symbol: "$"
+    minor-unit-digits: 2
+    cash-rounding-increment: null
+    enabled: true
+
+  - code: "CNY"
+    numeric-code: "156"
+    display-name: "Chinese Yuan"
+    symbol: "CN¥"
+    minor-unit-digits: 2
+    cash-rounding-increment: null
+    enabled: true
+
+  - code: "AUD"
+    numeric-code: "036"
+    display-name: "Australian Dollar"
+    symbol: "A$"
+    minor-unit-digits: 2
+    cash-rounding-increment: null
+    enabled: true
+
+  - code: "EUR"
+    numeric-code: "978"
+    display-name: "Euro"
+    symbol: "€"
+    minor-unit-digits: 2
+    cash-rounding-increment: null
+    enabled: true

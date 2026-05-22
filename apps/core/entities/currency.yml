@@ -1,0 +1,40 @@
+name: currency
+label: Currency
+description: Currency codes and formatting defaults for monetary values.
+icon: circle-dollar-sign
+naming:
+  strategy: field
+  field: code
+fields:
+  - name: code
+    label: Code
+    type: text
+    required: true
+    unique: true
+
+  - name: numeric-code
+    label: Numeric Code
+    type: text
+
+  - name: display-name
+    label: Display Name
+    type: text
+
+  - name: symbol
+    label: Symbol
+    type: text
+
+  - name: minor-unit-digits
+    label: Minor Unit Digits
+    type: int
+    default: 2
+
+  - name: cash-rounding-increment
+    label: Cash Rounding Increment
+    type: decimal
+
+  - name: enabled
+    label: Enabled
+    type: boolean
+    index: true
+    default: true

@@ -1,0 +1,23 @@
+name: configuration
+label: Configuration
+description: System-wide configuration for dygo runtime and Studio behavior.
+icon: settings-2
+is-single: true
+fields:
+  - name: country
+    label: Country
+    type: link
+    options:
+      entity: country
+
+  - name: language
+    label: Language
+    type: link
+    options:
+      entity: language
+
+  - name: currency
+    label: Currency
+    type: link
+    options:
+      entity: currency

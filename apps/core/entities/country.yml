@@ -1,0 +1,19 @@
+name: country
+label: Country
+description: Country defaults used by system configuration and localization.
+icon: flag
+naming:
+  strategy: field
+  field: name
+fields:
+  - name: name
+    label: Name
+    type: text
+    required: true
+    unique: true
+
+  - name: code
+    label: Code
+    type: text
+    required: true
+    unique: true

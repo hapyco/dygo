@@ -291,16 +291,16 @@ func TestRepositoryCoreFixturesApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyFiles(core fixtures) error = %v, want nil", err)
 	}
-	if result.Created != 21 || result.Updated != 0 {
-		t.Fatalf("ApplyFiles(core fixtures) result = %+v, want 21 created", result)
+	if result.Created != 281 || result.Updated != 0 {
+		t.Fatalf("ApplyFiles(core fixtures) result = %+v, want 281 created", result)
 	}
 
 	result, err = ApplyFiles(context.Background(), store, files)
 	if err != nil {
 		t.Fatalf("ApplyFiles(core fixtures second run) error = %v, want nil", err)
 	}
-	if result.Created != 0 || result.Updated != 21 {
-		t.Fatalf("ApplyFiles(core fixtures second run) result = %+v, want 21 updated", result)
+	if result.Created != 0 || result.Updated != 281 {
+		t.Fatalf("ApplyFiles(core fixtures second run) result = %+v, want 281 updated", result)
 	}
 }
 
@@ -425,6 +425,33 @@ func newFakeStore() *fakeStore {
 			{Name: "label", Type: "text"},
 		},
 	}
+	store.metadata["country"] = db.MetadataEntityMeta{
+		MetadataEntity: db.MetadataEntity{Name: "country"},
+		Fields: []db.MetadataField{
+			{Name: "name", Type: "text", Unique: true, Required: true},
+			{Name: "code", Type: "text", Unique: true, Required: true},
+		},
+	}
+	store.metadata["currency"] = db.MetadataEntityMeta{
+		MetadataEntity: db.MetadataEntity{Name: "currency"},
+		Fields: []db.MetadataField{
+			{Name: "code", Type: "text", Unique: true, Required: true},
+			{Name: "numeric-code", Type: "text"},
+			{Name: "display-name", Type: "text"},
+			{Name: "symbol", Type: "text"},
+			{Name: "minor-unit-digits", Type: "int"},
+			{Name: "cash-rounding-increment", Type: "decimal"},
+			{Name: "enabled", Type: "boolean"},
+		},
+	}
+	store.metadata["language"] = db.MetadataEntityMeta{
+		MetadataEntity: db.MetadataEntity{Name: "language"},
+		Fields: []db.MetadataField{
+			{Name: "name", Type: "text", Unique: true, Required: true},
+			{Name: "code", Type: "text", Unique: true, Required: true},
+			{Name: "enabled", Type: "boolean"},
+		},
+	}
 	store.metadata["permission"] = db.MetadataEntityMeta{
 		MetadataEntity: db.MetadataEntity{Name: "permission"},
 		Fields: []db.MetadataField{
@@ -454,7 +481,7 @@ func newFakeStore() *fakeStore {
 }
 
 func seedEntityRecords(store *fakeStore) {
-	names := []string{"activity", "app", "constraint", "entity", "field", "index", "naming-series", "patch-run", "permission", "role", "session", "user", "user-role"}
+	names := []string{"activity", "app", "configuration", "constraint", "country", "currency", "entity", "field", "index", "language", "naming-series", "patch-run", "permission", "role", "session", "user", "user-role"}
 	for i, name := range names {
 		store.records["entity"] = append(store.records["entity"], db.Record{"id": int64(i + 1), "name": name})
 	}
