@@ -9,14 +9,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/dygo-dev/dygo/internal/app/manifest"
-	"github.com/dygo-dev/dygo/internal/app/registry"
 	"github.com/dygo-dev/dygo/internal/db"
+	"github.com/dygo-dev/dygo/internal/project"
+	"github.com/dygo-dev/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
 
@@ -84,7 +84,7 @@ func NewRunnerWithHooks(recordHooks *db.RecordHookRegistry) Runner {
 
 // Apply discovers and applies all app-owned fixtures in one transaction.
 func (r Runner) Apply(ctx context.Context, root string, databaseURL string) (Result, error) {
-	apps, err := registry.New(root).Validate()
+	apps, err := project.LoadApps(root)
 	if err != nil {
 		return Result{}, fmt.Errorf("validate apps for fixtures: %w", err)
 	}
@@ -190,10 +190,12 @@ func Decode(data []byte) (Fixture, error) {
 		}
 		return Fixture{}, err
 	}
-	if err := rejectDuplicateKeysNode(&root, "$"); err != nil {
+	if err := yamlmeta.RejectDuplicateKeys(&root, func(duplicate yamlmeta.DuplicateKey) error {
+		return fmt.Errorf("duplicate fixture key %q at %s line %d, previously defined at line %d", duplicate.Key, strings.TrimSuffix(duplicate.Location, "."+duplicate.Key), duplicate.Line, duplicate.PreviousLine)
+	}); err != nil {
 		return Fixture{}, err
 	}
-	document := documentMapping(&root)
+	document := yamlmeta.DocumentMapping(&root)
 	if document == nil {
 		return Fixture{}, fmt.Errorf("fixture document must be a mapping")
 	}
@@ -206,13 +208,13 @@ func Decode(data []byte) (Fixture, error) {
 		seen[key.Value] = true
 		switch key.Value {
 		case "entity":
-			entity, err := scalarString(value, "entity")
+			entity, err := yamlmeta.ScalarString(value, "entity")
 			if err != nil {
 				return Fixture{}, err
 			}
 			fixture.Entity = entity
 		case "match":
-			match, err := scalarStringSequence(value, "match")
+			match, err := yamlmeta.ScalarStringSequence(value, "match")
 			if err != nil {
 				return Fixture{}, err
 			}
@@ -331,8 +333,8 @@ func prepareFile(ctx context.Context, store Store, file LoadedFile) (preparedFil
 	if err != nil {
 		return preparedFile{}, safeWrap(fmt.Sprintf("%s: load fixture entity %q", file.Path, file.Fixture.Entity), err)
 	}
-	fields := fieldsByName(meta)
-	if err := validateMatchRule(file.Fixture.Match, meta, fields); err != nil {
+	fields := db.MetadataFieldsByName(meta)
+	if err := db.ValidateRecordMatch(meta, file.Fixture.Match); err != nil {
 		return preparedFile{}, fmt.Errorf("%s: %w", file.Path, err)
 	}
 	for _, record := range file.Fixture.Records {
@@ -353,14 +355,14 @@ func orderPreparedFiles(files []preparedFile) ([]preparedFile, error) {
 	for i, file := range files {
 		for _, record := range file.Fixture.Records {
 			for name := range record.Values {
-				field, ok := fixtureField(file.Fields, name)
+				field, ok := db.MetadataFieldByName(file.Fields, name)
 				if !ok {
 					continue
 				}
 				if field.Type != "link" {
 					continue
 				}
-				target, err := linkTarget(field)
+				target, err := db.LinkFieldTarget(field)
 				if err != nil {
 					return nil, fmt.Errorf("%s: fixture field %q: %w", file.Path, name, err)
 				}
@@ -427,11 +429,11 @@ func validateRecord(file LoadedFile, fields map[string]db.MetadataField, record 
 		}
 	}
 	for name, value := range record.Values {
-		field, ok := fixtureField(fields, name)
+		field, ok := db.MetadataFieldByName(fields, name)
 		if !ok {
 			return fmt.Errorf("%s:%d: unknown fixture field %q", file.Path, value.Line, name)
 		}
-		if field.Type == "collection" {
+		if !db.MetadataFieldStored(field) {
 			return fmt.Errorf("%s:%d: fixture field %q uses unsupported collection storage", file.Path, value.Line, name)
 		}
 		if field.Type == "link" {
@@ -447,7 +449,7 @@ func resolveRecord(ctx context.Context, store Store, file preparedFile, record R
 	input := db.RecordInput{}
 	match := db.RecordInput{}
 	for name, value := range record.Values {
-		field, ok := fixtureField(file.Fields, name)
+		field, ok := db.MetadataFieldByName(file.Fields, name)
 		if !ok {
 			return nil, nil, fmt.Errorf("%s:%d: unknown fixture field %q", file.Path, value.Line, name)
 		}
@@ -478,7 +480,7 @@ func resolveValue(ctx context.Context, store Store, field db.MetadataField, valu
 	if err != nil {
 		return nil, err
 	}
-	target, err := linkTarget(field)
+	target, err := db.LinkFieldTarget(field)
 	if err != nil {
 		return nil, err
 	}
@@ -486,14 +488,14 @@ func resolveValue(ctx context.Context, store Store, field db.MetadataField, valu
 	if err != nil {
 		return nil, safeWrap(fmt.Sprintf("load link target entity %q", target), err)
 	}
-	targetFields := fieldsByName(targetMeta)
+	targetFields := db.MetadataFieldsByName(targetMeta)
 	matchNames := sortedValueKeys(reference.Match)
-	if err := validateMatchRule(matchNames, targetMeta, targetFields); err != nil {
+	if err := db.ValidateRecordMatch(targetMeta, matchNames); err != nil {
 		return nil, err
 	}
 	match := db.RecordInput{}
 	for _, name := range matchNames {
-		targetField, ok := fixtureField(targetFields, name)
+		targetField, ok := db.MetadataFieldByName(targetFields, name)
 		if !ok {
 			return nil, fmt.Errorf("link match field %q does not exist", name)
 		}
@@ -522,7 +524,7 @@ type linkReference struct {
 }
 
 func decodeLinkReference(node yaml.Node) (linkReference, error) {
-	mapping := valueMapping(&node)
+	mapping := yamlmeta.ValueMapping(&node)
 	if mapping == nil {
 		return linkReference{}, fmt.Errorf("link value must be a match mapping")
 	}
@@ -532,7 +534,7 @@ func decodeLinkReference(node yaml.Node) (linkReference, error) {
 		value := mapping.Content[i+1]
 		switch key.Value {
 		case "match":
-			matchMapping := valueMapping(value)
+			matchMapping := yamlmeta.ValueMapping(value)
 			if matchMapping == nil {
 				return linkReference{}, fmt.Errorf("match must be a mapping")
 			}
@@ -550,82 +552,6 @@ func decodeLinkReference(node yaml.Node) (linkReference, error) {
 		return linkReference{}, fmt.Errorf("link match is required")
 	}
 	return reference, nil
-}
-
-func validateMatchRule(match []string, meta db.MetadataEntityMeta, fields map[string]db.MetadataField) error {
-	if len(match) == 0 {
-		return fmt.Errorf("fixture match is required")
-	}
-	seen := map[string]bool{}
-	for _, name := range match {
-		if strings.TrimSpace(name) == "" {
-			return fmt.Errorf("fixture match contains an empty field")
-		}
-		if seen[name] {
-			return fmt.Errorf("fixture match contains duplicate field %q", name)
-		}
-		seen[name] = true
-		field, ok := fixtureField(fields, name)
-		if !ok {
-			return fmt.Errorf("fixture match field %q does not exist on Entity %q", name, meta.Name)
-		}
-		if field.Type == "collection" {
-			return fmt.Errorf("fixture match field %q uses unsupported collection storage", name)
-		}
-	}
-	if len(match) == 1 {
-		field, _ := fixtureField(fields, match[0])
-		if field.Unique {
-			return nil
-		}
-	}
-	if len(match) == 1 && match[0] == "name" {
-		return nil
-	}
-	for _, constraint := range meta.Constraints {
-		if constraint.Type != "unique" {
-			continue
-		}
-		var uniqueFields []string
-		if err := json.Unmarshal(constraint.Fields, &uniqueFields); err != nil {
-			return fmt.Errorf("unique constraint %q fields are invalid", constraint.Name)
-		}
-		if sameStringSet(match, uniqueFields) {
-			return nil
-		}
-	}
-	return fmt.Errorf("fixture match %q is not backed by a unique field or constraint on Entity %q", strings.Join(match, ", "), meta.Name)
-}
-
-func fieldsByName(meta db.MetadataEntityMeta) map[string]db.MetadataField {
-	fields := map[string]db.MetadataField{}
-	for _, field := range meta.Fields {
-		fields[field.Name] = field
-	}
-	return fields
-}
-
-func fixtureField(fields map[string]db.MetadataField, name string) (db.MetadataField, bool) {
-	if field, ok := fields[name]; ok {
-		return field, true
-	}
-	if name == "name" {
-		return db.MetadataField{Name: "name", Label: "Name", Type: "text", Required: true, Unique: true}, true
-	}
-	return db.MetadataField{}, false
-}
-
-func linkTarget(field db.MetadataField) (string, error) {
-	var options struct {
-		Entity string `json:"entity"`
-	}
-	if err := json.Unmarshal(field.Options, &options); err != nil {
-		return "", fmt.Errorf("link field options are invalid")
-	}
-	if strings.TrimSpace(options.Entity) == "" {
-		return "", fmt.Errorf("link field target entity is required")
-	}
-	return options.Entity, nil
 }
 
 func recordID(record db.Record) (int64, error) {
@@ -672,7 +598,7 @@ func decodeRecords(node *yaml.Node) ([]Record, error) {
 	}
 	records := make([]Record, 0, len(node.Content))
 	for _, item := range node.Content {
-		mapping := valueMapping(item)
+		mapping := yamlmeta.ValueMapping(item)
 		if mapping == nil {
 			return nil, fmt.Errorf("fixture record must be a mapping at line %d", item.Line)
 		}
@@ -685,28 +611,6 @@ func decodeRecords(node *yaml.Node) ([]Record, error) {
 		records = append(records, record)
 	}
 	return records, nil
-}
-
-func scalarString(node *yaml.Node, name string) (string, error) {
-	if node.Kind != yaml.ScalarNode {
-		return "", fmt.Errorf("%s must be a string at line %d", name, node.Line)
-	}
-	return strings.TrimSpace(node.Value), nil
-}
-
-func scalarStringSequence(node *yaml.Node, name string) ([]string, error) {
-	if node.Kind != yaml.SequenceNode {
-		return nil, fmt.Errorf("%s must be a sequence at line %d", name, node.Line)
-	}
-	values := make([]string, 0, len(node.Content))
-	for _, item := range node.Content {
-		value, err := scalarString(item, name)
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, value)
-	}
-	return values, nil
 }
 
 func nodeJSON(node yaml.Node) (json.RawMessage, error) {
@@ -758,48 +662,6 @@ func nodeAny(node *yaml.Node) (any, error) {
 	}
 }
 
-func documentMapping(root *yaml.Node) *yaml.Node {
-	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
-		return valueMapping(root.Content[0])
-	}
-	return valueMapping(root)
-}
-
-func valueMapping(node *yaml.Node) *yaml.Node {
-	if node.Kind == yaml.MappingNode {
-		return node
-	}
-	return nil
-}
-
-func rejectDuplicateKeysNode(node *yaml.Node, location string) error {
-	if node == nil {
-		return nil
-	}
-	switch node.Kind {
-	case yaml.DocumentNode, yaml.SequenceNode:
-		for i, child := range node.Content {
-			if err := rejectDuplicateKeysNode(child, fmt.Sprintf("%s[%d]", location, i)); err != nil {
-				return err
-			}
-		}
-	case yaml.MappingNode:
-		seen := map[string]int{}
-		for i := 0; i < len(node.Content); i += 2 {
-			key := node.Content[i]
-			value := node.Content[i+1]
-			if previous, ok := seen[key.Value]; ok {
-				return fmt.Errorf("duplicate fixture key %q at %s line %d, previously defined at line %d", key.Value, location, key.Line, previous)
-			}
-			seen[key.Value] = key.Line
-			if err := rejectDuplicateKeysNode(value, location+"."+key.Value); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func isNullNode(node yaml.Node) bool {
 	return node.Kind == yaml.ScalarNode && node.Tag == "!!null"
 }
@@ -811,17 +673,6 @@ func sortedValueKeys(values map[string]Value) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-func sameStringSet(left []string, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	leftSorted := append([]string(nil), left...)
-	rightSorted := append([]string(nil), right...)
-	sort.Strings(leftSorted)
-	sort.Strings(rightSorted)
-	return reflect.DeepEqual(leftSorted, rightSorted)
 }
 
 func stringInSlice(value string, values []string) bool {

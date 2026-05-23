@@ -14,6 +14,7 @@ const props = defineProps<{
   entity: string
   entityLabel: string
   fields: MetadataField[]
+  systemFields?: MetadataField[]
 }>()
 
 const emit = defineEmits<{
@@ -24,7 +25,7 @@ const emit = defineEmits<{
 const recordsStore = useRecordsStore()
 const hiddenColumnKeys = ref<string[]>([])
 
-const columns = computed(() => buildRecordListColumns(props.fields))
+const columns = computed(() => buildRecordListColumns(props.fields, props.systemFields ?? []))
 const hiddenColumnKeySet = computed(() => new Set(hiddenColumnKeys.value.filter((key) => key !== 'name')))
 const visibleColumns = computed(() => columns.value.filter((column) => (
   column.key === 'name' || !hiddenColumnKeySet.value.has(column.key)

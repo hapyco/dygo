@@ -1,3 +1,5 @@
+import { ApiClientError, apiRequest, type ApiErrorEnvelope, type DataEnvelope } from '@/features/api/client'
+
 export type LoginInput = {
   identifier: string
   password: string
@@ -12,41 +14,18 @@ export type CurrentUser = {
   administrator: boolean
 }
 
-type ApiErrorEnvelope = {
-  error?: {
-    code?: string
-    message?: string
-    details?: Record<string, unknown>
-  }
-}
-
-type LoginEnvelope = {
-  data: CurrentUser
-}
-
-type CurrentUserEnvelope = {
-  data: CurrentUser
-}
-
-export class AuthApiError extends Error {
-  readonly code: string
-  readonly details?: Record<string, unknown>
-
+export class AuthApiError extends ApiClientError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
-    super(message)
-    this.name = 'AuthApiError'
-    this.code = code
-    this.details = details
+    super('AuthApiError', code, message, details)
   }
 }
 
 export async function login(input: LoginInput): Promise<CurrentUser> {
-  const response = await fetch('/api/v1/auth/login', {
+  const payload = await apiRequest<DataEnvelope<CurrentUser>, AuthApiError>('/api/v1/auth/login', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    credentials: 'include',
     body: JSON.stringify({
       data: {
         identifier: input.identifier,
@@ -54,38 +33,27 @@ export async function login(input: LoginInput): Promise<CurrentUser> {
         remember: input.remember,
       },
     }),
+  }, {
+    error: AuthApiError,
+    fallbackCode: 'login_failed',
+    invalidResponseMessage: 'Studio could not read the server response.',
+    message: loginErrorMessage,
   })
-
-  const payload = await parseJSON<LoginEnvelope & ApiErrorEnvelope>(response)
-
-  if (!response.ok) {
-    throw new AuthApiError(payload.error?.code ?? 'login_failed', loginErrorMessage(payload), payload.error?.details)
-  }
 
   return payload.data
 }
 
 export async function getCurrentUser(): Promise<CurrentUser> {
-  const response = await fetch('/api/v1/auth/me', {
+  const payload = await apiRequest<DataEnvelope<CurrentUser>, AuthApiError>('/api/v1/auth/me', {
     method: 'GET',
-    credentials: 'include',
+  }, {
+    error: AuthApiError,
+    fallbackCode: 'unauthenticated',
+    invalidResponseMessage: 'Studio could not read the server response.',
+    message: currentUserErrorMessage,
   })
 
-  const payload = await parseJSON<CurrentUserEnvelope & ApiErrorEnvelope>(response)
-
-  if (!response.ok) {
-    throw new AuthApiError(payload.error?.code ?? 'unauthenticated', currentUserErrorMessage(payload), payload.error?.details)
-  }
-
   return payload.data
-}
-
-async function parseJSON<T>(response: Response): Promise<T> {
-  try {
-    return (await response.json()) as T
-  } catch (error) {
-    throw new AuthApiError('invalid_response', 'Studio could not read the server response.')
-  }
 }
 
 function currentUserErrorMessage(payload: ApiErrorEnvelope): string {

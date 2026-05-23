@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -52,23 +53,36 @@ type MetadataEntity struct {
 // MetadataEntityMeta is the complete persisted metadata for one Entity.
 type MetadataEntityMeta struct {
 	MetadataEntity
-	Fields      []MetadataField      `json:"fields"`
-	Indexes     []MetadataIndex      `json:"indexes"`
-	Constraints []MetadataConstraint `json:"constraints"`
+	Fields       []MetadataField      `json:"fields"`
+	SystemFields []MetadataField      `json:"system-fields"`
+	Indexes      []MetadataIndex      `json:"indexes"`
+	Constraints  []MetadataConstraint `json:"constraints"`
 }
 
 // MetadataField is one persisted Field definition.
 type MetadataField struct {
-	Name     string          `json:"name"`
-	Label    string          `json:"label"`
-	Type     string          `json:"type"`
-	Required bool            `json:"required"`
-	Unique   bool            `json:"unique"`
-	Index    bool            `json:"index"`
-	Default  json.RawMessage `json:"default,omitempty"`
-	Check    json.RawMessage `json:"check,omitempty"`
-	Position int             `json:"position"`
-	Options  json.RawMessage `json:"options,omitempty"`
+	Name           string              `json:"name"`
+	Label          string              `json:"label"`
+	Type           string              `json:"type"`
+	Required       bool                `json:"required"`
+	Unique         bool                `json:"unique"`
+	Index          bool                `json:"index"`
+	Stored         bool                `json:"stored"`
+	WriteOnly      bool                `json:"write-only"`
+	Listable       bool                `json:"listable"`
+	NameRenderable bool                `json:"name-renderable"`
+	ValueKind      string              `json:"value-kind"`
+	Studio         MetadataFieldStudio `json:"studio"`
+	Default        json.RawMessage     `json:"default,omitempty"`
+	Check          json.RawMessage     `json:"check,omitempty"`
+	Position       int                 `json:"position"`
+	Options        json.RawMessage     `json:"options,omitempty"`
+}
+
+// MetadataFieldStudio describes Studio rendering hints derived from field type behavior.
+type MetadataFieldStudio struct {
+	Editor  string `json:"editor"`
+	Display string `json:"display"`
 }
 
 // MetadataIndex is one persisted top-level Entity index definition.
@@ -235,9 +249,33 @@ func (r MetadataReader) getEntityMeta(ctx context.Context, name string, sql stri
 		return MetadataEntityMeta{}, err
 	}
 	meta.Fields = fields
+	meta.SystemFields = metadataSystemFields()
 	meta.Indexes = indexes
 	meta.Constraints = constraints
 	return meta, nil
+}
+
+func metadataSystemFields() []MetadataField {
+	fields := make([]MetadataField, 0, len(systemRecordFields))
+	for index, systemField := range systemRecordFields {
+		fields = append(fields, MetadataField{
+			Name:           systemField.Name,
+			Label:          systemField.Label,
+			Type:           systemField.Type,
+			Required:       true,
+			Stored:         true,
+			WriteOnly:      false,
+			Listable:       systemField.Listable,
+			NameRenderable: systemField.Nameable,
+			ValueKind:      systemField.ValueKind,
+			Studio: MetadataFieldStudio{
+				Editor:  systemField.StudioEditor,
+				Display: systemField.StudioDisplay,
+			},
+			Position: index + 1,
+		})
+	}
+	return fields
 }
 
 func (r MetadataReader) entityFields(ctx context.Context, entityID int64) ([]MetadataField, error) {
@@ -263,12 +301,29 @@ ORDER BY position, name`, entityID)
 		field.Default = rawJSONOrNil(defaultValue)
 		field.Check = rawJSONOrNil(check)
 		field.Options = rawJSONOrNil(options)
+		field.applyTypeBehavior()
 		fields = append(fields, field)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("read metadata fields: %w", err)
 	}
 	return fields, nil
+}
+
+func (f *MetadataField) applyTypeBehavior() {
+	definition, ok := fieldtype.DefaultDefinition(f.Type)
+	if !ok {
+		return
+	}
+	f.Stored = definition.Behavior.Stored
+	f.WriteOnly = definition.Behavior.WriteOnly
+	f.Listable = definition.Behavior.Listable
+	f.NameRenderable = definition.Behavior.NameRenderable
+	f.ValueKind = definition.Behavior.ValueKind
+	f.Studio = MetadataFieldStudio{
+		Editor:  definition.Behavior.StudioEditor,
+		Display: definition.Behavior.StudioDisplay,
+	}
 }
 
 func (r MetadataReader) entityIndexes(ctx context.Context, entityID int64) ([]MetadataIndex, error) {

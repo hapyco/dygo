@@ -3,11 +3,40 @@ package fieldtype
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
 // Validator validates type-specific field options.
 type Validator func(Options) error
+
+const (
+	ValueString   = "string"
+	ValueInteger  = "integer"
+	ValueNumber   = "number"
+	ValueBoolean  = "boolean"
+	ValueDate     = "date"
+	ValueDatetime = "datetime"
+	ValueTime     = "time"
+	ValueJSON     = "json"
+	ValuePassword = "password"
+)
+
+// Behavior describes cross-layer behavior for one field type.
+type Behavior struct {
+	Stored          bool
+	ColumnSuffix    string
+	SQLType         string
+	PlaceholderCast string
+	ValueKind       string
+	WriteOnly       bool
+	Listable        bool
+	NameRenderable  bool
+	SystemName      bool
+	Checkable       bool
+	StudioEditor    string
+	StudioDisplay   string
+}
 
 // Definition describes one registered field type.
 type Definition struct {
@@ -17,6 +46,7 @@ type Definition struct {
 	AllowUnique   bool
 	AllowDefault  bool
 	AllowIndex    bool
+	Behavior      Behavior
 	Validate      Validator
 }
 
@@ -75,4 +105,24 @@ func (r Registry) Get(name string) (Definition, bool) {
 func (r Registry) Has(name string) bool {
 	_, ok := r.Get(name)
 	return ok
+}
+
+// Names returns registered field type names in stable order.
+func (r Registry) Names() []string {
+	names := make([]string, 0, len(r.definitions))
+	for name := range r.definitions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// DefaultDefinition returns one built-in field type definition by name.
+func DefaultDefinition(name string) (Definition, bool) {
+	for _, definition := range builtIns() {
+		if definition.Name == name {
+			return definition, true
+		}
+	}
+	return Definition{}, false
 }

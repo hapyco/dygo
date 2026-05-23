@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dygo-dev/dygo/internal/app/manifest"
-	"github.com/dygo-dev/dygo/internal/app/registry"
 	"github.com/dygo-dev/dygo/internal/entity/catalog"
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/dygo-dev/dygo/internal/project"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -121,26 +119,19 @@ func seedSingleEntityRecords(ctx context.Context, tx pgx.Tx, entities []catalog.
 			return fmt.Errorf("seed single Entity %s/%s: %w", entity.AppName, entity.Entity.Name, err)
 		}
 		sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES ($1) ON CONFLICT (%s) DO NOTHING", quoteIdent(table), quoteIdent("name"), quoteIdent("name"))
-		if _, err := tx.Exec(ctx, sql, entity.Entity.Name); err != nil {
+		if _, err := tx.Exec(ctx, sql, SingleRecordName(entity.Entity.Name)); err != nil {
 			return fmt.Errorf("seed single Entity %s/%s: %w", entity.AppName, entity.Entity.Name, err)
 		}
 	}
 	return nil
 }
 
-type metadataCatalog struct {
-	Apps     []manifest.LoadedApp
-	Entities []catalog.LoadedEntity
-}
+type metadataCatalog = project.Metadata
 
 func loadMetadataCatalog(root string) (metadataCatalog, error) {
-	apps, err := registry.New(root).Validate()
+	metadata, err := project.LoadMetadata(root)
 	if err != nil {
-		return metadataCatalog{}, fmt.Errorf("validate apps for metadata schema: %w", err)
+		return metadataCatalog{}, fmt.Errorf("load metadata for schema: %w", err)
 	}
-	entities, err := catalog.New(apps, fieldtype.DefaultRegistry()).Validate()
-	if err != nil {
-		return metadataCatalog{}, fmt.Errorf("validate entities for metadata schema: %w", err)
-	}
-	return metadataCatalog{Apps: apps, Entities: entities}, nil
+	return metadata, nil
 }

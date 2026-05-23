@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -205,31 +206,26 @@ func TestBuildMetadataRecordsUsesEntityTableNamingTemplate(t *testing.T) {
 	}
 }
 
-func TestEntityNamingJSONOrdersStrategyFirst(t *testing.T) {
+func TestEntityNamingJSONRoundTrips(t *testing.T) {
 	tests := []struct {
 		name   string
 		naming schema.Naming
-		want   string
 	}{
 		{
 			name:   "random",
 			naming: schema.Naming{Strategy: schema.NamingStrategyRandom, Length: 16},
-			want:   `{"strategy":"random","length":16}`,
 		},
 		{
 			name:   "field",
 			naming: schema.Naming{Strategy: schema.NamingStrategyField, Field: "name"},
-			want:   `{"strategy":"field","field":"name"}`,
 		},
 		{
 			name:   "series",
 			naming: schema.Naming{Strategy: schema.NamingStrategySeries, Pattern: "SINV-{YYYY}-{#####}"},
-			want:   `{"strategy":"series","pattern":"SINV-{YYYY}-{#####}"}`,
 		},
 		{
 			name:   "template",
 			naming: schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{key}"},
-			want:   `{"strategy":"template","template":"{app}.{key}"}`,
 		},
 	}
 
@@ -239,8 +235,16 @@ func TestEntityNamingJSONOrdersStrategyFirst(t *testing.T) {
 			if err != nil {
 				t.Fatalf("entityNamingJSON() error = %v, want nil", err)
 			}
-			if string(got) != tt.want {
-				t.Fatalf("entityNamingJSON() = %s, want %s", got, tt.want)
+			var decoded recordNaming
+			if err := json.Unmarshal(got, &decoded); err != nil {
+				t.Fatalf("json.Unmarshal(entityNamingJSON()) error = %v, want nil", err)
+			}
+			if decoded.Strategy != tt.naming.Strategy ||
+				decoded.Length != tt.naming.Length ||
+				decoded.Field != tt.naming.Field ||
+				decoded.Pattern != tt.naming.Pattern ||
+				decoded.Template != tt.naming.Template {
+				t.Fatalf("entityNamingJSON() decoded = %+v, want %+v", decoded, tt.naming)
 			}
 		})
 	}

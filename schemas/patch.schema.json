@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dygo.dev/schemas/patch.schema.json",
+  "title": "dygo Patch",
+  "description": "Schema for app-owned dygo patch YAML files. Runtime validation in Go remains authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "id", "phase", "description", "operations"],
+  "properties": {
+    "kind": { "const": "patch" },
+    "version": { "const": 1 },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["pre-sync", "post-sync"]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/operation" }
+    }
+  },
+  "$defs": {
+    "kebabName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "scalar": {
+      "type": ["string", "number", "integer", "boolean"]
+    },
+    "sql": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entity", "from", "to"],
+          "properties": {
+            "type": { "const": "rename-field" },
+            "entity": { "$ref": "#/$defs/kebabName" },
+            "from": { "$ref": "#/$defs/kebabName" },
+            "to": { "$ref": "#/$defs/kebabName" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "from", "to"],
+          "properties": {
+            "type": { "const": "rename-entity" },
+            "from": { "$ref": "#/$defs/kebabName" },
+            "to": { "$ref": "#/$defs/kebabName" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entity", "from", "to"],
+          "properties": {
+            "type": { "const": "copy-field" },
+            "entity": { "$ref": "#/$defs/kebabName" },
+            "from": { "$ref": "#/$defs/kebabName" },
+            "to": { "$ref": "#/$defs/kebabName" },
+            "when": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["to-is-null"],
+              "properties": {
+                "to-is-null": { "const": true }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entity", "field", "value"],
+          "properties": {
+            "type": { "const": "backfill-field" },
+            "entity": { "$ref": "#/$defs/kebabName" },
+            "field": { "$ref": "#/$defs/kebabName" },
+            "value": { "$ref": "#/$defs/scalar" },
+            "when": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field-is-null"],
+              "properties": {
+                "field-is-null": { "const": true }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entity", "field"],
+          "properties": {
+            "type": { "const": "drop-field" },
+            "entity": { "$ref": "#/$defs/kebabName" },
+            "field": { "$ref": "#/$defs/kebabName" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entity", "field", "to", "using"],
+          "properties": {
+            "type": { "const": "change-field-type" },
+            "entity": { "$ref": "#/$defs/kebabName" },
+            "field": { "$ref": "#/$defs/kebabName" },
+            "to": { "$ref": "#/$defs/kebabName" },
+            "using": { "$ref": "#/$defs/sql" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "name", "reason", "statement"],
+          "properties": {
+            "type": { "const": "sql" },
+            "name": { "$ref": "#/$defs/kebabName" },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "statement": { "$ref": "#/$defs/sql" }
+          }
+        }
+      ]
+    }
+  }
+}

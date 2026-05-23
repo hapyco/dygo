@@ -126,10 +126,10 @@ func BuildSchemaPrunePlan(entities []catalog.LoadedEntity, live LiveSchema) (Sch
 	}
 
 	desiredTables := mapDesiredTables(desired)
+	var tables []SchemaPruneOperation
 	var constraints []SchemaPruneOperation
 	var indexes []SchemaPruneOperation
 	var columns []SchemaPruneOperation
-	var tables []SchemaPruneOperation
 
 	for _, name := range sortedDesiredTableNames(desiredTables) {
 		desiredTable := desiredTables[name]
@@ -137,13 +137,24 @@ func BuildSchemaPrunePlan(entities []catalog.LoadedEntity, live LiveSchema) (Sch
 		if !ok {
 			continue
 		}
-		constraints = append(constraints, pruneExtraConstraints(desiredTable, liveTable)...)
-		indexes = append(indexes, pruneExtraIndexes(desiredTable, liveTable)...)
-		columns = append(columns, pruneExtraColumns(desiredTable, liveTable)...)
+		constraintOperations, constraintDiagnostics := pruneExtraConstraints(desiredTable, liveTable)
+		indexOperations, indexDiagnostics := pruneExtraIndexes(desiredTable, liveTable)
+		columnOperations, columnDiagnostics := pruneExtraColumns(desiredTable, liveTable)
+		constraints = append(constraints, constraintOperations...)
+		indexes = append(indexes, indexOperations...)
+		columns = append(columns, columnOperations...)
+		plan.Diagnostics = append(plan.Diagnostics, constraintDiagnostics...)
+		plan.Diagnostics = append(plan.Diagnostics, indexDiagnostics...)
+		plan.Diagnostics = append(plan.Diagnostics, columnDiagnostics...)
 	}
 
 	for _, name := range sortedTableNames(live.Tables) {
 		if _, ok := desiredTables[name]; ok {
+			continue
+		}
+		liveTable := live.Tables[name]
+		if !liveTable.Owned {
+			plan.Diagnostics = append(plan.Diagnostics, unownedPruneDiagnostic("unowned-extra-table", name, "", "", "table exists but is not known to be dygo-owned"))
 			continue
 		}
 		tables = append(tables, SchemaPruneOperation{
@@ -173,7 +184,7 @@ func executeSchemaPrunePlan(ctx context.Context, tx pgx.Tx, plan SchemaPrunePlan
 
 func isPrunableDiagnostic(kind string) bool {
 	switch kind {
-	case "extra-constraint", "extra-index", "extra-column", "extra-table":
+	case "extra-table", "extra-constraint", "extra-index", "extra-column":
 		return true
 	default:
 		return false
@@ -197,15 +208,20 @@ func sortedDesiredTableNames(tables map[string]desiredTable) []string {
 	return names
 }
 
-func pruneExtraConstraints(desired desiredTable, live liveTable) []SchemaPruneOperation {
+func pruneExtraConstraints(desired desiredTable, live liveTable) ([]SchemaPruneOperation, []SchemaDiagnostic) {
 	expected := map[string]bool{}
 	for _, constraint := range desired.Constraints {
 		expected[constraint.Name] = true
 	}
 	var operations []SchemaPruneOperation
+	var diagnostics []SchemaDiagnostic
 	for _, name := range sortedConstraintNames(live.Constraints) {
 		constraint := live.Constraints[name]
 		if constraint.Type == "primary-key" || constraint.Type == "not-null" || expected[name] {
+			continue
+		}
+		if !constraint.Owned {
+			diagnostics = append(diagnostics, unownedPruneDiagnostic("unowned-extra-constraint", desired.Name, "", name, "constraint exists but is not known to be dygo-owned"))
 			continue
 		}
 		operations = append(operations, SchemaPruneOperation{
@@ -217,17 +233,23 @@ func pruneExtraConstraints(desired desiredTable, live liveTable) []SchemaPruneOp
 			SQL:         fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT %s", quoteIdent(desired.Name), quoteIdent(name)),
 		})
 	}
-	return operations
+	return operations, diagnostics
 }
 
-func pruneExtraIndexes(desired desiredTable, live liveTable) []SchemaPruneOperation {
+func pruneExtraIndexes(desired desiredTable, live liveTable) ([]SchemaPruneOperation, []SchemaDiagnostic) {
 	expected := map[string]bool{}
 	for _, index := range desired.Indexes {
 		expected[index.Name] = true
 	}
 	var operations []SchemaPruneOperation
+	var diagnostics []SchemaDiagnostic
 	for _, name := range sortedIndexNames(live.Indexes) {
+		index := live.Indexes[name]
 		if expected[name] || liveIndexBacksConstraint(name, live) {
+			continue
+		}
+		if !index.Owned {
+			diagnostics = append(diagnostics, unownedPruneDiagnostic("unowned-extra-index", desired.Name, "", name, "index exists but is not known to be dygo-owned"))
 			continue
 		}
 		operations = append(operations, SchemaPruneOperation{
@@ -239,10 +261,10 @@ func pruneExtraIndexes(desired desiredTable, live liveTable) []SchemaPruneOperat
 			SQL:         fmt.Sprintf("DROP INDEX %s", quoteIdent(name)),
 		})
 	}
-	return operations
+	return operations, diagnostics
 }
 
-func pruneExtraColumns(desired desiredTable, live liveTable) []SchemaPruneOperation {
+func pruneExtraColumns(desired desiredTable, live liveTable) ([]SchemaPruneOperation, []SchemaDiagnostic) {
 	expected := map[string]bool{}
 	for _, column := range desired.SystemColumns {
 		expected[column.Name] = true
@@ -251,8 +273,14 @@ func pruneExtraColumns(desired desiredTable, live liveTable) []SchemaPruneOperat
 		expected[column.Name] = true
 	}
 	var operations []SchemaPruneOperation
+	var diagnostics []SchemaDiagnostic
 	for _, name := range sortedColumnNames(live.Columns) {
 		if expected[name] {
+			continue
+		}
+		column := live.Columns[name]
+		if !column.Owned {
+			diagnostics = append(diagnostics, unownedPruneDiagnostic("unowned-extra-column", desired.Name, name, "", "column exists but is not known to be dygo-owned"))
 			continue
 		}
 		operations = append(operations, SchemaPruneOperation{
@@ -264,5 +292,17 @@ func pruneExtraColumns(desired desiredTable, live liveTable) []SchemaPruneOperat
 			SQL:         fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", quoteIdent(desired.Name), quoteIdent(name)),
 		})
 	}
-	return operations
+	return operations, diagnostics
+}
+
+func unownedPruneDiagnostic(kind string, table string, column string, name string, message string) SchemaDiagnostic {
+	return SchemaDiagnostic{
+		Classification: SchemaDiagnosticUnsafe,
+		Kind:           kind,
+		Table:          table,
+		Column:         column,
+		Name:           name,
+		Message:        message + "; use an explicit patch, restore metadata, or mark ownership before pruning",
+		Source:         "database public schema",
+	}
 }

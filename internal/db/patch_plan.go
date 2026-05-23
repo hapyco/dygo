@@ -14,13 +14,13 @@ import (
 )
 
 const (
-	PatchOperationRenameField     = "rename-field"
-	PatchOperationRenameEntity    = "rename-entity"
-	PatchOperationCopyField       = "copy-field"
-	PatchOperationBackfillField   = "backfill-field"
-	PatchOperationDropField       = "drop-field"
-	PatchOperationChangeFieldType = "change-field-type"
-	PatchOperationSQL             = "sql"
+	PatchOperationRenameField     = patches.OperationRenameField
+	PatchOperationRenameEntity    = patches.OperationRenameEntity
+	PatchOperationCopyField       = patches.OperationCopyField
+	PatchOperationBackfillField   = patches.OperationBackfillField
+	PatchOperationDropField       = patches.OperationDropField
+	PatchOperationChangeFieldType = patches.OperationChangeFieldType
+	PatchOperationSQL             = patches.OperationSQL
 )
 
 // PatchOperationPlan is a read-only plan for patch operations.
@@ -111,7 +111,7 @@ func (p *patchOperationPlanner) plan(reader patchOperationReader) (PatchOperatio
 }
 
 func (p *patchOperationPlanner) planRenameField(reader patchOperationReader) (PatchOperation, error) {
-	if err := reader.requireFields("type", "entity", "from", "to"); err != nil {
+	if err := reader.requireOperationFields(); err != nil {
 		return PatchOperation{}, err
 	}
 	entityName, err := reader.requiredString("entity")
@@ -164,7 +164,7 @@ func (p *patchOperationPlanner) planRenameField(reader patchOperationReader) (Pa
 }
 
 func (p *patchOperationPlanner) planRenameEntity(reader patchOperationReader) (PatchOperation, error) {
-	if err := reader.requireFields("type", "from", "to"); err != nil {
+	if err := reader.requireOperationFields(); err != nil {
 		return PatchOperation{}, err
 	}
 	fromEntity, err := reader.requiredString("from")
@@ -202,7 +202,7 @@ func (p *patchOperationPlanner) planRenameEntity(reader patchOperationReader) (P
 }
 
 func (p *patchOperationPlanner) planCopyField(reader patchOperationReader) (PatchOperation, error) {
-	if err := reader.requireFields("type", "entity", "from", "to", "when"); err != nil {
+	if err := reader.requireOperationFields(); err != nil {
 		return PatchOperation{}, err
 	}
 	entityName, err := reader.requiredString("entity")
@@ -261,7 +261,7 @@ func (p *patchOperationPlanner) planCopyField(reader patchOperationReader) (Patc
 }
 
 func (p *patchOperationPlanner) planBackfillField(reader patchOperationReader) (PatchOperation, error) {
-	if err := reader.requireFields("type", "entity", "field", "value", "when"); err != nil {
+	if err := reader.requireOperationFields(); err != nil {
 		return PatchOperation{}, err
 	}
 	entityName, err := reader.requiredString("entity")
@@ -312,7 +312,7 @@ func (p *patchOperationPlanner) planBackfillField(reader patchOperationReader) (
 }
 
 func (p *patchOperationPlanner) planDropField(reader patchOperationReader) (PatchOperation, error) {
-	if err := reader.requireFields("type", "entity", "field"); err != nil {
+	if err := reader.requireOperationFields(); err != nil {
 		return PatchOperation{}, err
 	}
 	entityName, err := reader.requiredString("entity")
@@ -353,7 +353,7 @@ func (p *patchOperationPlanner) planDropField(reader patchOperationReader) (Patc
 }
 
 func (p *patchOperationPlanner) planChangeFieldType(reader patchOperationReader) (PatchOperation, error) {
-	if err := reader.requireFields("type", "entity", "field", "to", "using"); err != nil {
+	if err := reader.requireOperationFields(); err != nil {
 		return PatchOperation{}, err
 	}
 	entityName, err := reader.requiredString("entity")
@@ -407,7 +407,7 @@ func (p *patchOperationPlanner) planChangeFieldType(reader patchOperationReader)
 }
 
 func (p *patchOperationPlanner) planSQL(reader patchOperationReader) (PatchOperation, error) {
-	if err := reader.requireFields("type", "name", "reason", "statement"); err != nil {
+	if err := reader.requireOperationFields(); err != nil {
 		return PatchOperation{}, err
 	}
 	name, err := reader.requiredString("name")
@@ -582,6 +582,14 @@ func (r patchOperationReader) source() string {
 		path = r.patch.Patch.ID
 	}
 	return fmt.Sprintf("patch %s/%s operation %d at %s", r.patch.AppName, r.patch.Patch.ID, r.index, path)
+}
+
+func (r patchOperationReader) requireOperationFields() error {
+	spec, ok := patches.OperationSpecFor(r.operation.Type)
+	if !ok {
+		return fmt.Errorf("unsupported patch operation type %q", r.operation.Type)
+	}
+	return r.requireFields(spec.AllowedFields()...)
 }
 
 func (r patchOperationReader) requireFields(allowed ...string) error {
@@ -820,15 +828,6 @@ func findEntityField(entity catalog.LoadedEntity, name string) (schema.Field, bo
 		}
 	}
 	return schema.Field{}, false
-}
-
-func isSystemColumn(column string) bool {
-	switch column {
-	case "id", "name", "created_at", "updated_at":
-		return true
-	default:
-		return false
-	}
 }
 
 func cloneLiveSchema(live LiveSchema) LiveSchema {

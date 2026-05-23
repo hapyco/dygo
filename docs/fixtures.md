@@ -19,7 +19,7 @@ go run ./cmd/dygo fixtures apply --env staging
 
 ## File Shape
 
-Fixture files live under an App's manifest-defined `fixtures` directory. The file name must match the Entity name:
+Fixture files live under an App's manifest-defined `fixtures` directory. The file name must match the Entity key:
 
 ```txt
 apps/core/fixtures/role.yml

@@ -7,9 +7,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dygo-dev/dygo/internal/corevalues"
 	"github.com/dygo-dev/dygo/internal/entity/catalog"
 	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
 	"github.com/dygo-dev/dygo/internal/entity/schema"
+	namegen "github.com/dygo-dev/dygo/internal/naming"
 	"github.com/jackc/pgx/v5"
 	"gopkg.in/yaml.v3"
 )
@@ -275,7 +277,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			Name:    app.Manifest.Name,
 			Label:   app.Manifest.Label,
 			Version: app.Manifest.Version,
-			Status:  "active",
+			Status:  corevalues.AppStatusActive,
 		})
 	}
 	for _, loaded := range metadata.Entities {
@@ -458,24 +460,11 @@ func metadataEntityRecordName(loaded catalog.LoadedEntity, naming schema.Naming)
 }
 
 func deterministicRecordNameFromValues(kind string, naming schema.Naming, values map[string]string) (string, error) {
-	switch naming.Strategy {
-	case schema.NamingStrategyTemplate:
-		return renderNameTemplate(naming.Template, func(token string) (string, error) {
-			value, ok := values[token]
-			if !ok {
-				return "", fmt.Errorf("template references unknown field %q", token)
-			}
-			return value, nil
-		})
-	case schema.NamingStrategyField:
-		value, ok := values[naming.Field]
-		if !ok {
-			return "", fmt.Errorf("field naming references unknown field %q", naming.Field)
-		}
-		return value, nil
-	default:
-		return "", fmt.Errorf("%s metadata naming strategy %q is not deterministic", kind, naming.Strategy)
+	name, err := namegen.GenerateDeterministic(context.Background(), naming, namegen.MapResolver(values))
+	if err != nil {
+		return "", fmt.Errorf("%s metadata naming: %w", kind, err)
 	}
+	return name, nil
 }
 
 func entityRecordName(appName string, key string) string {
@@ -500,44 +489,12 @@ func fieldOptionsJSON(options fieldtype.Options) ([]byte, error) {
 }
 
 func entityNamingJSON(naming schema.Naming) ([]byte, error) {
-	switch naming.Strategy {
-	case schema.NamingStrategyRandom:
-		return json.Marshal(struct {
-			Strategy string `json:"strategy"`
-			Length   int    `json:"length"`
-		}{
-			Strategy: naming.Strategy,
-			Length:   naming.Length,
-		})
-	case schema.NamingStrategyField:
-		return json.Marshal(struct {
-			Strategy string `json:"strategy"`
-			Field    string `json:"field"`
-		}{
-			Strategy: naming.Strategy,
-			Field:    naming.Field,
-		})
-	case schema.NamingStrategySeries:
-		return json.Marshal(struct {
-			Strategy string `json:"strategy"`
-			Pattern  string `json:"pattern"`
-		}{
-			Strategy: naming.Strategy,
-			Pattern:  naming.Pattern,
-		})
-	case schema.NamingStrategyTemplate:
-		return json.Marshal(struct {
-			Strategy string `json:"strategy"`
-			Template string `json:"template"`
-		}{
-			Strategy: naming.Strategy,
-			Template: naming.Template,
-		})
-	}
-	return json.Marshal(struct {
-		Strategy string `json:"strategy"`
-	}{
+	return json.Marshal(recordNaming{
 		Strategy: naming.Strategy,
+		Length:   naming.Length,
+		Field:    naming.Field,
+		Pattern:  naming.Pattern,
+		Template: naming.Template,
 	})
 }
 

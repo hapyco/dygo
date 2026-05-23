@@ -4,6 +4,9 @@ package sdk
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/dygo-dev/dygo/internal/corevalues"
+	"github.com/dygo-dev/dygo/internal/hookevents"
 )
 
 // RecordHookEvent names a Record lifecycle hook phase.
@@ -11,30 +14,40 @@ type RecordHookEvent string
 
 const (
 	// RecordBeforeValidate runs before dygo validates Record input. Mutating Input changes the input dygo validates.
-	RecordBeforeValidate RecordHookEvent = "before-validate"
+	RecordBeforeValidate RecordHookEvent = hookevents.BeforeValidate
 	// RecordValidate runs after framework input validation. Return an error to reject; mutate other Records through Records.
-	RecordValidate RecordHookEvent = "validate"
+	RecordValidate RecordHookEvent = hookevents.Validate
 	// RecordBeforeCreate runs before dygo creates a Record. Mutating Input changes the row dygo inserts.
-	RecordBeforeCreate RecordHookEvent = "before-create"
+	RecordBeforeCreate RecordHookEvent = hookevents.BeforeCreate
 	// RecordAfterCreate runs after dygo creates a Record inside the same transaction.
-	RecordAfterCreate RecordHookEvent = "after-create"
+	RecordAfterCreate RecordHookEvent = hookevents.AfterCreate
 	// RecordBeforeUpdate runs before dygo updates a Record. Mutating Input changes the row dygo updates.
-	RecordBeforeUpdate RecordHookEvent = "before-update"
+	RecordBeforeUpdate RecordHookEvent = hookevents.BeforeUpdate
 	// RecordAfterUpdate runs after dygo updates a Record inside the same transaction.
-	RecordAfterUpdate RecordHookEvent = "after-update"
+	RecordAfterUpdate RecordHookEvent = hookevents.AfterUpdate
 	// RecordBeforeDelete runs before dygo deletes a Record.
-	RecordBeforeDelete RecordHookEvent = "before-delete"
+	RecordBeforeDelete RecordHookEvent = hookevents.BeforeDelete
 	// RecordAfterDelete runs after dygo deletes a Record inside the same transaction.
-	RecordAfterDelete RecordHookEvent = "after-delete"
+	RecordAfterDelete RecordHookEvent = hookevents.AfterDelete
 )
+
+// SupportedRecordHookEvents returns supported Record hook events in lifecycle order.
+func SupportedRecordHookEvents() []RecordHookEvent {
+	specs := hookevents.Specs()
+	events := make([]RecordHookEvent, len(specs))
+	for index, spec := range specs {
+		events[index] = RecordHookEvent(spec.Name)
+	}
+	return events
+}
 
 const (
 	// RecordOperationCreate marks a Record create mutation.
-	RecordOperationCreate = "create"
+	RecordOperationCreate = corevalues.ActivityOperationCreate
 	// RecordOperationUpdate marks a Record update mutation.
-	RecordOperationUpdate = "update"
+	RecordOperationUpdate = corevalues.ActivityOperationUpdate
 	// RecordOperationDelete marks a Record delete mutation.
-	RecordOperationDelete = "delete"
+	RecordOperationDelete = corevalues.ActivityOperationDelete
 )
 
 // RecordInput is decoded create or update input visible to Record hooks.
@@ -72,6 +85,7 @@ type RecordListResult struct {
 }
 
 // RecordData gives hooks transactional access to metadata-backed Records by app/entity identity.
+// Writes run dygo framework hooks, such as Activity, but do not re-enter app hooks.
 type RecordData interface {
 	List(ctx context.Context, appName string, entity string, params RecordListParams) (RecordListResult, error)
 	Get(ctx context.Context, appName string, entity string, id int64) (Record, error)

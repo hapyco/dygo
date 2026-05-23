@@ -50,6 +50,16 @@ var rootReservedSlugs = map[string]struct{}{
 	"logout": {},
 }
 
+// ReservedRootRouteSlugs returns route slugs reserved by Studio and HTTP handlers.
+func ReservedRootRouteSlugs() []string {
+	slugs := make([]string, 0, len(rootReservedSlugs))
+	for slug := range rootReservedSlugs {
+		slugs = append(slugs, slug)
+	}
+	sort.Strings(slugs)
+	return slugs
+}
+
 // Catalog loads Entity metadata from a set of discovered apps.
 type Catalog struct {
 	apps       []manifest.LoadedApp

@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/dygo-dev/dygo/internal/corevalues"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -16,10 +17,6 @@ const (
 	ActivitySourceAPI = "api"
 	// ActivitySourceFixtures marks Record mutations performed by fixture apply.
 	ActivitySourceFixtures = "fixtures"
-
-	activityOperationCreate = "create"
-	activityOperationUpdate = "update"
-	activityOperationDelete = "delete"
 )
 
 type activityActorContextKey struct{}
@@ -99,47 +96,43 @@ func recordActivityHook(ctx context.Context, hookCtx RecordHookContext) error {
 	if hookCtx.Entity == "activity" {
 		return nil
 	}
-	if hookCtx.Operation == activityOperationUpdate && len(hookCtx.Changes) == 0 {
+	if hookCtx.Operation == corevalues.ActivityOperationUpdate && len(hookCtx.Changes) == 0 {
 		return nil
 	}
-	activityName, err := randomRecordName(0)
-	if err != nil {
-		return recordError(RecordErrorInternal, "generate activity name failed", nil, err)
-	}
-	changesJSON, err := activityJSON(hookCtx.Changes)
+	changesJSON, err := activityJSONRaw(hookCtx.Changes)
 	if err != nil {
 		return err
 	}
-	snapshotJSON, err := activityJSON(hookCtx.Snapshot)
+	snapshotJSON, err := activityJSONRaw(hookCtx.Snapshot)
 	if err != nil {
 		return err
 	}
-	detailsJSON, err := activityJSON(activityDetails(ctx))
+	detailsJSON, err := activityJSONRaw(activityDetails(ctx))
 	if err != nil {
 		return err
 	}
-	var actor any
+	input := RecordInput{
+		"kind":      systemRecordString(corevalues.ActivityKindRecord),
+		"operation": systemRecordString(hookCtx.Operation),
+		"status":    systemRecordString(corevalues.ActivityStatusSuccess),
+		"entity":    systemRecordInt(hookCtx.EntityID),
+		"record-id": systemRecordInt(hookCtx.RecordID),
+		"title":     systemRecordString(activityTitle(hookCtx.EntityLabel, hookCtx.Entity, hookCtx.Operation)),
+	}
 	if actorID, ok := ActivityActorFromContext(ctx); ok {
-		actor = actorID
+		input["actor"] = systemRecordInt(actorID)
 	}
-	_, err = hookCtx.Queryer.Exec(ctx, `INSERT INTO "activity" ("kind", "operation", "status", "entity_id", "record_id", "actor_id", "title", "message", "changes", "snapshot", "details", "name") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12)`,
-		"record",
-		hookCtx.Operation,
-		"success",
-		hookCtx.EntityID,
-		hookCtx.RecordID,
-		actor,
-		activityTitle(hookCtx.EntityLabel, hookCtx.Entity, hookCtx.Operation),
-		nil,
-		changesJSON,
-		snapshotJSON,
-		detailsJSON,
-		activityName,
-	)
-	if err != nil {
-		return classifyRecordDBError(err, "activity")
+	if changesJSON != nil {
+		input["changes"] = changesJSON
 	}
-	return nil
+	if snapshotJSON != nil {
+		input["snapshot"] = snapshotJSON
+	}
+	if detailsJSON != nil {
+		input["details"] = detailsJSON
+	}
+	_, err = NewSystemRecordWriter(hookCtx.Queryer).InsertByIdentity(ctx, "core", "activity", input, SystemMutationOptions{})
+	return err
 }
 
 func (l recordLayout) activityChanges(input RecordInput, oldRecord Record, newRecord Record) []map[string]any {
@@ -189,7 +182,7 @@ func activityDetails(ctx context.Context) map[string]any {
 	return map[string]any{"source": source}
 }
 
-func activityJSON(value any) (any, error) {
+func activityJSONRaw(value any) (json.RawMessage, error) {
 	if value == nil {
 		return nil, nil
 	}
@@ -211,7 +204,7 @@ func activityJSON(value any) (any, error) {
 	if err != nil {
 		return nil, recordError(RecordErrorInternal, "encode activity payload failed", nil, err)
 	}
-	return string(encoded), nil
+	return json.RawMessage(encoded), nil
 }
 
 func activityTitle(label string, entity string, operation string) string {
@@ -220,11 +213,11 @@ func activityTitle(label string, entity string, operation string) string {
 		label = entity
 	}
 	switch operation {
-	case activityOperationCreate:
+	case corevalues.ActivityOperationCreate:
 		return "Created " + label
-	case activityOperationUpdate:
+	case corevalues.ActivityOperationUpdate:
 		return "Updated " + label
-	case activityOperationDelete:
+	case corevalues.ActivityOperationDelete:
 		return "Deleted " + label
 	default:
 		return operation + " " + label

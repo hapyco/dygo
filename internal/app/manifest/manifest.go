@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dygo-dev/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
 
@@ -298,52 +299,11 @@ func validatePath(name string, value string, problems *[]string) {
 }
 
 func rejectDuplicateKeys(data []byte) error {
-	var root yaml.Node
-	if err := yaml.Unmarshal(data, &root); err != nil {
-		return fmt.Errorf("parse yaml: %w", err)
+	root, err := yamlmeta.Parse(data, "parse yaml")
+	if err != nil {
+		return err
 	}
-	return rejectDuplicateKeysNode(&root, "$")
-}
-
-func rejectDuplicateKeysNode(node *yaml.Node, location string) error {
-	if node == nil {
-		return nil
-	}
-	if node.Kind == yaml.DocumentNode {
-		for _, child := range node.Content {
-			if err := rejectDuplicateKeysNode(child, location); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	if node.Kind == yaml.SequenceNode {
-		for index, child := range node.Content {
-			childLocation := fmt.Sprintf("%s[%d]", location, index)
-			if err := rejectDuplicateKeysNode(child, childLocation); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	if node.Kind != yaml.MappingNode {
-		return nil
-	}
-
-	seen := map[string]struct{}{}
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		key := node.Content[i]
-		value := node.Content[i+1]
-		if _, ok := seen[key.Value]; ok {
-			return fmt.Errorf("duplicate key %q at %s", key.Value, location)
-		}
-		seen[key.Value] = struct{}{}
-
-		childLocation := location + "." + key.Value
-		if err := rejectDuplicateKeysNode(value, childLocation); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return yamlmeta.RejectDuplicateKeys(&root, func(duplicate yamlmeta.DuplicateKey) error {
+		return fmt.Errorf("duplicate key %q at %s", duplicate.Key, strings.TrimSuffix(duplicate.Location, "."+duplicate.Key))
+	})
 }

@@ -14,10 +14,21 @@ var (
 	ErrPasswordEmpty = errors.New("password must not be empty")
 )
 
+// ValidatePassword validates one plaintext password before hashing.
+func ValidatePassword(plaintext string) error {
+	if strings.TrimSpace(plaintext) == "" {
+		return ErrPasswordEmpty
+	}
+	if len([]byte(plaintext)) > 72 {
+		return fmt.Errorf("hash password: %w", bcrypt.ErrPasswordTooLong)
+	}
+	return nil
+}
+
 // HashPassword hashes one plaintext password for storage.
 func HashPassword(plaintext string) (string, error) {
-	if strings.TrimSpace(plaintext) == "" {
-		return "", ErrPasswordEmpty
+	if err := ValidatePassword(plaintext); err != nil {
+		return "", err
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(plaintext), bcrypt.DefaultCost)
 	if err != nil {

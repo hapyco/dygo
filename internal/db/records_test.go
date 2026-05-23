@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dygo-dev/dygo/internal/auth"
+	"github.com/dygo-dev/dygo/internal/corevalues"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -301,7 +302,7 @@ func TestRecordStoreUpdateSingleRecordWritesActivity(t *testing.T) {
 		t.Fatalf("UpdateSingleRecord() = %+v, want updated singleton settings", record)
 	}
 	args := activityArgs(t, queryer)
-	if args[1] != activityOperationUpdate || args[4] != int64(7) {
+	if args[1] != corevalues.ActivityOperationUpdate || args[4] != int64(7) {
 		t.Fatalf("activity args = %#v, want update for singleton record 7", args)
 	}
 	changes := decodeActivityList(t, args[8])
@@ -414,13 +415,12 @@ func TestRecordStoreCreateRecord(t *testing.T) {
 	if record["name"] != "a@example.com" {
 		t.Fatalf("CreateRecord() name = %v, want email naming source", record["name"])
 	}
-	lastQuery := queryer.queries[len(queryer.queries)-1]
+	lastQuery, args := lastQueryContaining(t, queryer, `INSERT INTO "user"`)
 	for _, want := range []string{`INSERT INTO "user"`, `"email", "full_name"`, `"name"`, `RETURNING "id", "name", "created_at", "updated_at"`} {
 		if !strings.Contains(lastQuery, want) {
 			t.Fatalf("create query = %q, want %q", lastQuery, want)
 		}
 	}
-	args := queryer.args[len(queryer.args)-1]
 	if args[len(args)-1] != "a@example.com" {
 		t.Fatalf("CreateRecord() name arg = %#v, want source email", args[len(args)-1])
 	}
@@ -439,7 +439,7 @@ func TestRecordStoreCreateRecordGeneratesRandomName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateRecord() error = %v, want nil", err)
 	}
-	args := queryer.args[len(queryer.args)-1]
+	_, args := lastQueryContaining(t, queryer, `INSERT INTO "crm_lead"`)
 	name, ok := args[len(args)-1].(string)
 	if !ok {
 		t.Fatalf("random name arg type = %T, want string", args[len(args)-1])
@@ -466,7 +466,7 @@ func TestRecordStoreCreateRecordGeneratesTemplateName(t *testing.T) {
 	if record["name"] != "T-New-A1" {
 		t.Fatalf("CreateRecord() name = %v, want template name", record["name"])
 	}
-	args := queryer.args[len(queryer.args)-1]
+	_, args := lastQueryContaining(t, queryer, `INSERT INTO "support_ticket"`)
 	if args[len(args)-1] != "T-New-A1" {
 		t.Fatalf("CreateRecord() name arg = %#v, want template name", args[len(args)-1])
 	}
@@ -491,7 +491,7 @@ func TestRecordStoreUpdateRecord(t *testing.T) {
 	if record["full-name"] != "Renamed User" {
 		t.Fatalf("UpdateRecord() = %+v, want patched record", record)
 	}
-	lastQuery := queryer.queries[len(queryer.queries)-1]
+	lastQuery, _ := lastQueryContaining(t, queryer, `UPDATE "user"`)
 	for _, want := range []string{`UPDATE "user" SET "full_name" = $1`, `"updated_at" = now()`, `WHERE "id" = $2`} {
 		if !strings.Contains(lastQuery, want) {
 			t.Fatalf("update query = %q, want %q", lastQuery, want)
@@ -553,7 +553,7 @@ func TestRecordStoreHashesPasswordOnCreate(t *testing.T) {
 	if _, ok := record["password"]; ok {
 		t.Fatalf("CreateRecord() returned password field: %+v", record)
 	}
-	lastQuery := queryer.queries[len(queryer.queries)-1]
+	lastQuery, args := lastQueryContaining(t, queryer, `INSERT INTO "user"`)
 	for _, want := range []string{`"password_hash"`, `RETURNING "id", "name", "created_at", "updated_at", "email", "full_name", "enabled"`} {
 		if !strings.Contains(lastQuery, want) {
 			t.Fatalf("create query = %q, want %q", lastQuery, want)
@@ -562,7 +562,6 @@ func TestRecordStoreHashesPasswordOnCreate(t *testing.T) {
 	if strings.Contains(lastQuery, `RETURNING "id", "name", "created_at", "updated_at", "email", "full_name", "password_hash"`) {
 		t.Fatalf("create query = %q, returned password_hash", lastQuery)
 	}
-	args := queryer.args[len(queryer.args)-1]
 	hash, ok := args[len(args)-2].(string)
 	if !ok {
 		t.Fatalf("password arg type = %T, want string", args[len(args)-2])
@@ -591,11 +590,10 @@ func TestRecordStoreHashesPasswordOnUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateRecord() error = %v, want nil", err)
 	}
-	lastQuery := queryer.queries[len(queryer.queries)-1]
+	lastQuery, args := lastQueryContaining(t, queryer, `UPDATE "user"`)
 	if !strings.Contains(lastQuery, `UPDATE "user" SET "password_hash" = $1`) {
 		t.Fatalf("update query = %q, want password_hash update", lastQuery)
 	}
-	args := queryer.args[len(queryer.args)-1]
 	hash, ok := args[0].(string)
 	if !ok {
 		t.Fatalf("password arg type = %T, want string", args[0])
@@ -644,7 +642,7 @@ func TestRecordStoreCreateRecordWritesActivity(t *testing.T) {
 		t.Fatalf("CreateRecord() id = %v, want 7", record["id"])
 	}
 	args := activityArgs(t, queryer)
-	if args[1] != activityOperationCreate || args[3] != int64(10) || args[4] != int64(7) || args[5] != int64(99) {
+	if args[1] != corevalues.ActivityOperationCreate || args[3] != int64(10) || args[4] != int64(7) || args[5] != int64(99) {
 		t.Fatalf("activity args = %#v, want create for user entity and actor", args)
 	}
 	if name, ok := args[11].(string); !ok || len(name) != 16 {
@@ -657,6 +655,25 @@ func TestRecordStoreCreateRecordWritesActivity(t *testing.T) {
 	details := decodeActivityObject(t, args[10])
 	if details["source"] != ActivitySourceAPI {
 		t.Fatalf("activity details = %#v, want api source", details)
+	}
+}
+
+func TestRecordStoreHookPolicyNoneSuppressesFrameworkActivity(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+
+	_, err := NewRecordStoreWithHookPolicy(queryer, RecordMutationHooksNone).CreateRecord(context.Background(), "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"A User"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v, want nil", err)
+	}
+	if executedSQLContaining(queryer, `INSERT INTO "activity"`) {
+		t.Fatalf("exec SQL = %#v, want hook policy none to suppress Activity", queryer.execSQL)
 	}
 }
 
@@ -678,7 +695,7 @@ func TestRecordStoreUpdateRecordWritesActivityDiffsAndRedactsPassword(t *testing
 		t.Fatalf("UpdateRecord() error = %v, want nil", err)
 	}
 	args := activityArgs(t, queryer)
-	if args[1] != activityOperationUpdate || args[4] != int64(7) {
+	if args[1] != corevalues.ActivityOperationUpdate || args[4] != int64(7) {
 		t.Fatalf("activity args = %#v, want update for record 7", args)
 	}
 	encodedChanges, ok := args[8].(string)
@@ -749,7 +766,7 @@ func TestRecordStoreAfterUpdateHookRunsWithoutChanges(t *testing.T) {
 	if afterCalls != 1 {
 		t.Fatalf("after-update hook calls = %d, want 1", afterCalls)
 	}
-	if observed.RecordID != int64(7) || observed.Operation != activityOperationUpdate {
+	if observed.RecordID != int64(7) || observed.Operation != corevalues.ActivityOperationUpdate {
 		t.Fatalf("after-update context = %+v, want record 7 update", observed)
 	}
 	if observed.OldRecord["full-name"] != "A User" || observed.NewRecord["full-name"] != "A User" {
@@ -776,7 +793,7 @@ func TestRecordStoreDeleteRecordWritesActivitySnapshot(t *testing.T) {
 		t.Fatalf("DeleteRecord() error = %v, want nil", err)
 	}
 	args := activityArgs(t, queryer)
-	if args[1] != activityOperationDelete || args[4] != int64(7) {
+	if args[1] != corevalues.ActivityOperationDelete || args[4] != int64(7) {
 		t.Fatalf("activity args = %#v, want delete for record 7", args)
 	}
 	snapshot := decodeActivityObject(t, args[9])
@@ -789,7 +806,7 @@ func TestRecordStoreSkipsActivityForActivityEntity(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newActivityRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(1), "activity-1", now, now, "record", "create", "success", "Created User"},
+		{int64(1), "activity-1", now, now, "record", "create", "success", nil, nil, nil, "Created User", nil, nil, nil, nil},
 	}))
 
 	_, err := NewRecordStore(queryer).CreateRecord(context.Background(), "activity", recordInput(map[string]string{
@@ -1178,16 +1195,6 @@ func newCollectionRecordQueryer() *fakeRecordQueryer {
 func newActivityRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
 		row: newFakeRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core"),
-		rows: []pgx.Rows{
-			newFakeRows([][]any{
-				{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record"]}`)},
-				{"operation", "Operation", "select", true, false, true, nil, nil, 2, []byte(`{"values":["create"]}`)},
-				{"status", "Status", "select", true, false, true, nil, nil, 3, []byte(`{"values":["success"]}`)},
-				{"title", "Title", "text", true, false, false, nil, nil, 4, nil},
-			}),
-			newFakeRows(nil),
-			newFakeRows(nil),
-		},
 	}
 }
 
@@ -1209,6 +1216,9 @@ type fakeRecordQueryer struct {
 func (q *fakeRecordQueryer) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
 	q.queries = append(q.queries, sql)
 	q.args = append(q.args, args)
+	if rows, ok := fakeActivityMetadataRows(sql, args...); ok {
+		return rows, nil
+	}
 	if len(q.queryErrs) > 0 {
 		err := q.queryErrs[0]
 		q.queryErrs = q.queryErrs[1:]
@@ -1227,6 +1237,9 @@ func (q *fakeRecordQueryer) Query(_ context.Context, sql string, args ...any) (p
 func (q *fakeRecordQueryer) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 	q.rowSQL = append(q.rowSQL, sql)
 	q.rowArgs = append(q.rowArgs, args)
+	if isActivityMetadataQuery(sql, args...) {
+		return fakeActivityEntityRow()
+	}
 	if q.row == nil {
 		return fakeRow{err: pgx.ErrNoRows}
 	}
@@ -1309,16 +1322,95 @@ func recordInput(values map[string]string) RecordInput {
 	return input
 }
 
+func lastQueryContaining(t *testing.T, queryer *fakeRecordQueryer, fragment string) (string, []any) {
+	t.Helper()
+	for index := len(queryer.queries) - 1; index >= 0; index-- {
+		if strings.Contains(queryer.queries[index], fragment) {
+			return queryer.queries[index], queryer.args[index]
+		}
+	}
+	t.Fatalf("query containing %q was not executed; queries = %#v", fragment, queryer.queries)
+	return "", nil
+}
+
+func executedSQLContaining(queryer *fakeRecordQueryer, fragment string) bool {
+	for _, sql := range queryer.execSQL {
+		if strings.Contains(sql, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func fakeActivityEntityRow() pgx.Row {
+	return newFakeRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core")
+}
+
+func isActivityMetadataQuery(sql string, args ...any) bool {
+	return strings.Contains(sql, `WHERE a.name = $1 AND e.key = $2`) &&
+		len(args) == 2 &&
+		args[0] == "core" &&
+		args[1] == "activity"
+}
+
+func fakeActivityMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
+	if len(args) != 1 || args[0] != int64(1) {
+		return nil, false
+	}
+	switch {
+	case strings.Contains(sql, `FROM "field"`):
+		return newFakeRows([][]any{
+			{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record","comment","workflow","job","email","attachment","auth","system"]}`)},
+			{"operation", "Operation", "select", true, false, true, nil, nil, 2, []byte(`{"values":["create","update","delete","restore","comment","workflow-transition","job-completed","email-sent","attachment-added","login","logout","system"]}`)},
+			{"status", "Status", "select", true, false, true, nil, nil, 3, []byte(`{"values":["success","failed"]}`)},
+			{"entity", "Entity", "link", false, false, true, nil, nil, 4, []byte(`{"entity":"entity"}`)},
+			{"record-id", "Record ID", "bigint", false, false, true, nil, nil, 5, nil},
+			{"actor", "Actor", "link", false, false, true, nil, nil, 6, []byte(`{"entity":"user"}`)},
+			{"title", "Title", "text", true, false, false, nil, nil, 7, nil},
+			{"message", "Message", "long-text", false, false, false, nil, nil, 8, nil},
+			{"changes", "Changes", "json", false, false, false, nil, nil, 9, nil},
+			{"snapshot", "Snapshot", "json", false, false, false, nil, nil, 10, nil},
+			{"details", "Details", "json", false, false, false, nil, nil, 11, nil},
+		}), true
+	case strings.Contains(sql, `FROM "index"`), strings.Contains(sql, `FROM "constraint"`):
+		return newFakeRows(nil), true
+	default:
+		return nil, false
+	}
+}
+
 func activityArgs(t *testing.T, queryer *fakeRecordQueryer) []any {
 	t.Helper()
-	if len(queryer.execSQL) == 0 {
-		t.Fatal("activity insert was not executed")
+	for index := len(queryer.execSQL) - 1; index >= 0; index-- {
+		if strings.Contains(queryer.execSQL[index], `INSERT INTO "activity"`) {
+			return orderedActivityArgs(t, queryer.execSQL[index], queryer.execArg[index])
+		}
 	}
-	index := len(queryer.execSQL) - 1
-	if !strings.Contains(queryer.execSQL[index], `INSERT INTO "activity"`) {
-		t.Fatalf("last exec SQL = %q, want activity insert", queryer.execSQL[index])
+	t.Fatal("activity insert was not executed")
+	return nil
+}
+
+func orderedActivityArgs(t *testing.T, sql string, args []any) []any {
+	t.Helper()
+	start := strings.Index(sql, `("`)
+	end := strings.Index(sql, `) VALUES`)
+	if start < 0 || end < 0 || end <= start {
+		t.Fatalf("activity insert SQL = %q, want explicit columns", sql)
 	}
-	return queryer.execArg[index]
+	columns := strings.Split(sql[start+1:end], ", ")
+	values := map[string]any{}
+	for index, column := range columns {
+		if index >= len(args) {
+			t.Fatalf("activity insert args = %#v, want value for column %q", args, column)
+		}
+		values[strings.Trim(column, `"`)] = args[index]
+	}
+	orderedColumns := []string{"kind", "operation", "status", "entity_id", "record_id", "actor_id", "title", "message", "changes", "snapshot", "details", "name"}
+	ordered := make([]any, len(orderedColumns))
+	for index, column := range orderedColumns {
+		ordered[index] = values[column]
+	}
+	return ordered
 }
 
 func decodeActivityObject(t *testing.T, value any) map[string]any {

@@ -23,7 +23,9 @@ func (defaultAdminSetupRunner) SetupAdmin(ctx context.Context, databaseURL strin
 		return auth.User{}, err
 	}
 	defer pool.Close()
-	return auth.NewService(pool).SetupAdmin(ctx, input)
+	service := auth.NewService(pool)
+	service.AdminWriter = db.NewAuthAdminWriter(pool)
+	return service.SetupAdmin(ctx, input)
 }
 
 func newSetupCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, setup adminSetupRunner) *cobra.Command {

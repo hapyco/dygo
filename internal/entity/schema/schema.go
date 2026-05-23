@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/dygo-dev/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
 
@@ -54,6 +55,32 @@ const (
 	MinRandomNameLength     = 8
 	MaxRandomNameLength     = 64
 )
+
+var (
+	namingStrategies = []string{
+		NamingStrategyRandom,
+		NamingStrategyField,
+		NamingStrategySeries,
+		NamingStrategyTemplate,
+	}
+	checkOperators  = []string{"eq", "neq", "gt", "gte", "lt", "lte", "in", "not-in"}
+	constraintTypes = []string{"unique", "check"}
+)
+
+// SupportedNamingStrategies returns the authored Entity naming strategies in stable order.
+func SupportedNamingStrategies() []string {
+	return append([]string(nil), namingStrategies...)
+}
+
+// SupportedCheckOperators returns authored check operators in stable order.
+func SupportedCheckOperators() []string {
+	return append([]string(nil), checkOperators...)
+}
+
+// SupportedConstraintTypes returns authored Entity constraint types in stable order.
+func SupportedConstraintTypes() []string {
+	return append([]string(nil), constraintTypes...)
+}
 
 // Field describes one field inside an Entity.
 type Field struct {
@@ -195,14 +222,14 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	fieldTypes := map[string]fieldtype.Definition{}
 	for _, field := range e.Fields {
 		validateField(field, registry, seenFields, &problems)
-		if e.IsSingle {
-			validateSingleFieldDefault(field, &problems)
-		}
 		if field.Name != "" {
 			seenFields[field.Name] = struct{}{}
 			fields[field.Name] = field
 			if definition, ok := registry.Get(field.Type); ok {
 				fieldTypes[field.Name] = definition
+				if e.IsSingle {
+					validateSingleFieldDefault(field, definition, &problems)
+				}
 			}
 		}
 	}
@@ -252,8 +279,8 @@ func hasExplicitNaming(naming Naming) bool {
 		strings.TrimSpace(naming.Template) != ""
 }
 
-func validateSingleFieldDefault(field Field, problems *[]string) {
-	if !field.Required || field.Type == "collection" {
+func validateSingleFieldDefault(field Field, definition fieldtype.Definition, problems *[]string) {
+	if !field.Required || !definition.Behavior.Stored {
 		return
 	}
 	if field.Default.Kind == 0 {
@@ -334,13 +361,13 @@ func validateFieldNaming(entity Entity, naming Naming, fields map[string]Field, 
 	if !definition.AllowUnique {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q cannot be unique", naming.Field, field.Type)))
 	}
-	if !isStoredFieldType(field.Type) {
+	if !definition.Behavior.Stored {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q is not stored", naming.Field, field.Type)))
 	}
-	if isWriteOnlyFieldType(field.Type) {
+	if definition.Behavior.WriteOnly {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q is write-only", naming.Field, field.Type)))
 	}
-	if naming.Field == "name" && !isSystemNameFieldType(field.Type) {
+	if naming.Field == "name" && !definition.Behavior.SystemName {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field naming field %q type %q cannot use the system name column", naming.Field, field.Type)))
 	}
 }
@@ -403,13 +430,13 @@ func validateTemplateNaming(naming Naming, fields map[string]Field, fieldTypes m
 		if !field.Required {
 			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("template naming field %q must be required", token)))
 		}
-		if !definition.AllowUnique {
+		if !definition.Behavior.NameRenderable {
 			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("template naming field %q type %q cannot be used for naming", token, field.Type)))
 		}
-		if !isStoredFieldType(field.Type) {
+		if !definition.Behavior.Stored {
 			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("template naming field %q type %q is not stored", token, field.Type)))
 		}
-		if isWriteOnlyFieldType(field.Type) {
+		if definition.Behavior.WriteOnly {
 			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("template naming field %q type %q is write-only", token, field.Type)))
 		}
 	}
@@ -471,23 +498,6 @@ func validateSeriesPattern(pattern string) error {
 		return fmt.Errorf("series naming pattern must include exactly one hash counter token")
 	}
 	return nil
-}
-
-func isStoredFieldType(fieldType string) bool {
-	return fieldType != "collection"
-}
-
-func isWriteOnlyFieldType(fieldType string) bool {
-	return fieldType == "password"
-}
-
-func isSystemNameFieldType(fieldType string) bool {
-	switch fieldType {
-	case "text", "email", "phone", "select":
-		return true
-	default:
-		return false
-	}
 }
 
 func validateIndexes(entity Entity, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, problems *[]string) {
@@ -586,7 +596,7 @@ func validateCheckConstraint(constraint Constraint, fields map[string]Field, fie
 		field, ok := fields[constraint.Field]
 		if !ok {
 			*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("check constraint references unknown field %q", constraint.Field)))
-		} else if !isCheckFieldType(field.Type) {
+		} else if definition, ok := fieldTypes[constraint.Field]; ok && !definition.Behavior.Checkable {
 			*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("check constraint field %q type %q is not supported", constraint.Field, field.Type)))
 		} else if _, ok := fieldTypes[constraint.Field]; !ok {
 			*problems = append(*problems, withLine(constraint.Line, fmt.Sprintf("check constraint field %q type %q is unknown", constraint.Field, field.Type)))
@@ -634,12 +644,12 @@ func validateFieldReferences(line int, owner string, refs []string, fields map[s
 }
 
 func isCheckOperator(value string) bool {
-	switch value {
-	case "eq", "neq", "gt", "gte", "lt", "lte", "in", "not-in":
-		return true
-	default:
-		return false
+	for _, operator := range checkOperators {
+		if value == operator {
+			return true
+		}
 	}
+	return false
 }
 
 func validateCheckRule(line int, owner string, operator string, value yaml.Node, problems *[]string) {
@@ -681,15 +691,6 @@ func validateCheckValue(line int, owner string, operator string, value yaml.Node
 	}
 	if value.Tag == "!!null" {
 		*problems = append(*problems, withLine(line, fmt.Sprintf("%s value must not be null", owner)))
-	}
-}
-
-func isCheckFieldType(fieldType string) bool {
-	switch fieldType {
-	case "text", "email", "phone", "long-text", "int", "bigint", "decimal", "currency", "boolean", "date", "datetime", "time", "select":
-		return true
-	default:
-		return false
 	}
 }
 
@@ -751,7 +752,7 @@ func validateField(field Field, registry fieldtype.Registry, seenFields map[stri
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q does not support default values", fieldLabel, field.Type)))
 	}
 	if field.Check != nil {
-		if !isCheckFieldType(field.Type) {
+		if !definition.Behavior.Checkable {
 			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q type %q does not support checks", fieldLabel, field.Type)))
 		}
 		validateCheckRule(field.Line, fmt.Sprintf("field %q check", fieldLabel), field.Check.Operator, field.Check.Value, problems)
@@ -795,11 +796,13 @@ func (m sourceMap) apply(entity *Entity) {
 }
 
 func inspectSource(data []byte) (sourceMap, error) {
-	var root yaml.Node
-	if err := yaml.Unmarshal(data, &root); err != nil {
-		return sourceMap{}, fmt.Errorf("parse entity schema: %w", err)
+	root, err := yamlmeta.Parse(data, "parse entity schema")
+	if err != nil {
+		return sourceMap{}, err
 	}
-	if err := rejectDuplicateKeysNode(&root, "$"); err != nil {
+	if err := yamlmeta.RejectDuplicateKeys(&root, func(duplicate yamlmeta.DuplicateKey) error {
+		return fmt.Errorf("duplicate key %q at %s line %d", duplicate.Key, strings.TrimSuffix(duplicate.Location, "."+duplicate.Key), duplicate.Line)
+	}); err != nil {
 		return sourceMap{}, err
 	}
 	if line, ok := topLevelKeyLine(&root, "name"); ok {
@@ -820,7 +823,7 @@ func entityNameFromPath(path string) (string, error) {
 }
 
 func buildSourceMap(root *yaml.Node) sourceMap {
-	mapping := documentMapping(root)
+	mapping := yamlmeta.DocumentMapping(root)
 	if mapping == nil {
 		return sourceMap{}
 	}
@@ -862,21 +865,8 @@ func buildSourceMap(root *yaml.Node) sourceMap {
 	return source
 }
 
-func documentMapping(node *yaml.Node) *yaml.Node {
-	if node == nil {
-		return nil
-	}
-	if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
-		return documentMapping(node.Content[0])
-	}
-	if node.Kind == yaml.MappingNode {
-		return node
-	}
-	return nil
-}
-
 func topLevelKeyLine(root *yaml.Node, name string) (int, bool) {
-	mapping := documentMapping(root)
+	mapping := yamlmeta.DocumentMapping(root)
 	if mapping == nil {
 		return 0, false
 	}
@@ -887,49 +877,6 @@ func topLevelKeyLine(root *yaml.Node, name string) (int, bool) {
 		}
 	}
 	return 0, false
-}
-
-func rejectDuplicateKeysNode(node *yaml.Node, location string) error {
-	if node == nil {
-		return nil
-	}
-	if node.Kind == yaml.DocumentNode {
-		for _, child := range node.Content {
-			if err := rejectDuplicateKeysNode(child, location); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	if node.Kind == yaml.SequenceNode {
-		for index, child := range node.Content {
-			childLocation := fmt.Sprintf("%s[%d]", location, index)
-			if err := rejectDuplicateKeysNode(child, childLocation); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	if node.Kind != yaml.MappingNode {
-		return nil
-	}
-
-	seen := map[string]struct{}{}
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		key := node.Content[i]
-		value := node.Content[i+1]
-		if _, ok := seen[key.Value]; ok {
-			return fmt.Errorf("duplicate key %q at %s line %d", key.Value, location, key.Line)
-		}
-		seen[key.Value] = struct{}{}
-
-		childLocation := location + "." + key.Value
-		if err := rejectDuplicateKeysNode(value, childLocation); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func withLine(line int, message string) string {

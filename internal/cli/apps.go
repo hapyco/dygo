@@ -5,7 +5,7 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/dygo-dev/dygo/internal/app/registry"
+	"github.com/dygo-dev/dygo/internal/project"
 	"github.com/spf13/cobra"
 )
 
@@ -35,9 +35,9 @@ func newAppsListCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			apps, err := registry.New(root).Validate()
+			apps, err := project.LoadApps(root)
 			if err != nil {
-				return fmt.Errorf("validate apps: %w", err)
+				return err
 			}
 			if len(apps) == 0 {
 				if _, err := fmt.Fprintln(stdout, "No apps found."); err != nil {
@@ -74,9 +74,9 @@ func newAppsValidateCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			apps, err := registry.New(root).Validate()
+			apps, err := project.LoadApps(root)
 			if err != nil {
-				return fmt.Errorf("validate apps: %w", err)
+				return err
 			}
 			if _, err := fmt.Fprintf(stdout, "%d apps are valid\n", len(apps)); err != nil {
 				return fmt.Errorf("write apps validation output: %w", err)

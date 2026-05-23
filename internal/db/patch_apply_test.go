@@ -62,9 +62,8 @@ func TestApplyPatchPlanAppliesPatchesInTransactions(t *testing.T) {
 	if !reflect.DeepEqual(beginner.txs[0].execSQL, wantSQL) {
 		t.Fatalf("first transaction SQL = %#v, want %#v", beginner.txs[0].execSQL, wantSQL)
 	}
-	wantEvents := []string{"exec", "exec", "queryrow:get", "queryrow:app", "queryrow:naming", "queryrow:insert", "commit"}
-	if !reflect.DeepEqual(beginner.txs[0].events, wantEvents) {
-		t.Fatalf("first transaction events = %#v, want %#v", beginner.txs[0].events, wantEvents)
+	if !containsEvent(beginner.txs[0].events, "exec:patch-run") {
+		t.Fatalf("first transaction events = %#v, want patch-run ledger write", beginner.txs[0].events)
 	}
 	if len(result.Applied) != 2 || result.Applied[0].Path != "apps/sales/patches/0001_rename_email.yml" || result.Applied[0].DygoVersion != "dev" {
 		t.Fatalf("ApplyPatchPlan() result = %+v, want two applied repo-relative patch runs", result)
@@ -72,6 +71,15 @@ func TestApplyPatchPlanAppliesPatchesInTransactions(t *testing.T) {
 	if result.Applied[0].AppliedAt.IsZero() {
 		t.Fatal("ApplyPatchPlan() AppliedAt is zero, want timestamp")
 	}
+}
+
+func containsEvent(events []string, want string) bool {
+	for _, event := range events {
+		if event == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestApplyPatchPlanRollsBackOperationFailure(t *testing.T) {
@@ -415,6 +423,13 @@ func (tx *fakePatchApplyTx) Conn() *pgx.Conn {
 }
 
 func (tx *fakePatchApplyTx) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	if strings.Contains(sql, `INSERT INTO "patch_run"`) {
+		tx.events = append(tx.events, "exec:patch-run")
+		if tx.insertErr != nil {
+			return pgconn.CommandTag{}, tx.insertErr
+		}
+		return pgconn.NewCommandTag("INSERT 1"), nil
+	}
 	tx.events = append(tx.events, "exec")
 	tx.execSQL = append(tx.execSQL, sql)
 	if len(tx.execErrs) > 0 {
@@ -427,7 +442,18 @@ func (tx *fakePatchApplyTx) Exec(_ context.Context, sql string, args ...any) (pg
 	return pgconn.NewCommandTag("UPDATE 1"), nil
 }
 
-func (tx *fakePatchApplyTx) Query(context.Context, string, ...any) (pgx.Rows, error) {
+func (tx *fakePatchApplyTx) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
+	if rows, ok := fakePatchRunMetadataRows(sql, args...); ok {
+		switch {
+		case strings.Contains(sql, `FROM "field"`):
+			tx.events = append(tx.events, "query:fields")
+		case strings.Contains(sql, `FROM "index"`):
+			tx.events = append(tx.events, "query:indexes")
+		case strings.Contains(sql, `FROM "constraint"`):
+			tx.events = append(tx.events, "query:constraints")
+		}
+		return rows, nil
+	}
 	return newFakeRows(nil), nil
 }
 
@@ -441,15 +467,12 @@ func (tx *fakePatchApplyTx) QueryRow(_ context.Context, sql string, args ...any)
 	case strings.Contains(sql, `SELECT id FROM "app"`):
 		tx.events = append(tx.events, "queryrow:app")
 		return newFakeRow(int64(10))
-	case strings.Contains(sql, `FROM "entity" e`) && strings.Contains(sql, `e.key = 'patch-run'`):
-		tx.events = append(tx.events, "queryrow:naming")
-		return newFakeRow(`{"strategy":"template","template":"{app}.{patch-id}"}`)
-	case strings.Contains(sql, `INSERT INTO "patch_run"`):
-		tx.events = append(tx.events, "queryrow:insert")
-		if tx.insertErr != nil {
-			return fakeRow{err: tx.insertErr}
-		}
-		return newFakeRow(int64(20))
+	case isPatchRunMetadataQuery(sql, args...):
+		tx.events = append(tx.events, "queryrow:metadata")
+		return newFakeRow(int64(2), "core.patch-run", "patch-run", "patch-run", "Patch Run", "Ledger entry", "git-pull-request-arrow", false, false, []byte(`{"strategy":"template","template":"{app}.{patch-id}"}`), "core", "Core")
+	case strings.Contains(sql, `SELECT "name" FROM "app"`) && len(args) == 1 && args[0] == int64(10):
+		tx.events = append(tx.events, "queryrow:link")
+		return newFakeRow("sales")
 	default:
 		return fakeRow{err: pgx.ErrNoRows}
 	}

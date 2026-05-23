@@ -2,14 +2,13 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/entity/schema"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
@@ -32,6 +31,7 @@ type PatchRun struct {
 type PatchLedgerQueryer interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
 	QueryRow(context.Context, string, ...any) pgx.Row
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
 // PatchLedger reads and writes successful app patch ledger entries.
@@ -159,52 +159,21 @@ func (l PatchLedger) RecordPatchRun(ctx context.Context, run PatchRun) error {
 	if appliedAt.IsZero() {
 		appliedAt = time.Now().UTC()
 	}
-	naming, err := l.patchRunNaming(ctx)
-	if err != nil {
-		return err
+	input := RecordInput{
+		"app":        systemRecordInt(appID),
+		"patch-id":   systemRecordString(run.PatchID),
+		"path":       systemRecordString(run.Path),
+		"phase":      systemRecordString(run.Phase),
+		"checksum":   systemRecordString(run.Checksum),
+		"applied-at": systemRecordString(appliedAt.Format(time.RFC3339)),
 	}
-	name, err := patchRunRecordName(run, naming)
-	if err != nil {
-		return err
+	if strings.TrimSpace(run.DygoVersion) != "" {
+		input["dygo-version"] = systemRecordString(run.DygoVersion)
 	}
-	if err := l.queryer.QueryRow(ctx, `
-INSERT INTO "patch_run" (name, app_id, patch_id, path, phase, checksum, applied_at, dygo_version)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id`, name, appID, run.PatchID, run.Path, run.Phase, run.Checksum, appliedAt, nullIfEmpty(run.DygoVersion)).Scan(new(int64)); err != nil {
+	if _, err := NewSystemRecordWriter(l.queryer).InsertByIdentity(ctx, "core", "patch-run", input, SystemMutationOptions{Bootstrap: true}); err != nil {
 		return fmt.Errorf("record patch run %s/%s: %w", run.AppName, run.PatchID, err)
 	}
 	return nil
-}
-
-func (l PatchLedger) patchRunNaming(ctx context.Context) (schema.Naming, error) {
-	var raw string
-	err := l.queryer.QueryRow(ctx, `
-SELECT COALESCE(e.naming::text, '')
-FROM "entity" e
-JOIN "app" a ON a.id = e.app_id
-WHERE a.name = 'core' AND e.key = 'patch-run'`).Scan(&raw)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return schema.Naming{}, MetadataNotFoundError{Kind: "entity", Name: "core.patch-run"}
-	}
-	if err != nil {
-		return schema.Naming{}, fmt.Errorf("query patch-run naming metadata: %w", err)
-	}
-	var naming schema.Naming
-	if err := json.Unmarshal([]byte(raw), &naming); err != nil {
-		return schema.Naming{}, fmt.Errorf("decode patch-run naming metadata: %w", err)
-	}
-	return naming, nil
-}
-
-func patchRunRecordName(run PatchRun, naming schema.Naming) (string, error) {
-	return deterministicRecordNameFromValues("patch-run", naming, map[string]string{
-		"app":          run.AppName,
-		"patch-id":     run.PatchID,
-		"path":         run.Path,
-		"phase":        run.Phase,
-		"checksum":     run.Checksum,
-		"dygo-version": run.DygoVersion,
-	})
 }
 
 func patchRunIdentityName(appName string, patchID string) string {

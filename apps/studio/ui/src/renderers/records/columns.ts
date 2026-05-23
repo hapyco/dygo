@@ -1,28 +1,29 @@
 import type { DataTableColumn } from '@/design/types'
 import type { MetadataField } from '@/features/metadata/metadata.api'
+import { recordSystemListColumns } from '../../features/records/system-fields.ts'
 
 export type RecordListColumnSource = 'name' | 'field' | 'system'
 
 export type RecordListColumn = DataTableColumn & {
   source: RecordListColumnSource
-  cellType: 'text'
+  cellType: string
   field?: MetadataField
 }
 
-export function buildRecordListColumns(fields: MetadataField[]): RecordListColumn[] {
+export function buildRecordListColumns(fields: MetadataField[], systemFields: MetadataField[] = []): RecordListColumn[] {
   const seen = new Set<string>()
+  const systemColumns = recordSystemListColumns(systemFields)
   const columns: RecordListColumn[] = [
-    { key: 'name', label: 'Name', source: 'name', cellType: 'text', sortable: true },
-    ...fields.map((field) => ({
+    ...systemColumns.filter((column) => column.source === 'name'),
+    ...fields.filter((field) => field.listable && !field['write-only']).map((field) => ({
       key: field.name,
       label: field.label || field.name,
       source: 'field' as const,
-      cellType: 'text' as const,
+      cellType: field.studio?.display || 'text',
       sortable: true,
       field,
     })),
-    { key: 'created-at', label: 'Created At', source: 'system', cellType: 'text', sortable: true },
-    { key: 'updated-at', label: 'Updated At', source: 'system', cellType: 'text', sortable: true },
+    ...systemColumns.filter((column) => column.source !== 'name'),
   ]
 
   return columns.filter((column) => {

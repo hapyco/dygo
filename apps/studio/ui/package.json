@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "test": "node --test src/stores/*.test.ts src/renderers/records/*.test.ts src/features/*/*.test.ts",
     "build": "vue-tsc --noEmit && vite build",
     "build:embed": "vue-tsc --noEmit && vite build --outDir ../../../internal/studio/bundled --emptyOutDir false",
     "preview": "vite preview --host 127.0.0.1"

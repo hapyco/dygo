@@ -4,20 +4,22 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/dygo-dev/dygo/internal/hookevents"
 )
 
 // RecordHookEvent names a Record lifecycle hook phase.
 type RecordHookEvent string
 
 const (
-	RecordBeforeValidate RecordHookEvent = "before-validate"
-	RecordValidate       RecordHookEvent = "validate"
-	RecordBeforeCreate   RecordHookEvent = "before-create"
-	RecordAfterCreate    RecordHookEvent = "after-create"
-	RecordBeforeUpdate   RecordHookEvent = "before-update"
-	RecordAfterUpdate    RecordHookEvent = "after-update"
-	RecordBeforeDelete   RecordHookEvent = "before-delete"
-	RecordAfterDelete    RecordHookEvent = "after-delete"
+	RecordBeforeValidate RecordHookEvent = hookevents.BeforeValidate
+	RecordValidate       RecordHookEvent = hookevents.Validate
+	RecordBeforeCreate   RecordHookEvent = hookevents.BeforeCreate
+	RecordAfterCreate    RecordHookEvent = hookevents.AfterCreate
+	RecordBeforeUpdate   RecordHookEvent = hookevents.BeforeUpdate
+	RecordAfterUpdate    RecordHookEvent = hookevents.AfterUpdate
+	RecordBeforeDelete   RecordHookEvent = hookevents.BeforeDelete
+	RecordAfterDelete    RecordHookEvent = hookevents.AfterDelete
 )
 
 // RecordHookFunc handles one Record lifecycle hook.
@@ -132,6 +134,34 @@ func (r *RecordHookRegistry) ensure() {
 	}
 }
 
+func (r *RecordHookRegistry) withoutHook(name string) *RecordHookRegistry {
+	if r == nil {
+		return nil
+	}
+	r.ensure()
+	filtered := NewRecordHookRegistry()
+	for event, hooks := range r.global {
+		filtered.global[event] = recordHooksWithoutName(hooks, name)
+	}
+	for entity, events := range r.entity {
+		filtered.entity[entity] = map[RecordHookEvent][]recordHookDefinition{}
+		for event, hooks := range events {
+			filtered.entity[entity][event] = recordHooksWithoutName(hooks, name)
+		}
+	}
+	return filtered
+}
+
+func recordHooksWithoutName(hooks []recordHookDefinition, name string) []recordHookDefinition {
+	filtered := make([]recordHookDefinition, 0, len(hooks))
+	for _, hook := range hooks {
+		if hook.Name != name {
+			filtered = append(filtered, hook)
+		}
+	}
+	return filtered
+}
+
 func validateRecordHook(event RecordHookEvent, name string, fn RecordHookFunc) error {
 	if !isRecordHookEvent(event) {
 		return fmt.Errorf("record hook event %q is not supported", event)
@@ -146,19 +176,7 @@ func validateRecordHook(event RecordHookEvent, name string, fn RecordHookFunc) e
 }
 
 func isRecordHookEvent(event RecordHookEvent) bool {
-	switch event {
-	case RecordBeforeValidate,
-		RecordValidate,
-		RecordBeforeCreate,
-		RecordAfterCreate,
-		RecordBeforeUpdate,
-		RecordAfterUpdate,
-		RecordBeforeDelete,
-		RecordAfterDelete:
-		return true
-	default:
-		return false
-	}
+	return hookevents.Supported(string(event))
 }
 
 func runRecordHook(ctx context.Context, hookCtx RecordHookContext, hook recordHookDefinition) error {
@@ -187,12 +205,7 @@ func recordHookContextForRun(hookCtx RecordHookContext) RecordHookContext {
 }
 
 func recordHookEventMutatesTargetInput(event RecordHookEvent) bool {
-	switch event {
-	case RecordBeforeValidate, RecordBeforeCreate, RecordBeforeUpdate:
-		return true
-	default:
-		return false
-	}
+	return hookevents.MutatesInput(string(event))
 }
 
 func mustRegisterRecordHook(err error) {

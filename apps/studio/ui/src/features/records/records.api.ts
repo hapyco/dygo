@@ -1,4 +1,5 @@
-import type { DataTableSort } from '@/design/types'
+import { ApiClientError, apiRequest, type ApiErrorEnvelope, type DataEnvelope, type ListEnvelope } from '@/features/api/client'
+import { buildRecordListQuery, type ListRecordsParams } from './query'
 
 export type RecordValue = unknown
 
@@ -11,156 +12,72 @@ export type RecordListMeta = {
   total?: number
 }
 
-type ApiErrorEnvelope = {
-  error?: {
-    code?: string
-    message?: string
-    details?: Record<string, unknown>
-  }
-}
-
-type ListEnvelope<T> = {
-  data: T
-  meta: RecordListMeta
-}
-
-type DataEnvelope<T> = {
-  data: T
-}
-
-export class RecordApiError extends Error {
-  readonly code: string
-  readonly details?: Record<string, unknown>
-
+export class RecordApiError extends ApiClientError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
-    super(message)
-    this.name = 'RecordApiError'
-    this.code = code
-    this.details = details
+    super('RecordApiError', code, message, details)
   }
 }
 
-export type ListRecordsParams = {
-  limit: number
-  offset: number
-  sort?: DataTableSort | null
-  filters?: Record<string, string>
-}
+export async function listRecords(entity: string, params: ListRecordsParams): Promise<ListEnvelope<RecordData[], RecordListMeta>> {
+  const query = buildRecordListQuery(params)
 
-export async function listRecords(entity: string, params: ListRecordsParams): Promise<ListEnvelope<RecordData[]>> {
-  const query = new URLSearchParams({
-    limit: String(params.limit),
-    offset: String(params.offset),
-  })
-
-  if (params.sort) {
-    query.set('sort', `${params.sort.direction === 'desc' ? '-' : ''}${params.sort.key}`)
-  }
-
-  Object.entries(params.filters ?? {}).forEach(([key, value]) => {
-    query.set(key, value)
-  })
-
-  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}?${query.toString()}`, {
+  return apiRequest<ListEnvelope<RecordData[], RecordListMeta>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}?${query.toString()}`, {
     method: 'GET',
-    credentials: 'include',
-  })
-
-  const payload = await parseJSON<ListEnvelope<RecordData[]> & ApiErrorEnvelope>(response)
-
-  if (!response.ok) {
-    throw new RecordApiError(payload.error?.code ?? 'records_failed', recordErrorMessage(payload), payload.error?.details)
-  }
-
-  return payload
+  }, recordRequestOptions('records_failed'))
 }
 
 export async function getRecordByName(entity: string, recordName: string): Promise<RecordData> {
-  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}/name/${encodeURIComponent(recordName)}`, {
+  const payload = await apiRequest<DataEnvelope<RecordData>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}/name/${encodeURIComponent(recordName)}`, {
     method: 'GET',
-    credentials: 'include',
-  })
-
-  const payload = await parseJSON<DataEnvelope<RecordData> & ApiErrorEnvelope>(response)
-
-  if (!response.ok) {
-    throw new RecordApiError(payload.error?.code ?? 'record_lookup_failed', recordErrorMessage(payload), payload.error?.details)
-  }
+  }, recordRequestOptions('record_lookup_failed'))
 
   return payload.data
 }
 
 export async function getSingleRecord(entity: string): Promise<RecordData> {
-  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}/single`, {
+  const payload = await apiRequest<DataEnvelope<RecordData>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}/single`, {
     method: 'GET',
-    credentials: 'include',
-  })
-
-  const payload = await parseJSON<DataEnvelope<RecordData> & ApiErrorEnvelope>(response)
-
-  if (!response.ok) {
-    throw new RecordApiError(payload.error?.code ?? 'single_record_lookup_failed', recordErrorMessage(payload), payload.error?.details)
-  }
+  }, recordRequestOptions('single_record_lookup_failed'))
 
   return payload.data
 }
 
 export async function createRecord(entity: string, data: RecordData): Promise<RecordData> {
-  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}`, {
+  const payload = await apiRequest<DataEnvelope<RecordData>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}`, {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data }),
-  })
-
-  const payload = await parseJSON<DataEnvelope<RecordData> & ApiErrorEnvelope>(response)
-
-  if (!response.ok) {
-    throw new RecordApiError(payload.error?.code ?? 'record_create_failed', recordErrorMessage(payload), payload.error?.details)
-  }
+  }, recordRequestOptions('record_create_failed'))
 
   return payload.data
 }
 
 export async function updateRecord(entity: string, id: string | number, data: RecordData): Promise<RecordData> {
-  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}/${encodeURIComponent(String(id))}`, {
+  const payload = await apiRequest<DataEnvelope<RecordData>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}/${encodeURIComponent(String(id))}`, {
     method: 'PATCH',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data }),
-  })
-
-  const payload = await parseJSON<DataEnvelope<RecordData> & ApiErrorEnvelope>(response)
-
-  if (!response.ok) {
-    throw new RecordApiError(payload.error?.code ?? 'record_update_failed', recordErrorMessage(payload), payload.error?.details)
-  }
+  }, recordRequestOptions('record_update_failed'))
 
   return payload.data
 }
 
 export async function updateSingleRecord(entity: string, data: RecordData): Promise<RecordData> {
-  const response = await fetch(`/api/v1/records/${encodeURIComponent(entity)}/single`, {
+  const payload = await apiRequest<DataEnvelope<RecordData>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}/single`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
     body: JSON.stringify({ data }),
-  })
-
-  const payload = await parseJSON<DataEnvelope<RecordData> & ApiErrorEnvelope>(response)
-
-  if (!response.ok) {
-    throw new RecordApiError(payload.error?.code ?? 'single_record_update_failed', recordErrorMessage(payload), payload.error?.details)
-  }
+  }, recordRequestOptions('single_record_update_failed'))
 
   return payload.data
 }
 
-async function parseJSON<T>(response: Response): Promise<T> {
-  try {
-    return (await response.json()) as T
-  } catch {
-    throw new RecordApiError('invalid_response', 'Studio could not read the records response.')
+function recordRequestOptions(fallbackCode: string) {
+  return {
+    error: RecordApiError,
+    fallbackCode,
+    invalidResponseMessage: 'Studio could not read the records response.',
+    message: recordErrorMessage,
   }
 }
 

@@ -6,6 +6,7 @@ import { Plus, RotateCcw, Save } from '@lucide/vue'
 import { ErrorState, Spinner } from '@/design'
 import type { MetadataField } from '@/features/metadata/metadata.api'
 import type { RecordData } from '@/features/records/records.api'
+import { isHiddenRecordSubmitField } from '@/features/records/system-fields'
 import { RecordFormRenderer } from '@/renderers/records'
 import { RouteName } from '@/router/routes'
 import PageHeader from '@/shell/PageHeader.vue'
@@ -180,7 +181,7 @@ function buildSubmitPayload(): RecordData {
   const errors: Record<string, string> = {}
 
   fields.value.forEach((field) => {
-    if (field.name === 'id' || field.name === 'created-at' || field.name === 'updated-at') {
+    if (isHiddenRecordSubmitField(field.name)) {
       return
     }
 
@@ -203,37 +204,29 @@ function buildSubmitPayload(): RecordData {
 }
 
 function convertSubmitValue(field: MetadataField, value: unknown, errors: Record<string, string>): ConvertedValue {
-  switch (field.type) {
+  if (field.studio?.editor === 'select' && (value === undefined || value === null || value === '') && field.required) {
+    errors[field.name] = 'Select a value.'
+    return { skip: true }
+  }
+
+  switch (field['value-kind']) {
     case 'password':
       if (typeof value !== 'string' || value.length === 0) {
         return { skip: true }
       }
       return { value }
+    case 'integer':
+      return integerSubmitValue(field, value, errors)
+    case 'number':
+      return numberSubmitValue(field, value, errors)
     case 'boolean':
       return { value: value === true }
-    case 'int':
-    case 'bigint':
-    case 'link':
-      return integerSubmitValue(field, value, errors)
-    case 'decimal':
-    case 'currency':
-      return numberSubmitValue(field, value, errors)
     case 'json':
       return jsonSubmitValue(field, value, errors)
-    case 'select':
-      if ((value === undefined || value === null || value === '') && field.required) {
-        errors[field.name] = 'Select a value.'
-        return { skip: true }
-      }
-      return stringSubmitValue(field, value)
-    case 'text':
-    case 'email':
-    case 'phone':
-    case 'long-text':
-    case 'attachment':
     case 'date':
     case 'datetime':
     case 'time':
+    case 'string':
       return stringSubmitValue(field, value)
     default:
       return { skip: true }
@@ -324,20 +317,20 @@ function draftFromRecord(metadataFields: MetadataField[], record: RecordData | n
 }
 
 function initialFieldValue(field: MetadataField, record: RecordData | null): unknown {
-  if (field.type === 'password') {
+  if (field['write-only']) {
     return ''
   }
 
   const recordValue = record?.[field.name]
   if (recordValue !== undefined && recordValue !== null) {
-    return field.type === 'json' ? displayJSON(recordValue) : recordValue
+    return field['value-kind'] === 'json' ? displayJSON(recordValue) : recordValue
   }
 
   if (field.default !== undefined) {
-    return field.type === 'json' ? displayJSON(field.default) : field.default
+    return field['value-kind'] === 'json' ? displayJSON(field.default) : field.default
   }
 
-  if (field.type === 'boolean') {
+  if (field['value-kind'] === 'boolean') {
     return false
   }
 

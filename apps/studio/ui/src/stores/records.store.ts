@@ -11,11 +11,10 @@ import {
   updateSingleRecord as updateSingleRecordRequest,
   type RecordData,
 } from '@/features/records/records.api'
+import { isAllowedRecordPageSize, recordListDefaultPageSize } from '@/features/records/query'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
 
-const defaultPageSize = 20
 const pageSizeStorageKey = 'dygo.studio.records.pageSize'
-const allowedPageSizes = new Set([20, 100, 500, 2500])
 export const singleRecordKey = '__single__'
 
 type LoadInitialOptions = {
@@ -87,19 +86,19 @@ function recordStateKey(entity: string, recordName: string): string {
 
 function readStoredPageSize(): number {
   if (typeof window === 'undefined') {
-    return defaultPageSize
+    return recordListDefaultPageSize
   }
 
   const value = Number(window.localStorage.getItem(pageSizeStorageKey))
-  if (!allowedPageSizes.has(value)) {
-    return defaultPageSize
+  if (!isAllowedRecordPageSize(value)) {
+    return recordListDefaultPageSize
   }
 
   return value
 }
 
 function writeStoredPageSize(pageSize: number) {
-  if (typeof window === 'undefined' || !allowedPageSizes.has(pageSize)) {
+  if (typeof window === 'undefined' || !isAllowedRecordPageSize(pageSize)) {
     return
   }
 
@@ -405,7 +404,7 @@ export const useRecordsStore = defineStore('records', {
     },
 
     setGlobalPageSize(pageSize: number) {
-      if (!allowedPageSizes.has(pageSize)) {
+      if (!isAllowedRecordPageSize(pageSize)) {
         return
       }
 

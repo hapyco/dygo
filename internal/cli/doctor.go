@@ -10,11 +10,9 @@ import (
 	"strings"
 
 	"github.com/dygo-dev/dygo/internal/app/manifest"
-	appregistry "github.com/dygo-dev/dygo/internal/app/registry"
 	"github.com/dygo-dev/dygo/internal/config"
 	"github.com/dygo-dev/dygo/internal/db"
-	"github.com/dygo-dev/dygo/internal/entity/catalog"
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/dygo-dev/dygo/internal/health"
 	"github.com/dygo-dev/dygo/internal/project"
 	"github.com/dygo-dev/dygo/internal/secrets"
 	"github.com/jackc/pgx/v5"
@@ -126,7 +124,7 @@ func checkGoToolchain(ctx context.Context) doctorResult {
 }
 
 func checkAppManifests(root string) ([]manifest.LoadedApp, doctorResult) {
-	apps, err := appregistry.New(root).Validate()
+	apps, err := project.LoadApps(root)
 	if err != nil {
 		return nil, doctorResult{Status: doctorFail, Name: "app manifests", Detail: err.Error()}
 	}
@@ -134,7 +132,7 @@ func checkAppManifests(root string) ([]manifest.LoadedApp, doctorResult) {
 }
 
 func checkEntityMetadata(apps []manifest.LoadedApp) doctorResult {
-	entities, err := catalog.New(apps, fieldtype.DefaultRegistry()).Validate()
+	entities, err := project.LoadEntities(apps)
 	if err != nil {
 		return doctorResult{Status: doctorFail, Name: "entity metadata", Detail: err.Error()}
 	}
@@ -194,11 +192,13 @@ func checkRuntimeReadiness(ctx context.Context, root string) []doctorResult {
 	}
 	defer pool.Close()
 
-	return []doctorResult{
+	results := []doctorResult{
 		{Status: doctorPass, Name: "runtime database", Detail: string(env) + " database reachable"},
-		checkCoreFixtures(ctx, pool),
-		checkAdministratorAccount(ctx, pool),
 	}
+	for _, check := range health.CoreRuntimeChecks(ctx, pool) {
+		results = append(results, doctorResultFromHealth(check))
+	}
+	return results
 }
 
 func doctorDatabaseURL(root string, env secrets.Environment) (string, error) {
@@ -214,38 +214,12 @@ func doctorDatabaseURL(root string, env secrets.Environment) (string, error) {
 	return databaseURL, nil
 }
 
-func checkCoreFixtures(ctx context.Context, pool doctorRuntimePool) doctorResult {
-	var roleCount int
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM "role" WHERE name IN ($1, $2)`, "studio-member", "system-manager").Scan(&roleCount); err != nil {
-		return doctorResult{Status: doctorFail, Name: "core fixtures", Detail: fmt.Sprintf("check required roles: %v; run dygo db prepare then dygo fixtures apply", err)}
+func doctorResultFromHealth(check health.CheckResult) doctorResult {
+	status := doctorFail
+	if check.Ready {
+		status = doctorPass
 	}
-	var permissionCount int
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM "permission"`).Scan(&permissionCount); err != nil {
-		return doctorResult{Status: doctorFail, Name: "core fixtures", Detail: fmt.Sprintf("check permissions: %v; run dygo db prepare then dygo fixtures apply", err)}
-	}
-
-	var missing []string
-	if roleCount < 2 {
-		missing = append(missing, "roles")
-	}
-	if permissionCount == 0 {
-		missing = append(missing, "permissions")
-	}
-	if len(missing) > 0 {
-		return doctorResult{Status: doctorFail, Name: "core fixtures", Detail: fmt.Sprintf("missing Core %s; run dygo fixtures apply", strings.Join(missing, " and "))}
-	}
-	return doctorResult{Status: doctorPass, Name: "core fixtures", Detail: fmt.Sprintf("%d roles and %d permissions ready", roleCount, permissionCount)}
-}
-
-func checkAdministratorAccount(ctx context.Context, pool doctorRuntimePool) doctorResult {
-	var adminExists bool
-	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM "user" WHERE COALESCE(administrator, false) = true LIMIT 1)`).Scan(&adminExists); err != nil {
-		return doctorResult{Status: doctorFail, Name: "administrator account", Detail: fmt.Sprintf("check administrator account: %v; run dygo db prepare then dygo setup admin", err)}
-	}
-	if !adminExists {
-		return doctorResult{Status: doctorFail, Name: "administrator account", Detail: "missing Administrator account; run dygo setup admin"}
-	}
-	return doctorResult{Status: doctorPass, Name: "administrator account", Detail: "Administrator account exists"}
+	return doctorResult{Status: status, Name: check.Name, Detail: check.Detail}
 }
 
 func writeDoctorResults(stdout io.Writer, results []doctorResult) error {

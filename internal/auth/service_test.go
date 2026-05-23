@@ -26,6 +26,8 @@ func TestServiceLogin(t *testing.T) {
 		},
 	}
 	service := NewService(queryer)
+	sessionWriter := &fakeSessionWriter{}
+	service.SessionWriter = sessionWriter
 	service.Now = func() time.Time { return now }
 	service.TokenGenerator = func() (string, error) { return "raw-session-token", nil }
 
@@ -42,15 +44,27 @@ func TestServiceLogin(t *testing.T) {
 	if result.User.Email != "admin@example.com" || !result.User.Administrator {
 		t.Fatalf("Login().User = %+v, want administrator", result.User)
 	}
-	if len(queryer.execArgs) != 1 {
-		t.Fatalf("exec calls = %d, want session insert", len(queryer.execArgs))
+	if len(queryer.execArgs) != 0 {
+		t.Fatalf("exec calls = %d, want session writer to persist login", len(queryer.execArgs))
 	}
-	args := queryer.execArgs[0]
-	if containsArg(args, "raw-session-token") {
-		t.Fatalf("session insert args leaked raw token: %#v", args)
+	if len(sessionWriter.inputs) != 1 {
+		t.Fatalf("session writer calls = %d, want one", len(sessionWriter.inputs))
 	}
-	if args[2] != SessionTokenDigest("raw-session-token") {
-		t.Fatalf("session digest arg = %#v, want digest", args[2])
+	sessionInput := sessionWriter.inputs[0]
+	if sessionInput.UserID != 7 {
+		t.Fatalf("session user id = %d, want 7", sessionInput.UserID)
+	}
+	if sessionInput.TokenDigest == "raw-session-token" {
+		t.Fatal("session writer received raw token")
+	}
+	if sessionInput.TokenDigest != SessionTokenDigest("raw-session-token") {
+		t.Fatalf("session digest = %#v, want digest", sessionInput.TokenDigest)
+	}
+	if sessionInput.Status != "active" {
+		t.Fatalf("session status = %q, want active", sessionInput.Status)
+	}
+	if sessionInput.StartedAt != now || sessionInput.LastSeenAt != now {
+		t.Fatalf("session times = started %s last seen %s, want %s", sessionInput.StartedAt, sessionInput.LastSeenAt, now)
 	}
 }
 
@@ -78,10 +92,30 @@ func TestServiceLoginDeniesInvalidCredentials(t *testing.T) {
 			t.Parallel()
 
 			service := NewService(&fakeAuthQueryer{rows: []fakeAuthRow{tt.row}})
+			service.SessionWriter = &fakeSessionWriter{}
 			_, err := service.Login(context.Background(), LoginRequest{Email: "admin@example.com", Password: tt.password})
 			assertAuthError(t, err, ErrorInvalidCredentials)
 		})
 	}
+}
+
+func TestServiceLoginRequiresSessionWriter(t *testing.T) {
+	t.Parallel()
+
+	passwordHash, err := HashPassword("secret")
+	if err != nil {
+		t.Fatalf("HashPassword() error = %v", err)
+	}
+	queryer := &fakeAuthQueryer{
+		rows: []fakeAuthRow{
+			rowValues(int64(7), "admin@example.com", "Admin User", true, true, sql.NullString{String: passwordHash, Valid: true}),
+		},
+	}
+	service := NewService(queryer)
+	service.TokenGenerator = func() (string, error) { return "raw-session-token", nil }
+
+	_, err = service.Login(context.Background(), LoginRequest{Email: "admin@example.com", Password: "secret"})
+	assertAuthError(t, err, ErrorInternal)
 }
 
 func TestServiceCurrentUser(t *testing.T) {
@@ -136,10 +170,14 @@ func TestServiceSetupAdmin(t *testing.T) {
 	queryer := &fakeAuthQueryer{
 		rows: []fakeAuthRow{
 			rowValues(false),
-			rowValues(int64(7), "admin@example.com", "Admin User", true, true),
 		},
 	}
-	user, err := NewService(queryer).SetupAdmin(context.Background(), SetupAdminInput{
+	adminWriter := &fakeAdminWriter{
+		user: User{ID: 7, Email: "admin@example.com", FullName: "Admin User", Enabled: true, Administrator: true},
+	}
+	service := NewService(queryer)
+	service.AdminWriter = adminWriter
+	user, err := service.SetupAdmin(context.Background(), SetupAdminInput{
 		Email:    "Admin@Example.com",
 		FullName: "Admin User",
 		Password: "secret",
@@ -150,19 +188,8 @@ func TestServiceSetupAdmin(t *testing.T) {
 	if user.Email != "admin@example.com" || !user.Administrator || !user.Enabled {
 		t.Fatalf("SetupAdmin() user = %+v, want enabled administrator", user)
 	}
-	args := queryer.rowArgs[1]
-	if args[0] != "admin@example.com" || args[1] != "Admin User" {
-		t.Fatalf("SetupAdmin() upsert args = %#v, want normalized email/full name", args)
-	}
-	hash, ok := args[2].(string)
-	if !ok {
-		t.Fatalf("SetupAdmin() password arg type = %T, want string", args[2])
-	}
-	if hash == "secret" {
-		t.Fatal("SetupAdmin() stored plaintext password")
-	}
-	if err := ComparePassword(hash, "secret"); err != nil {
-		t.Fatalf("SetupAdmin() password hash did not verify: %v", err)
+	if adminWriter.input.Email != "admin@example.com" || adminWriter.input.FullName != "Admin User" || adminWriter.input.Password != "secret" {
+		t.Fatalf("SetupAdmin() admin writer input = %+v, want normalized email/full name and password", adminWriter.input)
 	}
 }
 
@@ -189,6 +216,27 @@ type fakeAuthQueryer struct {
 	rowArgs  [][]any
 	execSQL  []string
 	execArgs [][]any
+}
+
+type fakeSessionWriter struct {
+	inputs []SessionInput
+	err    error
+}
+
+func (w *fakeSessionWriter) CreateSession(_ context.Context, input SessionInput) error {
+	w.inputs = append(w.inputs, input)
+	return w.err
+}
+
+type fakeAdminWriter struct {
+	input AdminInput
+	user  User
+	err   error
+}
+
+func (w *fakeAdminWriter) SaveAdmin(_ context.Context, input AdminInput) (User, error) {
+	w.input = input
+	return w.user, w.err
 }
 
 func (q *fakeAuthQueryer) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
@@ -254,13 +302,4 @@ func assertAuthError(t *testing.T, err error, code string) {
 	if authErr.Code != code {
 		t.Fatalf("auth error code = %q, want %q", authErr.Code, code)
 	}
-}
-
-func containsArg(args []any, value string) bool {
-	for _, arg := range args {
-		if arg == value {
-			return true
-		}
-	}
-	return false
 }

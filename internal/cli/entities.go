@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	appregistry "github.com/dygo-dev/dygo/internal/app/registry"
 	"github.com/dygo-dev/dygo/internal/entity/catalog"
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/dygo-dev/dygo/internal/project"
 	"github.com/spf13/cobra"
 )
 
@@ -36,28 +35,23 @@ func newEntitiesListCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			apps, err := appregistry.New(root).Validate()
+			metadata, err := project.LoadMetadata(root)
 			if err != nil {
-				return fmt.Errorf("validate apps: %w", err)
+				return err
 			}
-			if len(apps) == 0 {
+			if len(metadata.Apps) == 0 {
 				if _, err := fmt.Fprintln(stdout, "No apps found."); err != nil {
 					return fmt.Errorf("write entities output: %w", err)
 				}
 				return nil
 			}
 
-			entities, err := catalog.New(apps, fieldtype.DefaultRegistry()).Validate()
-			if err != nil {
-				return fmt.Errorf("validate entities: %w", err)
-			}
-
 			entitiesByApp := make(map[string][]catalog.LoadedEntity)
-			for _, entity := range entities {
+			for _, entity := range metadata.Entities {
 				entitiesByApp[entity.AppName] = append(entitiesByApp[entity.AppName], entity)
 			}
 
-			for _, app := range apps {
+			for _, app := range metadata.Apps {
 				if _, err := fmt.Fprintln(stdout, app.Manifest.Name); err != nil {
 					return fmt.Errorf("write app name: %w", err)
 				}
@@ -92,16 +86,11 @@ func newEntitiesValidateCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			apps, err := appregistry.New(root).Validate()
+			metadata, err := project.LoadMetadata(root)
 			if err != nil {
-				return fmt.Errorf("validate apps: %w", err)
+				return err
 			}
-
-			entities, err := catalog.New(apps, fieldtype.DefaultRegistry()).Validate()
-			if err != nil {
-				return fmt.Errorf("validate entities: %w", err)
-			}
-			if _, err := fmt.Fprintf(stdout, "%d entities are valid\n", len(entities)); err != nil {
+			if _, err := fmt.Fprintf(stdout, "%d entities are valid\n", len(metadata.Entities)); err != nil {
 				return fmt.Errorf("write entities validation output: %w", err)
 			}
 			return nil

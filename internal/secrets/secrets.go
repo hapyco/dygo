@@ -14,6 +14,7 @@ import (
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
+	"github.com/dygo-dev/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
 
@@ -475,13 +476,14 @@ func DecodeDocument(data []byte, env Environment) (Document, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return Document{}, fmt.Errorf("secrets document is empty")
 	}
-	if err := rejectDuplicateMappingKeys(data); err != nil {
+	root, err := yamlmeta.Parse(data, "parse secrets document")
+	if err != nil {
 		return Document{}, err
 	}
-
-	var root yaml.Node
-	if err := yaml.Unmarshal(data, &root); err != nil {
-		return Document{}, fmt.Errorf("decode secrets document: %w", err)
+	if err := yamlmeta.RejectDuplicateKeys(&root, func(duplicate yamlmeta.DuplicateKey) error {
+		return fmt.Errorf("duplicate secret key %q", secretDuplicatePath(duplicate.Location))
+	}); err != nil {
+		return Document{}, err
 	}
 	values, err := decodeRootMapping(&root)
 	if err != nil {
@@ -805,45 +807,9 @@ func flattenSecrets(out map[string]Secret, prefix string, value any) {
 	}
 }
 
-func rejectDuplicateMappingKeys(data []byte) error {
-	var root yaml.Node
-	if err := yaml.Unmarshal(data, &root); err != nil {
-		return fmt.Errorf("parse secrets document: %w", err)
-	}
-	return rejectDuplicateMappingKeysNode(&root, "")
-}
-
-func rejectDuplicateMappingKeysNode(node *yaml.Node, path string) error {
-	if node.Kind == yaml.DocumentNode {
-		if len(node.Content) == 0 {
-			return nil
-		}
-		return rejectDuplicateMappingKeysNode(node.Content[0], path)
-	}
-	if node.Kind == yaml.MappingNode {
-		seen := map[string]struct{}{}
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			key := node.Content[i].Value
-			childPath := key
-			if path != "" {
-				childPath = path + "." + key
-			}
-			if _, ok := seen[key]; ok {
-				return fmt.Errorf("duplicate secret key %q", childPath)
-			}
-			seen[key] = struct{}{}
-			if err := rejectDuplicateMappingKeysNode(node.Content[i+1], childPath); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	for _, child := range node.Content {
-		if err := rejectDuplicateMappingKeysNode(child, path); err != nil {
-			return err
-		}
-	}
-	return nil
+func secretDuplicatePath(location string) string {
+	location = strings.TrimPrefix(location, "$.")
+	return strings.TrimPrefix(location, "$")
 }
 
 func loadMasterIdentity(path string) (*age.HybridIdentity, error) {

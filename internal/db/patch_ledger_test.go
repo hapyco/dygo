@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/entity/schema"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestPatchLedgerListPatchRuns(t *testing.T) {
@@ -71,8 +71,6 @@ func TestPatchLedgerRecordPatchRunInserts(t *testing.T) {
 		row: []pgx.Row{
 			fakeRow{err: pgx.ErrNoRows},
 			newFakeRow(int64(10)),
-			newFakeRow(`{"strategy":"template","template":"{app}.{patch-id}"}`),
-			newFakeRow(int64(20)),
 		},
 	}
 	run := PatchRun{
@@ -89,25 +87,15 @@ func TestPatchLedgerRecordPatchRunInserts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordPatchRun() error = %v, want nil", err)
 	}
-	if !strings.Contains(queryer.rowSQL[3], `INSERT INTO "patch_run"`) || !strings.Contains(queryer.rowSQL[3], `RETURNING id`) {
-		t.Fatalf("RecordPatchRun() insert SQL = %q, want insert returning id", queryer.rowSQL[3])
+	if len(queryer.execSQL) != 1 || !strings.Contains(queryer.execSQL[0], `INSERT INTO "patch_run"`) {
+		t.Fatalf("RecordPatchRun() insert SQL = %#v, want patch_run insert", queryer.execSQL)
 	}
-	wantArgs := []any{"crm.0001_rename_email", int64(10), "0001_rename_email", "apps/crm/patches/0001_rename_email.yml", PatchPhasePreSync, "sha256:a", appliedAt, "0.1.0"}
-	if !reflect.DeepEqual(queryer.rowArgs[3], wantArgs) {
-		t.Fatalf("RecordPatchRun() insert args = %#v, want %#v", queryer.rowArgs[3], wantArgs)
+	if !strings.Contains(queryer.execSQL[0], `"app_id", "applied_at", "checksum", "dygo_version", "patch_id", "path", "phase", "name"`) {
+		t.Fatalf("RecordPatchRun() insert SQL = %q, want metadata-driven field columns", queryer.execSQL[0])
 	}
-}
-
-func TestPatchRunRecordNameUsesTemplate(t *testing.T) {
-	got, err := patchRunRecordName(
-		PatchRun{AppName: "crm", PatchID: "0001_rename_email"},
-		schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{patch-id}"},
-	)
-	if err != nil {
-		t.Fatalf("patchRunRecordName() error = %v, want nil", err)
-	}
-	if got != "crm.0001_rename_email" {
-		t.Fatalf("patchRunRecordName() = %q, want crm.0001_rename_email", got)
+	wantArgs := []any{int64(10), appliedAt.Format(time.RFC3339), "sha256:a", "0.1.0", "0001_rename_email", "apps/crm/patches/0001_rename_email.yml", PatchPhasePreSync, "crm.0001_rename_email"}
+	if !reflect.DeepEqual(queryer.execArgs[0], wantArgs) {
+		t.Fatalf("RecordPatchRun() insert args = %#v, want %#v", queryer.execArgs[0], wantArgs)
 	}
 }
 
@@ -219,15 +207,20 @@ type fakePatchLedgerQueryer struct {
 	rows []pgx.Rows
 	row  []pgx.Row
 
-	queries []string
-	args    [][]any
-	rowSQL  []string
-	rowArgs [][]any
+	queries  []string
+	args     [][]any
+	rowSQL   []string
+	rowArgs  [][]any
+	execSQL  []string
+	execArgs [][]any
 }
 
 func (q *fakePatchLedgerQueryer) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
 	q.queries = append(q.queries, sql)
 	q.args = append(q.args, args)
+	if rows, ok := fakePatchRunMetadataRows(sql, args...); ok {
+		return rows, nil
+	}
 	if len(q.rows) == 0 {
 		return newFakeRows(nil), nil
 	}
@@ -239,10 +232,51 @@ func (q *fakePatchLedgerQueryer) Query(_ context.Context, sql string, args ...an
 func (q *fakePatchLedgerQueryer) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 	q.rowSQL = append(q.rowSQL, sql)
 	q.rowArgs = append(q.rowArgs, args)
+	if isPatchRunMetadataQuery(sql, args...) {
+		return newFakeRow(int64(2), "core.patch-run", "patch-run", "patch-run", "Patch Run", "Ledger entry", "git-pull-request-arrow", false, false, []byte(`{"strategy":"template","template":"{app}.{patch-id}"}`), "core", "Core")
+	}
+	if strings.Contains(sql, `SELECT "name" FROM "app"`) && len(args) == 1 && args[0] == int64(10) {
+		return newFakeRow("crm")
+	}
 	if len(q.row) == 0 {
 		return fakeRow{err: pgx.ErrNoRows}
 	}
 	row := q.row[0]
 	q.row = q.row[1:]
 	return row
+}
+
+func (q *fakePatchLedgerQueryer) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	q.execSQL = append(q.execSQL, sql)
+	q.execArgs = append(q.execArgs, args)
+	return pgconn.NewCommandTag("INSERT 1"), nil
+}
+
+func isPatchRunMetadataQuery(sql string, args ...any) bool {
+	return strings.Contains(sql, `WHERE a.name = $1 AND e.key = $2`) &&
+		len(args) == 2 &&
+		args[0] == "core" &&
+		args[1] == "patch-run"
+}
+
+func fakePatchRunMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
+	if len(args) != 1 || args[0] != int64(2) {
+		return nil, false
+	}
+	switch {
+	case strings.Contains(sql, `FROM "field"`):
+		return newFakeRows([][]any{
+			{"app", "App", "link", true, false, true, nil, nil, 1, []byte(`{"entity":"app"}`)},
+			{"patch-id", "Patch ID", "text", true, false, true, nil, nil, 2, nil},
+			{"path", "Path", "text", true, false, false, nil, nil, 3, nil},
+			{"phase", "Phase", "select", true, false, true, nil, nil, 4, []byte(`{"values":["pre-sync","post-sync"]}`)},
+			{"checksum", "Checksum", "text", true, false, false, nil, nil, 5, nil},
+			{"applied-at", "Applied At", "datetime", true, false, false, nil, nil, 6, nil},
+			{"dygo-version", "dygo Version", "text", false, false, false, nil, nil, 7, nil},
+		}), true
+	case strings.Contains(sql, `FROM "index"`), strings.Contains(sql, `FROM "constraint"`):
+		return newFakeRows(nil), true
+	default:
+		return nil, false
+	}
 }

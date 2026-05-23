@@ -35,6 +35,64 @@ func TestDefaultRegistryContainsBuiltIns(t *testing.T) {
 	}
 }
 
+func TestBuiltInBehavior(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		wantSQL       string
+		wantCast      string
+		wantSuffix    string
+		wantKind      string
+		wantEditor    string
+		wantWriteOnly bool
+		wantNameable  bool
+		wantCheckable bool
+	}{
+		{name: "text", wantSQL: "text", wantKind: ValueString, wantEditor: "text", wantNameable: true, wantCheckable: true},
+		{name: "password", wantSQL: "text", wantSuffix: "_hash", wantKind: ValuePassword, wantEditor: "password", wantWriteOnly: true},
+		{name: "link", wantSQL: "bigint", wantCast: "bigint", wantSuffix: "_id", wantKind: ValueInteger, wantEditor: "link", wantNameable: true},
+		{name: "json", wantSQL: "jsonb", wantCast: "jsonb", wantKind: ValueJSON, wantEditor: "json"},
+		{name: "collection", wantEditor: "collection"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			definition, ok := DefaultDefinition(tt.name)
+			if !ok {
+				t.Fatalf("DefaultDefinition(%q) ok = false, want true", tt.name)
+			}
+			if definition.Behavior.SQLType != tt.wantSQL {
+				t.Fatalf("SQLType = %q, want %q", definition.Behavior.SQLType, tt.wantSQL)
+			}
+			if definition.Behavior.PlaceholderCast != tt.wantCast {
+				t.Fatalf("PlaceholderCast = %q, want %q", definition.Behavior.PlaceholderCast, tt.wantCast)
+			}
+			if definition.Behavior.ColumnSuffix != tt.wantSuffix {
+				t.Fatalf("ColumnSuffix = %q, want %q", definition.Behavior.ColumnSuffix, tt.wantSuffix)
+			}
+			if definition.Behavior.ValueKind != tt.wantKind {
+				t.Fatalf("ValueKind = %q, want %q", definition.Behavior.ValueKind, tt.wantKind)
+			}
+			if definition.Behavior.StudioEditor != tt.wantEditor {
+				t.Fatalf("StudioEditor = %q, want %q", definition.Behavior.StudioEditor, tt.wantEditor)
+			}
+			if definition.Behavior.WriteOnly != tt.wantWriteOnly {
+				t.Fatalf("WriteOnly = %v, want %v", definition.Behavior.WriteOnly, tt.wantWriteOnly)
+			}
+			if definition.Behavior.NameRenderable != tt.wantNameable {
+				t.Fatalf("NameRenderable = %v, want %v", definition.Behavior.NameRenderable, tt.wantNameable)
+			}
+			if definition.Behavior.Checkable != tt.wantCheckable {
+				t.Fatalf("Checkable = %v, want %v", definition.Behavior.Checkable, tt.wantCheckable)
+			}
+		})
+	}
+}
+
 func TestRegister(t *testing.T) {
 	t.Parallel()
 

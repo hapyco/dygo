@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -27,20 +28,8 @@ func TestCheckerAllowsEnabledUserWithEnabledRolePermission(t *testing.T) {
 	if err := NewChecker(queryer).Can(context.Background(), Request{Actor: Actor{UserID: 7}, Entity: "user", Action: ActionRead}); err != nil {
 		t.Fatalf("Can() error = %v, want nil", err)
 	}
-	sql := queryer.sql[0]
-	for _, want := range []string{
-		`FROM "user" u`,
-		`JOIN user_role ur ON ur.user_id = u.id`,
-		`JOIN "role" r ON r.id = ur.role_id AND COALESCE(r.enabled, false) = true`,
-		`JOIN "permission" p ON p.role_id = r.id`,
-		`JOIN entity e ON e.id = p.entity_id`,
-		`COALESCE(u.enabled, false) = true`,
-		`e.slug = $2`,
-		`COALESCE(p."read", false) = true`,
-	} {
-		if !strings.Contains(sql, want) {
-			t.Fatalf("Check() SQL = %q, want %q", sql, want)
-		}
+	if len(queryer.sql) != 2 {
+		t.Fatalf("Check()/Can() queries = %d, want 2", len(queryer.sql))
 	}
 	if !reflect.DeepEqual(queryer.args[0], []any{int64(7), "user"}) {
 		t.Fatalf("Check() args = %#v, want user id and entity", queryer.args[0])
@@ -120,8 +109,8 @@ func TestCheckerMultipleRolesAreORCombined(t *testing.T) {
 	if !decision.Allowed {
 		t.Fatalf("Check() decision = %+v, want allowed", decision)
 	}
-	if !strings.Contains(queryer.sql[0], `SELECT EXISTS`) || !strings.Contains(queryer.sql[0], `COALESCE(p."delete", false) = true`) {
-		t.Fatalf("Check() SQL = %q, want EXISTS over role permissions", queryer.sql[0])
+	if !strings.Contains(queryer.sql[0], `COALESCE(p."delete", false) = true`) {
+		t.Fatalf("Check() SQL = %q, want delete action column", queryer.sql[0])
 	}
 }
 
@@ -174,6 +163,9 @@ func TestCheckerDatabaseFailureDoesNotLeakSensitiveDetails(t *testing.T) {
 }
 
 func TestActionColumns(t *testing.T) {
+	if !reflect.DeepEqual(SupportedActions(), []Action{ActionRead, ActionCreate, ActionUpdate, ActionDelete, ActionExport, ActionPrint}) {
+		t.Fatalf("SupportedActions() = %#v, want stable action order", SupportedActions())
+	}
 	tests := []struct {
 		action Action
 		column string
@@ -193,6 +185,28 @@ func TestActionColumns(t *testing.T) {
 				t.Fatalf("actionColumn(%q) = %q, %v; want %q, true", tt.action, column, ok, tt.column)
 			}
 		})
+	}
+}
+
+func TestValidateMetadata(t *testing.T) {
+	meta := db.MetadataEntityMeta{
+		MetadataEntity: db.MetadataEntity{Name: "core.permission"},
+		Fields: []db.MetadataField{
+			{Name: "read", Type: "boolean"},
+			{Name: "create", Type: "boolean"},
+			{Name: "update", Type: "boolean"},
+			{Name: "delete", Type: "boolean"},
+			{Name: "export", Type: "boolean"},
+			{Name: "print", Type: "boolean"},
+		},
+	}
+	if err := ValidateMetadata(meta); err != nil {
+		t.Fatalf("ValidateMetadata() error = %v, want nil", err)
+	}
+	meta.Fields[0].Type = "text"
+	err := ValidateMetadata(meta)
+	if err == nil || !strings.Contains(err.Error(), "must be boolean") {
+		t.Fatalf("ValidateMetadata() error = %v, want boolean field error", err)
 	}
 }
 

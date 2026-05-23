@@ -12,6 +12,10 @@ import (
 	"time"
 
 	"github.com/dygo-dev/dygo/internal/auth"
+	"github.com/dygo-dev/dygo/internal/corevalues"
+	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/dygo-dev/dygo/internal/entity/schema"
+	"github.com/dygo-dev/dygo/internal/recordquery"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
@@ -27,9 +31,7 @@ const (
 )
 
 const (
-	defaultRecordLimit = 50
-	maxRecordLimit     = 2500
-	randomNameRetries  = 5
+	randomNameRetries = 5
 )
 
 // RecordQueryer is the database behavior needed by the Record store.
@@ -53,24 +55,13 @@ type Record map[string]any
 type RecordInput map[string]json.RawMessage
 
 // RecordListParams controls Record list pagination.
-type RecordListParams struct {
-	Limit   int
-	Offset  int
-	Filters []RecordFilter
-	Sort    []RecordSort
-}
+type RecordListParams = recordquery.Params
 
 // RecordFilter is one exact Record list filter on a metadata or system field.
-type RecordFilter struct {
-	Field string
-	Value string
-}
+type RecordFilter = recordquery.Filter
 
 // RecordSort is one Record list sort term on a metadata or system field.
-type RecordSort struct {
-	Field string
-	Desc  bool
-}
+type RecordSort = recordquery.Sort
 
 // RecordListResult is a page of Records.
 type RecordListResult struct {
@@ -80,6 +71,16 @@ type RecordListResult struct {
 	Count   int
 	Total   int
 }
+
+// RecordMutationHookPolicy controls which Record hooks run for a RecordStore mutation.
+type RecordMutationHookPolicy string
+
+const (
+	// RecordMutationHooksFrameworkOnly runs dygo framework hooks such as Activity, but no app hooks.
+	RecordMutationHooksFrameworkOnly RecordMutationHookPolicy = "framework-only"
+	// RecordMutationHooksNone suppresses all Record hooks.
+	RecordMutationHooksNone RecordMutationHookPolicy = "none"
+)
 
 // RecordError reports stable Record runtime failures for API mapping.
 type RecordError struct {
@@ -106,9 +107,21 @@ func IsRecordError(err error) bool {
 	return errors.As(err, &recordErr)
 }
 
-// NewRecordStore returns a Record store backed by queryer.
+// NewRecordStore returns a Record store backed by queryer with framework hooks enabled.
 func NewRecordStore(queryer RecordQueryer) RecordStore {
-	return NewRecordStoreWithHooks(queryer, DefaultRecordHookRegistry())
+	return NewRecordStoreWithHookPolicy(queryer, RecordMutationHooksFrameworkOnly)
+}
+
+// NewRecordStoreWithHookPolicy returns a Record store backed by queryer and an explicit hook policy.
+func NewRecordStoreWithHookPolicy(queryer RecordQueryer, policy RecordMutationHookPolicy) RecordStore {
+	switch policy {
+	case RecordMutationHooksNone:
+		return NewRecordStoreWithHooks(queryer, nil)
+	case RecordMutationHooksFrameworkOnly, "":
+		return NewRecordStoreWithHooks(queryer, DefaultRecordHookRegistry())
+	default:
+		return NewRecordStoreWithHooks(queryer, DefaultRecordHookRegistry())
+	}
 }
 
 // NewRecordStoreWithHooks returns a Record store backed by queryer and hooks.
@@ -394,7 +407,7 @@ func (s RecordStore) createRecordWithLayout(ctx context.Context, layout recordLa
 	}
 	input = cloneRecordInput(input)
 	hookCtx := newRecordHookContext(RecordBeforeValidate, layout)
-	hookCtx.Operation = activityOperationCreate
+	hookCtx.Operation = corevalues.ActivityOperationCreate
 	hookCtx.Input = input
 	if err := s.runRecordHooks(ctx, hookCtx); err != nil {
 		return nil, err
@@ -411,32 +424,16 @@ func (s RecordStore) createRecordWithLayout(ctx context.Context, layout recordLa
 		return nil, err
 	}
 
-	var record Record
-	for attempt := 0; attempt <= randomNameRetries; attempt++ {
-		mutation, err := s.createMutation(ctx, layout, input)
-		if err != nil {
-			return nil, err
-		}
-		var sql string
-		if len(mutation.Columns) == 0 {
-			sql = fmt.Sprintf("INSERT INTO %s DEFAULT VALUES RETURNING %s", quoteIdent(layout.Table), layout.selectList())
-		} else {
-			sql = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING %s", quoteIdent(layout.Table), quoteIdentList(mutation.Columns), strings.Join(mutation.Placeholders, ", "), layout.selectList())
-		}
-		record, err = s.queryReturningRecord(ctx, layout, sql, mutation.Values, false)
-		if err == nil {
-			break
-		}
-		if layout.Naming.Strategy != "random" || !isRecordNameCollision(err, layout) || attempt == randomNameRetries {
-			return nil, err
-		}
+	record, err := s.insertRecordWithLayout(ctx, layout, input, true)
+	if err != nil {
+		return nil, err
 	}
 	recordID, err := activityRecordID(record)
 	if err != nil {
 		return nil, err
 	}
 	afterCtx := newRecordHookContext(RecordAfterCreate, layout)
-	afterCtx.Operation = activityOperationCreate
+	afterCtx.Operation = corevalues.ActivityOperationCreate
 	afterCtx.RecordID = recordID
 	afterCtx.Input = input
 	afterCtx.NewRecord = record
@@ -447,31 +444,48 @@ func (s RecordStore) createRecordWithLayout(ctx context.Context, layout recordLa
 	return record, nil
 }
 
-func (s RecordStore) generateRecordName(ctx context.Context, layout recordLayout, input RecordInput) (string, error) {
-	switch layout.Naming.Strategy {
-	case "random":
-		name, err := randomRecordName(layout.Naming.Length)
+func (s RecordStore) insertRecordWithLayout(ctx context.Context, layout recordLayout, input RecordInput, returning bool) (Record, error) {
+	for attempt := 0; attempt <= randomNameRetries; attempt++ {
+		mutation, err := s.createMutation(ctx, layout, input)
 		if err != nil {
-			return "", recordError(RecordErrorInternal, "generate random record name failed", map[string]any{"entity": layout.Entity}, err)
+			return nil, err
 		}
-		return name, nil
-	case "field":
-		field, ok := layout.FieldByName[layout.Naming.Field]
-		if !ok {
-			return "", recordError(RecordErrorInternal, "naming field metadata is missing", map[string]any{"entity": layout.Entity, "field": layout.Naming.Field}, nil)
+		sql := insertRecordSQL(layout, mutation, returning)
+		if returning {
+			record, err := s.queryReturningRecord(ctx, layout, sql, mutation.Values, false)
+			if err == nil {
+				return record, nil
+			}
+			if layout.Naming.Strategy != schema.NamingStrategyRandom || !isRecordNameCollision(err, layout) || attempt == randomNameRetries {
+				return nil, err
+			}
+			continue
 		}
-		raw, ok := input[layout.Naming.Field]
-		if !ok {
-			return "", recordError(RecordErrorValidation, "naming field is required", map[string]any{"entity": layout.Entity, "field": layout.Naming.Field}, nil)
+		if _, err := s.queryer.Exec(ctx, sql, mutation.Values...); err == nil {
+			return nil, nil
+		} else {
+			err = classifyRecordDBError(err, layout.Entity)
+			if layout.Naming.Strategy != schema.NamingStrategyRandom || !isRecordNameCollision(err, layout) || attempt == randomNameRetries {
+				return nil, err
+			}
 		}
-		return recordNameValue(field, raw)
-	case "series":
-		return s.seriesRecordName(ctx, layout, layout.Naming.Pattern, time.Now().UTC())
-	case "template":
-		return s.templateRecordName(ctx, layout, layout.Naming.Template, input)
-	default:
-		return "", recordError(RecordErrorInternal, "naming strategy metadata is invalid", map[string]any{"entity": layout.Entity, "strategy": layout.Naming.Strategy}, nil)
 	}
+	return nil, recordError(RecordErrorInternal, "record insert failed", map[string]any{"entity": layout.Entity}, nil)
+}
+
+func insertRecordSQL(layout recordLayout, mutation recordMutation, returning bool) string {
+	if len(mutation.Columns) == 0 {
+		sql := fmt.Sprintf("INSERT INTO %s DEFAULT VALUES", quoteIdent(layout.Table))
+		if returning {
+			sql += " RETURNING " + layout.selectList()
+		}
+		return sql
+	}
+	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", quoteIdent(layout.Table), quoteIdentList(mutation.Columns), strings.Join(mutation.Placeholders, ", "))
+	if returning {
+		sql += " RETURNING " + layout.selectList()
+	}
+	return sql
 }
 
 func isRecordNameCollision(err error, layout recordLayout) bool {
@@ -532,7 +546,7 @@ func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLa
 		return nil, err
 	}
 	hookCtx := newRecordHookContext(RecordBeforeValidate, layout)
-	hookCtx.Operation = activityOperationUpdate
+	hookCtx.Operation = corevalues.ActivityOperationUpdate
 	hookCtx.RecordID = id
 	hookCtx.Input = input
 	hookCtx.OldRecord = oldRecord
@@ -547,7 +561,7 @@ func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLa
 		return nil, err
 	}
 	beforeCtx := newRecordHookContext(RecordBeforeUpdate, layout)
-	beforeCtx.Operation = activityOperationUpdate
+	beforeCtx.Operation = corevalues.ActivityOperationUpdate
 	beforeCtx.RecordID = id
 	beforeCtx.Input = input
 	beforeCtx.OldRecord = oldRecord
@@ -577,7 +591,7 @@ func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLa
 		return nil, err
 	}
 	afterCtx := newRecordHookContext(RecordAfterUpdate, layout)
-	afterCtx.Operation = activityOperationUpdate
+	afterCtx.Operation = corevalues.ActivityOperationUpdate
 	afterCtx.RecordID = recordID
 	afterCtx.Input = input
 	afterCtx.OldRecord = oldRecord
@@ -645,7 +659,7 @@ func (s RecordStore) deleteRecordWithLayout(ctx context.Context, layout recordLa
 		return err
 	}
 	beforeCtx := newRecordHookContext(RecordBeforeDelete, layout)
-	beforeCtx.Operation = activityOperationDelete
+	beforeCtx.Operation = corevalues.ActivityOperationDelete
 	beforeCtx.RecordID = id
 	beforeCtx.OldRecord = oldRecord
 	if err := s.runRecordHooks(ctx, beforeCtx); err != nil {
@@ -663,7 +677,7 @@ func (s RecordStore) deleteRecordWithLayout(ctx context.Context, layout recordLa
 		return err
 	}
 	afterCtx := newRecordHookContext(RecordAfterDelete, layout)
-	afterCtx.Operation = activityOperationDelete
+	afterCtx.Operation = corevalues.ActivityOperationDelete
 	afterCtx.RecordID = recordID
 	afterCtx.OldRecord = oldRecord
 	afterCtx.Snapshot = oldRecord
@@ -682,7 +696,7 @@ func (s RecordStore) getSingleRecordWithLayout(ctx context.Context, layout recor
 		return nil, recordError(RecordErrorInvalidRequest, "entity is not single", map[string]any{"entity": layout.Slug}, nil)
 	}
 	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent("name"))
-	return s.queryOneRecord(ctx, layout, sql, layout.Entity)
+	return s.queryOneRecord(ctx, layout, sql, SingleRecordName(layout.Entity))
 }
 
 func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayout, id int64) (Record, error) {
@@ -799,7 +813,7 @@ type recordLayout struct {
 	IsSingle     bool
 	IsCollection bool
 	Table        string
-	Naming       recordNaming
+	Naming       schema.Naming
 	Fields       []recordField
 	FieldByName  map[string]recordField
 }
@@ -813,6 +827,9 @@ type recordField struct {
 	Column      string
 	Storage     bool
 	WriteOnly   bool
+	Listable    bool
+	Nameable    bool
+	ValueKind   string
 	SystemName  bool
 	SelectOrder int
 }
@@ -847,13 +864,20 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 		FieldByName:  map[string]recordField{},
 	}
 	for _, metadataField := range meta.Fields {
+		definition, ok := fieldtype.DefaultDefinition(metadataField.Type)
+		if !ok {
+			return recordLayout{}, recordError(RecordErrorInternal, "field type metadata is invalid", map[string]any{"entity": meta.Slug, "field": metadataField.Name, "type": metadataField.Type}, nil)
+		}
 		field := recordField{
 			Name:      metadataField.Name,
 			Type:      metadataField.Type,
 			Required:  metadataField.Required,
 			Default:   metadataField.Default,
-			Storage:   metadataField.Type != "collection",
-			WriteOnly: metadataField.Type == "password",
+			Storage:   definition.Behavior.Stored,
+			WriteOnly: definition.Behavior.WriteOnly,
+			Listable:  definition.Behavior.Listable,
+			Nameable:  definition.Behavior.NameRenderable,
+			ValueKind: definition.Behavior.ValueKind,
 			SystemName: metadataField.Name == "name" &&
 				naming.Strategy == "field" &&
 				naming.Field == "name",
@@ -876,7 +900,11 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 }
 
 func (l recordLayout) selectList() string {
-	columns := []string{quoteIdent("id"), quoteIdent("name"), quoteIdent("created_at"), quoteIdent("updated_at")}
+	systemColumns := systemRecordSelectColumns()
+	columns := make([]string, 0, len(systemColumns)+len(l.Fields))
+	for _, column := range systemColumns {
+		columns = append(columns, quoteIdent(column))
+	}
 	for _, field := range l.Fields {
 		if field.Storage && !field.WriteOnly && !field.SystemName {
 			columns = append(columns, quoteIdent(field.Column))
@@ -901,10 +929,10 @@ func (l recordLayout) recordFromValues(values []any) (Record, error) {
 		return nil, recordError(RecordErrorInternal, "record column count did not match metadata", map[string]any{"entity": l.Entity, "expected": expected, "actual": len(values)}, nil)
 	}
 	record := Record{
-		"id":         normalizeRecordValue("", values[0]),
-		"name":       normalizeRecordValue("text", values[1]),
-		"created-at": normalizeRecordValue("datetime", values[2]),
-		"updated-at": normalizeRecordValue("datetime", values[3]),
+		systemFieldID:        normalizeRecordValue("", values[0]),
+		systemFieldName:      normalizeRecordValue("text", values[1]),
+		systemFieldCreatedAt: normalizeRecordValue("datetime", values[2]),
+		systemFieldUpdatedAt: normalizeRecordValue("datetime", values[3]),
 	}
 	index := 4
 	for _, field := range l.Fields {
@@ -1012,8 +1040,16 @@ func (l recordLayout) listOrderBy(sortTerms []RecordSort) (string, error) {
 }
 
 func (l recordLayout) listField(name string, operation string) (recordField, error) {
-	if field, ok := systemRecordListField(name); ok {
-		return field, nil
+	if field, ok := systemRecordFieldByName(name); ok && field.Listable {
+		return recordField{
+			Name:      field.Name,
+			Type:      field.Type,
+			Column:    field.Column,
+			Storage:   true,
+			Listable:  true,
+			Nameable:  field.Nameable,
+			ValueKind: field.ValueKind,
+		}, nil
 	}
 	field, ok := l.FieldByName[name]
 	if !ok {
@@ -1025,33 +1061,21 @@ func (l recordLayout) listField(name string, operation string) (recordField, err
 	if field.WriteOnly {
 		return recordField{}, recordError(RecordErrorInvalidRequest, "write-only field cannot be used in record lists", map[string]any{"entity": l.Entity, "field": name, "operation": operation}, nil)
 	}
+	if !field.Listable {
+		return recordField{}, recordError(RecordErrorInvalidRequest, "field cannot be used in record lists", map[string]any{"entity": l.Entity, "field": name, "operation": operation}, nil)
+	}
 	return field, nil
 }
 
-func systemRecordListField(name string) (recordField, bool) {
-	switch name {
-	case "id":
-		return recordField{Name: "id", Type: "bigint", Column: "id", Storage: true}, true
-	case "name":
-		return recordField{Name: "name", Type: "text", Column: "name", Storage: true}, true
-	case "created-at":
-		return recordField{Name: "created-at", Type: "datetime", Column: "created_at", Storage: true}, true
-	case "updated-at":
-		return recordField{Name: "updated-at", Type: "datetime", Column: "updated_at", Storage: true}, true
-	default:
-		return recordField{}, false
-	}
-}
-
 func recordListValue(field recordField, value string) (any, error) {
-	switch field.Type {
-	case "text", "email", "phone", "long-text", "attachment", "select":
+	switch field.ValueKind {
+	case fieldtype.ValueString:
 		raw, err := json.Marshal(value)
 		if err != nil {
 			return nil, recordError(RecordErrorValidation, "field filter is invalid", map[string]any{"field": field.Name}, err)
 		}
 		return recordDBValue(field, raw)
-	case "date":
+	case fieldtype.ValueDate:
 		if _, err := time.Parse("2006-01-02", value); err != nil {
 			return nil, recordError(RecordErrorValidation, "field must be a date", map[string]any{"field": field.Name}, err)
 		}
@@ -1060,7 +1084,7 @@ func recordListValue(field recordField, value string) (any, error) {
 			return nil, recordError(RecordErrorValidation, "field filter is invalid", map[string]any{"field": field.Name}, err)
 		}
 		return recordDBValue(field, raw)
-	case "datetime":
+	case fieldtype.ValueDatetime:
 		if _, err := time.Parse(time.RFC3339, value); err != nil {
 			return nil, recordError(RecordErrorValidation, "field must be a datetime", map[string]any{"field": field.Name}, err)
 		}
@@ -1069,7 +1093,7 @@ func recordListValue(field recordField, value string) (any, error) {
 			return nil, recordError(RecordErrorValidation, "field filter is invalid", map[string]any{"field": field.Name}, err)
 		}
 		return recordDBValue(field, raw)
-	case "time":
+	case fieldtype.ValueTime:
 		if _, err := time.Parse("15:04:05", value); err != nil {
 			return nil, recordError(RecordErrorValidation, "field must be a time", map[string]any{"field": field.Name}, err)
 		}
@@ -1099,7 +1123,7 @@ func (s RecordStore) createMutation(ctx context.Context, layout recordLayout, in
 	if err != nil {
 		return recordMutation{}, err
 	}
-	nameField := recordField{Name: "name", Type: "text", Column: "name", Storage: true}
+	nameField := recordField{Name: "name", Type: "text", Column: "name", Storage: true, Nameable: true, ValueKind: fieldtype.ValueString}
 	mutation.Columns = append(mutation.Columns, "name")
 	mutation.Placeholders = append(mutation.Placeholders, recordPlaceholder(len(mutation.Values)+1, nameField))
 	mutation.Values = append(mutation.Values, name)
@@ -1198,7 +1222,7 @@ func (l recordLayout) matchMutation(input RecordInput) (recordMutation, error) {
 	names := sortedRecordInputNames(input)
 	for _, name := range names {
 		if name == "name" {
-			field := recordField{Name: "name", Type: "text", Column: "name", Storage: true}
+			field := recordField{Name: "name", Type: "text", Column: "name", Storage: true, Nameable: true, ValueKind: fieldtype.ValueString}
 			value, err := recordDBValue(field, input[name])
 			if err != nil {
 				return recordMutation{}, err
@@ -1230,16 +1254,19 @@ func (m *recordMutation) hasColumn(column string) bool {
 }
 
 func normalizeRecordListParams(params RecordListParams) (RecordListParams, error) {
-	if params.Limit == 0 {
-		params.Limit = defaultRecordLimit
+	normalized, err := recordquery.Normalize(params)
+	if err != nil {
+		return RecordListParams{}, recordQueryError(err)
 	}
-	if params.Limit < 0 || params.Limit > maxRecordLimit {
-		return RecordListParams{}, recordError(RecordErrorInvalidRequest, "limit must be between 1 and 2500", map[string]any{"limit": params.Limit}, nil)
+	return normalized, nil
+}
+
+func recordQueryError(err error) error {
+	var queryErr recordquery.Error
+	if errors.As(err, &queryErr) {
+		return recordError(RecordErrorInvalidRequest, queryErr.Message, queryErr.Details, queryErr.Err)
 	}
-	if params.Offset < 0 {
-		return RecordListParams{}, recordError(RecordErrorInvalidRequest, "offset must be greater than or equal to 0", map[string]any{"offset": params.Offset}, nil)
-	}
-	return params, nil
+	return recordError(RecordErrorInvalidRequest, err.Error(), nil, err)
 }
 
 func normalizeRecordInput(input RecordInput) RecordInput {
@@ -1253,33 +1280,34 @@ func recordDBValue(field recordField, raw json.RawMessage) (any, error) {
 	if rawIsNull(raw) {
 		return nil, nil
 	}
-	switch field.Type {
-	case "text", "email", "phone", "long-text", "attachment":
-		return jsonStringValue(field, raw)
-	case "password":
-		return passwordHashValue(field, raw)
-	case "select":
+	if len(field.Options.Values) > 0 {
 		value, err := jsonStringValue(field, raw)
 		if err != nil {
 			return nil, err
 		}
-		if len(field.Options.Values) > 0 && !stringInSlice(value, field.Options.Values) {
+		if !stringInSlice(value, field.Options.Values) {
 			return nil, recordError(RecordErrorValidation, "select value is not allowed", map[string]any{"field": field.Name, "value": value}, nil)
 		}
 		return value, nil
-	case "int", "bigint", "link":
+	}
+	switch field.ValueKind {
+	case fieldtype.ValueString:
+		return jsonStringValue(field, raw)
+	case fieldtype.ValuePassword:
+		return passwordHashValue(field, raw)
+	case fieldtype.ValueInteger:
 		return jsonIntValue(field, raw)
-	case "decimal", "currency":
+	case fieldtype.ValueNumber:
 		return jsonNumberStringValue(field, raw)
-	case "boolean":
+	case fieldtype.ValueBoolean:
 		var value bool
 		if err := json.Unmarshal(raw, &value); err != nil {
 			return nil, recordError(RecordErrorValidation, "field must be a boolean", map[string]any{"field": field.Name}, err)
 		}
 		return value, nil
-	case "date", "datetime", "time":
+	case fieldtype.ValueDate, fieldtype.ValueDatetime, fieldtype.ValueTime:
 		return jsonStringValue(field, raw)
-	case "json":
+	case fieldtype.ValueJSON:
 		if !json.Valid(raw) {
 			return nil, recordError(RecordErrorValidation, "field must be valid JSON", map[string]any{"field": field.Name}, nil)
 		}
@@ -1354,46 +1382,23 @@ func jsonNumberValue(field recordField, raw json.RawMessage) (json.Number, error
 
 func recordPlaceholder(index int, field recordField) string {
 	placeholder := "$" + strconv.Itoa(index)
-	switch field.Type {
-	case "int":
-		return placeholder + "::integer"
-	case "bigint", "link":
-		return placeholder + "::bigint"
-	case "decimal", "currency":
-		return placeholder + "::numeric"
-	case "boolean":
-		return placeholder + "::boolean"
-	case "date":
-		return placeholder + "::date"
-	case "datetime":
-		return placeholder + "::timestamptz"
-	case "time":
-		return placeholder + "::time"
-	case "json":
-		return placeholder + "::jsonb"
-	default:
-		return placeholder
+	if definition, ok := fieldtype.DefaultDefinition(field.Type); ok && definition.Behavior.PlaceholderCast != "" {
+		return placeholder + "::" + definition.Behavior.PlaceholderCast
 	}
-}
-
-func recordColumnForField(name string, fieldType string) string {
-	column := storageName(name)
-	switch fieldType {
-	case "link":
-		column += "_id"
-	case "password":
-		column += "_hash"
-	}
-	return column
+	return placeholder
 }
 
 func normalizeRecordValue(fieldType string, value any) any {
 	if value == nil {
 		return nil
 	}
+	valueKind := ""
+	if definition, ok := fieldtype.DefaultDefinition(fieldType); ok {
+		valueKind = definition.Behavior.ValueKind
+	}
 	switch typed := value.(type) {
 	case []byte:
-		if fieldType == "json" {
+		if valueKind == fieldtype.ValueJSON {
 			var decoded any
 			if err := json.Unmarshal(typed, &decoded); err == nil {
 				return decoded
@@ -1401,7 +1406,7 @@ func normalizeRecordValue(fieldType string, value any) any {
 		}
 		return string(typed)
 	case string:
-		if fieldType == "json" {
+		if valueKind == fieldtype.ValueJSON {
 			var decoded any
 			if err := json.Unmarshal([]byte(typed), &decoded); err == nil {
 				return decoded
@@ -1465,15 +1470,6 @@ func stringInSlice(value string, values []string) bool {
 		}
 	}
 	return false
-}
-
-func isSystemRecordField(name string) bool {
-	switch name {
-	case "id", "name", "created-at", "updated-at":
-		return true
-	default:
-		return false
-	}
 }
 
 func invalidRecordIDError(entity string) error {

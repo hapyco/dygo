@@ -17,9 +17,7 @@ import (
 	"unicode"
 
 	"github.com/dygo-dev/dygo/internal/app/manifest"
-	appregistry "github.com/dygo-dev/dygo/internal/app/registry"
 	"github.com/dygo-dev/dygo/internal/entity/catalog"
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
 	"github.com/dygo-dev/dygo/internal/project"
 )
 
@@ -71,23 +69,19 @@ func Generate(root string, appName string, entityName string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	apps, err := appregistry.New(root).Validate()
+	metadata, err := project.LoadMetadata(root)
 	if err != nil {
-		return Result{}, fmt.Errorf("validate apps: %w", err)
-	}
-	entities, err := catalog.New(apps, fieldtype.DefaultRegistry()).Validate()
-	if err != nil {
-		return Result{}, fmt.Errorf("validate entities: %w", err)
+		return Result{}, err
 	}
 
-	app, ok := findApp(apps, appName)
+	app, ok := findApp(metadata.Apps, appName)
 	if !ok {
 		return Result{}, fmt.Errorf("app %q not found", appName)
 	}
 	if !isProjectOwnedApp(root, app.Dir) {
 		return Result{}, fmt.Errorf("app %q is not a project-owned app under apps/", appName)
 	}
-	if !hasEntity(entities, appName, entityName) {
+	if !hasEntity(metadata.Entities, appName, entityName) {
 		return Result{}, fmt.Errorf("entity %q not found in app %q", entityName, appName)
 	}
 
@@ -109,11 +103,11 @@ func Generate(root string, appName string, entityName string) (Result, error) {
 		return Result{}, err
 	}
 
-	registerEntities, err := registerEntitiesForApp(hooksDir, appName, entityName, entities)
+	registerEntities, err := registerEntitiesForApp(hooksDir, appName, entityName, metadata.Entities)
 	if err != nil {
 		return Result{}, err
 	}
-	hookApps, err := collectHookApps(root, modulePath, apps, appName)
+	hookApps, err := collectHookApps(root, modulePath, metadata.Apps, appName)
 	if err != nil {
 		return Result{}, err
 	}
@@ -176,9 +170,9 @@ func RenderRunner(root string) (RunnerUpdate, error) {
 	if err != nil {
 		return RunnerUpdate{}, err
 	}
-	apps, err := appregistry.New(root).Validate()
+	apps, err := project.LoadApps(root)
 	if err != nil {
-		return RunnerUpdate{}, fmt.Errorf("validate apps: %w", err)
+		return RunnerUpdate{}, err
 	}
 
 	runnerFile := filepath.Join(root, "cmd", "dygo", "main.go")

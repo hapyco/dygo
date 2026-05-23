@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/dygo-dev/dygo/internal/app/manifest"
+	"github.com/dygo-dev/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
 
@@ -24,16 +25,6 @@ const (
 	PhasePreSync  = "pre-sync"
 	PhasePostSync = "post-sync"
 )
-
-var operationTypes = map[string]struct{}{
-	"rename-field":      {},
-	"rename-entity":     {},
-	"copy-field":        {},
-	"backfill-field":    {},
-	"drop-field":        {},
-	"change-field-type": {},
-	"sql":               {},
-}
 
 // Patch is one v1 patch document.
 type Patch struct {
@@ -145,10 +136,12 @@ func Decode(data []byte) (Patch, error) {
 		return Patch{}, err
 	}
 
-	if err := rejectDuplicateKeysNode(&root, "$"); err != nil {
+	if err := yamlmeta.RejectDuplicateKeys(&root, func(duplicate yamlmeta.DuplicateKey) error {
+		return fmt.Errorf("duplicate patch key %q at %s line %d, previously defined at line %d", duplicate.Key, strings.TrimSuffix(duplicate.Location, "."+duplicate.Key), duplicate.Line, duplicate.PreviousLine)
+	}); err != nil {
 		return Patch{}, err
 	}
-	document := documentMapping(&root)
+	document := yamlmeta.DocumentMapping(&root)
 	if document == nil {
 		return Patch{}, fmt.Errorf("patch document must be a mapping")
 	}
@@ -266,7 +259,7 @@ func decodeOperations(node *yaml.Node) ([]Operation, error) {
 		if strings.TrimSpace(operation.Type) == "" {
 			return nil, fmt.Errorf("patch operation at index %d type is required", index)
 		}
-		if _, ok := operationTypes[operation.Type]; !ok {
+		if _, ok := OperationSpecFor(operation.Type); !ok {
 			return nil, fmt.Errorf("patch operation at index %d has unknown type %q", index, operation.Type)
 		}
 		operations = append(operations, operation)
@@ -382,20 +375,6 @@ func isPatchFilename(name string) bool {
 	return ext == ".yml" || ext == ".yaml"
 }
 
-func documentMapping(root *yaml.Node) *yaml.Node {
-	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
-		return valueMapping(root.Content[0])
-	}
-	return valueMapping(root)
-}
-
-func valueMapping(node *yaml.Node) *yaml.Node {
-	if node.Kind == yaml.MappingNode {
-		return node
-	}
-	return nil
-}
-
 func scalarString(node *yaml.Node, name string) (string, error) {
 	if node.Kind != yaml.ScalarNode {
 		return "", fmt.Errorf("patch %s must be a scalar string at line %d", name, node.Line)
@@ -412,37 +391,6 @@ func scalarInt(node *yaml.Node, name string) (int, error) {
 		return 0, fmt.Errorf("decode patch %s: %w", name, err)
 	}
 	return value, nil
-}
-
-func rejectDuplicateKeysNode(node *yaml.Node, location string) error {
-	if node == nil {
-		return nil
-	}
-	switch node.Kind {
-	case yaml.DocumentNode, yaml.SequenceNode:
-		for index, child := range node.Content {
-			if err := rejectDuplicateKeysNode(child, fmt.Sprintf("%s[%d]", location, index)); err != nil {
-				return err
-			}
-		}
-	case yaml.MappingNode:
-		seen := map[string]int{}
-		for i := 0; i < len(node.Content); i += 2 {
-			key := node.Content[i]
-			value := node.Content[i+1]
-			if key.Kind != yaml.ScalarNode {
-				return fmt.Errorf("patch mapping key must be scalar at %s line %d", location, key.Line)
-			}
-			if previous, ok := seen[key.Value]; ok {
-				return fmt.Errorf("duplicate patch key %q at %s line %d, previously defined at line %d", key.Value, location, key.Line, previous)
-			}
-			seen[key.Value] = key.Line
-			if err := rejectDuplicateKeysNode(value, location+"."+key.Value); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func isEmptyDocument(node yaml.Node) bool {

@@ -70,15 +70,15 @@ Entity identity comes from the file path. The YAML file must not contain top-lev
 
 The simple form `entities/<entity>.yml` defines Entity `<entity>`. The folder form `entities/<entity>/<entity>.yml` defines the same parent Entity. Both forms are equivalent, but an app cannot define both for the same Entity.
 
-Entity names, field names, and field type names use kebab-case.
+Entity keys, field names, and field type names use kebab-case.
 
 `label` and at least one field are required.
 
-dygo uses singular Entity names only. There is no separate required metadata for display plurals or storage plurals.
+dygo uses singular Entity keys only. There is no separate required metadata for display plurals or storage plurals.
 
 `icon` is optional and should use a Lucide icon name, such as `box`, `user`, or `shield-check`. Studio resolves lower-kebab Lucide names and Vue component keys. Unknown icon names are non-fatal; Studio falls back to the Lucide `box` icon.
 
-`is-single: true` marks an Entity as a singleton settings/config surface. Single Entities have exactly one framework-owned Record whose system `name` is the Entity name. dygo seeds that Record during metadata sync, Studio opens the form directly instead of a list, and normal create/delete/list operations are not used.
+`is-single: true` marks an Entity as a singleton settings/config surface. Single Entities have exactly one framework-owned Record whose system `name` is the Entity key. dygo seeds that Record during metadata sync, Studio opens the form directly instead of a list, and normal create/delete/list operations are not used.
 
 Single Entities cannot define explicit `naming`; dygo owns the singleton Record name. Every required stored field on a Single Entity must define a non-null default so `dygo migrate` can seed the row deterministically.
 
@@ -95,9 +95,9 @@ fields:
     default: 30
 ```
 
-The stable internal Entity identity is `{app, entity}`. Two apps may define the same Entity name, such as `crm/contact` and `support/contact`.
+The stable internal Entity identity is `{app, key}`. Two apps may define the same Entity key, such as `crm/contact` and `support/contact`.
 
-The user-facing route slug is separate from that internal identity. `route.slug` is optional and defaults to Entity `name`. Route slugs must be globally unique across loaded apps and must not use Studio's reserved root slugs: `api`, `assets`, `health`, `login`, or `logout`. dygo fails validation on route slug conflicts instead of generating unstable numeric suffixes. If two apps both define `contact`, set one explicit slug, such as:
+The user-facing route slug is separate from that internal identity. `route.slug` is optional and defaults to the Entity key. Route slugs must be globally unique across loaded apps and must not use Studio's reserved root slugs: `api`, `assets`, `health`, `login`, or `logout`. dygo fails validation on route slug conflicts instead of generating unstable numeric suffixes. If two apps both define `contact`, set one explicit slug, such as:
 
 ```yaml
 route:
@@ -130,7 +130,7 @@ fields:
       entity: invoice-item
 ```
 
-Collection row Entities do not use `kind: collection`. Folder location implies collection ownership, and the filename still defines the Entity name. dygo does not automatically prefix collection Entity names.
+Collection row Entities do not use `kind: collection`. Folder location implies collection ownership, and the filename still defines the Entity key. dygo does not automatically prefix collection Entity keys.
 
 A collection Entity must be referenced by exactly one collection field in its parent Entity file. If a collection file exists but the parent does not reference it, validation fails. If more than one parent field references it, validation fails.
 
@@ -245,7 +245,7 @@ constraints:
 
 Unique constraints require at least two fields. Single-field uniqueness should stay on the Field with `unique: true`.
 
-Index and constraint names are optional. If omitted, dygo derives deterministic names from the Entity name, type, and fields. Provided names must use kebab-case and are converted to snake_case for PostgreSQL.
+Index and constraint names are optional. If omitted, dygo derives deterministic names from the Entity key, type, and fields. Provided names must use kebab-case and are converted to snake_case for PostgreSQL.
 
 Supported field check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, and `not-in`. Field checks must use structured metadata, not raw SQL.
 
@@ -257,7 +257,7 @@ Type-specific settings live under `options`.
 
 `select` fields require non-empty `options.values`.
 
-`link` and `collection` fields require `options.entity`. For `link`, `options.app` is optional. When omitted, dygo resolves the target in the current app first; otherwise the target Entity name must be globally unambiguous. Set `options.app` for cross-app links or ambiguous target names:
+`link` and `collection` fields require `options.entity`. For `link`, `options.app` is optional. When omitted, dygo resolves the target key in the current app first; otherwise the target Entity key must be globally unambiguous. Set `options.app` for cross-app links or ambiguous target keys:
 
 ```yaml
 options:
@@ -306,7 +306,7 @@ entities
 
 dygo loads root `*.yml` files and one-level Entity folders. Missing `entities` directories are allowed for apps that do not define Entities yet.
 
-Entity identities are unique per app. Two different apps may use the same Entity name when their route slugs are unique.
+Entity identities are unique per app. Two different apps may use the same Entity key when their route slugs are unique.
 
 Moving a file without changing its basename does not move data because Entity identity is unchanged. Renaming a file changes Entity identity and requires explicit patch or migration handling.
 
@@ -325,4 +325,4 @@ Both commands discover the dygo project root before loading apps, so they can be
 
 `link` targets use `{app, entity}` identity when `options.app` is set. Without `options.app`, dygo resolves same-app targets first, then a single globally unambiguous target. If no Entity matches or multiple external apps match, validation fails. `collection` targets must resolve to a same-app collection Entity owned by the current Entity folder.
 
-Validation errors include the app name, Entity name, field name when relevant, file path, and a best-effort YAML line number.
+Validation errors include the app name, Entity key, field name when relevant, file path, and a best-effort YAML line number.

@@ -17,6 +17,7 @@ import (
 	"github.com/dygo-dev/dygo/internal/auth"
 	"github.com/dygo-dev/dygo/internal/db"
 	"github.com/dygo-dev/dygo/internal/permissions"
+	"github.com/dygo-dev/dygo/internal/recordquery"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -139,7 +140,9 @@ func Serve(ctx context.Context, options Options) error {
 			return fmt.Errorf("open runtime database: %w", err)
 		}
 		defer pool.Close()
-		options.Auth = auth.NewService(pool)
+		authService := auth.NewService(pool)
+		authService.SessionWriter = db.NewAuthSessionWriter(pool)
+		options.Auth = authService
 		options.Metadata = db.NewMetadataReader(pool)
 		if options.RecordHooks != nil {
 			options.Records = db.NewRecordStoreWithHooks(pool, options.RecordHooks)
@@ -392,10 +395,7 @@ func isHTTPS(r *http.Request) bool {
 func writeAuthError(w http.ResponseWriter, err error) {
 	var authErr auth.Error
 	if !errors.As(err, &authErr) {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope{Error: apiError{
-			Code:    "internal_error",
-			Message: "auth request failed",
-		}})
+		writeErrorEnvelope(w, http.StatusInternalServerError, "internal_error", "auth request failed", nil)
 		return
 	}
 	status := http.StatusInternalServerError
@@ -415,11 +415,7 @@ func writeAuthError(w http.ResponseWriter, err error) {
 		message = "auth request failed"
 		details = nil
 	}
-	writeJSON(w, status, errorEnvelope{Error: apiError{
-		Code:    authErr.Code,
-		Message: message,
-		Details: details,
-	}})
+	writeErrorEnvelope(w, status, authErr.Code, message, details)
 }
 
 type dataEnvelope struct {
@@ -446,6 +442,14 @@ type apiError struct {
 	Code    string         `json:"code"`
 	Message string         `json:"message"`
 	Details map[string]any `json:"details,omitempty"`
+}
+
+func writeErrorEnvelope(w http.ResponseWriter, status int, code string, message string, details map[string]any) {
+	writeJSON(w, status, errorEnvelope{Error: apiError{
+		Code:    code,
+		Message: message,
+		Details: details,
+	}})
 }
 
 type metadataHandler struct {
@@ -662,17 +666,10 @@ func writeAPIError(w http.ResponseWriter, err error, detailKey string, detailVal
 		if detailKey != "" {
 			details[detailKey] = detailValue
 		}
-		writeJSON(w, http.StatusNotFound, errorEnvelope{Error: apiError{
-			Code:    "not_found",
-			Message: detailKey + " not found",
-			Details: details,
-		}})
+		writeErrorEnvelope(w, http.StatusNotFound, "not_found", detailKey+" not found", details)
 		return
 	}
-	writeJSON(w, http.StatusInternalServerError, errorEnvelope{Error: apiError{
-		Code:    "internal_error",
-		Message: "metadata query failed",
-	}})
+	writeErrorEnvelope(w, http.StatusInternalServerError, "internal_error", "metadata query failed", nil)
 }
 
 type recordHandler struct {
@@ -888,7 +885,7 @@ func (h recordHandler) listRecordActivity(w http.ResponseWriter, r *http.Request
 	if h.requireActivityStore(w) {
 		return
 	}
-	params, err := recordPaginationParams(r)
+	params, err := recordActivityParams(r)
 	if err != nil {
 		writeRecordError(w, err)
 		return
@@ -961,87 +958,27 @@ func activityRequestContext(r *http.Request) context.Context {
 }
 
 func recordListParams(r *http.Request) (db.RecordListParams, error) {
-	params, err := recordPaginationParams(r)
+	params, err := recordquery.FromValues(r.URL.Query())
 	if err != nil {
-		return db.RecordListParams{}, err
-	}
-	values := r.URL.Query()
-	for name, rawValues := range values {
-		switch name {
-		case "limit", "offset":
-			continue
-		case "sort":
-			if len(rawValues) > 1 {
-				return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "sort must be provided once", Details: map[string]any{"sort": rawValues}}
-			}
-			sortTerms, err := recordSortParams(rawValues[0])
-			if err != nil {
-				return db.RecordListParams{}, err
-			}
-			params.Sort = sortTerms
-		default:
-			if len(rawValues) > 1 {
-				return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "filter field is duplicated", Details: map[string]any{"field": name}}
-			}
-			params.Filters = append(params.Filters, db.RecordFilter{Field: name, Value: rawValues[0]})
-		}
-	}
-	sortRecordFilters(params.Filters)
-	return params, nil
-}
-
-func recordPaginationParams(r *http.Request) (db.RecordListParams, error) {
-	params := db.RecordListParams{}
-	if value := strings.TrimSpace(r.URL.Query().Get("limit")); value != "" {
-		parsed, err := strconv.Atoi(value)
-		if err != nil {
-			return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "limit must be an integer", Details: map[string]any{"limit": value}, Err: err}
-		}
-		if parsed <= 0 {
-			return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "limit must be between 1 and 2500", Details: map[string]any{"limit": parsed}}
-		}
-		params.Limit = parsed
-	}
-	if value := strings.TrimSpace(r.URL.Query().Get("offset")); value != "" {
-		parsed, err := strconv.Atoi(value)
-		if err != nil {
-			return db.RecordListParams{}, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "offset must be an integer", Details: map[string]any{"offset": value}, Err: err}
-		}
-		params.Offset = parsed
+		return db.RecordListParams{}, recordQueryHTTPError(err)
 	}
 	return params, nil
 }
 
-func recordSortParams(raw string) ([]db.RecordSort, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "sort field is required", Details: map[string]any{"sort": raw}}
+func recordActivityParams(r *http.Request) (db.RecordListParams, error) {
+	params, err := recordquery.PaginationFromValues(r.URL.Query())
+	if err != nil {
+		return db.RecordListParams{}, recordQueryHTTPError(err)
 	}
-	parts := strings.Split(raw, ",")
-	sortTerms := make([]db.RecordSort, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" || part == "-" {
-			return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "sort field is required", Details: map[string]any{"sort": raw}}
-		}
-		desc := strings.HasPrefix(part, "-")
-		if desc {
-			part = strings.TrimSpace(strings.TrimPrefix(part, "-"))
-			if part == "" {
-				return nil, db.RecordError{Code: db.RecordErrorInvalidRequest, Message: "sort field is required", Details: map[string]any{"sort": raw}}
-			}
-		}
-		sortTerms = append(sortTerms, db.RecordSort{Field: part, Desc: desc})
-	}
-	return sortTerms, nil
+	return params, nil
 }
 
-func sortRecordFilters(filters []db.RecordFilter) {
-	for i := 1; i < len(filters); i++ {
-		for j := i; j > 0 && filters[j].Field < filters[j-1].Field; j-- {
-			filters[j], filters[j-1] = filters[j-1], filters[j]
-		}
+func recordQueryHTTPError(err error) error {
+	var queryErr recordquery.Error
+	if errors.As(err, &queryErr) {
+		return db.RecordError{Code: db.RecordErrorInvalidRequest, Message: queryErr.Message, Details: queryErr.Details, Err: queryErr.Err}
 	}
+	return db.RecordError{Code: db.RecordErrorInvalidRequest, Message: err.Error(), Err: err}
 }
 
 func recordIDParam(entity string, raw string) (int64, error) {
@@ -1076,10 +1013,7 @@ func decodeRecordInput(r *http.Request) (db.RecordInput, error) {
 func writePermissionError(w http.ResponseWriter, err error) {
 	var permissionErr permissions.Error
 	if !errors.As(err, &permissionErr) {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope{Error: apiError{
-			Code:    "internal_error",
-			Message: "permission check failed",
-		}})
+		writeErrorEnvelope(w, http.StatusInternalServerError, "internal_error", "permission check failed", nil)
 		return
 	}
 	status := http.StatusInternalServerError
@@ -1098,20 +1032,13 @@ func writePermissionError(w http.ResponseWriter, err error) {
 		message = "permission check failed"
 		details = nil
 	}
-	writeJSON(w, status, errorEnvelope{Error: apiError{
-		Code:    code,
-		Message: message,
-		Details: details,
-	}})
+	writeErrorEnvelope(w, status, code, message, details)
 }
 
 func writeRecordError(w http.ResponseWriter, err error) {
 	var recordErr db.RecordError
 	if !errors.As(err, &recordErr) {
-		writeJSON(w, http.StatusInternalServerError, errorEnvelope{Error: apiError{
-			Code:    "internal_error",
-			Message: "record request failed",
-		}})
+		writeErrorEnvelope(w, http.StatusInternalServerError, "internal_error", "record request failed", nil)
 		return
 	}
 	status := http.StatusInternalServerError
@@ -1131,11 +1058,7 @@ func writeRecordError(w http.ResponseWriter, err error) {
 		message = "record request failed"
 		details = nil
 	}
-	writeJSON(w, status, errorEnvelope{Error: apiError{
-		Code:    recordErr.Code,
-		Message: message,
-		Details: details,
-	}})
+	writeErrorEnvelope(w, status, recordErr.Code, message, details)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

@@ -130,7 +130,7 @@ go run ./cmd/dygo migrate
 
 Before applying changes, dygo builds a schema plan from metadata and compares it with the live PostgreSQL `public` schema. The plan classifies safe operations separately from unsafe or unsupported drift.
 
-Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Each metadata-backed table has system `id`, `name`, `created_at`, and `updated_at` columns; the Record `name` column is generated from Entity `naming` metadata except for Single Entities, where it is fixed to the Entity name. Composite indexes and composite unique constraints come from top-level Entity metadata; single-field structured checks come from Field metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
+Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Each metadata-backed table has system `id`, `name`, `created_at`, and `updated_at` columns; the Record `name` column is generated from Entity `naming` metadata except for Single Entities, where it is fixed to the Entity key. Composite indexes and composite unique constraints come from top-level Entity metadata; single-field structured checks come from Field metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
 
 Existing early-development databases created before system Record names may report a missing `name` system column. That is treated as unsupported drift because dygo cannot safely invent stable names for existing rows without an explicit patch or reset.
 
@@ -159,7 +159,7 @@ There is no SQL migration file path or `migrations` table in this model. dygo co
 
 ## Schema Prune
 
-`dygo schema prune` is the explicit destructive cleanup command. It removes database objects that are present in PostgreSQL but no longer represented by loaded Entity metadata.
+`dygo schema prune` is the explicit destructive cleanup command for dygo-owned schema drift. Unknown public-schema objects are blockers, not automatic drop candidates.
 
 Preview the prune plan:
 
@@ -177,9 +177,9 @@ go run ./cmd/dygo schema prune --confirm development/dygo
 
 Preview mode is the default and exits after printing the destructive plan. `--confirm <environment>/<database-name>` applies the plan in one transaction and updates `db/schema.sql` only after a successful prune.
 
-Prune can drop extra constraints, extra non-constraint indexes, extra columns, and extra tables. It skips primary keys, not-null constraints, system columns, and indexes that back constraints. Generated SQL uses quoted identifiers and does not use `CASCADE`; hidden dependencies should fail instead of widening the blast radius.
+Prune can drop extra tables, constraints, non-constraint indexes, and columns only when the inspected live object is known to be dygo-owned. It skips primary keys, not-null constraints, system columns, indexes that back constraints, and objects with unknown ownership. Generated SQL uses quoted identifiers and does not use `CASCADE`; hidden dependencies should fail instead of widening the blast radius.
 
-Prune still refuses non-prunable blockers such as type drift, required drift, unsupported storage, missing system columns, and changed index or constraint definitions. Use app-owned patches for renames, backfills, type changes, and other unsafe transitions that need intent.
+Prune still refuses non-prunable blockers such as unknown tables, unknown extra columns/indexes/constraints, type drift, required drift, unsupported storage, missing system columns, and changed index or constraint definitions. Use app-owned patches for renames, backfills, type changes, table removal, and other unsafe transitions that need intent.
 
 ## Schema Snapshot
 

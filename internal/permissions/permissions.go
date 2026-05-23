@@ -216,25 +216,6 @@ func normalizeRequest(request Request) (Request, string, error) {
 	return normalized, column, nil
 }
 
-func actionColumn(action Action) (string, bool) {
-	switch action {
-	case ActionRead:
-		return `"read"`, true
-	case ActionCreate:
-		return `"create"`, true
-	case ActionUpdate:
-		return `"update"`, true
-	case ActionDelete:
-		return `"delete"`, true
-	case ActionExport:
-		return `"export"`, true
-	case ActionPrint:
-		return `"print"`, true
-	default:
-		return "", false
-	}
-}
-
 func decisionDetails(request Request) map[string]any {
 	details := map[string]any{
 		"user-id": request.Actor.UserID,

@@ -7,6 +7,7 @@ import {
   type MetadataEntity,
   type MetadataEntityMeta,
 } from '@/features/metadata/metadata.api'
+import { findEntityByRouteSlug, metadataCacheSlugs } from './metadata.identity'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
 
 type LoadOptions = {
@@ -19,10 +20,10 @@ type MetadataState = {
   entitiesError: StoreError | null
   entitiesLoaded: boolean
   pendingEntities: Promise<MetadataEntity[]> | null
-  entityMetaByKey: Record<string, MetadataEntityMeta>
-  metaStatusByKey: Record<string, LoadStatus>
-  metaErrorByKey: Record<string, StoreError | null>
-  pendingMetaByKey: Record<string, Promise<MetadataEntityMeta | null> | undefined>
+  entityMetaBySlug: Record<string, MetadataEntityMeta>
+  metaStatusBySlug: Record<string, LoadStatus>
+  metaErrorBySlug: Record<string, StoreError | null>
+  pendingMetaBySlug: Record<string, Promise<MetadataEntityMeta | null> | undefined>
 }
 
 export const useMetadataStore = defineStore('metadata', {
@@ -32,27 +33,27 @@ export const useMetadataStore = defineStore('metadata', {
     entitiesError: null,
     entitiesLoaded: false,
     pendingEntities: null,
-    entityMetaByKey: {},
-    metaStatusByKey: {},
-    metaErrorByKey: {},
-    pendingMetaByKey: {},
+    entityMetaBySlug: {},
+    metaStatusBySlug: {},
+    metaErrorBySlug: {},
+    pendingMetaBySlug: {},
   }),
 
   getters: {
     entityByRouteSlug: (state) => (slug: string): MetadataEntity | undefined => (
-      state.entities.find((entity) => entity.slug === slug || entity.key === slug)
+      findEntityByRouteSlug(state.entities, slug)
     ),
 
     entityMeta: (state) => (entity: string): MetadataEntityMeta | null => (
-      state.entityMetaByKey[entity] ?? null
+      state.entityMetaBySlug[entity] ?? null
     ),
 
     entityMetaStatus: (state) => (entity: string): LoadStatus => (
-      state.metaStatusByKey[entity] ?? 'idle'
+      state.metaStatusBySlug[entity] ?? 'idle'
     ),
 
     entityMetaError: (state) => (entity: string): StoreError | null => (
-      state.metaErrorByKey[entity] ?? null
+      state.metaErrorBySlug[entity] ?? null
     ),
   },
 
@@ -93,17 +94,17 @@ export const useMetadataStore = defineStore('metadata', {
     },
 
     async loadEntityMeta(entity: string, options: LoadOptions = {}): Promise<MetadataEntityMeta | null> {
-      if (this.entityMetaByKey[entity] && !options.force) {
-        return this.entityMetaByKey[entity]
+      if (this.entityMetaBySlug[entity] && !options.force) {
+        return this.entityMetaBySlug[entity]
       }
 
-      const pending = this.pendingMetaByKey[entity]
+      const pending = this.pendingMetaBySlug[entity]
       if (pending && !options.force) {
         return pending
       }
 
-      this.metaStatusByKey[entity] = 'loading'
-      this.metaErrorByKey[entity] = null
+      this.metaStatusBySlug[entity] = 'loading'
+      this.metaErrorBySlug[entity] = null
 
       const request = getEntityMeta(entity)
         .then((meta) => {
@@ -112,25 +113,23 @@ export const useMetadataStore = defineStore('metadata', {
         })
         .catch((error: unknown) => {
           const normalized = storeError(error, 'Studio could not load entity metadata.')
-          this.metaErrorByKey[entity] = normalized
-          this.metaStatusByKey[entity] = error instanceof MetadataApiError ? statusForError(normalized) : 'error'
+          this.metaErrorBySlug[entity] = normalized
+          this.metaStatusBySlug[entity] = error instanceof MetadataApiError ? statusForError(normalized) : 'error'
           return null
         })
         .finally(() => {
-          this.pendingMetaByKey[entity] = undefined
+          this.pendingMetaBySlug[entity] = undefined
         })
 
-      this.pendingMetaByKey[entity] = request
+      this.pendingMetaBySlug[entity] = request
       return request
     },
 
-    setEntityMeta(meta: MetadataEntityMeta, requestedKey?: string) {
-      const keys = new Set([requestedKey, meta.name, meta.key, meta.slug].filter(Boolean) as string[])
-
-      keys.forEach((key) => {
-        this.entityMetaByKey[key] = meta
-        this.metaStatusByKey[key] = 'ready'
-        this.metaErrorByKey[key] = null
+    setEntityMeta(meta: MetadataEntityMeta, requestedSlug?: string) {
+      metadataCacheSlugs(meta, requestedSlug).forEach((slug) => {
+        this.entityMetaBySlug[slug] = meta
+        this.metaStatusBySlug[slug] = 'ready'
+        this.metaErrorBySlug[slug] = null
       })
     },
   },

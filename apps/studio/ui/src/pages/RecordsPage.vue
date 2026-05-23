@@ -101,6 +101,7 @@ function humanizeEntity(value: string): string {
       :entity="props.entity"
       :entity-label="entityLabel"
       :fields="entityMeta?.fields ?? []"
+      :system-fields="entityMeta?.['system-fields'] ?? []"
       @create-record="openNewRecord"
       @open-record="openRecord"
     />

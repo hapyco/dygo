@@ -1,3 +1,5 @@
+import { ApiClientError, apiRequest, type ApiErrorEnvelope, type DataEnvelope } from '@/features/api/client'
+
 export type MetadataAppRef = {
   name: string
   label: string
@@ -22,6 +24,15 @@ export type MetadataField = {
   required: boolean
   unique: boolean
   index: boolean
+  stored: boolean
+  'write-only': boolean
+  listable: boolean
+  'name-renderable': boolean
+  'value-kind': string
+  studio: {
+    editor: string
+    display: string
+  }
   default?: unknown
   check?: unknown
   position: number
@@ -30,69 +41,39 @@ export type MetadataField = {
 
 export type MetadataEntityMeta = MetadataEntity & {
   fields: MetadataField[]
+  'system-fields': MetadataField[]
   indexes: unknown[]
   constraints: unknown[]
 }
 
-type ApiErrorEnvelope = {
-  error?: {
-    code?: string
-    message?: string
-    details?: Record<string, unknown>
-  }
-}
-
-type DataEnvelope<T> = {
-  data: T
-}
-
-export class MetadataApiError extends Error {
-  readonly code: string
-  readonly details?: Record<string, unknown>
-
+export class MetadataApiError extends ApiClientError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
-    super(message)
-    this.name = 'MetadataApiError'
-    this.code = code
-    this.details = details
+    super('MetadataApiError', code, message, details)
   }
 }
 
 export async function listEntities(): Promise<MetadataEntity[]> {
-  const response = await fetch('/api/v1/entities', {
+  const payload = await apiRequest<DataEnvelope<MetadataEntity[]>, MetadataApiError>('/api/v1/entities', {
     method: 'GET',
-    credentials: 'include',
-  })
-
-  const payload = await parseJSON<DataEnvelope<MetadataEntity[]> & ApiErrorEnvelope>(response)
-
-  if (!response.ok) {
-    throw new MetadataApiError(payload.error?.code ?? 'metadata_failed', metadataErrorMessage(payload), payload.error?.details)
-  }
+  }, metadataRequestOptions())
 
   return payload.data
 }
 
 export async function getEntityMeta(entity: string): Promise<MetadataEntityMeta> {
-  const response = await fetch(`/api/v1/entities/${encodeURIComponent(entity)}/meta`, {
+  const payload = await apiRequest<DataEnvelope<MetadataEntityMeta>, MetadataApiError>(`/api/v1/entities/${encodeURIComponent(entity)}/meta`, {
     method: 'GET',
-    credentials: 'include',
-  })
-
-  const payload = await parseJSON<DataEnvelope<MetadataEntityMeta> & ApiErrorEnvelope>(response)
-
-  if (!response.ok) {
-    throw new MetadataApiError(payload.error?.code ?? 'metadata_failed', metadataErrorMessage(payload), payload.error?.details)
-  }
+  }, metadataRequestOptions())
 
   return payload.data
 }
 
-async function parseJSON<T>(response: Response): Promise<T> {
-  try {
-    return (await response.json()) as T
-  } catch {
-    throw new MetadataApiError('invalid_response', 'Studio could not read the metadata response.')
+function metadataRequestOptions() {
+  return {
+    error: MetadataApiError,
+    fallbackCode: 'metadata_failed',
+    invalidResponseMessage: 'Studio could not read the metadata response.',
+    message: metadataErrorMessage,
   }
 }
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dygo-dev/dygo/internal/entity/catalog"
+	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
 	"github.com/dygo-dev/dygo/internal/entity/schema"
 	"gopkg.in/yaml.v3"
 )
@@ -517,7 +518,7 @@ func singleEntityNameConstraint(table string, entity catalog.LoadedEntity) desir
 		Name:                        constraintName(table, "single", "check"),
 		Type:                        "check",
 		Columns:                     []string{"name"},
-		Definition:                  fmt.Sprintf("CHECK (%s = %s)", quoteIdent("name"), quoteLiteral(entity.Entity.Name)),
+		Definition:                  fmt.Sprintf("CHECK (%s = %s)", quoteIdent("name"), quoteLiteral(SingleRecordName(entity.Entity.Name))),
 		Source:                      entitySource(entity),
 		UnsafeWhenMissingOnNonEmpty: true,
 		MissingOnNonEmptyKind:       "single-entity-conversion",
@@ -753,7 +754,7 @@ func createTableSQL(table string) string {
 	%s text NOT NULL,
 	%s timestamptz NOT NULL DEFAULT now(),
 	%s timestamptz NOT NULL DEFAULT now()
-)`, quoteIdent(table), quoteIdent("id"), quoteIdent("name"), quoteIdent("created_at"), quoteIdent("updated_at"))
+)`, quoteIdent(table), quoteIdent(systemColumnID), quoteIdent(systemColumnName), quoteIdent(systemColumnCreatedAt), quoteIdent(systemColumnUpdatedAt))
 }
 
 func tableName(entity catalog.LoadedEntity) (string, error) {
@@ -770,50 +771,23 @@ func entityTableName(appName string, entityName string) string {
 	return storageName(appName + "-" + entityName)
 }
 
-func columnForField(field schema.Field) (string, error) {
-	if field.Type == "collection" {
+func columnType(owner catalog.LoadedEntity, field schema.Field, targets schemaTargetIndex) (string, error) {
+	definition, ok := fieldtype.DefaultDefinition(field.Type)
+	if !ok {
+		return "", fmt.Errorf("unsupported field type %q", field.Type)
+	}
+	if !definition.Behavior.Stored {
 		return "", fmt.Errorf("collection storage is not supported by metadata schema sync yet")
 	}
-	name := strings.ReplaceAll(field.Name, "-", "_")
-	switch field.Type {
-	case "link":
-		name += "_id"
-	case "password":
-		name += "_hash"
-	}
-	return name, nil
-}
-
-func columnType(owner catalog.LoadedEntity, field schema.Field, targets schemaTargetIndex) (string, error) {
-	switch field.Type {
-	case "text", "email", "phone", "password", "long-text", "select", "attachment":
-		return "text", nil
-	case "int":
-		return "integer", nil
-	case "bigint":
-		return "bigint", nil
-	case "decimal", "currency":
-		return "numeric", nil
-	case "boolean":
-		return "boolean", nil
-	case "date":
-		return "date", nil
-	case "datetime":
-		return "timestamptz", nil
-	case "time":
-		return "time", nil
-	case "json":
-		return "jsonb", nil
-	case "link":
+	if field.Type == "link" {
 		if _, err := targets.resolve(owner, field.Options.App, field.Options.Entity); err != nil {
 			return "", err
 		}
-		return "bigint", nil
-	case "collection":
-		return "", fmt.Errorf("collection storage is not supported by metadata schema sync yet")
-	default:
+	}
+	if strings.TrimSpace(definition.Behavior.SQLType) == "" {
 		return "", fmt.Errorf("unsupported field type %q", field.Type)
 	}
+	return definition.Behavior.SQLType, nil
 }
 
 type schemaTargetIndex struct {
@@ -977,10 +951,6 @@ func columnsForMetadataFields(fields []string, fieldColumns map[string]string) (
 
 func constraintName(table string, column string, suffix string) string {
 	return table + "_" + column + "_" + suffix
-}
-
-func storageName(value string) string {
-	return strings.ReplaceAll(value, "-", "_")
 }
 
 func quoteIdent(value string) string {

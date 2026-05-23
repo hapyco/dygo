@@ -2,9 +2,11 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +100,9 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	if len(meta.Fields) != 2 || meta.Fields[0].Name != "email" || string(meta.Fields[0].Options) != `{"entity":"user"}` {
 		t.Fatalf("GetEntityMeta() fields = %+v, want ordered fields", meta.Fields)
 	}
+	if len(meta.SystemFields) != 4 || meta.SystemFields[1].Name != "name" || !meta.SystemFields[1].NameRenderable {
+		t.Fatalf("GetEntityMeta() system fields = %+v, want framework system field metadata", meta.SystemFields)
+	}
 	if string(meta.Fields[1].Default) != "true" {
 		t.Fatalf("enabled default = %q, want true", string(meta.Fields[1].Default))
 	}
@@ -137,6 +142,105 @@ func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
 	if !reflect.DeepEqual(queryer.rowArgs[0], []any{"crm", "lead"}) {
 		t.Fatalf("GetEntityMetaByIdentity() args = %#v, want app/entity", queryer.rowArgs[0])
 	}
+}
+
+func TestMetadataAPIJSONFieldNames(t *testing.T) {
+	meta := MetadataEntityMeta{
+		MetadataEntity: MetadataEntity{
+			Name:         "core.user",
+			Key:          "user",
+			Slug:         "user",
+			Label:        "User",
+			Description:  "User identity",
+			Icon:         "user",
+			IsSingle:     false,
+			IsCollection: false,
+			Naming:       json.RawMessage(`{"strategy":"field","field":"email"}`),
+			App:          MetadataAppRef{Name: "core", Label: "Core"},
+		},
+		Fields: []MetadataField{{
+			Name:           "email",
+			Label:          "Email",
+			Type:           "email",
+			Required:       true,
+			Unique:         true,
+			Index:          true,
+			Stored:         true,
+			WriteOnly:      false,
+			Listable:       true,
+			NameRenderable: true,
+			ValueKind:      "string",
+			Studio:         MetadataFieldStudio{Editor: "text", Display: "email"},
+			Default:        json.RawMessage(`"admin@example.com"`),
+			Check:          json.RawMessage(`{"operator":"neq","value":""}`),
+			Position:       1,
+			Options:        json.RawMessage(`{"values":["admin@example.com"]}`),
+		}},
+		SystemFields: metadataSystemFields(),
+		Indexes: []MetadataIndex{{
+			Name:     "by-email",
+			Fields:   json.RawMessage(`["email"]`),
+			Position: 1,
+		}},
+		Constraints: []MetadataConstraint{{
+			Name:     "user_email_key",
+			Type:     "unique",
+			Fields:   json.RawMessage(`["email"]`),
+			Position: 1,
+		}},
+	}
+
+	encoded, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("Marshal(MetadataEntityMeta) error = %v, want nil", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatalf("Unmarshal(metadata json) error = %v, want nil", err)
+	}
+
+	assertJSONKeys(t, payload, []string{
+		"app",
+		"constraints",
+		"description",
+		"fields",
+		"icon",
+		"indexes",
+		"is-collection",
+		"is-single",
+		"key",
+		"label",
+		"name",
+		"naming",
+		"slug",
+		"system-fields",
+	})
+	for _, legacy := range []string{"route-slug", "route_slug", "is_single", "is_collection"} {
+		if _, ok := payload[legacy]; ok {
+			t.Fatalf("metadata payload has legacy key %q: %s", legacy, encoded)
+		}
+	}
+
+	fields := payload["fields"].([]any)
+	field := fields[0].(map[string]any)
+	assertJSONKeys(t, field, []string{
+		"check",
+		"default",
+		"index",
+		"label",
+		"listable",
+		"name",
+		"name-renderable",
+		"options",
+		"position",
+		"required",
+		"stored",
+		"studio",
+		"type",
+		"unique",
+		"value-kind",
+		"write-only",
+	})
 }
 
 func TestMetadataReaderNotFound(t *testing.T) {
@@ -323,4 +427,16 @@ func assignScanValues(values []any, dest []any) error {
 		}
 	}
 	return nil
+}
+
+func assertJSONKeys(t *testing.T, payload map[string]any, want []string) {
+	t.Helper()
+	got := make([]string, 0, len(payload))
+	for key := range payload {
+		got = append(got, key)
+	}
+	sort.Strings(got)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("JSON keys = %#v, want %#v", got, want)
+	}
 }

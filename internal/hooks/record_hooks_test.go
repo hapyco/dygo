@@ -5,18 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"os"
-	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/dygo-dev/dygo/internal/db"
+	"github.com/dygo-dev/dygo/internal/hookevents"
 	"github.com/dygo-dev/dygo/pkg/sdk"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -69,94 +64,28 @@ func TestNewRecordHookRegistryAppliesRegistrarsInOrder(t *testing.T) {
 
 func TestRecordHookEventMapsAllSDKEvents(t *testing.T) {
 	t.Parallel()
-	sdkEvents := sdkRecordHookEventConstants(t)
-
-	tests := []struct {
-		name      string
-		constName string
-		sdk       sdk.RecordHookEvent
-		db        db.RecordHookEvent
-	}{
-		{name: "before validate", constName: "RecordBeforeValidate", sdk: sdk.RecordBeforeValidate, db: db.RecordBeforeValidate},
-		{name: "validate", constName: "RecordValidate", sdk: sdk.RecordValidate, db: db.RecordValidate},
-		{name: "before create", constName: "RecordBeforeCreate", sdk: sdk.RecordBeforeCreate, db: db.RecordBeforeCreate},
-		{name: "after create", constName: "RecordAfterCreate", sdk: sdk.RecordAfterCreate, db: db.RecordAfterCreate},
-		{name: "before update", constName: "RecordBeforeUpdate", sdk: sdk.RecordBeforeUpdate, db: db.RecordBeforeUpdate},
-		{name: "after update", constName: "RecordAfterUpdate", sdk: sdk.RecordAfterUpdate, db: db.RecordAfterUpdate},
-		{name: "before delete", constName: "RecordBeforeDelete", sdk: sdk.RecordBeforeDelete, db: db.RecordBeforeDelete},
-		{name: "after delete", constName: "RecordAfterDelete", sdk: sdk.RecordAfterDelete, db: db.RecordAfterDelete},
+	sdkEvents := sdk.SupportedRecordHookEvents()
+	specs := hookevents.Specs()
+	if len(sdkEvents) != len(specs) {
+		t.Fatalf("SDK events = %#v, specs = %#v; want matching counts", sdkEvents, specs)
 	}
-	if len(tests) != len(sdkEvents) {
-		t.Fatalf("record hook mapping tests cover %d SDK events, SDK defines %d: %#v", len(tests), len(sdkEvents), sdkEvents)
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for index, spec := range specs {
+		spec := spec
+		t.Run(spec.Name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := sdkEvents[tt.constName]; got != tt.sdk {
-				t.Fatalf("SDK %s = %q, want %q", tt.constName, got, tt.sdk)
+			if got := sdkEvents[index]; got != sdk.RecordHookEvent(spec.Name) {
+				t.Fatalf("SDK event %d = %q, want %q", index, got, spec.Name)
 			}
-			got, err := recordHookEvent(tt.sdk)
+			got, err := recordHookEvent(sdk.RecordHookEvent(spec.Name))
 			if err != nil {
-				t.Fatalf("recordHookEvent(%q) error = %v, want nil", tt.sdk, err)
+				t.Fatalf("recordHookEvent(%q) error = %v, want nil", spec.Name, err)
 			}
-			if got != tt.db {
-				t.Fatalf("recordHookEvent(%q) = %q, want %q", tt.sdk, got, tt.db)
+			if got != db.RecordHookEvent(spec.Name) {
+				t.Fatalf("recordHookEvent(%q) = %q, want %q", spec.Name, got, spec.Name)
 			}
 		})
 	}
-}
-
-func sdkRecordHookEventConstants(t *testing.T) map[string]sdk.RecordHookEvent {
-	t.Helper()
-
-	events := map[string]sdk.RecordHookEvent{}
-	fset := token.NewFileSet()
-	dir := filepath.Join("..", "..", "pkg", "sdk")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("read SDK package directory: %v", err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, entry.Name())
-		file, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			t.Fatalf("parse %s: %v", path, err)
-		}
-		ast.Inspect(file, func(node ast.Node) bool {
-			spec, ok := node.(*ast.ValueSpec)
-			if !ok || spec.Type == nil {
-				return true
-			}
-			ident, ok := spec.Type.(*ast.Ident)
-			if !ok || ident.Name != "RecordHookEvent" {
-				return true
-			}
-			for i, name := range spec.Names {
-				if i >= len(spec.Values) {
-					continue
-				}
-				lit, ok := spec.Values[i].(*ast.BasicLit)
-				if !ok || lit.Kind != token.STRING {
-					continue
-				}
-				value, err := strconv.Unquote(lit.Value)
-				if err != nil {
-					t.Fatalf("unquote %s: %v", lit.Value, err)
-				}
-				events[name.Name] = sdk.RecordHookEvent(value)
-			}
-			return true
-		})
-	}
-	if len(events) == 0 {
-		t.Fatal("no SDK RecordHookEvent constants found")
-	}
-	return events
 }
 
 func TestNewRecordHookRegistryRejectsUnsupportedSDKEvent(t *testing.T) {
@@ -397,16 +326,7 @@ func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
 }
 
 func allRecordHookEvents() []sdk.RecordHookEvent {
-	return []sdk.RecordHookEvent{
-		sdk.RecordBeforeValidate,
-		sdk.RecordValidate,
-		sdk.RecordBeforeCreate,
-		sdk.RecordAfterCreate,
-		sdk.RecordBeforeUpdate,
-		sdk.RecordAfterUpdate,
-		sdk.RecordBeforeDelete,
-		sdk.RecordAfterDelete,
-	}
+	return sdk.SupportedRecordHookEvents()
 }
 
 func TestNewRecordHookRegistryRejectsNilRegistrarAndHook(t *testing.T) {
@@ -504,6 +424,9 @@ func userRecordRow(email string, fullName string, enabled bool) []any {
 func (q *recordDataMutationQueryer) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
 	q.queries = append(q.queries, sql)
 	q.args = append(q.args, args)
+	if rows, ok := hookActivityMetadataRows(sql, args...); ok {
+		return rows, nil
+	}
 	if len(q.rows) == 0 {
 		return newRecordDataMutationRows(nil), nil
 	}
@@ -515,6 +438,9 @@ func (q *recordDataMutationQueryer) Query(_ context.Context, sql string, args ..
 func (q *recordDataMutationQueryer) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 	q.rowSQL = append(q.rowSQL, sql)
 	q.rowArgs = append(q.rowArgs, args)
+	if isHookActivityMetadataQuery(sql, args...) {
+		return newRecordDataMutationRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core")
+	}
 	if q.row == nil {
 		return recordDataMutationRow{err: pgx.ErrNoRows}
 	}
@@ -539,6 +465,36 @@ func (q *recordDataMutationQueryer) executedSQLContaining(fragment string) bool 
 		}
 	}
 	return false
+}
+
+func isHookActivityMetadataQuery(sql string, args ...any) bool {
+	return strings.Contains(sql, `WHERE a.name = $1 AND e.key = $2`) &&
+		len(args) == 2 &&
+		args[0] == "core" &&
+		args[1] == "activity"
+}
+
+func hookActivityMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
+	if len(args) != 1 || args[0] != int64(1) {
+		return nil, false
+	}
+	switch {
+	case strings.Contains(sql, `FROM "field"`):
+		return newRecordDataMutationRows([][]any{
+			{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record"]}`)},
+			{"operation", "Operation", "select", true, false, true, nil, nil, 2, []byte(`{"values":["create","update","delete"]}`)},
+			{"status", "Status", "select", true, false, true, nil, nil, 3, []byte(`{"values":["success"]}`)},
+			{"entity", "Entity", "link", false, false, true, nil, nil, 4, []byte(`{"entity":"entity"}`)},
+			{"record-id", "Record ID", "bigint", false, false, true, nil, nil, 5, nil},
+			{"title", "Title", "text", true, false, false, nil, nil, 6, nil},
+			{"changes", "Changes", "json", false, false, false, nil, nil, 7, nil},
+			{"snapshot", "Snapshot", "json", false, false, false, nil, nil, 8, nil},
+		}), true
+	case strings.Contains(sql, `FROM "index"`), strings.Contains(sql, `FROM "constraint"`):
+		return newRecordDataMutationRows(nil), true
+	default:
+		return nil, false
+	}
 }
 
 type recordDataMutationRow struct {

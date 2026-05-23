@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/dygo-dev/dygo/internal/db"
+	"github.com/dygo-dev/dygo/internal/hookevents"
 	"github.com/dygo-dev/dygo/pkg/sdk"
 )
 
@@ -51,40 +52,28 @@ func (r recordHookRegistry) RegisterEntity(appName string, entity string, event 
 			NewRecord:   sdk.Record(hookCtx.NewRecord),
 			Changes:     hookCtx.Changes,
 			Snapshot:    sdk.Record(hookCtx.Snapshot),
-			Records:     recordData{queryer: hookCtx.Queryer},
+			Records: recordData{
+				queryer:       hookCtx.Queryer,
+				mutationHooks: db.RecordMutationHooksFrameworkOnly,
+			},
 		})
 	})
 }
 
 func recordHookEvent(event sdk.RecordHookEvent) (db.RecordHookEvent, error) {
-	switch event {
-	case sdk.RecordBeforeValidate:
-		return db.RecordBeforeValidate, nil
-	case sdk.RecordValidate:
-		return db.RecordValidate, nil
-	case sdk.RecordBeforeCreate:
-		return db.RecordBeforeCreate, nil
-	case sdk.RecordAfterCreate:
-		return db.RecordAfterCreate, nil
-	case sdk.RecordBeforeUpdate:
-		return db.RecordBeforeUpdate, nil
-	case sdk.RecordAfterUpdate:
-		return db.RecordAfterUpdate, nil
-	case sdk.RecordBeforeDelete:
-		return db.RecordBeforeDelete, nil
-	case sdk.RecordAfterDelete:
-		return db.RecordAfterDelete, nil
-	default:
+	if !hookevents.Supported(string(event)) {
 		return "", fmt.Errorf("record hook event %q is not supported", event)
 	}
+	return db.RecordHookEvent(event), nil
 }
 
 type recordData struct {
-	queryer db.RecordQueryer
+	queryer       db.RecordQueryer
+	mutationHooks db.RecordMutationHookPolicy
 }
 
 func (d recordData) store() db.RecordStore {
-	return db.NewRecordStore(d.queryer)
+	return db.NewRecordStoreWithHookPolicy(d.queryer, d.mutationHooks)
 }
 
 func (d recordData) List(ctx context.Context, appName string, entity string, params sdk.RecordListParams) (sdk.RecordListResult, error) {

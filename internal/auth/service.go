@@ -12,8 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/entity/schema"
-	"github.com/dygo-dev/dygo/internal/naming"
+	"github.com/dygo-dev/dygo/internal/corevalues"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -34,10 +33,8 @@ const (
 )
 
 const (
-	defaultSessionTTL    = 7 * 24 * time.Hour
-	sessionTokenBytes    = 32
-	sessionStatusActive  = "active"
-	sessionStatusRevoked = "revoked"
+	defaultSessionTTL = 7 * 24 * time.Hour
+	sessionTokenBytes = 32
 )
 
 // Queryer is the database behavior needed by the auth service.
@@ -53,6 +50,8 @@ type Service struct {
 	Now            func() time.Time
 	TokenGenerator func() (string, error)
 	SessionTTL     time.Duration
+	SessionWriter  SessionWriter
+	AdminWriter    AdminWriter
 }
 
 // User is the current authenticated Core user.
@@ -78,6 +77,33 @@ type LoginResult struct {
 	User      User
 	Token     string
 	ExpiresAt time.Time
+}
+
+// SessionInput is one authenticated login session to persist.
+type SessionInput struct {
+	UserID      int64
+	TokenDigest string
+	Status      string
+	StartedAt   time.Time
+	ExpiresAt   time.Time
+	LastSeenAt  time.Time
+}
+
+// SessionWriter persists login sessions through the caller's framework mutation path.
+type SessionWriter interface {
+	CreateSession(context.Context, SessionInput) error
+}
+
+// AdminInput is the normalized first administrator account to persist.
+type AdminInput struct {
+	Email    string
+	FullName string
+	Password string
+}
+
+// AdminWriter persists the first administrator through the caller's framework mutation path.
+type AdminWriter interface {
+	SaveAdmin(context.Context, AdminInput) (User, error)
 }
 
 // SetupAdminInput contains first Administrator account details.
@@ -147,14 +173,16 @@ LIMIT 1`, email).Scan(&user.ID, &user.Email, &user.FullName, &user.Enabled, &use
 	if err != nil {
 		return LoginResult{}, authError(ErrorInternal, "generate session token failed", nil, err)
 	}
-	sessionName, err := naming.Random(schema.DefaultRandomNameLength)
-	if err != nil {
-		return LoginResult{}, authError(ErrorInternal, "generate session name failed", nil, err)
-	}
-	expiresAt := s.now().Add(s.ttl())
-	if _, err := s.queryer.Exec(ctx, `
-INSERT INTO "session" (name, user_id, token_digest, status, started_at, expires_at, last_seen_at)
-VALUES ($1, $2, $3, $4, now(), $5, now())`, sessionName, user.ID, SessionTokenDigest(token), sessionStatusActive, expiresAt); err != nil {
+	now := s.now()
+	expiresAt := now.Add(s.ttl())
+	if err := s.createSession(ctx, SessionInput{
+		UserID:      user.ID,
+		TokenDigest: SessionTokenDigest(token),
+		Status:      corevalues.SessionStatusActive,
+		StartedAt:   now,
+		ExpiresAt:   expiresAt,
+		LastSeenAt:  now,
+	}); err != nil {
 		return LoginResult{}, classifyAuthDBError("create session", err)
 	}
 
@@ -190,7 +218,7 @@ WHERE s.token_digest = $1
 	AND s.status = $2
 	AND (s.expires_at IS NULL OR s.expires_at > now())
 	AND COALESCE(u.enabled, false) = true
-LIMIT 1`, SessionTokenDigest(token), sessionStatusActive).Scan(&sessionID, &user.ID, &user.Email, &user.FullName, &user.Enabled, &user.Administrator)
+LIMIT 1`, SessionTokenDigest(token), corevalues.SessionStatusActive).Scan(&sessionID, &user.ID, &user.Email, &user.FullName, &user.Enabled, &user.Administrator)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, unauthenticated()
 	}
@@ -215,7 +243,7 @@ func (s Service) Logout(ctx context.Context, token string) error {
 	if _, err := s.queryer.Exec(ctx, `
 UPDATE "session"
 SET status = $2, updated_at = now()
-WHERE token_digest = $1 AND status = $3`, SessionTokenDigest(token), sessionStatusRevoked, sessionStatusActive); err != nil {
+WHERE token_digest = $1 AND status = $3`, SessionTokenDigest(token), corevalues.SessionStatusRevoked, corevalues.SessionStatusActive); err != nil {
 		return classifyAuthDBError("revoke session", err)
 	}
 	return nil
@@ -234,8 +262,7 @@ func (s Service) SetupAdmin(ctx context.Context, input SetupAdminInput) (User, e
 	if fullName == "" {
 		return User{}, authError(ErrorInvalidRequest, "full name is required", nil, nil)
 	}
-	passwordHash, err := HashPassword(input.Password)
-	if err != nil {
+	if err := ValidatePassword(input.Password); err != nil {
 		return User{}, authError(ErrorInvalidRequest, "password is invalid", nil, err)
 	}
 
@@ -246,18 +273,11 @@ func (s Service) SetupAdmin(ctx context.Context, input SetupAdminInput) (User, e
 	if adminExists {
 		return User{}, authError(ErrorAlreadyExists, "administrator account already exists", nil, nil)
 	}
-
-	var user User
-	if err := s.queryer.QueryRow(ctx, `
-INSERT INTO "user" (name, email, full_name, password_hash, enabled, administrator)
-VALUES ($1, $1, $2, $3, true, true)
-ON CONFLICT (email) DO UPDATE
-SET full_name = EXCLUDED.full_name,
-	password_hash = EXCLUDED.password_hash,
-	enabled = true,
-	administrator = true,
-	updated_at = now()
-RETURNING id, email, full_name, COALESCE(enabled, false), COALESCE(administrator, false)`, email, fullName, passwordHash).Scan(&user.ID, &user.Email, &user.FullName, &user.Enabled, &user.Administrator); err != nil {
+	if s.AdminWriter == nil {
+		return User{}, authError(ErrorInternal, "auth admin writer is required", nil, nil)
+	}
+	user, err := s.AdminWriter.SaveAdmin(ctx, AdminInput{Email: email, FullName: fullName, Password: input.Password})
+	if err != nil {
 		return User{}, classifyAuthDBError("save administrator account", err)
 	}
 	return user, nil
@@ -310,6 +330,13 @@ func (s Service) generateToken() (string, error) {
 		return s.TokenGenerator()
 	}
 	return GenerateSessionToken()
+}
+
+func (s Service) createSession(ctx context.Context, input SessionInput) error {
+	if s.SessionWriter == nil {
+		return authError(ErrorInternal, "auth session writer is required", nil, nil)
+	}
+	return s.SessionWriter.CreateSession(ctx, input)
 }
 
 func normalizeEmail(value string) (string, error) {

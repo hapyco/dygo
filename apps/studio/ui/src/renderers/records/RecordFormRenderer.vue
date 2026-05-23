@@ -12,6 +12,7 @@ import {
 } from '@/design'
 import type { MetadataField } from '@/features/metadata/metadata.api'
 import type { RecordData } from '@/features/records/records.api'
+import { isHiddenRecordFormField } from '@/features/records/system-fields'
 
 const props = withDefaults(defineProps<{
   entity: string
@@ -32,8 +33,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: RecordData]
 }>()
 
-const hiddenFields = new Set(['id', 'created-at', 'updated-at'])
-const visibleFields = computed(() => props.fields.filter((field) => !hiddenFields.has(field.name)))
+const visibleFields = computed(() => props.fields.filter((field) => !isHiddenRecordFormField(field.name)))
 
 function updateField(field: MetadataField, value: unknown) {
   emit('update:modelValue', {
@@ -76,40 +76,28 @@ function booleanValue(field: MetadataField): boolean {
 }
 
 function inputTypeForField(field: MetadataField): Exclude<TextInputType, 'password'> {
-  switch (field.type) {
+  switch (editorForField(field)) {
     case 'email':
       return 'email'
     case 'date':
       return 'date'
-    case 'int':
-    case 'bigint':
-    case 'decimal':
-    case 'currency':
-    case 'link':
+    case 'number':
       return 'number'
     default:
       return 'text'
   }
 }
 
+function editorForField(field: MetadataField): string {
+  return field.studio?.editor || field.type
+}
+
 function isTextField(field: MetadataField): boolean {
-  return [
-    'text',
-    'email',
-    'phone',
-    'int',
-    'bigint',
-    'decimal',
-    'currency',
-    'link',
-    'date',
-    'datetime',
-    'time',
-  ].includes(field.type)
+  return ['text', 'email', 'number', 'link', 'date', 'datetime', 'time'].includes(editorForField(field))
 }
 
 function isTextareaField(field: MetadataField): boolean {
-  return field.type === 'long-text' || field.type === 'json'
+  return editorForField(field) === 'textarea' || editorForField(field) === 'json'
 }
 
 function selectOptions(field: MetadataField): FieldOption[] {
@@ -133,7 +121,7 @@ function selectOptions(field: MetadataField): FieldOption[] {
   <form class="record-form-renderer" :aria-label="`${entityLabel} form`">
     <template v-for="field in visibleFields" :key="field.name">
       <PasswordField
-        v-if="field.type === 'password'"
+        v-if="editorForField(field) === 'password'"
         :id="fieldId(field)"
         :label="labelForField(field)"
         :model-value="textValue(field)"
@@ -148,7 +136,7 @@ function selectOptions(field: MetadataField): FieldOption[] {
       />
 
       <SwitchField
-        v-else-if="field.type === 'boolean'"
+        v-else-if="editorForField(field) === 'switch'"
         :id="fieldId(field)"
         :label="labelForField(field)"
         :model-value="booleanValue(field)"
@@ -161,7 +149,7 @@ function selectOptions(field: MetadataField): FieldOption[] {
       />
 
       <SelectField
-        v-else-if="field.type === 'select'"
+        v-else-if="editorForField(field) === 'select'"
         :id="fieldId(field)"
         :label="labelForField(field)"
         :model-value="textValue(field)"
@@ -185,7 +173,7 @@ function selectOptions(field: MetadataField): FieldOption[] {
         :disabled="disabled"
         :readonly="isReadonlyField(field)"
         :error="fieldErrors[field.name]"
-        :rows="field.type === 'json' ? 7 : 4"
+        :rows="editorForField(field) === 'json' ? 7 : 4"
         @update:model-value="updateField(field, $event)"
       />
 

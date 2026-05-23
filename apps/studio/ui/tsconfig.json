@@ -22,5 +22,6 @@
     }
   },
   "include": ["src/**/*.ts", "src/**/*.vue"],
+  "exclude": ["src/**/*.test.ts"],
   "references": []
 }

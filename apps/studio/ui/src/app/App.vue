@@ -30,7 +30,7 @@ const navItems = computed<ShellNavItem[]>(() => {
   return metadataStore.entities
     .filter((entity) => !entity['is-collection'])
     .map((entity) => {
-      const slug = entity.slug || entity.key
+      const slug = entity.slug
 
       return {
         label: entity.label || humanizeEntity(slug),
