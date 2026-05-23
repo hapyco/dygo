@@ -104,7 +104,7 @@ route:
   slug: support-contact
 ```
 
-Studio record pages use `/{route-slug}` at the root. The route does not prepend the app name unless the app author intentionally chooses that slug.
+Studio record pages use `/{slug}` at the root. The route does not prepend the app name unless the app author intentionally chooses that slug.
 
 When dygo needs a SQL table name from Entity metadata, Core tables keep their historical singular names, such as `user` and `entity`. Non-Core app tables are app-scoped by default, so `crm/lead` maps to `crm_lead` and `support/contact` maps to `support_contact`.
 
@@ -198,7 +198,15 @@ naming:
 
 Supported v1 series tokens are `{YY}`, `{YYYY}`, `{MM}`, and one counter token such as `{#####}`. The number of hashes controls zero-padding. Series counters are stored in Core `naming-series` Records and incremented transactionally.
 
-Updating a field used for `naming.strategy: field` does not rename an existing Record. Explicit Record rename is future work.
+Template naming renders required stored fields into a deterministic name. Link field tokens render the linked Record's system `name`:
+
+```yaml
+naming:
+  strategy: template
+  template: "{app}.{key}"
+```
+
+Updating a field used for `naming.strategy: field` or `naming.strategy: template` does not rename an existing Record. Explicit Record rename is future work.
 
 `index: true` creates a non-unique database index for field types that support indexing. It is useful for fields commonly used in filters, lookups, joins, or status screens.
 

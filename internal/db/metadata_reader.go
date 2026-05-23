@@ -38,7 +38,8 @@ type MetadataAppRef struct {
 type MetadataEntity struct {
 	ID           int64           `json:"-"`
 	Name         string          `json:"name"`
-	RouteSlug    string          `json:"route-slug"`
+	Key          string          `json:"key"`
+	Slug         string          `json:"slug"`
 	Label        string          `json:"label"`
 	Description  string          `json:"description"`
 	Icon         string          `json:"icon,omitempty"`
@@ -156,16 +157,16 @@ WHERE name = $1`, name).Scan(&app.Name, &app.Label, &app.Version, &app.Status)
 	return app, nil
 }
 
-// ListEntities returns all persisted Entities ordered by app and Entity name.
+// ListEntities returns all persisted Entities ordered by app and Entity key.
 func (r MetadataReader) ListEntities(ctx context.Context) ([]MetadataEntity, error) {
 	if err := r.requireQueryer(); err != nil {
 		return nil, err
 	}
 	rows, err := r.queryer.Query(ctx, `
-SELECT e.name, e.route_slug, e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
+SELECT e.name, e.key, e.slug, e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
-ORDER BY a.name, e.name`)
+ORDER BY a.name, e.key`)
 	if err != nil {
 		return nil, fmt.Errorf("query metadata entities: %w", err)
 	}
@@ -175,7 +176,7 @@ ORDER BY a.name, e.name`)
 	for rows.Next() {
 		var entity MetadataEntity
 		var naming []byte
-		if err := rows.Scan(&entity.Name, &entity.RouteSlug, &entity.Label, &entity.Description, &entity.Icon, &entity.IsSingle, &entity.IsCollection, &naming, &entity.App.Name, &entity.App.Label); err != nil {
+		if err := rows.Scan(&entity.Name, &entity.Key, &entity.Slug, &entity.Label, &entity.Description, &entity.Icon, &entity.IsSingle, &entity.IsCollection, &naming, &entity.App.Name, &entity.App.Label); err != nil {
 			return nil, fmt.Errorf("scan metadata entity: %w", err)
 		}
 		entity.Naming = rawJSONOrNil(naming)
@@ -187,22 +188,22 @@ ORDER BY a.name, e.name`)
 	return entities, nil
 }
 
-// GetEntityMeta returns complete persisted metadata for one Entity route slug.
-func (r MetadataReader) GetEntityMeta(ctx context.Context, routeSlug string) (MetadataEntityMeta, error) {
-	return r.getEntityMeta(ctx, routeSlug, `
-SELECT e.id, e.name, e.route_slug, e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
+// GetEntityMeta returns complete persisted metadata for one Entity slug.
+func (r MetadataReader) GetEntityMeta(ctx context.Context, slug string) (MetadataEntityMeta, error) {
+	return r.getEntityMeta(ctx, slug, `
+SELECT e.id, e.name, e.key, e.slug, e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
-WHERE e.route_slug = $1`, routeSlug)
+WHERE e.slug = $1`, slug)
 }
 
 // GetEntityMetaByIdentity returns complete persisted metadata for one app-scoped Entity identity.
 func (r MetadataReader) GetEntityMetaByIdentity(ctx context.Context, appName string, entity string) (MetadataEntityMeta, error) {
 	return r.getEntityMeta(ctx, appName+"/"+entity, `
-SELECT e.id, e.name, e.route_slug, e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
+SELECT e.id, e.name, e.key, e.slug, e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
-WHERE a.name = $1 AND e.name = $2`, appName, entity)
+WHERE a.name = $1 AND e.key = $2`, appName, entity)
 }
 
 func (r MetadataReader) getEntityMeta(ctx context.Context, name string, sql string, args ...any) (MetadataEntityMeta, error) {
@@ -212,7 +213,7 @@ func (r MetadataReader) getEntityMeta(ctx context.Context, name string, sql stri
 
 	var meta MetadataEntityMeta
 	var naming []byte
-	err := r.queryer.QueryRow(ctx, sql, args...).Scan(&meta.ID, &meta.Name, &meta.RouteSlug, &meta.Label, &meta.Description, &meta.Icon, &meta.IsSingle, &meta.IsCollection, &naming, &meta.App.Name, &meta.App.Label)
+	err := r.queryer.QueryRow(ctx, sql, args...).Scan(&meta.ID, &meta.Name, &meta.Key, &meta.Slug, &meta.Label, &meta.Description, &meta.Icon, &meta.IsSingle, &meta.IsCollection, &naming, &meta.App.Name, &meta.App.Label)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return MetadataEntityMeta{}, MetadataNotFoundError{Kind: "entity", Name: name}
 	}

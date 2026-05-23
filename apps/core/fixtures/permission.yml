@@ -3,7 +3,7 @@ match: [entity, role]
 records:
   - entity:
       match:
-        name: app
+        name: core.app
     role:
       match:
         name: studio-member
@@ -16,7 +16,7 @@ records:
 
   - entity:
       match:
-        name: entity
+        name: core.entity
     role:
       match:
         name: studio-member
@@ -29,7 +29,7 @@ records:
 
   - entity:
       match:
-        name: field
+        name: core.field
     role:
       match:
         name: studio-member
@@ -42,7 +42,7 @@ records:
 
   - entity:
       match:
-        name: index
+        name: core.index
     role:
       match:
         name: studio-member
@@ -55,7 +55,7 @@ records:
 
   - entity:
       match:
-        name: constraint
+        name: core.constraint
     role:
       match:
         name: studio-member
@@ -68,7 +68,7 @@ records:
 
   - entity:
       match:
-        name: naming-series
+        name: core.naming-series
     role:
       match:
         name: studio-member
@@ -81,7 +81,7 @@ records:
 
   - entity:
       match:
-        name: patch-run
+        name: core.patch-run
     role:
       match:
         name: studio-member
@@ -94,7 +94,7 @@ records:
 
   - entity:
       match:
-        name: app
+        name: core.app
     role:
       match:
         name: system-manager
@@ -107,7 +107,7 @@ records:
 
   - entity:
       match:
-        name: entity
+        name: core.entity
     role:
       match:
         name: system-manager
@@ -120,7 +120,7 @@ records:
 
   - entity:
       match:
-        name: field
+        name: core.field
     role:
       match:
         name: system-manager
@@ -133,7 +133,7 @@ records:
 
   - entity:
       match:
-        name: index
+        name: core.index
     role:
       match:
         name: system-manager
@@ -146,7 +146,7 @@ records:
 
   - entity:
       match:
-        name: constraint
+        name: core.constraint
     role:
       match:
         name: system-manager
@@ -159,7 +159,7 @@ records:
 
   - entity:
       match:
-        name: activity
+        name: core.activity
     role:
       match:
         name: system-manager
@@ -172,7 +172,7 @@ records:
 
   - entity:
       match:
-        name: naming-series
+        name: core.naming-series
     role:
       match:
         name: system-manager
@@ -185,7 +185,7 @@ records:
 
   - entity:
       match:
-        name: patch-run
+        name: core.patch-run
     role:
       match:
         name: system-manager
@@ -198,7 +198,7 @@ records:
 
   - entity:
       match:
-        name: user
+        name: core.user
     role:
       match:
         name: system-manager
@@ -211,7 +211,7 @@ records:
 
   - entity:
       match:
-        name: role
+        name: core.role
     role:
       match:
         name: system-manager
@@ -224,7 +224,7 @@ records:
 
   - entity:
       match:
-        name: user-role
+        name: core.user-role
     role:
       match:
         name: system-manager
@@ -237,7 +237,7 @@ records:
 
   - entity:
       match:
-        name: permission
+        name: core.permission
     role:
       match:
         name: system-manager

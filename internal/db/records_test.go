@@ -130,7 +130,7 @@ func TestRecordStoreListRecordsSortByIDSkipsTieBreaker(t *testing.T) {
 func TestRecordStoreListRecordsByIdentityHonorsFiltersAndSort(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -142,7 +142,7 @@ func TestRecordStoreListRecordsByIdentityHonorsFiltersAndSort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListRecordsByIdentity() error = %v, want nil", err)
 	}
-	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.name = $2`) {
+	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.key = $2`) {
 		t.Fatalf("metadata query = %q, want app/entity lookup", queryer.rowSQL[0])
 	}
 	lastQuery := queryer.queries[len(queryer.queries)-1]
@@ -179,7 +179,7 @@ func TestRecordStoreGetRecord(t *testing.T) {
 func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -191,7 +191,7 @@ func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
 	if record["id"] != int64(7) || record["status"] != "New" {
 		t.Fatalf("GetRecordByIdentity() = %+v, want crm lead record", record)
 	}
-	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.name = $2`) {
+	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.key = $2`) {
 		t.Fatalf("metadata query = %q, want app/entity lookup", queryer.rowSQL[0])
 	}
 	if !reflect.DeepEqual(queryer.rowArgs[0], []any{"crm", "lead"}) {
@@ -206,7 +206,7 @@ func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
 func TestRecordStoreRouteSlugMethodsKeepUsingRouteSlugLookup(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -215,7 +215,7 @@ func TestRecordStoreRouteSlugMethodsKeepUsingRouteSlugLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRecord() error = %v, want nil", err)
 	}
-	if !strings.Contains(queryer.rowSQL[0], `WHERE e.route_slug = $1`) {
+	if !strings.Contains(queryer.rowSQL[0], `WHERE e.slug = $1`) {
 		t.Fatalf("metadata query = %q, want route slug lookup", queryer.rowSQL[0])
 	}
 	if !reflect.DeepEqual(queryer.rowArgs[0], []any{"crm-lead"}) {
@@ -446,6 +446,29 @@ func TestRecordStoreCreateRecordGeneratesRandomName(t *testing.T) {
 	}
 	if len(name) != 16 {
 		t.Fatalf("random name length = %d, want 16", len(name))
+	}
+}
+
+func TestRecordStoreCreateRecordGeneratesTemplateName(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newTemplateRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "T-New-A1", now, now, "A1", "New"},
+	}))
+
+	record, err := NewRecordStore(queryer).CreateRecord(context.Background(), "ticket", recordInput(map[string]string{
+		"code":   `"A1"`,
+		"status": `"New"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v, want nil", err)
+	}
+	if record["name"] != "T-New-A1" {
+		t.Fatalf("CreateRecord() name = %v, want template name", record["name"])
+	}
+	args := queryer.args[len(queryer.args)-1]
+	if args[len(args)-1] != "T-New-A1" {
+		t.Fatalf("CreateRecord() name arg = %#v, want template name", args[len(args)-1])
 	}
 }
 
@@ -1080,7 +1103,7 @@ func TestRecordStoreInvalidListFiltersAndSorts(t *testing.T) {
 
 func newUserRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(10), "user", "user", "User", "User identity", "user", false, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
@@ -1096,7 +1119,7 @@ func newUserRecordQueryer() *fakeRecordQueryer {
 
 func newLeadRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(20), "lead", "lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		row: newFakeRow(int64(20), "crm.lead", "lead", "lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New","Qualified"]}`)},
@@ -1108,10 +1131,24 @@ func newLeadRecordQueryer() *fakeRecordQueryer {
 	}
 }
 
+func newTemplateRecordQueryer() *fakeRecordQueryer {
+	return &fakeRecordQueryer{
+		row: newFakeRow(int64(50), "support.ticket", "ticket", "ticket", "Ticket", "Support ticket", "ticket", false, false, []byte(`{"strategy":"template","template":"T-{status}-{code}"}`), "support", "Support"),
+		rows: []pgx.Rows{
+			newFakeRows([][]any{
+				{"code", "Code", "text", true, false, false, nil, nil, 1, nil},
+				{"status", "Status", "select", true, false, false, nil, nil, 2, []byte(`{"values":["New","Closed"]}`)},
+			}),
+			newFakeRows(nil),
+			newFakeRows(nil),
+		},
+	}
+}
+
 func newSingleSettingsRecordQueryer() *fakeRecordQueryer {
 	now := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(30), "invoice-settings", "invoice-settings", "Invoice Settings", "Invoice defaults", "settings", true, false, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
+		row: newFakeRow(int64(30), "sales.invoice-settings", "invoice-settings", "invoice-settings", "Invoice Settings", "Invoice defaults", "settings", true, false, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"default-due-days", "Default Due Days", "int", true, false, false, []byte("30"), nil, 1, nil},
@@ -1127,7 +1164,7 @@ func newSingleSettingsRecordQueryer() *fakeRecordQueryer {
 
 func newCollectionRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(40), "invoice-item", "invoice-item", "Invoice Item", "Invoice line item", "list", false, true, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
+		row: newFakeRow(int64(40), "sales.invoice-item", "invoice-item", "invoice-item", "Invoice Item", "Invoice line item", "list", false, true, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"item-code", "Item Code", "text", true, false, false, nil, nil, 1, nil},
@@ -1140,7 +1177,7 @@ func newCollectionRecordQueryer() *fakeRecordQueryer {
 
 func newActivityRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(1), "activity", "activity", "Activity", "Timeline entry", "activity", false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core"),
+		row: newFakeRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record"]}`)},

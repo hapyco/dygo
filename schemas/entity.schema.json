@@ -123,6 +123,19 @@
               "description": "Supports {YY}, {YYYY}, {MM}, and one hash counter token such as {#####}."
             }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy", "template"],
+          "properties": {
+            "strategy": { "const": "template" },
+            "template": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Uses field tokens such as {app}.{key}; link field tokens render the linked Record name."
+            }
+          }
         }
       ]
     },

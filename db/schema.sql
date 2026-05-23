@@ -229,13 +229,14 @@ CREATE TABLE public.entity (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     app_id bigint NOT NULL,
-    route_slug text NOT NULL,
+    key text NOT NULL,
+    slug text NOT NULL,
     label text NOT NULL,
     description text,
-    naming jsonb,
     icon text,
     is_single boolean DEFAULT false NOT NULL,
-    is_collection boolean DEFAULT false NOT NULL
+    is_collection boolean DEFAULT false NOT NULL,
+    naming jsonb
 );
 
 
@@ -688,11 +689,11 @@ ALTER TABLE ONLY public.currency
 
 
 --
--- Name: entity entity_app_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: entity entity_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.entity
-    ADD CONSTRAINT entity_app_name_key UNIQUE (app_id, name);
+    ADD CONSTRAINT entity_name_key UNIQUE (name);
 
 
 --
@@ -704,11 +705,11 @@ ALTER TABLE ONLY public.entity
 
 
 --
--- Name: entity entity_route_slug_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: entity entity_slug_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.entity
-    ADD CONSTRAINT entity_route_slug_key UNIQUE (route_slug);
+    ADD CONSTRAINT entity_slug_key UNIQUE (slug);
 
 
 --
@@ -1035,13 +1036,6 @@ CREATE INDEX entity_app_id_idx ON public.entity USING btree (app_id);
 
 
 --
--- Name: entity_is_single_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX entity_is_single_idx ON public.entity USING btree (is_single);
-
-
---
 -- Name: entity_is_collection_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1049,10 +1043,24 @@ CREATE INDEX entity_is_collection_idx ON public.entity USING btree (is_collectio
 
 
 --
--- Name: entity_route_slug_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: entity_is_single_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX entity_route_slug_idx ON public.entity USING btree (route_slug);
+CREATE INDEX entity_is_single_idx ON public.entity USING btree (is_single);
+
+
+--
+-- Name: entity_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX entity_key_idx ON public.entity USING btree (key);
+
+
+--
+-- Name: entity_slug_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX entity_slug_idx ON public.entity USING btree (slug);
 
 
 --

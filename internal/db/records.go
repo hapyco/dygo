@@ -467,6 +467,8 @@ func (s RecordStore) generateRecordName(ctx context.Context, layout recordLayout
 		return recordNameValue(field, raw)
 	case "series":
 		return s.seriesRecordName(ctx, layout, layout.Naming.Pattern, time.Now().UTC())
+	case "template":
+		return s.templateRecordName(ctx, layout, layout.Naming.Template, input)
 	default:
 		return "", recordError(RecordErrorInternal, "naming strategy metadata is invalid", map[string]any{"entity": layout.Entity, "strategy": layout.Naming.Strategy}, nil)
 	}
@@ -677,7 +679,7 @@ func (s RecordStore) queryOneRecord(ctx context.Context, layout recordLayout, sq
 
 func (s RecordStore) getSingleRecordWithLayout(ctx context.Context, layout recordLayout) (Record, error) {
 	if !layout.IsSingle {
-		return nil, recordError(RecordErrorInvalidRequest, "entity is not single", map[string]any{"entity": layout.RouteSlug}, nil)
+		return nil, recordError(RecordErrorInvalidRequest, "entity is not single", map[string]any{"entity": layout.Slug}, nil)
 	}
 	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent("name"))
 	return s.queryOneRecord(ctx, layout, sql, layout.Entity)
@@ -701,11 +703,11 @@ func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayou
 }
 
 func singleRecordOperationError(layout recordLayout, operation string) RecordError {
-	return recordError(RecordErrorInvalidRequest, fmt.Sprintf("single Entity records cannot use %s through this endpoint", operation), map[string]any{"entity": layout.RouteSlug, "operation": operation}, nil)
+	return recordError(RecordErrorInvalidRequest, fmt.Sprintf("single Entity records cannot use %s through this endpoint", operation), map[string]any{"entity": layout.Slug, "operation": operation}, nil)
 }
 
 func collectionRecordOperationError(layout recordLayout, operation string) RecordError {
-	return recordError(RecordErrorInvalidRequest, fmt.Sprintf("collection Entity records cannot use %s through normal record endpoints", operation), map[string]any{"entity": layout.RouteSlug, "operation": operation}, nil)
+	return recordError(RecordErrorInvalidRequest, fmt.Sprintf("collection Entity records cannot use %s through normal record endpoints", operation), map[string]any{"entity": layout.Slug, "operation": operation}, nil)
 }
 
 func (s RecordStore) queryReturningRecord(ctx context.Context, layout recordLayout, sql string, args []any, notFoundWhenEmpty bool) (Record, error) {
@@ -792,7 +794,7 @@ type recordLayout struct {
 	EntityID     int64
 	AppName      string
 	Entity       string
-	RouteSlug    string
+	Slug         string
 	Label        string
 	IsSingle     bool
 	IsCollection bool
@@ -830,17 +832,17 @@ type recordMutation struct {
 func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 	naming, err := parseRecordNaming(meta.Naming)
 	if err != nil {
-		return recordLayout{}, recordError(RecordErrorInternal, "entity naming metadata is invalid", map[string]any{"entity": meta.Name}, err)
+		return recordLayout{}, recordError(RecordErrorInternal, "entity naming metadata is invalid", map[string]any{"entity": meta.Slug}, err)
 	}
 	layout := recordLayout{
 		EntityID:     meta.ID,
 		AppName:      meta.App.Name,
-		Entity:       meta.Name,
-		RouteSlug:    meta.RouteSlug,
+		Entity:       meta.Key,
+		Slug:         meta.Slug,
 		Label:        meta.Label,
 		IsSingle:     meta.IsSingle,
 		IsCollection: meta.IsCollection,
-		Table:        entityTableName(meta.App.Name, meta.Name),
+		Table:        entityTableName(meta.App.Name, meta.Key),
 		Naming:       naming,
 		FieldByName:  map[string]recordField{},
 	}
@@ -858,7 +860,7 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 		}
 		if len(metadataField.Options) > 0 {
 			if err := json.Unmarshal(metadataField.Options, &field.Options); err != nil {
-				return recordLayout{}, recordError(RecordErrorInternal, "field options metadata is invalid", map[string]any{"entity": meta.Name, "field": metadataField.Name}, err)
+				return recordLayout{}, recordError(RecordErrorInternal, "field options metadata is invalid", map[string]any{"entity": meta.Slug, "field": metadataField.Name}, err)
 			}
 		}
 		if field.Storage && !field.SystemName {

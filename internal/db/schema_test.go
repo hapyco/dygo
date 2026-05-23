@@ -701,16 +701,14 @@ func coreSchemaEntities() []catalog.LoadedEntity {
 			AppName: "core",
 			Path:    "apps/core/entities/entity.yml",
 			Entity: schema.Entity{
-				Name: "entity",
+				Name:   "entity",
+				Naming: schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{key}"},
 				Fields: []schema.Field{
 					{Name: "app", Type: "link", Required: true, Index: true, Options: entityOption("app")},
-					{Name: "name", Type: "text", Required: true, Index: true},
-					{Name: "route-slug", Type: "text", Required: true, Unique: true, Index: true},
+					{Name: "key", Type: "text", Required: true, Index: true},
+					{Name: "slug", Type: "text", Required: true, Unique: true, Index: true},
 					{Name: "is-single", Type: "boolean", Required: true, Index: true, Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "false"}},
 					{Name: "is-collection", Type: "boolean", Required: true, Index: true, Default: yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "false"}},
-				},
-				Constraints: []schema.Constraint{
-					{Type: "unique", Fields: []string{"app", "name"}},
 				},
 			},
 		},

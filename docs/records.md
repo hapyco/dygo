@@ -13,7 +13,7 @@ go run ./cmd/dygo serve
 
 Record API routes require a valid `dygo_session` cookie from the auth API and an allowed Entity permission.
 
-`{entity}` is the Entity route slug. It defaults to Entity `name`, but apps can set `route.slug` to keep URLs stable when multiple apps define the same Entity name.
+`{entity}` is the Entity slug. It defaults to the file-derived Entity key, but apps can set `route.slug` to keep URLs stable when multiple apps define the same Entity key.
 
 ## API
 
@@ -94,7 +94,7 @@ created-at
 updated-at
 ```
 
-`id` is dygo's internal numeric identity. `name` is the stable Record identifier generated from Entity `naming` metadata. System fields cannot be written in update request bodies. Create request bodies may include `name` only when the Entity explicitly uses `naming.strategy: field` with `field: name`; otherwise dygo generates `name` during create.
+`id` is dygo's internal numeric identity. `name` is the stable Record identifier generated from Entity `naming` metadata. System fields cannot be written in update request bodies. Create request bodies may include `name` only when the Entity explicitly uses `naming.strategy: field` with `field: name`; otherwise dygo generates `name` during create, including template names such as `{app}.{key}`.
 
 ## Supported Fields
 

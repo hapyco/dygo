@@ -204,7 +204,7 @@ records:
 
 func TestApplyFilesResolvesLinkReferences(t *testing.T) {
 	store := newFakeStore()
-	store.records["entity"] = []db.Record{{"id": int64(10), "name": "user"}}
+	store.records["entity"] = []db.Record{{"id": int64(10), "name": "core.user"}}
 	store.records["role"] = []db.Record{{"id": int64(20), "name": "system-manager"}}
 	file := loadedFixture(t, "permissions.yml", `
 entity: permission
@@ -212,7 +212,7 @@ match: [entity, role]
 records:
   - entity:
       match:
-        name: user
+        name: core.user
     role:
       match:
         name: system-manager
@@ -242,7 +242,7 @@ match: [entity, role]
 records:
   - entity:
       match:
-        name: user
+        name: core.user
     role:
       match:
         name: system-manager
@@ -483,7 +483,7 @@ func newFakeStore() *fakeStore {
 func seedEntityRecords(store *fakeStore) {
 	names := []string{"activity", "app", "configuration", "constraint", "country", "currency", "entity", "field", "index", "language", "naming-series", "patch-run", "permission", "role", "session", "user", "user-role"}
 	for i, name := range names {
-		store.records["entity"] = append(store.records["entity"], db.Record{"id": int64(i + 1), "name": name})
+		store.records["entity"] = append(store.records["entity"], db.Record{"id": int64(i + 1), "name": "core." + name})
 	}
 }
 

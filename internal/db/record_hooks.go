@@ -207,7 +207,7 @@ func newRecordHookContext(event RecordHookEvent, layout recordLayout) RecordHook
 		EntityID:    layout.EntityID,
 		AppName:     layout.AppName,
 		Entity:      layout.Entity,
-		RouteSlug:   layout.RouteSlug,
+		RouteSlug:   layout.Slug,
 		EntityLabel: layout.Label,
 		Table:       layout.Table,
 	}

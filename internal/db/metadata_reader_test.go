@@ -53,8 +53,8 @@ func TestMetadataReaderGetApp(t *testing.T) {
 func TestMetadataReaderListEntities(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
 		rows: []pgx.Rows{newFakeRows([][]any{
-			{"app", "app", "App", "Runtime state", "package", false, false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
-			{"user", "user", "User", "User identity", "user", true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
+			{"core.app", "app", "app", "App", "Runtime state", "package", false, false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
+			{"core.user", "user", "user", "User", "User identity", "user", true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
 		})},
 	}
 
@@ -62,17 +62,17 @@ func TestMetadataReaderListEntities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntities() error = %v, want nil", err)
 	}
-	if len(entities) != 2 || entities[0].Name != "app" || entities[0].Icon != "package" || entities[0].App.Name != "core" || entities[0].IsSingle || entities[1].Name != "user" || entities[1].RouteSlug != "user" || !entities[1].IsSingle {
+	if len(entities) != 2 || entities[0].Name != "core.app" || entities[0].Key != "app" || entities[0].Icon != "package" || entities[0].App.Name != "core" || entities[0].IsSingle || entities[1].Name != "core.user" || entities[1].Slug != "user" || !entities[1].IsSingle {
 		t.Fatalf("ListEntities() = %+v, want core entities", entities)
 	}
-	if !strings.Contains(queryer.queries[0], `JOIN "app"`) || !strings.Contains(queryer.queries[0], "ORDER BY a.name, e.name") {
+	if !strings.Contains(queryer.queries[0], `JOIN "app"`) || !strings.Contains(queryer.queries[0], "ORDER BY a.name, e.key") {
 		t.Fatalf("ListEntities() query = %q, want app/entity ordering", queryer.queries[0])
 	}
 }
 
 func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(10), "user", "user", "User", "User identity", "user", true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, true, nil, nil, 1, []byte(`{"entity":"user"}`)},
@@ -92,7 +92,7 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEntityMeta() error = %v, want nil", err)
 	}
-	if meta.Name != "user" || meta.Icon != "user" || meta.App.Name != "core" || !meta.IsSingle {
+	if meta.Name != "core.user" || meta.Key != "user" || meta.Slug != "user" || meta.Icon != "user" || meta.App.Name != "core" || !meta.IsSingle {
 		t.Fatalf("GetEntityMeta() = %+v, want core/user", meta.MetadataEntity)
 	}
 	if len(meta.Fields) != 2 || meta.Fields[0].Name != "email" || string(meta.Fields[0].Options) != `{"entity":"user"}` {
@@ -114,7 +114,7 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 
 func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(20), "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		row: newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New"]}`)},
@@ -128,10 +128,10 @@ func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEntityMetaByIdentity() error = %v, want nil", err)
 	}
-	if meta.Name != "lead" || meta.RouteSlug != "crm-lead" || meta.Icon != "contact" || meta.App.Name != "crm" {
+	if meta.Name != "crm.lead" || meta.Key != "lead" || meta.Slug != "crm-lead" || meta.Icon != "contact" || meta.App.Name != "crm" {
 		t.Fatalf("GetEntityMetaByIdentity() = %+v, want crm/lead with crm-lead route slug", meta.MetadataEntity)
 	}
-	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.name = $2`) {
+	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.key = $2`) {
 		t.Fatalf("GetEntityMetaByIdentity() query = %q, want app/entity lookup", queryer.rowSQL[0])
 	}
 	if !reflect.DeepEqual(queryer.rowArgs[0], []any{"crm", "lead"}) {

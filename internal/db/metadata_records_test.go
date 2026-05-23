@@ -54,7 +54,7 @@ func TestBuildMetadataRecords(t *testing.T) {
 	if len(records.Apps) != 1 || records.Apps[0].Name != "core" || records.Apps[0].Status != "active" {
 		t.Fatalf("app records = %+v, want active core app", records.Apps)
 	}
-	if len(records.Entities) != 1 || records.Entities[0].Name != "user" || records.Entities[0].RouteSlug != "user" || records.Entities[0].Icon != "user" || records.Entities[0].AppName != "core" || !records.Entities[0].IsSingle {
+	if len(records.Entities) != 1 || records.Entities[0].Name != "core.user" || records.Entities[0].Key != "user" || records.Entities[0].Slug != "user" || records.Entities[0].Icon != "user" || records.Entities[0].AppName != "core" || !records.Entities[0].IsSingle {
 		t.Fatalf("entity records = %+v, want core/user", records.Entities)
 	}
 	if records.Entities[0].Naming != nil {
@@ -91,6 +91,52 @@ func TestBuildMetadataRecords(t *testing.T) {
 	check := records.Constraints[1]
 	if check.Name != "user-status-in-check" || check.Type != "check" || check.Field != "status" || !strings.Contains(string(check.Value), `"Active"`) {
 		t.Fatalf("check constraint record = %+v, want status check", check)
+	}
+}
+
+func TestBuildMetadataRecordsUsesEntityTableNamingTemplate(t *testing.T) {
+	records, err := buildMetadataRecords(metadataCatalog{
+		Apps: []manifest.LoadedApp{
+			{Manifest: manifest.Manifest{Name: "core", Label: "Core", Version: "0.1.0"}},
+		},
+		Entities: []catalog.LoadedEntity{
+			{
+				AppName: "core",
+				Path:    "apps/core/entities/entity.yml",
+				Entity: schema.Entity{
+					Name:   "entity",
+					Label:  "Entity",
+					Naming: schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{key}"},
+					Fields: []schema.Field{
+						{Name: "app", Label: "App", Type: "link", Required: true, Options: fieldtype.Options{Entity: "app"}},
+						{Name: "key", Label: "Key", Type: "text", Required: true},
+					},
+				},
+			},
+			{
+				AppName: "core",
+				Path:    "apps/core/entities/user.yml",
+				Entity: schema.Entity{
+					Name:  "user",
+					Label: "User",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildMetadataRecords() error = %v, want nil", err)
+	}
+	if len(records.Entities) != 2 {
+		t.Fatalf("entity records count = %d, want 2", len(records.Entities))
+	}
+	if records.Entities[0].Name != "core.entity" || records.Entities[0].Key != "entity" {
+		t.Fatalf("entity record = %+v, want core.entity", records.Entities[0])
+	}
+	if records.Entities[1].Name != "core.user" || records.Entities[1].Key != "user" {
+		t.Fatalf("user record = %+v, want core.user", records.Entities[1])
+	}
+	if !strings.Contains(string(records.Entities[0].Naming), `"strategy":"template"`) || !strings.Contains(string(records.Entities[0].Naming), `"{app}.{key}"`) {
+		t.Fatalf("entity naming metadata = %s, want template strategy", records.Entities[0].Naming)
 	}
 }
 

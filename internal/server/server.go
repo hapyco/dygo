@@ -555,7 +555,7 @@ func (h metadataHandler) listEntities(w http.ResponseWriter, r *http.Request) {
 	}
 	filtered := make([]db.MetadataEntity, 0, len(entities))
 	for _, entity := range entities {
-		canRead, err := h.canReadEntity(r.Context(), user, entity.RouteSlug)
+		canRead, err := h.canReadEntity(r.Context(), user, entity.Slug)
 		if err != nil {
 			writePermissionError(w, err)
 			return
@@ -581,7 +581,7 @@ func (h metadataHandler) getEntityMeta(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, err, "entity", name)
 		return
 	}
-	canRead, err := h.canReadEntity(r.Context(), user, meta.RouteSlug)
+	canRead, err := h.canReadEntity(r.Context(), user, meta.Slug)
 	if err != nil {
 		writePermissionError(w, err)
 		return
@@ -645,7 +645,7 @@ func (h metadataHandler) canReadEntity(ctx context.Context, user auth.User, enti
 func (h metadataHandler) visibleAppNames(ctx context.Context, user auth.User, entities []db.MetadataEntity) (map[string]bool, error) {
 	visible := map[string]bool{}
 	for _, entity := range entities {
-		canRead, err := h.canReadEntity(ctx, user, entity.RouteSlug)
+		canRead, err := h.canReadEntity(ctx, user, entity.Slug)
 		if err != nil {
 			return nil, err
 		}

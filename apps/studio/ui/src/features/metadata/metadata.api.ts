@@ -5,7 +5,8 @@ export type MetadataAppRef = {
 
 export type MetadataEntity = {
   name: string
-  'route-slug': string
+  key: string
+  slug: string
   label: string
   description: string
   icon?: string

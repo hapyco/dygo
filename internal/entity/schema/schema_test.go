@@ -279,6 +279,27 @@ fields:
 			want: Naming{Strategy: NamingStrategySeries, Pattern: "SINV-{YYYY}-{MM}-{#####}"},
 		},
 		{
+			name: "template",
+			body: `
+label: Entity
+naming:
+  strategy: template
+  template: "{app}.{key}"
+fields:
+  - name: app
+    label: App
+    type: link
+    required: true
+    options:
+      entity: app
+  - name: key
+    label: Key
+    type: text
+    required: true
+`,
+			want: Naming{Strategy: NamingStrategyTemplate, Template: "{app}.{key}"},
+		},
+		{
 			name: "reserved name field",
 			body: `
 label: Role
@@ -350,6 +371,23 @@ fields:
 `,
 			wantError: "exactly one hash counter",
 		},
+		{
+			name: "template source must exist",
+			body: `
+label: Entity
+naming:
+  strategy: template
+  template: "{app}.{missing}"
+fields:
+  - name: app
+    label: App
+    type: link
+    required: true
+    options:
+      entity: app
+`,
+			wantError: `unknown field "missing"`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -368,7 +406,7 @@ fields:
 				t.Fatalf("Decode() error = %v, want nil", err)
 			}
 			got := entity.EffectiveNaming()
-			if got.Strategy != tt.want.Strategy || got.Length != tt.want.Length || got.Field != tt.want.Field || got.Pattern != tt.want.Pattern {
+			if got.Strategy != tt.want.Strategy || got.Length != tt.want.Length || got.Field != tt.want.Field || got.Pattern != tt.want.Pattern || got.Template != tt.want.Template {
 				t.Fatalf("EffectiveNaming() = %+v, want %+v", got, tt.want)
 			}
 		})

@@ -234,7 +234,7 @@ func TestNewRecordHookRegistryExposesTransactionalRecordData(t *testing.T) {
 	if queryer.rowCalls != 1 {
 		t.Fatalf("queryer row calls = %d, want Records.Get to use hook queryer", queryer.rowCalls)
 	}
-	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.name = $2`) {
+	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.key = $2`) {
 		t.Fatalf("Records.Get() metadata query = %q, want app/entity lookup", queryer.rowSQL[0])
 	}
 	if !reflect.DeepEqual(queryer.rowArgs[0], []any{"sales", "lead"}) {
@@ -279,7 +279,7 @@ func TestRecordDataListPassesFiltersAndSortThroughHookQueryer(t *testing.T) {
 	if result.Count != 1 || len(result.Records) != 1 {
 		t.Fatalf("Records.List() result = %+v, want one record", result)
 	}
-	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.name = $2`) {
+	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.key = $2`) {
 		t.Fatalf("Records.List() metadata query = %q, want app/entity lookup", queryer.rowSQL[0])
 	}
 	lastQuery := queryer.queries[len(queryer.queries)-1]
@@ -478,7 +478,7 @@ type recordDataMutationQueryer struct {
 
 func newUserRecordDataMutationQueryer(recordRows ...[]any) *recordDataMutationQueryer {
 	queryer := &recordDataMutationQueryer{
-		row: newRecordDataMutationRow(int64(10), "user", "user", "User", "User identity", "user", false, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newRecordDataMutationRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newRecordDataMutationRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},

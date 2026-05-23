@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dygo-dev/dygo/internal/entity/catalog"
 	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
 	"github.com/dygo-dev/dygo/internal/entity/schema"
 	"github.com/jackc/pgx/v5"
@@ -39,7 +40,8 @@ type appRecord struct {
 type entityRecord struct {
 	AppName      string
 	Name         string
-	RouteSlug    string
+	Key          string
+	Slug         string
 	Label        string
 	Description  string
 	Icon         string
@@ -113,16 +115,17 @@ RETURNING id`, app.Name, app.Label, app.Version, app.Status).Scan(&id); err != n
 	for _, entity := range records.Entities {
 		appID, ok := appIDs[entity.AppName]
 		if !ok {
-			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %q: app %q was not persisted", entity.Name, entity.AppName)
+			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %q: app %q was not persisted", entity.Key, entity.AppName)
 		}
 		var id int64
 		if err := tx.QueryRow(ctx, `
-INSERT INTO "entity" (app_id, name, route_slug, label, description, icon, is_single, is_collection, naming)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-ON CONFLICT (app_id, name) DO UPDATE
+INSERT INTO "entity" (app_id, name, key, slug, label, description, icon, is_single, is_collection, naming)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+ON CONFLICT (name) DO UPDATE
 SET app_id = EXCLUDED.app_id,
 	name = EXCLUDED.name,
-	route_slug = EXCLUDED.route_slug,
+	key = EXCLUDED.key,
+	slug = EXCLUDED.slug,
 	label = EXCLUDED.label,
 	description = EXCLUDED.description,
 	icon = EXCLUDED.icon,
@@ -130,10 +133,10 @@ SET app_id = EXCLUDED.app_id,
 	is_collection = EXCLUDED.is_collection,
 	naming = EXCLUDED.naming,
 	updated_at = now()
-RETURNING id`, appID, entity.Name, entity.RouteSlug, entity.Label, entity.Description, entity.Icon, entity.IsSingle, entity.IsCollection, entity.Naming).Scan(&id); err != nil {
-			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %s/%s: %w", entity.AppName, entity.Name, err)
+RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity.Description, entity.Icon, entity.IsSingle, entity.IsCollection, entity.Naming).Scan(&id); err != nil {
+			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %s/%s: %w", entity.AppName, entity.Key, err)
 		}
-		entityIDs[entityKey(entity.AppName, entity.Name)] = id
+		entityIDs[entityKey(entity.AppName, entity.Key)] = id
 	}
 
 	for _, field := range records.Fields {
@@ -266,6 +269,7 @@ WHERE id = $1`, id, constraint.RecordName, constraint.Type, constraint.Fields, n
 
 func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 	records := metadataRecordSet{}
+	entityTableNaming := metadataEntityTableNaming(metadata.Entities)
 	for _, app := range metadata.Apps {
 		records.Apps = append(records.Apps, appRecord{
 			Name:    app.Manifest.Name,
@@ -283,10 +287,15 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 				return metadataRecordSet{}, fmt.Errorf("build entity metadata %s/%s naming: %w", loaded.AppName, loaded.Entity.Name, err)
 			}
 		}
+		entityName, err := metadataEntityRecordName(loaded, entityTableNaming)
+		if err != nil {
+			return metadataRecordSet{}, fmt.Errorf("build entity metadata %s/%s name: %w", loaded.AppName, loaded.Entity.Name, err)
+		}
 		records.Entities = append(records.Entities, entityRecord{
 			AppName:      loaded.AppName,
-			Name:         loaded.Entity.Name,
-			RouteSlug:    loaded.Entity.EffectiveRouteSlug(),
+			Name:         entityName,
+			Key:          loaded.Entity.Name,
+			Slug:         loaded.Entity.EffectiveRouteSlug(),
 			Label:        loaded.Entity.Label,
 			Description:  loaded.Entity.Description,
 			Icon:         strings.TrimSpace(loaded.Entity.Icon),
@@ -310,7 +319,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			records.Fields = append(records.Fields, fieldRecord{
 				EntityAppName: loaded.AppName,
 				EntityName:    loaded.Entity.Name,
-				RecordName:    loaded.Entity.Name + "." + field.Name,
+				RecordName:    childMetadataRecordName(loaded.AppName, loaded.Entity.Name, field.Name),
 				Name:          field.Name,
 				Label:         field.Label,
 				Type:          field.Type,
@@ -331,7 +340,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			records.Indexes = append(records.Indexes, indexRecord{
 				EntityAppName: loaded.AppName,
 				EntityName:    loaded.Entity.Name,
-				RecordName:    loaded.Entity.Name + "." + index.EffectiveName(loaded.Entity),
+				RecordName:    childMetadataRecordName(loaded.AppName, loaded.Entity.Name, index.EffectiveName(loaded.Entity)),
 				Name:          index.EffectiveName(loaded.Entity),
 				Fields:        fieldsJSON,
 				Position:      indexPosition + 1,
@@ -349,7 +358,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			records.Constraints = append(records.Constraints, constraintRecord{
 				EntityAppName: loaded.AppName,
 				EntityName:    loaded.Entity.Name,
-				RecordName:    loaded.Entity.Name + "." + constraint.EffectiveName(loaded.Entity),
+				RecordName:    childMetadataRecordName(loaded.AppName, loaded.Entity.Name, constraint.EffectiveName(loaded.Entity)),
 				Name:          constraint.EffectiveName(loaded.Entity),
 				Type:          constraint.Type,
 				Fields:        fieldsJSON,
@@ -361,6 +370,46 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 		}
 	}
 	return records, nil
+}
+
+func metadataEntityTableNaming(entities []catalog.LoadedEntity) schema.Naming {
+	for _, loaded := range entities {
+		if loaded.AppName == "core" && loaded.Entity.Name == "entity" {
+			return loaded.Entity.EffectiveNaming()
+		}
+	}
+	return schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{key}"}
+}
+
+func metadataEntityRecordName(loaded catalog.LoadedEntity, naming schema.Naming) (string, error) {
+	if naming.Strategy != schema.NamingStrategyTemplate {
+		return entityRecordName(loaded.AppName, loaded.Entity.Name), nil
+	}
+	values := map[string]string{
+		"app":           loaded.AppName,
+		"key":           loaded.Entity.Name,
+		"slug":          loaded.Entity.EffectiveRouteSlug(),
+		"label":         loaded.Entity.Label,
+		"description":   loaded.Entity.Description,
+		"icon":          strings.TrimSpace(loaded.Entity.Icon),
+		"is-single":     strconv.FormatBool(loaded.Entity.IsSingle),
+		"is-collection": strconv.FormatBool(loaded.IsCollection() || loaded.Entity.IsCollection),
+	}
+	return renderNameTemplate(naming.Template, func(token string) (string, error) {
+		value, ok := values[token]
+		if !ok {
+			return "", fmt.Errorf("template references unknown field %q", token)
+		}
+		return value, nil
+	})
+}
+
+func entityRecordName(appName string, key string) string {
+	return appName + "." + key
+}
+
+func childMetadataRecordName(appName string, entityKey string, name string) string {
+	return entityRecordName(appName, entityKey) + "." + name
 }
 
 func fieldOptionsJSON(options fieldtype.Options) ([]byte, error) {
@@ -391,6 +440,8 @@ func entityNamingJSON(naming schema.Naming) ([]byte, error) {
 		values["field"] = naming.Field
 	case schema.NamingStrategySeries:
 		values["pattern"] = naming.Pattern
+	case schema.NamingStrategyTemplate:
+		values["template"] = naming.Template
 	}
 	return json.Marshal(values)
 }

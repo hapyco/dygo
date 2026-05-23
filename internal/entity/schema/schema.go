@@ -41,12 +41,14 @@ type Naming struct {
 	Length   int    `yaml:"length,omitempty"`
 	Field    string `yaml:"field,omitempty"`
 	Pattern  string `yaml:"pattern,omitempty"`
+	Template string `yaml:"template,omitempty"`
 }
 
 const (
-	NamingStrategyRandom = "random"
-	NamingStrategyField  = "field"
-	NamingStrategySeries = "series"
+	NamingStrategyRandom   = "random"
+	NamingStrategyField    = "field"
+	NamingStrategySeries   = "series"
+	NamingStrategyTemplate = "template"
 
 	DefaultRandomNameLength = 16
 	MinRandomNameLength     = 8
@@ -246,7 +248,8 @@ func hasExplicitNaming(naming Naming) bool {
 		strings.TrimSpace(naming.Strategy) != "" ||
 		naming.Length != 0 ||
 		strings.TrimSpace(naming.Field) != "" ||
-		strings.TrimSpace(naming.Pattern) != ""
+		strings.TrimSpace(naming.Pattern) != "" ||
+		strings.TrimSpace(naming.Template) != ""
 }
 
 func validateSingleFieldDefault(field Field, problems *[]string) {
@@ -280,6 +283,8 @@ func validateNaming(entity Entity, fields map[string]Field, fieldTypes map[strin
 		validateFieldNaming(entity, naming, fields, fieldTypes, line, problems)
 	case NamingStrategySeries:
 		validateSeriesNaming(naming, line, problems)
+	case NamingStrategyTemplate:
+		validateTemplateNaming(naming, fields, fieldTypes, line, problems)
 	default:
 		*problems = append(*problems, withLine(line, fmt.Sprintf("naming strategy %q is not supported", naming.Strategy)))
 	}
@@ -290,7 +295,7 @@ func validateNaming(entity Entity, fields map[string]Field, fieldTypes map[strin
 }
 
 func validateRandomNaming(naming Naming, line int, problems *[]string) {
-	if strings.TrimSpace(naming.Field) != "" || strings.TrimSpace(naming.Pattern) != "" {
+	if strings.TrimSpace(naming.Field) != "" || strings.TrimSpace(naming.Pattern) != "" || strings.TrimSpace(naming.Template) != "" {
 		*problems = append(*problems, withLine(line, "random naming supports length only"))
 	}
 	if naming.Length < MinRandomNameLength || naming.Length > MaxRandomNameLength {
@@ -299,7 +304,7 @@ func validateRandomNaming(naming Naming, line int, problems *[]string) {
 }
 
 func validateFieldNaming(entity Entity, naming Naming, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, line int, problems *[]string) {
-	if naming.Length != 0 || strings.TrimSpace(naming.Pattern) != "" {
+	if naming.Length != 0 || strings.TrimSpace(naming.Pattern) != "" || strings.TrimSpace(naming.Template) != "" {
 		*problems = append(*problems, withLine(line, "field naming supports field only"))
 	}
 	if strings.TrimSpace(naming.Field) == "" {
@@ -355,7 +360,7 @@ func fieldCoveredByUniqueConstraint(entity Entity, fieldName string) bool {
 }
 
 func validateSeriesNaming(naming Naming, line int, problems *[]string) {
-	if naming.Length != 0 || strings.TrimSpace(naming.Field) != "" {
+	if naming.Length != 0 || strings.TrimSpace(naming.Field) != "" || strings.TrimSpace(naming.Template) != "" {
 		*problems = append(*problems, withLine(line, "series naming supports pattern only"))
 	}
 	if strings.TrimSpace(naming.Pattern) == "" {
@@ -365,6 +370,76 @@ func validateSeriesNaming(naming Naming, line int, problems *[]string) {
 	if err := validateSeriesPattern(naming.Pattern); err != nil {
 		*problems = append(*problems, withLine(line, err.Error()))
 	}
+}
+
+func validateTemplateNaming(naming Naming, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, line int, problems *[]string) {
+	if naming.Length != 0 || strings.TrimSpace(naming.Field) != "" || strings.TrimSpace(naming.Pattern) != "" {
+		*problems = append(*problems, withLine(line, "template naming supports template only"))
+	}
+	if strings.TrimSpace(naming.Template) == "" {
+		*problems = append(*problems, withLine(line, "template naming template is required"))
+		return
+	}
+	tokens, err := namingTemplateTokens(naming.Template)
+	if err != nil {
+		*problems = append(*problems, withLine(line, err.Error()))
+		return
+	}
+	if len(tokens) == 0 {
+		*problems = append(*problems, withLine(line, "template naming must include at least one field token"))
+		return
+	}
+	for _, token := range tokens {
+		field, ok := fields[token]
+		if !ok {
+			*problems = append(*problems, withLine(line, fmt.Sprintf("template naming references unknown field %q", token)))
+			continue
+		}
+		definition, ok := fieldTypes[token]
+		if !ok {
+			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("template naming field %q type %q is unknown", token, field.Type)))
+			continue
+		}
+		if !field.Required {
+			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("template naming field %q must be required", token)))
+		}
+		if !definition.AllowUnique {
+			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("template naming field %q type %q cannot be used for naming", token, field.Type)))
+		}
+		if !isStoredFieldType(field.Type) {
+			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("template naming field %q type %q is not stored", token, field.Type)))
+		}
+		if isWriteOnlyFieldType(field.Type) {
+			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("template naming field %q type %q is write-only", token, field.Type)))
+		}
+	}
+}
+
+func namingTemplateTokens(template string) ([]string, error) {
+	var tokens []string
+	for i := 0; i < len(template); {
+		switch template[i] {
+		case '{':
+			end := strings.IndexByte(template[i+1:], '}')
+			if end < 0 {
+				return nil, fmt.Errorf("template naming template has an unclosed token")
+			}
+			token := template[i+1 : i+1+end]
+			if strings.Contains(token, "{") {
+				return nil, fmt.Errorf("template naming template has a nested token")
+			}
+			if !fieldtype.IsName(token) {
+				return nil, fmt.Errorf("template naming token %q must be a field name", "{"+token+"}")
+			}
+			tokens = append(tokens, token)
+			i += end + 2
+		case '}':
+			return nil, fmt.Errorf("template naming template has an unopened token")
+		default:
+			i++
+		}
+	}
+	return tokens, nil
 }
 
 func validateSeriesPattern(pattern string) error {

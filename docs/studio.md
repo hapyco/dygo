@@ -57,7 +57,7 @@ Current routes:
 
 `/login` is public. The other routes require a valid Studio session.
 
-The `:entity` segment is the Entity route slug, not the app name plus Entity name. It defaults to Entity `name` and can be set with `route.slug` when two apps would otherwise collide.
+The `:entity` segment is the Entity slug, not the app name plus Entity key. It defaults to the Entity key and can be set with `route.slug` when two apps would otherwise collide.
 
 Route slug conflicts and reserved root slugs fail validation. dygo does not append numeric suffixes such as `contact-2`, because those URLs are unstable and unclear.
 

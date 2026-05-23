@@ -130,7 +130,7 @@ created, err := dygo.Records.Create(ctx, "sales", "activity", input)
 updated, err := dygo.Records.Update(ctx, dygo.AppName, dygo.Entity, dygo.RecordID, input)
 ```
 
-The app name is the app manifest `name`, and the Entity is the Entity metadata `name`. Do not pass the route slug to `dygo.Records`. `dygo.RouteSlug` is exposed for URLs, metadata links, and display behavior when an Entity uses an explicit `route.slug`.
+The app name is the app manifest `name`, and the Entity is the file-derived Entity key. Do not pass the route slug to `dygo.Records`. `dygo.RouteSlug` is exposed for URLs, metadata links, and display behavior when an Entity uses an explicit `route.slug`.
 
 `dygo.Records` is trusted server-side app code. It does not run the HTTP route permission checks used by `/api/v1/records/{entity}`. Use it for app-owned business behavior that must run with the hook transaction; actor-scoped and permission-scoped SDK access modes are separate future work.
 

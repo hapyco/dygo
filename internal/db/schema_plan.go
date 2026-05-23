@@ -509,7 +509,7 @@ func validateDesiredObjectNames(table desiredTable) error {
 }
 
 func requiresSystemNameUniqueConstraint(entity catalog.LoadedEntity) bool {
-	return !(entity.AppName == "core" && entity.Entity.Name == "entity")
+	return true
 }
 
 func singleEntityNameConstraint(table string, entity catalog.LoadedEntity) desiredConstraint {

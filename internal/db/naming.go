@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/dygo-dev/dygo/internal/entity/schema"
 	"github.com/dygo-dev/dygo/internal/naming"
+	"github.com/jackc/pgx/v5"
 )
 
 var seriesTokenPattern = regexp.MustCompile(`\{(YY|YYYY|MM|#+)\}`)
@@ -20,6 +22,7 @@ type recordNaming struct {
 	Length   int    `json:"length,omitempty"`
 	Field    string `json:"field,omitempty"`
 	Pattern  string `json:"pattern,omitempty"`
+	Template string `json:"template,omitempty"`
 }
 
 func defaultRecordNaming() recordNaming {
@@ -67,6 +70,77 @@ RETURNING "current"`, key, layout.EntityID, key, pattern).Scan(&current)
 		return "", classifyRecordDBError(err, "naming-series")
 	}
 	return strings.Replace(rendered, "{#}", fmt.Sprintf("%0*d", counterWidth, current), 1), nil
+}
+
+func (s RecordStore) templateRecordName(ctx context.Context, layout recordLayout, template string, input RecordInput) (string, error) {
+	name, err := renderNameTemplate(template, func(token string) (string, error) {
+		field, ok := layout.FieldByName[token]
+		if !ok {
+			return "", recordError(RecordErrorInternal, "naming template field metadata is missing", map[string]any{"entity": layout.Entity, "field": token}, nil)
+		}
+		raw, ok := input[token]
+		if !ok {
+			return "", recordError(RecordErrorValidation, "naming template field is required", map[string]any{"entity": layout.Entity, "field": token}, nil)
+		}
+		return s.templateRecordNameValue(ctx, layout, field, raw)
+	})
+	if err != nil {
+		if IsRecordError(err) {
+			return "", err
+		}
+		return "", recordError(RecordErrorInternal, "naming template metadata is invalid", map[string]any{"entity": layout.Entity}, err)
+	}
+	return name, nil
+}
+
+func (s RecordStore) templateRecordNameValue(ctx context.Context, layout recordLayout, field recordField, raw json.RawMessage) (string, error) {
+	if field.Type != "link" {
+		return recordNameValue(field, raw)
+	}
+	id, err := jsonIntValue(field, raw)
+	if err != nil {
+		return "", err
+	}
+	appName := strings.TrimSpace(field.Options.App)
+	if appName == "" {
+		appName = layout.AppName
+	}
+	table := entityTableName(appName, field.Options.Entity)
+	var name string
+	err = s.queryer.QueryRow(ctx, fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", quoteIdent("name"), quoteIdent(table), quoteIdent("id")), id).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", recordError(RecordErrorValidation, "naming template link target not found", map[string]any{"entity": layout.Entity, "field": field.Name, "id": id}, err)
+	}
+	if err != nil {
+		return "", classifyRecordDBError(err, field.Options.Entity)
+	}
+	return name, nil
+}
+
+func renderNameTemplate(template string, resolve func(token string) (string, error)) (string, error) {
+	var rendered strings.Builder
+	for i := 0; i < len(template); {
+		switch template[i] {
+		case '{':
+			end := strings.IndexByte(template[i+1:], '}')
+			if end < 0 {
+				return "", fmt.Errorf("template has an unclosed token")
+			}
+			token := template[i+1 : i+1+end]
+			value, err := resolve(token)
+			if err != nil {
+				return "", err
+			}
+			rendered.WriteString(value)
+			i += end + 2
+		case '}':
+			return "", fmt.Errorf("template has an unopened token")
+		default:
+			rendered.WriteByte(template[i])
+			i++
+		}
+	}
+	return rendered.String(), nil
 }
 
 func renderSeriesPattern(entity string, pattern string, now time.Time) (rendered string, counterWidth int, key string, err error) {

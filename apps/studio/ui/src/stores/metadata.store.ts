@@ -40,7 +40,7 @@ export const useMetadataStore = defineStore('metadata', {
 
   getters: {
     entityByRouteSlug: (state) => (slug: string): MetadataEntity | undefined => (
-      state.entities.find((entity) => entity['route-slug'] === slug || entity.name === slug)
+      state.entities.find((entity) => entity.slug === slug || entity.key === slug)
     ),
 
     entityMeta: (state) => (entity: string): MetadataEntityMeta | null => (
@@ -125,7 +125,7 @@ export const useMetadataStore = defineStore('metadata', {
     },
 
     setEntityMeta(meta: MetadataEntityMeta, requestedKey?: string) {
-      const keys = new Set([requestedKey, meta.name, meta['route-slug']].filter(Boolean) as string[])
+      const keys = new Set([requestedKey, meta.name, meta.key, meta.slug].filter(Boolean) as string[])
 
       keys.forEach((key) => {
         this.entityMetaByKey[key] = meta

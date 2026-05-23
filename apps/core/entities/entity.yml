@@ -2,8 +2,8 @@ label: Entity
 description: Registry entry for a known Entity definition.
 icon: boxes
 naming:
-  strategy: field
-  field: name
+  strategy: template
+  template: "{app}.{key}"
 fields:
   - name: app
     label: App
@@ -13,14 +13,14 @@ fields:
     options:
       entity: app
 
-  - name: name
-    label: Name
+  - name: key
+    label: Key
     type: text
     required: true
     index: true
 
-  - name: route-slug
-    label: Route Slug
+  - name: slug
+    label: Slug
     type: text
     required: true
     unique: true
@@ -56,7 +56,3 @@ fields:
   - name: naming
     label: Naming
     type: json
-
-constraints:
-  - type: unique
-    fields: [app, name]
