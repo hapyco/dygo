@@ -55,7 +55,7 @@ const props = withDefaults(defineProps<{
   emptyTitle: 'No records exist.',
   emptyMessage: '',
   emptyActionLabel: '',
-  pageSizeOptions: () => [20, 100, 500, 2500],
+  pageSizeOptions: () => [],
   hasMore: false,
   sort: null,
   footerError: '',

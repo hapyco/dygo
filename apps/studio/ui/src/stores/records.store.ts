@@ -11,10 +11,13 @@ import {
   updateSingleRecord as updateSingleRecordRequest,
   type RecordData,
 } from '@/features/records/records.api'
-import { isAllowedRecordPageSize, recordListDefaultPageSize } from '@/features/records/query'
+import { isAllowedRecordPageSize } from '@/features/records/query'
+import type { RecordListPolicy } from '@/features/platform/platform.api'
+import { usePlatformStore } from './platform.store'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
 
 const pageSizeStorageKey = 'dygo.studio.records.pageSize'
+const fallbackPageSize = 20
 export const singleRecordKey = '__single__'
 
 type LoadInitialOptions = {
@@ -84,21 +87,25 @@ function recordStateKey(entity: string, recordName: string): string {
   return JSON.stringify([entity, recordName])
 }
 
-function readStoredPageSize(): number {
+function defaultPageSize(policy: RecordListPolicy): number {
+  return policy['page-sizes'][0] ?? policy['default-limit']
+}
+
+function readStoredPageSize(policy: RecordListPolicy): number {
   if (typeof window === 'undefined') {
-    return recordListDefaultPageSize
+    return defaultPageSize(policy)
   }
 
   const value = Number(window.localStorage.getItem(pageSizeStorageKey))
-  if (!isAllowedRecordPageSize(value)) {
-    return recordListDefaultPageSize
+  if (!isAllowedRecordPageSize(value, policy['page-sizes'])) {
+    return defaultPageSize(policy)
   }
 
   return value
 }
 
-function writeStoredPageSize(pageSize: number) {
-  if (typeof window === 'undefined' || !isAllowedRecordPageSize(pageSize)) {
+function writeStoredPageSize(pageSize: number, policy: RecordListPolicy) {
+  if (typeof window === 'undefined' || !isAllowedRecordPageSize(pageSize, policy['page-sizes'])) {
     return
   }
 
@@ -111,7 +118,7 @@ function sortsEqual(left: DataTableSort | null, right: DataTableSort | null): bo
 
 export const useRecordsStore = defineStore('records', {
   state: (): RecordsState => ({
-    pageSize: readStoredPageSize(),
+    pageSize: fallbackPageSize,
     byEntity: {},
     pendingInitialByEntity: {},
     byRecord: {},
@@ -146,7 +153,29 @@ export const useRecordsStore = defineStore('records', {
       return this.byRecord[key]
     },
 
+    async ensureRecordListPolicy() {
+      const platformStore = usePlatformStore()
+      await platformStore.loadPlatform()
+      const policy = platformStore.recordListPolicy
+      const nextPageSize = readStoredPageSize(policy)
+
+      if (this.pageSize !== nextPageSize) {
+        this.pageSize = nextPageSize
+        Object.values(this.byEntity).forEach((state) => {
+          if (state.pageSize === nextPageSize) {
+            return
+          }
+
+          state.pageSize = nextPageSize
+          state.selectedRowKeys = []
+          state.stale = true
+        })
+      }
+    },
+
     async loadInitial(entity: string, options: LoadInitialOptions = {}): Promise<RecordEntityState> {
+      await this.ensureRecordListPolicy()
+
       if (options.pageSize) {
         this.setGlobalPageSize(options.pageSize)
       }
@@ -386,6 +415,7 @@ export const useRecordsStore = defineStore('records', {
     },
 
     async setPageSize(entity: string, pageSize: number): Promise<RecordEntityState> {
+      await this.ensureRecordListPolicy()
       this.setGlobalPageSize(pageSize)
       return this.loadInitial(entity, { force: true })
     },
@@ -404,12 +434,13 @@ export const useRecordsStore = defineStore('records', {
     },
 
     setGlobalPageSize(pageSize: number) {
-      if (!isAllowedRecordPageSize(pageSize)) {
+      const policy = usePlatformStore().recordListPolicy
+      if (!isAllowedRecordPageSize(pageSize, policy['page-sizes'])) {
         return
       }
 
       this.pageSize = pageSize
-      writeStoredPageSize(pageSize)
+      writeStoredPageSize(pageSize, policy)
 
       Object.values(this.byEntity).forEach((state) => {
         if (state.pageSize === pageSize) {

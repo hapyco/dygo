@@ -1,5 +1,6 @@
 export { useAuthStore } from './auth.store'
 export { useMetadataStore } from './metadata.store'
 export { useNavigationStore } from './navigation.store'
+export { usePlatformStore } from './platform.store'
 export { useRecordsStore } from './records.store'
 export type { LoadStatus, StoreError } from './status'

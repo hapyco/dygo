@@ -8,10 +8,12 @@ import Shell from '@/shell/Shell.vue'
 import type { ShellNavItem } from '@/shell/types'
 import { useAuthStore } from '@/stores/auth.store'
 import { useMetadataStore } from '@/stores/metadata.store'
+import { usePlatformStore } from '@/stores/platform.store'
 
 const route = useRoute()
 const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
+const platformStore = usePlatformStore()
 
 const usesShell = computed(() => !route.meta.public)
 const currentEntity = computed(() => {
@@ -55,6 +57,7 @@ watch(
       return
     }
 
+    await platformStore.loadPlatform()
     await metadataStore.loadEntities()
   },
   { immediate: true },

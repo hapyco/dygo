@@ -27,7 +27,7 @@ func TestRecordStoreListRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListRecords() error = %v, want nil", err)
 	}
-	if result.Limit != 50 || result.Offset != 0 || result.Count != 2 {
+	if result.Limit != 20 || result.Offset != 0 || result.Count != 2 {
 		t.Fatalf("ListRecords() result = %+v, want default pagination and two records", result)
 	}
 	if result.Records[0]["email"] != "a@example.com" || result.Records[0]["full-name"] != "A User" {
@@ -40,7 +40,7 @@ func TestRecordStoreListRecords(t *testing.T) {
 	if !strings.Contains(lastQuery, `FROM "user"`) || !strings.Contains(lastQuery, `ORDER BY "id" ASC LIMIT $1 OFFSET $2`) {
 		t.Fatalf("list query = %q, want deterministic paginated query", lastQuery)
 	}
-	if got := queryer.args[len(queryer.args)-1]; len(got) != 2 || got[0] != 50 || got[1] != 0 {
+	if got := queryer.args[len(queryer.args)-1]; len(got) != 2 || got[0] != 20 || got[1] != 0 {
 		t.Fatalf("list args = %#v, want default limit/offset", got)
 	}
 }
@@ -78,7 +78,7 @@ func TestRecordStoreListRecordsFiltersAndSorts(t *testing.T) {
 			t.Fatalf("list query = %q, want %q", lastQuery, want)
 		}
 	}
-	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{"a@example.com", true, 50, 0}) {
+	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{"a@example.com", true, 20, 0}) {
 		t.Fatalf("list args = %#v, want filter args then pagination", got)
 	}
 }
@@ -109,7 +109,7 @@ func TestRecordStoreListRecordsSupportsSystemFiltersAndSortTieBreaker(t *testing
 			t.Fatalf("list query = %q, want %q", lastQuery, want)
 		}
 	}
-	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{"2026-05-07T12:00:00Z", int64(7), 50, 0}) {
+	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{"2026-05-07T12:00:00Z", int64(7), 20, 0}) {
 		t.Fatalf("list args = %#v, want system filter args", got)
 	}
 }

@@ -355,7 +355,7 @@ func orderPreparedFiles(files []preparedFile) ([]preparedFile, error) {
 	for i, file := range files {
 		for _, record := range file.Fixture.Records {
 			for name := range record.Values {
-				field, ok := db.MetadataFieldByName(file.Fields, name)
+				field, ok := db.RecordAddressableFieldByName(file.Fields, name)
 				if !ok {
 					continue
 				}
@@ -429,7 +429,7 @@ func validateRecord(file LoadedFile, fields map[string]db.MetadataField, record 
 		}
 	}
 	for name, value := range record.Values {
-		field, ok := db.MetadataFieldByName(fields, name)
+		field, ok := db.RecordAddressableFieldByName(fields, name)
 		if !ok {
 			return fmt.Errorf("%s:%d: unknown fixture field %q", file.Path, value.Line, name)
 		}
@@ -449,7 +449,7 @@ func resolveRecord(ctx context.Context, store Store, file preparedFile, record R
 	input := db.RecordInput{}
 	match := db.RecordInput{}
 	for name, value := range record.Values {
-		field, ok := db.MetadataFieldByName(file.Fields, name)
+		field, ok := db.RecordAddressableFieldByName(file.Fields, name)
 		if !ok {
 			return nil, nil, fmt.Errorf("%s:%d: unknown fixture field %q", file.Path, value.Line, name)
 		}
@@ -495,7 +495,7 @@ func resolveValue(ctx context.Context, store Store, field db.MetadataField, valu
 	}
 	match := db.RecordInput{}
 	for _, name := range matchNames {
-		targetField, ok := db.MetadataFieldByName(targetFields, name)
+		targetField, ok := db.RecordAddressableFieldByName(targetFields, name)
 		if !ok {
 			return nil, fmt.Errorf("link match field %q does not exist", name)
 		}

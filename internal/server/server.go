@@ -87,6 +87,7 @@ func NewRouter(options ...Options) http.Handler {
 		registerAuthRoutes(api, opts.Auth)
 		api.Group(func(protected chi.Router) {
 			protected.Use(authMiddleware(opts.Auth))
+			registerPlatformRoutes(protected)
 			registerMetadataRoutes(protected, opts.Metadata, opts.Permissions)
 			registerRecordRoutes(protected, opts.Records, opts.Activity, opts.Permissions)
 		})
@@ -219,6 +220,18 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
+}
+
+type platformConfig struct {
+	RecordList recordquery.Policy `json:"record-list"`
+}
+
+func registerPlatformRoutes(router chi.Router) {
+	router.Get("/platform", platformHandler)
+}
+
+func platformHandler(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: platformConfig{RecordList: recordquery.ListPolicy()}})
 }
 
 type authContextKey struct{}

@@ -11,9 +11,27 @@ import (
 )
 
 const (
-	DefaultLimit = 50
+	DefaultLimit = 20
 	MaxLimit     = 2500
 )
+
+var pageSizes = []int{20, 100, 500, MaxLimit}
+
+// Policy describes the framework-owned Record list pagination contract.
+type Policy struct {
+	DefaultLimit int   `json:"default-limit"`
+	MaxLimit     int   `json:"max-limit"`
+	PageSizes    []int `json:"page-sizes"`
+}
+
+// ListPolicy returns the current Record list pagination policy.
+func ListPolicy() Policy {
+	return Policy{
+		DefaultLimit: DefaultLimit,
+		MaxLimit:     MaxLimit,
+		PageSizes:    append([]int(nil), pageSizes...),
+	}
+}
 
 // Params controls Record list pagination, exact filters, and sorting.
 type Params struct {

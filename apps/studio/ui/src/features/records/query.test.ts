@@ -4,7 +4,6 @@ import assert from 'node:assert/strict'
 import {
   buildRecordListQuery,
   isAllowedRecordPageSize,
-  recordListMaxLimit,
 } from './query.ts'
 
 test('buildRecordListQuery serializes pagination, sort, and filters', () => {
@@ -25,8 +24,10 @@ test('buildRecordListQuery serializes pagination, sort, and filters', () => {
   assert.equal(query.get('enabled'), 'true')
 })
 
-test('isAllowedRecordPageSize shares Studio page-size bounds', () => {
-  assert.equal(isAllowedRecordPageSize(20), true)
-  assert.equal(isAllowedRecordPageSize(recordListMaxLimit), true)
-  assert.equal(isAllowedRecordPageSize(recordListMaxLimit + 1), false)
+test('isAllowedRecordPageSize checks backend-provided page sizes', () => {
+  const pageSizes = [20, 100, 500, 2500]
+
+  assert.equal(isAllowedRecordPageSize(20, pageSizes), true)
+  assert.equal(isAllowedRecordPageSize(2500, pageSizes), true)
+  assert.equal(isAllowedRecordPageSize(50, pageSizes), false)
 })

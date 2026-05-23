@@ -99,6 +99,27 @@ func TestNewRouterStudioFallbackDoesNotCatchAPI(t *testing.T) {
 	}
 }
 
+func TestPlatformRoute(t *testing.T) {
+	request := authenticatedRequest(http.MethodGet, "/api/v1/platform", "")
+	recorder := httptest.NewRecorder()
+
+	NewRouter(Options{Auth: validFakeAuthStore()}).ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("platform status = %d, want 200", response.StatusCode)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("ReadAll(platform body) error = %v", err)
+	}
+	want := `"record-list":{"default-limit":20,"max-limit":2500,"page-sizes":[20,100,500,2500]}`
+	if !contains(string(body), want) {
+		t.Fatalf("platform body = %s, want %s", string(body), want)
+	}
+}
+
 func TestServeListener(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

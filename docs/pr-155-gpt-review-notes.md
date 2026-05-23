@@ -46,7 +46,7 @@ Future work should be split into smaller PRs, for example:
 
 ### 2. `SystemMutationOptions` Is Boolean-Heavy
 
-Status: locked for implementation.
+Status: done.
 
 Current shape:
 
@@ -248,19 +248,19 @@ Implementation notes:
 
 ### 4. Frontend And Backend Query Limits Are Duplicated
 
-Status: locked for implementation.
+Status: done.
 
 Backend:
 
 ```txt
-DefaultLimit = 50
+DefaultLimit = 20
 MaxLimit = 2500
 ```
 
-Frontend:
+Previous frontend:
 
 ```txt
-recordListDefaultLimit = 50
+recordListDefaultLimit = 20
 recordListMaxLimit = 2500
 recordListPageSizes = [20, 100, 500, recordListMaxLimit]
 ```
@@ -271,7 +271,7 @@ Decision:
 
 ```yaml
 record-list:
-  default-limit: 50
+  default-limit: 20
   max-limit: 2500
   page-sizes: [20, 100, 500, 2500]
 ```
@@ -295,7 +295,7 @@ Contract:
 
 ### 5. System Fields Are Still Split Between Backend And Studio
 
-Status: locked for implementation.
+Status: done.
 
 Backend system fields live in `storage_contract.go`.
 
@@ -374,7 +374,7 @@ Permissions and backend validation decide what can be written. Studio should not
 
 ### 6. `MetadataFieldByName` Naming May Be Misleading
 
-Status: locked for implementation.
+Status: done.
 
 `MetadataFieldByName` returns authored fields or a supported system field, but the review notes that it appears to special-case only `name`.
 
@@ -593,7 +593,7 @@ Do not split prematurely. Just watch the shape.
 
 Go constants and Core Entity YAML select options must stay aligned through contract tests.
 
-## Pre-Merge Checks To Decide
+## Pre-Merge Checks Resolved
 
 1. Path-derived Entity naming convention coverage.
 2. `is-collection` and folder-implied collection inference.
@@ -605,7 +605,6 @@ Go constants and Core Entity YAML select options must stay aligned through contr
 
 - large PR size
 - field type behavior breadth
-- frontend/backend query limit duplication
 - generic URL filter syntax
 - Studio hardcoded system fields
 

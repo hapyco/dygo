@@ -170,7 +170,7 @@ func (l PatchLedger) RecordPatchRun(ctx context.Context, run PatchRun) error {
 	if strings.TrimSpace(run.DygoVersion) != "" {
 		input["dygo-version"] = systemRecordString(run.DygoVersion)
 	}
-	if _, err := NewSystemRecordWriter(l.queryer).InsertByIdentity(ctx, "core", "patch-run", input, SystemMutationOptions{Bootstrap: true}); err != nil {
+	if err := NewSystemRecordWriter(l.queryer).InsertByIdentity(ctx, "core", "patch-run", input, SystemMutationBootstrap); err != nil {
 		return fmt.Errorf("record patch run %s/%s: %w", run.AppName, run.PatchID, err)
 	}
 	return nil

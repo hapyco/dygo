@@ -9,7 +9,7 @@ test('buildRecordListColumns uses metadata display hints and listability', () =>
     metadataField({ name: 'email', label: 'Email', listable: true, display: 'email' }),
     metadataField({ name: 'password', label: 'Password', listable: true, writeOnly: true, display: 'hidden' }),
     metadataField({ name: 'notes', label: 'Notes', listable: false, display: 'text' }),
-  ])
+  ], systemFields())
 
   assert.deepEqual(columns.map((column) => column.key), ['name', 'email', 'created-at', 'updated-at'])
   assert.equal(columns.find((column) => column.key === 'email')?.cellType, 'email')
@@ -18,7 +18,7 @@ test('buildRecordListColumns uses metadata display hints and listability', () =>
 test('buildRecordListColumns keeps the system name column authoritative', () => {
   const columns = buildRecordListColumns([
     metadataField({ name: 'name', label: 'Custom Name', listable: true, display: 'text' }),
-  ])
+  ], systemFields())
 
   assert.equal(columns.filter((column) => column.key === 'name').length, 1)
   assert.equal(columns[0].source, 'name')
@@ -63,4 +63,13 @@ function metadataField(overrides: {
     },
     position: 1,
   }
+}
+
+function systemFields(): MetadataField[] {
+  return [
+    metadataField({ name: 'id', label: 'ID', listable: false, display: 'number' }),
+    metadataField({ name: 'name', label: 'Name', listable: true, display: 'text' }),
+    metadataField({ name: 'created-at', label: 'Created At', listable: true, display: 'datetime' }),
+    metadataField({ name: 'updated-at', label: 'Updated At', listable: true, display: 'datetime' }),
+  ]
 }

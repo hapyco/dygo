@@ -48,6 +48,7 @@ const entityMeta = computed(() => metadataStore.entityMeta(props.entity))
 const entityMetaStatus = computed(() => metadataStore.entityMetaStatus(props.entity))
 const entityMetaError = computed(() => metadataStore.entityMetaError(props.entity))
 const fields = computed(() => entityMeta.value?.fields ?? [])
+const systemFields = computed(() => entityMeta.value?.['system-fields'] ?? [])
 const entityLabel = computed(() => entityMeta.value?.label || humanizeEntity(props.entity))
 const isNew = computed(() => props.mode === 'new')
 const isSingle = computed(() => props.mode === 'single')
@@ -181,7 +182,7 @@ function buildSubmitPayload(): RecordData {
   const errors: Record<string, string> = {}
 
   fields.value.forEach((field) => {
-    if (isHiddenRecordSubmitField(field.name)) {
+    if (isHiddenRecordSubmitField(field.name, systemFields.value)) {
       return
     }
 
@@ -386,6 +387,7 @@ function humanizeEntity(value: string): string {
           :entity="props.entity"
           :entity-label="entityLabel"
           :fields="fields"
+          :system-fields="systemFields"
           :record="recordState.record"
           :mode="props.mode"
           :model-value="draft"

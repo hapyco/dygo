@@ -1,10 +1,5 @@
 import type { DataTableSort } from '../../design/types'
 
-export const recordListDefaultLimit = 50
-export const recordListMaxLimit = 2500
-export const recordListPageSizes = [20, 100, 500, recordListMaxLimit] as const
-export const recordListDefaultPageSize = 20
-
 export type ListRecordsParams = {
   limit: number
   offset: number
@@ -29,6 +24,6 @@ export function buildRecordListQuery(params: ListRecordsParams): URLSearchParams
   return query
 }
 
-export function isAllowedRecordPageSize(pageSize: number): boolean {
-  return recordListPageSizes.includes(pageSize as (typeof recordListPageSizes)[number])
+export function isAllowedRecordPageSize(pageSize: number, pageSizes: readonly number[]): boolean {
+  return pageSizes.includes(pageSize)
 }

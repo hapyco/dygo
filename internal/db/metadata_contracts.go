@@ -18,8 +18,8 @@ func MetadataFieldsByName(meta MetadataEntityMeta) map[string]MetadataField {
 	return fields
 }
 
-// MetadataFieldByName returns an Entity field or a supported system Record field.
-func MetadataFieldByName(fields map[string]MetadataField, name string) (MetadataField, bool) {
+// RecordAddressableFieldByName returns an Entity field or the public system Record name field.
+func RecordAddressableFieldByName(fields map[string]MetadataField, name string) (MetadataField, bool) {
 	if field, ok := fields[name]; ok {
 		return field, true
 	}
@@ -67,7 +67,7 @@ func ValidateRecordMatch(meta MetadataEntityMeta, match []string) error {
 			return fmt.Errorf("record match contains duplicate field %q", name)
 		}
 		seen[name] = true
-		field, ok := MetadataFieldByName(fields, name)
+		field, ok := RecordAddressableFieldByName(fields, name)
 		if !ok {
 			return fmt.Errorf("record match field %q does not exist on Entity %q", name, meta.Name)
 		}
@@ -76,7 +76,7 @@ func ValidateRecordMatch(meta MetadataEntityMeta, match []string) error {
 		}
 	}
 	if len(match) == 1 {
-		field, _ := MetadataFieldByName(fields, match[0])
+		field, _ := RecordAddressableFieldByName(fields, match[0])
 		if field.Unique || match[0] == "name" {
 			return nil
 		}

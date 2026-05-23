@@ -42,7 +42,7 @@ func actionColumn(action Action) (string, bool) {
 func ValidateMetadata(meta db.MetadataEntityMeta) error {
 	fields := db.MetadataFieldsByName(meta)
 	for _, spec := range actionSpecs {
-		field, ok := db.MetadataFieldByName(fields, string(spec.Action))
+		field, ok := db.RecordAddressableFieldByName(fields, string(spec.Action))
 		if !ok {
 			return fmt.Errorf("permission action field %q is missing", spec.Action)
 		}

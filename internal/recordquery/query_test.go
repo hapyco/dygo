@@ -24,6 +24,22 @@ func TestNormalize(t *testing.T) {
 	}
 }
 
+func TestListPolicy(t *testing.T) {
+	policy := ListPolicy()
+	if policy.DefaultLimit != 20 || policy.MaxLimit != 2500 {
+		t.Fatalf("ListPolicy() = %+v, want default 20 max 2500", policy)
+	}
+	wantPageSizes := []int{20, 100, 500, 2500}
+	if !reflect.DeepEqual(policy.PageSizes, wantPageSizes) {
+		t.Fatalf("ListPolicy().PageSizes = %#v, want %#v", policy.PageSizes, wantPageSizes)
+	}
+
+	policy.PageSizes[0] = 999
+	if ListPolicy().PageSizes[0] != 20 {
+		t.Fatal("ListPolicy() leaked mutable page-size storage")
+	}
+}
+
 func TestFromValues(t *testing.T) {
 	values := url.Values{
 		"limit":   {"25"},

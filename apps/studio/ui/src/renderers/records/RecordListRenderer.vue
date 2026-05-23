@@ -7,6 +7,7 @@ import DropdownMenu from '@/design/primitives/DropdownMenu.vue'
 import type { DataTableRowKey, DataTableSort, DataTableState, DropdownMenuItem } from '@/design/types'
 import type { MetadataField } from '@/features/metadata/metadata.api'
 import PageToolbar from '@/shell/PageToolbar.vue'
+import { usePlatformStore } from '@/stores/platform.store'
 import { useRecordsStore } from '@/stores/records.store'
 import { buildRecordListColumns } from './columns'
 
@@ -23,9 +24,11 @@ const emit = defineEmits<{
 }>()
 
 const recordsStore = useRecordsStore()
+const platformStore = usePlatformStore()
 const hiddenColumnKeys = ref<string[]>([])
 
 const columns = computed(() => buildRecordListColumns(props.fields, props.systemFields ?? []))
+const pageSizeOptions = computed(() => platformStore.recordListPolicy['page-sizes'])
 const hiddenColumnKeySet = computed(() => new Set(hiddenColumnKeys.value.filter((key) => key !== 'name')))
 const visibleColumns = computed(() => columns.value.filter((column) => (
   column.key === 'name' || !hiddenColumnKeySet.value.has(column.key)
@@ -106,9 +109,10 @@ const columnMenuItems = computed<DropdownMenuItem[]>(() => [
 
 watch(
   () => props.entity,
-  (entity) => {
+  async (entity) => {
     hiddenColumnKeys.value = readHiddenColumnKeys(entity)
-    void recordsStore.loadInitial(entity)
+    await platformStore.loadPlatform()
+    await recordsStore.loadInitial(entity)
   },
   { immediate: true },
 )
@@ -211,6 +215,7 @@ function writeHiddenColumnKeys(entity: string, keys: string[]) {
       :error="error"
       :footer-error="footerError"
       :page-size="recordState.pageSize"
+      :page-size-options="pageSizeOptions"
       :total-rows="recordState.total"
       :has-more="hasMore"
       :sort="recordState.sort"

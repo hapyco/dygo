@@ -39,8 +39,8 @@ func TestActivityReaderListRecordActivity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListRecordActivity() error = %v, want nil", err)
 	}
-	if result.Count != 2 || result.Limit != 50 || result.Offset != 0 {
-		t.Fatalf("ListRecordActivity() meta = count %d limit %d offset %d, want 2/50/0", result.Count, result.Limit, result.Offset)
+	if result.Count != 2 || result.Limit != 20 || result.Offset != 0 {
+		t.Fatalf("ListRecordActivity() meta = count %d limit %d offset %d, want 2/20/0", result.Count, result.Limit, result.Offset)
 	}
 	if len(result.Activities) != 2 || result.Activities[0].ID != 2 || result.Activities[1].ID != 1 {
 		t.Fatalf("ListRecordActivity() activities = %+v, want newest first", result.Activities)
@@ -48,7 +48,7 @@ func TestActivityReaderListRecordActivity(t *testing.T) {
 	if !strings.Contains(queryer.queries[0], "ORDER BY a.created_at DESC, a.id DESC") {
 		t.Fatalf("ListRecordActivity() query = %q, want newest-first ordering", queryer.queries[0])
 	}
-	if !reflect.DeepEqual(queryer.args[0], []any{int64(10), int64(42), 50, 0}) {
+	if !reflect.DeepEqual(queryer.args[0], []any{int64(10), int64(42), 20, 0}) {
 		t.Fatalf("ListRecordActivity() args = %#v, want entity id, record id, limit, offset", queryer.args[0])
 	}
 

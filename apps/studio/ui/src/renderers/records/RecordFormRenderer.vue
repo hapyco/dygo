@@ -18,6 +18,7 @@ const props = withDefaults(defineProps<{
   entity: string
   entityLabel: string
   fields: MetadataField[]
+  systemFields?: MetadataField[]
   record?: RecordData | null
   mode: 'new' | 'record' | 'single'
   modelValue: RecordData
@@ -33,7 +34,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: RecordData]
 }>()
 
-const visibleFields = computed(() => props.fields.filter((field) => !isHiddenRecordFormField(field.name)))
+const visibleFields = computed(() => props.fields.filter((field) => !isHiddenRecordFormField(field.name, props.systemFields ?? [])))
 
 function updateField(field: MetadataField, value: unknown) {
   emit('update:modelValue', {

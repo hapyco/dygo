@@ -7,13 +7,19 @@ import (
 	"strconv"
 )
 
-// SystemMutationOptions declares which public Record behavior an internal writer is bypassing.
-type SystemMutationOptions struct {
-	RunHooks      bool
-	WriteActivity bool
-	ReturnRecord  bool
-	Bootstrap     bool
-}
+// SystemMutationPolicy declares which public Record behavior an internal writer should use.
+type SystemMutationPolicy string
+
+const (
+	// SystemMutationBootstrap writes during setup/bootstrap without hooks or activity.
+	SystemMutationBootstrap SystemMutationPolicy = "bootstrap"
+	// SystemMutationSilent writes through metadata-backed storage without hooks or activity.
+	SystemMutationSilent SystemMutationPolicy = "silent"
+	// SystemMutationFramework runs dygo framework hooks, including activity.
+	SystemMutationFramework SystemMutationPolicy = "framework"
+	// SystemMutationFull uses the writer's configured Record hooks.
+	SystemMutationFull SystemMutationPolicy = "full"
+)
 
 // SystemRecordWriter writes framework-owned Records through metadata-backed mutation code.
 type SystemRecordWriter struct {
@@ -30,16 +36,26 @@ func (s RecordStore) SystemWriter() SystemRecordWriter {
 	return SystemRecordWriter{store: s}
 }
 
-// InsertByIdentity inserts one app-scoped system Record.
-func (w SystemRecordWriter) InsertByIdentity(ctx context.Context, appName string, entity string, input RecordInput, opts SystemMutationOptions) (Record, error) {
+// InsertByIdentity inserts one app-scoped system Record without returning it.
+func (w SystemRecordWriter) InsertByIdentity(ctx context.Context, appName string, entity string, input RecordInput, policy SystemMutationPolicy) error {
+	_, err := w.insertByIdentity(ctx, appName, entity, input, policy, false)
+	return err
+}
+
+// InsertReturningByIdentity inserts one app-scoped system Record and returns it.
+func (w SystemRecordWriter) InsertReturningByIdentity(ctx context.Context, appName string, entity string, input RecordInput, policy SystemMutationPolicy) (Record, error) {
+	return w.insertByIdentity(ctx, appName, entity, input, policy, true)
+}
+
+func (w SystemRecordWriter) insertByIdentity(ctx context.Context, appName string, entity string, input RecordInput, policy SystemMutationPolicy, returning bool) (Record, error) {
 	if err := w.store.requireQueryer(); err != nil {
 		return nil, err
 	}
-	store, opts, err := w.mutationStore(appName, entity, opts)
+	store, err := w.mutationStore(appName, entity, policy)
 	if err != nil {
 		return nil, err
 	}
-	if opts.ReturnRecord {
+	if returning || systemMutationRunsHooks(policy) {
 		return store.createRecordByIdentity(ctx, appName, entity, input)
 	}
 	layout, err := store.recordLayoutByIdentity(ctx, appName, entity)
@@ -56,17 +72,26 @@ func (w SystemRecordWriter) InsertByIdentity(ctx context.Context, appName string
 	return nil, err
 }
 
-// UpsertByIdentity creates or updates one app-scoped system Record by a metadata-backed match.
-func (w SystemRecordWriter) UpsertByIdentity(ctx context.Context, appName string, entity string, match RecordInput, input RecordInput, opts SystemMutationOptions) (Record, error) {
+// UpsertByIdentity creates or updates one app-scoped system Record by a metadata-backed match without returning it.
+func (w SystemRecordWriter) UpsertByIdentity(ctx context.Context, appName string, entity string, match RecordInput, input RecordInput, policy SystemMutationPolicy) error {
+	_, err := w.upsertByIdentity(ctx, appName, entity, match, input, policy)
+	return err
+}
+
+// UpsertReturningByIdentity creates or updates one app-scoped system Record by a metadata-backed match and returns it.
+func (w SystemRecordWriter) UpsertReturningByIdentity(ctx context.Context, appName string, entity string, match RecordInput, input RecordInput, policy SystemMutationPolicy) (Record, error) {
+	return w.upsertByIdentity(ctx, appName, entity, match, input, policy)
+}
+
+func (w SystemRecordWriter) upsertByIdentity(ctx context.Context, appName string, entity string, match RecordInput, input RecordInput, policy SystemMutationPolicy) (Record, error) {
 	if err := w.store.requireQueryer(); err != nil {
 		return nil, err
 	}
-	store, opts, err := w.mutationStore(appName, entity, opts)
+	store, err := w.mutationStore(appName, entity, policy)
 	if err != nil {
 		return nil, err
 	}
-	var record Record
-	record, err = store.withRecordMutation(ctx, func(txStore RecordStore) (Record, error) {
+	record, err := store.withRecordMutation(ctx, func(txStore RecordStore) (Record, error) {
 		existing, err := txStore.FindRecordByIdentity(ctx, appName, entity, match)
 		if err != nil {
 			if !isRecordNotFound(err) {
@@ -83,27 +108,25 @@ func (w SystemRecordWriter) UpsertByIdentity(ctx context.Context, appName string
 	if err != nil {
 		return nil, err
 	}
-	if opts.ReturnRecord {
-		return record, nil
-	}
-	return nil, nil
+	return record, nil
 }
 
-func (w SystemRecordWriter) mutationStore(appName string, entity string, opts SystemMutationOptions) (RecordStore, SystemMutationOptions, error) {
-	if opts.Bootstrap {
-		opts.RunHooks = false
-		opts.WriteActivity = false
-	}
-	if opts.RunHooks && !opts.ReturnRecord {
-		return RecordStore{}, opts, recordError(RecordErrorInvalidRequest, "system mutations that run hooks must return the created record", map[string]any{"app": appName, "entity": entity}, nil)
-	}
+func (w SystemRecordWriter) mutationStore(appName string, entity string, policy SystemMutationPolicy) (RecordStore, error) {
 	store := w.store
-	if !opts.RunHooks {
+	switch policy {
+	case SystemMutationBootstrap, SystemMutationSilent:
 		store.hooks = nil
-	} else if !opts.WriteActivity {
-		store.hooks = store.hooks.withoutHook("activity-history")
+	case SystemMutationFramework:
+		store.hooks = DefaultRecordHookRegistry()
+	case SystemMutationFull:
+	default:
+		return RecordStore{}, recordError(RecordErrorInvalidRequest, "system mutation policy is invalid", map[string]any{"app": appName, "entity": entity, "policy": string(policy)}, nil)
 	}
-	return store, opts, nil
+	return store, nil
+}
+
+func systemMutationRunsHooks(policy SystemMutationPolicy) bool {
+	return policy == SystemMutationFramework || policy == SystemMutationFull
 }
 
 func isRecordNotFound(err error) bool {

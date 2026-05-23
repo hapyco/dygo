@@ -29,8 +29,7 @@ func (w AuthSessionWriter) CreateSession(ctx context.Context, input auth.Session
 		"expires-at":   systemRecordTime(input.ExpiresAt),
 		"last-seen-at": systemRecordTime(input.LastSeenAt),
 	}
-	_, err := w.writer.InsertByIdentity(ctx, "core", "session", recordInput, SystemMutationOptions{})
-	return err
+	return w.writer.InsertByIdentity(ctx, "core", "session", recordInput, SystemMutationSilent)
 }
 
 // AuthAdminWriter persists the first administrator through the framework system writer.
@@ -55,7 +54,7 @@ func (w AuthAdminWriter) SaveAdmin(ctx context.Context, input auth.AdminInput) (
 		"enabled":       systemRecordBool(true),
 		"administrator": systemRecordBool(true),
 	}
-	record, err := w.writer.UpsertByIdentity(ctx, "core", "user", match, recordInput, SystemMutationOptions{Bootstrap: true, ReturnRecord: true})
+	record, err := w.writer.UpsertReturningByIdentity(ctx, "core", "user", match, recordInput, SystemMutationBootstrap)
 	if err != nil {
 		return auth.User{}, err
 	}

@@ -131,8 +131,7 @@ func recordActivityHook(ctx context.Context, hookCtx RecordHookContext) error {
 	if detailsJSON != nil {
 		input["details"] = detailsJSON
 	}
-	_, err = NewSystemRecordWriter(hookCtx.Queryer).InsertByIdentity(ctx, "core", "activity", input, SystemMutationOptions{})
-	return err
+	return NewSystemRecordWriter(hookCtx.Queryer).InsertByIdentity(ctx, "core", "activity", input, SystemMutationSilent)
 }
 
 func (l recordLayout) activityChanges(input RecordInput, oldRecord Record, newRecord Record) []map[string]any {
