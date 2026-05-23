@@ -684,6 +684,9 @@ func TestRecordRoutes(t *testing.T) {
 	if store.createActor != 7 || store.updateActor != 7 || store.deleteActor != 7 {
 		t.Fatalf("activity actors create/update/delete = %d/%d/%d, want authenticated user 7", store.createActor, store.updateActor, store.deleteActor)
 	}
+	if store.createActorName != "admin@example.com" || store.updateActorName != "admin@example.com" || store.deleteActorName != "admin@example.com" {
+		t.Fatalf("activity actor names create/update/delete = %q/%q/%q, want authenticated user email", store.createActorName, store.updateActorName, store.deleteActorName)
+	}
 	if store.createSource != db.ActivitySourceAPI || store.updateSource != db.ActivitySourceAPI || store.deleteSource != db.ActivitySourceAPI {
 		t.Fatalf("activity sources create/update/delete = %q/%q/%q, want api", store.createSource, store.updateSource, store.deleteSource)
 	}
@@ -1251,6 +1254,9 @@ type fakeRecordStore struct {
 	createActor     int64
 	updateActor     int64
 	deleteActor     int64
+	createActorName string
+	updateActorName string
+	deleteActorName string
 	createSource    string
 	updateSource    string
 	deleteSource    string
@@ -1284,6 +1290,7 @@ func (s *fakeRecordStore) CreateRecord(ctx context.Context, _ string, input db.R
 	s.calls = append(s.calls, "create")
 	s.created = input
 	s.createActor, _ = db.ActivityActorFromContext(ctx)
+	s.createActorName, _ = db.ActivityActorNameFromContext(ctx)
 	s.createSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.record, s.createErr
 }
@@ -1292,6 +1299,7 @@ func (s *fakeRecordStore) UpdateRecord(ctx context.Context, _ string, _ int64, i
 	s.calls = append(s.calls, "update")
 	s.updated = input
 	s.updateActor, _ = db.ActivityActorFromContext(ctx)
+	s.updateActorName, _ = db.ActivityActorNameFromContext(ctx)
 	s.updateSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.record, s.updateErr
 }
@@ -1300,6 +1308,7 @@ func (s *fakeRecordStore) UpdateSingleRecord(ctx context.Context, _ string, inpu
 	s.calls = append(s.calls, "update-single")
 	s.updated = input
 	s.updateActor, _ = db.ActivityActorFromContext(ctx)
+	s.updateActorName, _ = db.ActivityActorNameFromContext(ctx)
 	s.updateSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.record, s.updateSingleErr
 }
@@ -1308,6 +1317,7 @@ func (s *fakeRecordStore) DeleteRecord(ctx context.Context, _ string, id int64) 
 	s.calls = append(s.calls, "delete")
 	s.deletedID = id
 	s.deleteActor, _ = db.ActivityActorFromContext(ctx)
+	s.deleteActorName, _ = db.ActivityActorNameFromContext(ctx)
 	s.deleteSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.deleteErr
 }

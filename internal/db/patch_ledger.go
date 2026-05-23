@@ -151,16 +151,12 @@ func (l PatchLedger) RecordPatchRun(ctx context.Context, run PatchRun) error {
 		return err
 	}
 
-	appID, err := l.appID(ctx, run.AppName)
-	if err != nil {
-		return err
-	}
 	appliedAt := run.AppliedAt
 	if appliedAt.IsZero() {
 		appliedAt = time.Now().UTC()
 	}
 	input := RecordInput{
-		"app":        systemRecordInt(appID),
+		"app":        systemRecordString(run.AppName),
 		"patch-id":   systemRecordString(run.PatchID),
 		"path":       systemRecordString(run.Path),
 		"phase":      systemRecordString(run.Phase),
@@ -171,7 +167,7 @@ func (l PatchLedger) RecordPatchRun(ctx context.Context, run PatchRun) error {
 		input["dygo-version"] = systemRecordString(run.DygoVersion)
 	}
 	if err := NewSystemRecordWriter(l.queryer).InsertByIdentity(ctx, "core", "patch-run", input, SystemMutationBootstrap); err != nil {
-		return fmt.Errorf("record patch run %s/%s: %w", run.AppName, run.PatchID, err)
+		return fmt.Errorf("record patch run %s/%s: %w", run.AppName, run.PatchID, patchRunLinkError(err, run.AppName))
 	}
 	return nil
 }
@@ -180,16 +176,18 @@ func patchRunIdentityName(appName string, patchID string) string {
 	return appName + "." + patchID
 }
 
-func (l PatchLedger) appID(ctx context.Context, appName string) (int64, error) {
-	var id int64
-	err := l.queryer.QueryRow(ctx, `SELECT id FROM "app" WHERE name = $1`, appName).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, MetadataNotFoundError{Kind: "app", Name: appName}
+func patchRunLinkError(err error, appName string) error {
+	var recordErr RecordError
+	if !errors.As(err, &recordErr) || recordErr.Code != RecordErrorValidation {
+		return err
 	}
-	if err != nil {
-		return 0, fmt.Errorf("query patch run app %q: %w", appName, err)
+	field, _ := recordErr.Details["field"].(string)
+	target, _ := recordErr.Details["target"].(string)
+	name, _ := recordErr.Details["name"].(string)
+	if field == "app" && target == "app" && name == appName {
+		return MetadataNotFoundError{Kind: "app", Name: appName}
 	}
-	return id, nil
+	return err
 }
 
 func scanPatchRun(row interface{ Scan(...any) error }) (PatchRun, error) {

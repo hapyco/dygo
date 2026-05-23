@@ -713,7 +713,7 @@ func TestRecordStoreCreateRecordWritesActivity(t *testing.T) {
 		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 
-	ctx := WithActivityActor(WithActivitySource(context.Background(), ActivitySourceAPI), 99)
+	ctx := WithActivityActorName(WithActivityActor(WithActivitySource(context.Background(), ActivitySourceAPI), 77), "admin@example.com")
 	record, err := NewRecordStore(queryer).CreateRecord(ctx, "user", recordInput(map[string]string{
 		"email":     `"a@example.com"`,
 		"full-name": `"A User"`,
@@ -726,7 +726,7 @@ func TestRecordStoreCreateRecordWritesActivity(t *testing.T) {
 	}
 	args := activityArgs(t, queryer)
 	if args[1] != corevalues.ActivityOperationCreate || args[3] != int64(10) || args[4] != int64(7) || args[5] != int64(99) {
-		t.Fatalf("activity args = %#v, want create for user entity and actor", args)
+		t.Fatalf("activity args = %#v, want create for user entity and actor name", args)
 	}
 	if name, ok := args[11].(string); !ok || len(name) != 16 {
 		t.Fatalf("activity name arg = %#v, want generated length-16 string", args[11])
@@ -738,6 +738,27 @@ func TestRecordStoreCreateRecordWritesActivity(t *testing.T) {
 	details := decodeActivityObject(t, args[10])
 	if details["source"] != ActivitySourceAPI {
 		t.Fatalf("activity details = %#v, want api source", details)
+	}
+}
+
+func TestRecordStoreCreateRecordWritesActivityActorIDFallback(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+
+	ctx := WithActivityActor(context.Background(), 99)
+	_, err := NewRecordStore(queryer).CreateRecord(ctx, "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"A User"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v, want nil", err)
+	}
+	args := activityArgs(t, queryer)
+	if args[5] != int64(99) {
+		t.Fatalf("activity actor arg = %#v, want actor id fallback", args[5])
 	}
 }
 
@@ -1323,8 +1344,17 @@ func (q *fakeRecordQueryer) QueryRow(_ context.Context, sql string, args ...any)
 	if isActivityMetadataQuery(sql, args...) {
 		return fakeActivityEntityRow()
 	}
-	if strings.Contains(sql, `SELECT "id" FROM "entity"`) && len(args) == 1 && args[0] == "core.user" {
-		return newFakeRow(int64(10))
+	if strings.Contains(sql, `SELECT "id" FROM "entity"`) && len(args) == 1 {
+		switch args[0] {
+		case "core.user":
+			return newFakeRow(int64(10))
+		case "crm.lead":
+			return newFakeRow(int64(20))
+		case "sales.invoice-settings":
+			return newFakeRow(int64(30))
+		case "support.ticket":
+			return newFakeRow(int64(50))
+		}
 	}
 	if strings.Contains(sql, `SELECT "id" FROM "user"`) && len(args) == 1 && args[0] == "admin@example.com" {
 		return newFakeRow(int64(99))

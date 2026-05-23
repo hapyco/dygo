@@ -228,8 +228,8 @@ records:
 		t.Fatalf("ApplyFiles() result = %+v, want one created permission", result)
 	}
 	created := store.records["permission"][0]
-	if created["entity"] != int64(10) || created["role"] != int64(20) || created["read"] != true {
-		t.Fatalf("created permission = %+v, want resolved link ids", created)
+	if created["entity"] != "core.user" || created["role"] != "system-manager" || created["read"] != true {
+		t.Fatalf("created permission = %+v, want resolved link names", created)
 	}
 }
 

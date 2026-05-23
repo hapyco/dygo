@@ -70,7 +70,6 @@ func TestPatchLedgerRecordPatchRunInserts(t *testing.T) {
 	queryer := &fakePatchLedgerQueryer{
 		row: []pgx.Row{
 			fakeRow{err: pgx.ErrNoRows},
-			newFakeRow(int64(10)),
 		},
 	}
 	run := PatchRun{
@@ -148,7 +147,6 @@ func TestPatchLedgerRecordPatchRunRejectsChecksumMismatch(t *testing.T) {
 func TestPatchLedgerRecordPatchRunRequiresExistingApp(t *testing.T) {
 	queryer := &fakePatchLedgerQueryer{
 		row: []pgx.Row{
-			fakeRow{err: pgx.ErrNoRows},
 			fakeRow{err: pgx.ErrNoRows},
 		},
 	}
@@ -234,6 +232,9 @@ func (q *fakePatchLedgerQueryer) QueryRow(_ context.Context, sql string, args ..
 	q.rowArgs = append(q.rowArgs, args)
 	if isPatchRunMetadataQuery(sql, args...) {
 		return newFakeRow(int64(2), "core.patch-run", "patch-run", "patch-run", "Patch Run", "Ledger entry", "git-pull-request-arrow", false, false, []byte(`{"strategy":"template","template":"{app}.{patch-id}"}`), "core", "Core")
+	}
+	if strings.Contains(sql, `SELECT "id" FROM "app"`) && len(args) == 1 && args[0] == "crm" {
+		return newFakeRow(int64(10))
 	}
 	if strings.Contains(sql, `SELECT "name" FROM "app"`) && len(args) == 1 && args[0] == int64(10) {
 		return newFakeRow("crm")

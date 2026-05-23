@@ -20,6 +20,7 @@ const (
 )
 
 type activityActorContextKey struct{}
+type activityActorNameContextKey struct{}
 type activitySourceContextKey struct{}
 
 type recordBeginner interface {
@@ -32,6 +33,18 @@ func WithActivityActor(ctx context.Context, userID int64) context.Context {
 		return ctx
 	}
 	return context.WithValue(ctx, activityActorContextKey{}, userID)
+}
+
+// WithActivityActorName attaches an optional actor user Record name to Record mutation Activity.
+func WithActivityActorName(ctx context.Context, name string) context.Context {
+	if ctx == nil {
+		return ctx
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, activityActorNameContextKey{}, name)
 }
 
 // WithActivitySource attaches an optional source label to Record mutation Activity.
@@ -56,6 +69,18 @@ func ActivityActorFromContext(ctx context.Context) (int64, bool) {
 		return 0, false
 	}
 	return value, true
+}
+
+// ActivityActorNameFromContext returns the optional actor user Record name for Record mutation Activity.
+func ActivityActorNameFromContext(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	name, ok := ctx.Value(activityActorNameContextKey{}).(string)
+	if !ok || strings.TrimSpace(name) == "" {
+		return "", false
+	}
+	return name, true
 }
 
 // ActivitySourceFromContext returns the optional source label for Record mutation Activity.
@@ -115,11 +140,13 @@ func recordActivityHook(ctx context.Context, hookCtx RecordHookContext) error {
 		"kind":      systemRecordString(corevalues.ActivityKindRecord),
 		"operation": systemRecordString(hookCtx.Operation),
 		"status":    systemRecordString(corevalues.ActivityStatusSuccess),
-		"entity":    systemRecordInt(hookCtx.EntityID),
+		"entity":    systemRecordString(entityRecordName(hookCtx.AppName, hookCtx.Entity)),
 		"record-id": systemRecordInt(hookCtx.RecordID),
 		"title":     systemRecordString(activityTitle(hookCtx.EntityLabel, hookCtx.Entity, hookCtx.Operation)),
 	}
-	if actorID, ok := ActivityActorFromContext(ctx); ok {
+	if actorName, ok := ActivityActorNameFromContext(ctx); ok {
+		input["actor"] = systemRecordString(actorName)
+	} else if actorID, ok := ActivityActorFromContext(ctx); ok {
 		input["actor"] = systemRecordInt(actorID)
 	}
 	if changesJSON != nil {

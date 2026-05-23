@@ -464,7 +464,7 @@ func (tx *fakePatchApplyTx) QueryRow(_ context.Context, sql string, args ...any)
 	case strings.Contains(sql, `WHERE a.name = $1 AND p.patch_id = $2`):
 		tx.events = append(tx.events, "queryrow:get")
 		return fakeRow{err: pgx.ErrNoRows}
-	case strings.Contains(sql, `SELECT id FROM "app"`):
+	case strings.Contains(sql, `SELECT "id" FROM "app"`):
 		tx.events = append(tx.events, "queryrow:app")
 		return newFakeRow(int64(10))
 	case isPatchRunMetadataQuery(sql, args...):

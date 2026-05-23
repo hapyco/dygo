@@ -974,6 +974,7 @@ func activityRequestContext(r *http.Request) context.Context {
 	ctx := db.WithActivitySource(r.Context(), db.ActivitySourceAPI)
 	if user, ok := CurrentUserFromContext(r.Context()); ok {
 		ctx = db.WithActivityActor(ctx, user.ID)
+		ctx = db.WithActivityActorName(ctx, user.Email)
 	}
 	return ctx
 }

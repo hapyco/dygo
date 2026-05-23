@@ -512,11 +512,11 @@ func resolveValue(ctx context.Context, store Store, field db.MetadataField, valu
 	if err != nil {
 		return nil, safeWrap(fmt.Sprintf("resolve link target %q", target), err)
 	}
-	id, err := recordID(record)
+	name, err := recordName(record)
 	if err != nil {
 		return nil, err
 	}
-	return json.RawMessage(strconv.FormatInt(id, 10)), nil
+	return json.RawMessage(strconv.Quote(name)), nil
 }
 
 type linkReference struct {
@@ -574,6 +574,22 @@ func recordID(record db.Record) (int64, error) {
 		return typed.Int64()
 	}
 	return 0, fmt.Errorf("record id has unsupported type %T", value)
+}
+
+func recordName(record db.Record) (string, error) {
+	value, ok := record["name"]
+	if !ok {
+		return "", fmt.Errorf("record name is missing")
+	}
+	name, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("record name has unsupported type %T", value)
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("record name is empty")
+	}
+	return name, nil
 }
 
 func isRecordNotFound(err error) bool {
