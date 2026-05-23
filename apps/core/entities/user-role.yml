@@ -2,7 +2,8 @@ label: User Role
 description: Role assignment for a User.
 icon: users-round
 naming:
-  strategy: random
+  strategy: template
+  template: "{user}.{role}"
 fields:
   - name: user
     label: User
@@ -19,7 +20,3 @@ fields:
     index: true
     options:
       entity: role
-
-constraints:
-  - type: unique
-    fields: [user, role]

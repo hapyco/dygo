@@ -47,7 +47,3 @@ fields:
   - name: dygo-version
     label: dygo Version
     type: text
-
-constraints:
-  - type: unique
-    fields: [app, patch-id]

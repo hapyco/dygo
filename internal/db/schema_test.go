@@ -32,7 +32,6 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 		"create index entity_app_id_idx on entity.app_id",
 		"create index entity_is_single_idx on entity.is_single",
 		"create index entity_is_collection_idx on entity.is_collection",
-		"add unique constraint patch_run_app_patch_id_key on patch_run(app_id, patch_id)",
 		"add unique constraint app_name_key on app.name",
 		"add check constraint app_status_check on app.status",
 	} {

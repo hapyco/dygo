@@ -58,7 +58,3 @@ fields:
   - name: position
     label: Position
     type: int
-
-constraints:
-  - type: unique
-    fields: [entity, constraint-name]

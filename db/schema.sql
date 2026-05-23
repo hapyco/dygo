@@ -617,14 +617,6 @@ ALTER TABLE ONLY public.configuration
 
 
 --
--- Name: constraint constraint_entity_constraint_name_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public."constraint"
-    ADD CONSTRAINT constraint_entity_constraint_name_key UNIQUE (entity_id, constraint_name);
-
-
---
 -- Name: constraint constraint_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -713,14 +705,6 @@ ALTER TABLE ONLY public.entity
 
 
 --
--- Name: field field_entity_field_name_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.field
-    ADD CONSTRAINT field_entity_field_name_key UNIQUE (entity_id, field_name);
-
-
---
 -- Name: field field_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -734,14 +718,6 @@ ALTER TABLE ONLY public.field
 
 ALTER TABLE ONLY public.field
     ADD CONSTRAINT field_pkey PRIMARY KEY (id);
-
-
---
--- Name: index index_entity_index_name_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.index
-    ADD CONSTRAINT index_entity_index_name_key UNIQUE (entity_id, index_name);
 
 
 --
@@ -806,14 +782,6 @@ ALTER TABLE ONLY public.naming_series
 
 ALTER TABLE ONLY public.naming_series
     ADD CONSTRAINT naming_series_pkey PRIMARY KEY (id);
-
-
---
--- Name: patch_run patch_run_app_patch_id_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.patch_run
-    ADD CONSTRAINT patch_run_app_patch_id_key UNIQUE (app_id, patch_id);
 
 
 --
@@ -934,14 +902,6 @@ ALTER TABLE ONLY public.user_role
 
 ALTER TABLE ONLY public.user_role
     ADD CONSTRAINT user_role_pkey PRIMARY KEY (id);
-
-
---
--- Name: user_role user_role_user_role_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.user_role
-    ADD CONSTRAINT user_role_user_role_key UNIQUE (user_id, role_id);
 
 
 --
