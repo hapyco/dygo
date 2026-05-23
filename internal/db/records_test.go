@@ -45,6 +45,35 @@ func TestRecordStoreListRecords(t *testing.T) {
 	}
 }
 
+func TestRecordStoreListRecordsResolvesLinkFieldsToTargetNames(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newActivityRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(1), "activity-1", now, now, "record", "create", "success", "core.user", int64(7), "admin@example.com", "Created User", nil, nil, nil, nil},
+	}))
+
+	result, err := NewRecordStore(queryer).ListRecords(context.Background(), "activity", RecordListParams{})
+	if err != nil {
+		t.Fatalf("ListRecords(activity) error = %v, want nil", err)
+	}
+	if result.Count != 1 {
+		t.Fatalf("ListRecords(activity) count = %d, want 1", result.Count)
+	}
+	record := result.Records[0]
+	if record["entity"] != "core.user" || record["actor"] != "admin@example.com" {
+		t.Fatalf("ListRecords(activity) link values = entity:%#v actor:%#v, want target names", record["entity"], record["actor"])
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	for _, want := range []string{
+		`(SELECT "name" FROM "entity" WHERE "id" = "_dygo_record"."entity_id")`,
+		`(SELECT "name" FROM "user" WHERE "id" = "_dygo_record"."actor_id")`,
+	} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("list query = %q, want link name projection %q", lastQuery, want)
+		}
+	}
+}
+
 func TestRecordStoreListRecordsFiltersAndSorts(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
@@ -416,7 +445,7 @@ func TestRecordStoreCreateRecord(t *testing.T) {
 		t.Fatalf("CreateRecord() name = %v, want email naming source", record["name"])
 	}
 	lastQuery, args := lastQueryContaining(t, queryer, `INSERT INTO "user"`)
-	for _, want := range []string{`INSERT INTO "user"`, `"email", "full_name"`, `"name"`, `RETURNING "id", "name", "created_at", "updated_at"`} {
+	for _, want := range []string{`INSERT INTO "user"`, `"email", "full_name"`, `"name"`, `RETURNING "_dygo_record"."id", "_dygo_record"."name", "_dygo_record"."created_at", "_dygo_record"."updated_at"`} {
 		if !strings.Contains(lastQuery, want) {
 			t.Fatalf("create query = %q, want %q", lastQuery, want)
 		}
@@ -492,7 +521,7 @@ func TestRecordStoreUpdateRecord(t *testing.T) {
 		t.Fatalf("UpdateRecord() = %+v, want patched record", record)
 	}
 	lastQuery, _ := lastQueryContaining(t, queryer, `UPDATE "user"`)
-	for _, want := range []string{`UPDATE "user" SET "full_name" = $1`, `"updated_at" = now()`, `WHERE "id" = $2`} {
+	for _, want := range []string{`UPDATE "user" AS "_dygo_record" SET "full_name" = $1`, `"updated_at" = now()`, `WHERE "id" = $2`} {
 		if !strings.Contains(lastQuery, want) {
 			t.Fatalf("update query = %q, want %q", lastQuery, want)
 		}
@@ -554,12 +583,12 @@ func TestRecordStoreHashesPasswordOnCreate(t *testing.T) {
 		t.Fatalf("CreateRecord() returned password field: %+v", record)
 	}
 	lastQuery, args := lastQueryContaining(t, queryer, `INSERT INTO "user"`)
-	for _, want := range []string{`"password_hash"`, `RETURNING "id", "name", "created_at", "updated_at", "email", "full_name", "enabled"`} {
+	for _, want := range []string{`"password_hash"`, `RETURNING "_dygo_record"."id", "_dygo_record"."name", "_dygo_record"."created_at", "_dygo_record"."updated_at", "_dygo_record"."email", "_dygo_record"."full_name", "_dygo_record"."enabled"`} {
 		if !strings.Contains(lastQuery, want) {
 			t.Fatalf("create query = %q, want %q", lastQuery, want)
 		}
 	}
-	if strings.Contains(lastQuery, `RETURNING "id", "name", "created_at", "updated_at", "email", "full_name", "password_hash"`) {
+	if strings.Contains(lastQuery, `RETURNING "_dygo_record"."id", "_dygo_record"."name", "_dygo_record"."created_at", "_dygo_record"."updated_at", "_dygo_record"."email", "_dygo_record"."full_name", "_dygo_record"."password_hash"`) {
 		t.Fatalf("create query = %q, returned password_hash", lastQuery)
 	}
 	hash, ok := args[len(args)-2].(string)
@@ -591,7 +620,7 @@ func TestRecordStoreHashesPasswordOnUpdate(t *testing.T) {
 		t.Fatalf("UpdateRecord() error = %v, want nil", err)
 	}
 	lastQuery, args := lastQueryContaining(t, queryer, `UPDATE "user"`)
-	if !strings.Contains(lastQuery, `UPDATE "user" SET "password_hash" = $1`) {
+	if !strings.Contains(lastQuery, `UPDATE "user" AS "_dygo_record" SET "password_hash" = $1`) {
 		t.Fatalf("update query = %q, want password_hash update", lastQuery)
 	}
 	hash, ok := args[0].(string)

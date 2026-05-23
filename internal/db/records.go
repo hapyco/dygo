@@ -32,6 +32,8 @@ const (
 
 const (
 	randomNameRetries = 5
+
+	recordSelectSourceAlias = "_dygo_record"
 )
 
 // RecordQueryer is the database behavior needed by the Record store.
@@ -172,7 +174,7 @@ func (s RecordStore) listRecords(ctx context.Context, layout recordLayout, entit
 	if err != nil {
 		return RecordListResult{}, err
 	}
-	sql := fmt.Sprintf("SELECT %s, COUNT(*) OVER() FROM %s", layout.selectList(), quoteIdent(layout.Table))
+	sql := fmt.Sprintf("SELECT %s, COUNT(*) OVER() FROM %s AS %s", layout.selectList(), quoteIdent(layout.Table), quoteIdent(recordSelectSourceAlias))
 	if query.Where != "" {
 		sql += " WHERE " + query.Where
 	}
@@ -332,7 +334,7 @@ func (s RecordStore) findRecordWithLayout(ctx context.Context, layout recordLayo
 	for i, column := range mutation.Columns {
 		clauses = append(clauses, fmt.Sprintf("%s = %s", quoteIdent(column), mutation.Placeholders[i]))
 	}
-	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s ORDER BY %s ASC LIMIT 2", layout.selectList(), quoteIdent(layout.Table), strings.Join(clauses, " AND "), quoteIdent("id"))
+	sql := fmt.Sprintf("SELECT %s FROM %s AS %s WHERE %s ORDER BY %s ASC LIMIT 2", layout.selectList(), quoteIdent(layout.Table), quoteIdent(recordSelectSourceAlias), strings.Join(clauses, " AND "), quoteIdent("id"))
 	rows, err := s.queryer.Query(ctx, sql, mutation.Values...)
 	if err != nil {
 		return nil, classifyRecordDBError(err, entity)
@@ -475,13 +477,13 @@ func (s RecordStore) insertRecordWithLayout(ctx context.Context, layout recordLa
 
 func insertRecordSQL(layout recordLayout, mutation recordMutation, returning bool) string {
 	if len(mutation.Columns) == 0 {
-		sql := fmt.Sprintf("INSERT INTO %s DEFAULT VALUES", quoteIdent(layout.Table))
+		sql := fmt.Sprintf("INSERT INTO %s AS %s DEFAULT VALUES", quoteIdent(layout.Table), quoteIdent(recordSelectSourceAlias))
 		if returning {
 			sql += " RETURNING " + layout.selectList()
 		}
 		return sql
 	}
-	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", quoteIdent(layout.Table), quoteIdentList(mutation.Columns), strings.Join(mutation.Placeholders, ", "))
+	sql := fmt.Sprintf("INSERT INTO %s AS %s (%s) VALUES (%s)", quoteIdent(layout.Table), quoteIdent(recordSelectSourceAlias), quoteIdentList(mutation.Columns), strings.Join(mutation.Placeholders, ", "))
 	if returning {
 		sql += " RETURNING " + layout.selectList()
 	}
@@ -580,7 +582,7 @@ func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLa
 	setClauses = append(setClauses, fmt.Sprintf("%s = now()", quoteIdent("updated_at")))
 	args := append([]any(nil), mutation.Values...)
 	args = append(args, id)
-	sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s = $%d RETURNING %s", quoteIdent(layout.Table), strings.Join(setClauses, ", "), quoteIdent("id"), len(args), layout.selectList())
+	sql := fmt.Sprintf("UPDATE %s AS %s SET %s WHERE %s = $%d RETURNING %s", quoteIdent(layout.Table), quoteIdent(recordSelectSourceAlias), strings.Join(setClauses, ", "), quoteIdent("id"), len(args), layout.selectList())
 	record, err := s.queryReturningRecord(ctx, layout, sql, args, true)
 	if err != nil {
 		return nil, err
@@ -695,7 +697,7 @@ func (s RecordStore) getSingleRecordWithLayout(ctx context.Context, layout recor
 	if !layout.IsSingle {
 		return nil, recordError(RecordErrorInvalidRequest, "entity is not single", map[string]any{"entity": layout.Slug}, nil)
 	}
-	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent("name"))
+	sql := fmt.Sprintf("SELECT %s FROM %s AS %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent(recordSelectSourceAlias), quoteIdent("name"))
 	return s.queryOneRecord(ctx, layout, sql, SingleRecordName(layout.Entity))
 }
 
@@ -703,7 +705,7 @@ func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayou
 	if layout.IsCollection {
 		return nil, collectionRecordOperationError(layout, "read")
 	}
-	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent("id"))
+	sql := fmt.Sprintf("SELECT %s FROM %s AS %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent(recordSelectSourceAlias), quoteIdent("id"))
 	record, err := s.queryOneRecord(ctx, layout, sql, id)
 	if err != nil {
 		var recordErr RecordError
@@ -907,14 +909,34 @@ func (l recordLayout) selectList() string {
 	systemColumns := systemRecordSelectColumns()
 	columns := make([]string, 0, len(systemColumns)+len(l.Fields))
 	for _, column := range systemColumns {
-		columns = append(columns, quoteIdent(column))
+		columns = append(columns, recordSourceColumn(column))
 	}
 	for _, field := range l.Fields {
 		if field.Storage && !field.WriteOnly && !field.SystemName {
-			columns = append(columns, quoteIdent(field.Column))
+			columns = append(columns, l.fieldSelectExpression(field))
 		}
 	}
 	return strings.Join(columns, ", ")
+}
+
+func (l recordLayout) fieldSelectExpression(field recordField) string {
+	if field.Type != "link" {
+		return recordSourceColumn(field.Column)
+	}
+	targetEntity := strings.TrimSpace(field.Options.Entity)
+	if targetEntity == "" {
+		return recordSourceColumn(field.Column)
+	}
+	targetApp := strings.TrimSpace(field.Options.App)
+	if targetApp == "" {
+		targetApp = l.AppName
+	}
+	targetTable := entityTableName(targetApp, targetEntity)
+	return fmt.Sprintf("(SELECT %s FROM %s WHERE %s = %s)", quoteIdent("name"), quoteIdent(targetTable), quoteIdent("id"), recordSourceColumn(field.Column))
+}
+
+func recordSourceColumn(column string) string {
+	return quoteIdent(recordSelectSourceAlias) + "." + quoteIdent(column)
 }
 
 func (l recordLayout) recordValueCount() int {
