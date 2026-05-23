@@ -220,10 +220,6 @@ func pruneExtraConstraints(desired desiredTable, live liveTable) ([]SchemaPruneO
 		if constraint.Type == "primary-key" || constraint.Type == "not-null" || expected[name] {
 			continue
 		}
-		if !constraint.Owned {
-			diagnostics = append(diagnostics, unownedPruneDiagnostic("unowned-extra-constraint", desired.Name, "", name, "constraint exists but is not known to be dygo-owned"))
-			continue
-		}
 		operations = append(operations, SchemaPruneOperation{
 			Kind:        "drop-constraint",
 			Table:       desired.Name,
@@ -244,12 +240,7 @@ func pruneExtraIndexes(desired desiredTable, live liveTable) ([]SchemaPruneOpera
 	var operations []SchemaPruneOperation
 	var diagnostics []SchemaDiagnostic
 	for _, name := range sortedIndexNames(live.Indexes) {
-		index := live.Indexes[name]
 		if expected[name] || liveIndexBacksConstraint(name, live) {
-			continue
-		}
-		if !index.Owned {
-			diagnostics = append(diagnostics, unownedPruneDiagnostic("unowned-extra-index", desired.Name, "", name, "index exists but is not known to be dygo-owned"))
 			continue
 		}
 		operations = append(operations, SchemaPruneOperation{
@@ -276,11 +267,6 @@ func pruneExtraColumns(desired desiredTable, live liveTable) ([]SchemaPruneOpera
 	var diagnostics []SchemaDiagnostic
 	for _, name := range sortedColumnNames(live.Columns) {
 		if expected[name] {
-			continue
-		}
-		column := live.Columns[name]
-		if !column.Owned {
-			diagnostics = append(diagnostics, unownedPruneDiagnostic("unowned-extra-column", desired.Name, name, "", "column exists but is not known to be dygo-owned"))
 			continue
 		}
 		operations = append(operations, SchemaPruneOperation{
