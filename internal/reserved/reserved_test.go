@@ -13,7 +13,7 @@ func TestReservedWords(t *testing.T) {
 	if IsSlug("settings") {
 		t.Fatal("IsSlug(settings) = true, want false")
 	}
-	if !IsField("created-at") || !IsField("fields") || !IsField("Q") {
+	if !IsField("created-at") || !IsField("created-by") || !IsField("modified-by") || !IsField("owner") || !IsField("fields") || !IsField("Q") {
 		t.Fatal("IsField() did not include system/query reserved field names")
 	}
 	if !IsQuery("limit") || !IsQuery("fields") || !IsQuery("cursor") {

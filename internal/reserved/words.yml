@@ -9,6 +9,7 @@ slugs:
 
 fields:
   - created-at
+  - created-by
   - cursor
   - debug
   - expand
@@ -17,8 +18,10 @@ fields:
   - id
   - include
   - limit
+  - modified-by
   - name
   - offset
+  - owner
   - q
   - search
   - sort
