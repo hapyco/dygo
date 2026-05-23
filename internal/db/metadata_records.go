@@ -430,20 +430,45 @@ func fieldOptionsJSON(options fieldtype.Options) ([]byte, error) {
 }
 
 func entityNamingJSON(naming schema.Naming) ([]byte, error) {
-	values := map[string]any{
-		"strategy": naming.Strategy,
-	}
 	switch naming.Strategy {
 	case schema.NamingStrategyRandom:
-		values["length"] = naming.Length
+		return json.Marshal(struct {
+			Strategy string `json:"strategy"`
+			Length   int    `json:"length"`
+		}{
+			Strategy: naming.Strategy,
+			Length:   naming.Length,
+		})
 	case schema.NamingStrategyField:
-		values["field"] = naming.Field
+		return json.Marshal(struct {
+			Strategy string `json:"strategy"`
+			Field    string `json:"field"`
+		}{
+			Strategy: naming.Strategy,
+			Field:    naming.Field,
+		})
 	case schema.NamingStrategySeries:
-		values["pattern"] = naming.Pattern
+		return json.Marshal(struct {
+			Strategy string `json:"strategy"`
+			Pattern  string `json:"pattern"`
+		}{
+			Strategy: naming.Strategy,
+			Pattern:  naming.Pattern,
+		})
 	case schema.NamingStrategyTemplate:
-		values["template"] = naming.Template
+		return json.Marshal(struct {
+			Strategy string `json:"strategy"`
+			Template string `json:"template"`
+		}{
+			Strategy: naming.Strategy,
+			Template: naming.Template,
+		})
 	}
-	return json.Marshal(values)
+	return json.Marshal(struct {
+		Strategy string `json:"strategy"`
+	}{
+		Strategy: naming.Strategy,
+	})
 }
 
 func fieldDefaultJSON(node yaml.Node) ([]byte, error) {

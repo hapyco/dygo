@@ -140,6 +140,47 @@ func TestBuildMetadataRecordsUsesEntityTableNamingTemplate(t *testing.T) {
 	}
 }
 
+func TestEntityNamingJSONOrdersStrategyFirst(t *testing.T) {
+	tests := []struct {
+		name   string
+		naming schema.Naming
+		want   string
+	}{
+		{
+			name:   "random",
+			naming: schema.Naming{Strategy: schema.NamingStrategyRandom, Length: 16},
+			want:   `{"strategy":"random","length":16}`,
+		},
+		{
+			name:   "field",
+			naming: schema.Naming{Strategy: schema.NamingStrategyField, Field: "name"},
+			want:   `{"strategy":"field","field":"name"}`,
+		},
+		{
+			name:   "series",
+			naming: schema.Naming{Strategy: schema.NamingStrategySeries, Pattern: "SINV-{YYYY}-{#####}"},
+			want:   `{"strategy":"series","pattern":"SINV-{YYYY}-{#####}"}`,
+		},
+		{
+			name:   "template",
+			naming: schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{key}"},
+			want:   `{"strategy":"template","template":"{app}.{key}"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := entityNamingJSON(tt.naming)
+			if err != nil {
+				t.Fatalf("entityNamingJSON() error = %v, want nil", err)
+			}
+			if string(got) != tt.want {
+				t.Fatalf("entityNamingJSON() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFieldDefaultJSONRejectsNonScalar(t *testing.T) {
 	_, err := fieldDefaultJSON(yaml.Node{Kind: yaml.MappingNode})
 	if err == nil {
