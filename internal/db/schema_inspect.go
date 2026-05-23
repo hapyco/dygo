@@ -16,7 +16,6 @@ type LiveSchema struct {
 
 type liveTable struct {
 	Name          string
-	Owned         bool
 	RowStateKnown bool
 	HasRows       bool
 	Columns       map[string]liveColumn
@@ -31,7 +30,6 @@ func (t liveTable) HasIndex(name string) bool {
 
 type liveColumn struct {
 	Name       string
-	Owned      bool
 	Type       string
 	Nullable   bool
 	HasDefault bool
@@ -40,13 +38,11 @@ type liveColumn struct {
 
 type liveIndex struct {
 	Name       string
-	Owned      bool
 	Definition string
 }
 
 type liveConstraint struct {
 	Name       string
-	Owned      bool
 	Type       string
 	Definition string
 }

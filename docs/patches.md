@@ -308,16 +308,16 @@ Use a patch when the change cannot be proven safe from metadata alone.
 
 | Diagnostic kind | Meaning | Expected action |
 |---|---|---|
-| `extra-column` | The database has a column that Entity metadata no longer declares. | Use `dygo schema prune` only when the column is known to be dygo-owned, write a patch to archive/rename/backfill first, or restore the field in metadata. |
-| `extra-table` | The database has a table that no loaded Entity declares. | Use `dygo schema prune` only when the table is known to be dygo-owned, write a patch or perform a manual reviewed cleanup, or restore the Entity metadata. Unknown tables are not automatic prune candidates. |
+| `extra-column` | The database has a column that Entity metadata no longer declares. | Use `dygo schema prune` for an intentional drop, write a patch to archive/rename/backfill first, or restore the field in metadata. |
+| `extra-table` | The database has a table that no loaded Entity declares. | Use `dygo schema prune` for an intentional drop, move unmanaged tables outside dygo's managed schema, or restore the Entity metadata. |
 | `column-type-drift` | The database column type differs from metadata. | Write a patch to cast/backfill safely, then update metadata. |
 | `column-required-drift` | Database nullability differs from metadata. | Backfill or relax data intentionally, then rerun metadata sync. |
 | `missing-required-column` | Metadata requires a new column without a safe default. | Add a safe default or write a patch that creates/backfills the column first. |
 | `index-definition-drift` | An existing index name differs from metadata intent. | Write a patch to drop/recreate or rename the index intentionally. |
 | `constraint-type-drift` | An existing constraint name has a different constraint type. | Write a patch to replace the constraint intentionally. |
 | `constraint-definition-drift` | An existing constraint name has different columns or rules. | Write a patch to replace or rename the constraint intentionally. |
-| `extra-index` | The database has a non-constraint index that metadata no longer declares. | Use `dygo schema prune` only when the index is known to be dygo-owned, or restore the index in metadata. |
-| `extra-constraint` | The database has a constraint that metadata no longer declares. | Use `dygo schema prune` only when the constraint is known to be dygo-owned, or restore the constraint in metadata. |
+| `extra-index` | The database has a non-constraint index that metadata no longer declares. | Use `dygo schema prune` for an intentional drop, or restore the index in metadata. |
+| `extra-constraint` | The database has a constraint that metadata no longer declares. | Use `dygo schema prune` for an intentional drop, or restore the constraint in metadata. |
 | `unsupported-field-storage` | Metadata uses a field type whose storage is not implemented yet. | Wait for storage support or change metadata to supported field types. |
 
 ## Boundaries
@@ -328,7 +328,7 @@ Patches do not create a generic `migrations` table.
 
 `dygo migrate` does not guess renames, drops, type changes, or destructive cleanup.
 
-`dygo schema prune` removes metadata-orphaned tables, columns, indexes, and constraints only when the live object is known to be dygo-owned and only after an explicit preview. It blocks unknown public-schema objects instead of assuming dygo owns them. It does not guess renames, backfill data, convert types, run patches, or use `CASCADE`.
+`dygo schema prune` removes metadata-orphaned tables, columns, indexes, and constraints from dygo's managed schema only after an explicit preview. Metadata is the source of truth for that schema; patch-created permanent objects must either become metadata or live outside the managed schema. Prune does not guess renames, backfill data, convert types, run patches, or use `CASCADE`.
 
 Patch execution tracking is Core app metadata or records. That tracking describes app lifecycle work, not a separate framework migration system.
 

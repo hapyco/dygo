@@ -159,7 +159,7 @@ There is no SQL migration file path or `migrations` table in this model. dygo co
 
 ## Schema Prune
 
-`dygo schema prune` is the explicit destructive cleanup command for dygo-owned schema drift. Unknown public-schema objects are blockers, not automatic drop candidates.
+`dygo schema prune` is the explicit destructive cleanup command for metadata-orphaned objects in dygo's managed schema. Metadata is the source of truth for that schema.
 
 Preview the prune plan:
 
@@ -177,9 +177,9 @@ go run ./cmd/dygo schema prune --confirm development/dygo
 
 Preview mode is the default and exits after printing the destructive plan. `--confirm <environment>/<database-name>` applies the plan in one transaction and updates `db/schema.sql` only after a successful prune.
 
-Prune can drop extra tables, constraints, non-constraint indexes, and columns only when the inspected live object is known to be dygo-owned. It skips primary keys, not-null constraints, system columns, indexes that back constraints, and objects with unknown ownership. Generated SQL uses quoted identifiers and does not use `CASCADE`; hidden dependencies should fail instead of widening the blast radius.
+Prune can drop extra tables, constraints, non-constraint indexes, and columns that are present in the managed schema but absent from loaded Entity metadata. It skips primary keys, not-null constraints, system columns, and indexes that back constraints. Generated SQL uses quoted identifiers and does not use `CASCADE`; hidden dependencies should fail instead of widening the blast radius.
 
-Prune still refuses non-prunable blockers such as unknown tables, unknown extra columns/indexes/constraints, type drift, required drift, unsupported storage, missing system columns, and changed index or constraint definitions. Use app-owned patches for renames, backfills, type changes, table removal, and other unsafe transitions that need intent.
+Prune still refuses non-prunable blockers such as type drift, required drift, unsupported storage, missing system columns, and changed index or constraint definitions. Use app-owned patches for renames, backfills, type changes, and other unsafe transitions that need intent. Do not keep long-lived unmanaged tables or columns in dygo's managed schema unless you expect prune to remove them; use another PostgreSQL schema or model them as metadata instead.
 
 ## Schema Snapshot
 

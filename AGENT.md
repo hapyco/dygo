@@ -142,9 +142,32 @@ Use Studio for the main operational and builder UI. Use Space for a page or grou
 
 Core is the required system App. Studio is the first-party UI App. Business Apps define Entities, Permissions, Hooks, Fixtures, and Patches.
 
-Entity metadata uses singular names only. Do not add required display plural or storage plural metadata; storage naming comes from the Entity `name` converted from kebab-case to snake_case.
+Entity metadata uses singular file-derived keys only. Do not add required display plural or storage plural metadata; storage naming comes from the Entity key converted from kebab-case to snake_case.
 
 Use field-level `index` and `unique` only for single-field shorthands. Use top-level Entity `indexes` and `constraints` for composite indexes, composite uniqueness, and structured check constraints.
+
+## Framework Dogfooding Rules
+
+Framework internals should dogfood framework primitives wherever metadata is available.
+
+If framework code needs a one-off path, first ask whether the one-off is actually a missing framework primitive. When the behavior is reusable across Records, metadata sync, fixtures, patches, hooks, permissions, Studio, or CLI, introduce or extend the framework-level primitive instead of hiding bespoke logic in one subsystem.
+
+Prefer shared contracts and registries for:
+
+- naming strategies
+- field type behavior
+- storage/system field naming
+- metadata loading
+- YAML metadata decoding
+- permission actions
+- patch operations
+- hook events
+- Record query parsing
+- API envelopes and errors
+
+Bootstrap exceptions are allowed, but they must be explicit, small, and documented in the code path that needs them.
+
+`dygo migrate` stays additive and safe. `dygo schema prune` is the explicit destructive cleanup command for dygo's managed schema: metadata is source of truth, and prune may remove tables, columns, indexes, and constraints that exist in the managed schema but no longer exist in metadata. Do not keep long-lived unmanaged database objects in the managed schema; model them as metadata, clean them up in patches, or place them in another PostgreSQL schema.
 
 ## Implementation Guidance
 

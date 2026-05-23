@@ -49,7 +49,7 @@ These are not requirements for dygo, but they help calibrate the direction.
 | FD-020 | Hook Record access | Medium | Done | SDK hook `Records` calls use RecordStore, but the hook/activity policy is implicit and different from the outer mutation path. |
 | FD-021 | Terminology/docs drift | Low | Done | Public docs now distinguish Entity `key`, Record `name`, and route `slug` in identity-sensitive sections. |
 | FD-022 | Storage and system fields | High | Done | Storage names and system Record fields now live in one backend contract and flow to Studio list/form behavior through metadata. |
-| FD-023 | Schema prune ownership | High | Done | Schema prune now requires live-object ownership before planning destructive drops; unknown public-schema objects block. |
+| FD-023 | Schema prune boundary | High | Done | Schema prune now has a clear managed-schema rule: metadata is source of truth, and explicit prune removes metadata-orphaned objects. |
 
 ## Findings
 
@@ -677,7 +677,7 @@ Test simplification targets:
 | `internal/db/metadata_records_test.go` JSON ordering test | Improves display readability before `jsonb` storage. | Semantic JSON assertions for naming fields. | Exact object key order unless a UI formatter explicitly owns that display contract. |
 | `internal/db/records_test.go` list SQL tests | Protects pagination, sorting, filtering, write-only exclusion, and system filters. | Contract tests for list behavior and safe SQL argument binding. | Exact `WHERE`/`ORDER BY` fragments after a reusable query planner/codec owns the syntax. |
 | `internal/server/server_test.go` raw JSON substring tests | Protects status mapping and redaction. | Status codes, stable error codes, redaction, and permission-before-store behavior. | String containment checks once shared envelope decode helpers assert response objects. |
-| `internal/db/schema_prune_test.go` public-schema drop expectations | Protects current explicit prune behavior. | Preview/confirm flow, no `CASCADE`, blockers before execution. | Expecting any unknown public table to be droppable after schema ownership tracking exists. |
+| `internal/db/schema_prune_test.go` public-schema drop expectations | Protects current explicit prune behavior. | Preview/confirm flow, no `CASCADE`, blockers before execution. | Exact operation ordering if prune later has a richer planner. |
 | `internal/hooks/record_hooks_test.go` AST event mapping | Prevents SDK/internal hook event drift. | Supported event coverage. | AST parsing once hook events come from one registry or generated contract. |
 
 ### FD-017: Studio Has Build-Only Verification
@@ -933,7 +933,7 @@ Resolution:
 - Exposed `system-fields` on Entity metadata and updated Studio list columns to consume system field metadata when available.
 - Added a Studio system-field helper for remaining form/submit behavior so `id`, `created-at`, and `updated-at` are no longer repeated in multiple UI files.
 
-### FD-023: Schema Prune Needs An Ownership Boundary
+### FD-023: Schema Prune Needs A Managed-Schema Boundary
 
 Severity: High
 Status: Done
@@ -944,49 +944,31 @@ Evidence:
 - `internal/db/schema_prune.go` plans `DROP TABLE` for every live table absent from desired metadata.
 - `internal/db/schema_prune.go` plans drops for extra columns, indexes, and constraints based on metadata absence.
 - `internal/db/schema_prune_test.go` explicitly expects a public-schema table such as `old_import` to be dropped when no loaded Entity declares it.
-- `docs/database.md` and `docs/patches.md` document prune as an explicit destructive cleanup command, but the current implementation still infers dygo ownership from "object exists in public schema and is not in metadata."
+- `docs/database.md` and `docs/patches.md` must clearly document that dygo's managed schema is metadata-owned; otherwise patch-created or manually created objects can surprise operators during prune.
 
 Why this matters:
 
-The explicit preview/confirm flow is good, but it is not a strong ownership boundary. A framework should not treat every public-schema object as dygo-owned merely because the current metadata does not declare it. This matters once apps have raw SQL patches, imports, job tables, external integrations, reporting tables, or manually created database objects.
+The explicit preview/confirm flow is good, but the contract must be clear. dygo should either own a schema fully or keep unmanaged objects somewhere else. A halfway per-object ownership flag without a ledger makes prune unpredictable and can hide the real framework rule.
 
 Desired direction:
 
-- Add a persisted schema object ledger, or equivalent ownership marker, before prune is considered production-safe.
-- Track objects dygo created through metadata sync and structured patches:
+- Treat dygo's managed PostgreSQL schema as metadata-owned.
+- Let explicit `schema prune` remove objects present in that managed schema but absent from loaded Entity metadata:
   - tables
   - columns
   - indexes
   - constraints
-- Let prune drop only objects known to be dygo-owned and now absent from desired state.
-- Treat unknown public-schema objects as diagnostics that require an explicit patch or manual action, not automatic prune operations.
-- Keep the current preview and `--confirm` UX; strengthen the object eligibility model behind it.
-
-Potential shape:
-
-```yaml
-core.schema-object:
-  name: <qualified object key>
-  app: core
-  entity: user
-  kind: column
-  object-name: user.email
-  owner: metadata-sync
-  status: active
-```
-
-Notes:
-
-- This is the desired-state/history/ledger separation that mature migration systems use.
-- It also gives future background jobs/importer/report tables a clean way to declare whether they are metadata-owned, app-owned, or unmanaged.
+- Keep `dygo migrate` additive and safe; only `schema prune --confirm` performs destructive metadata-orphan cleanup.
+- Do not keep long-lived unmanaged tables or columns in dygo's managed schema. Model them as metadata, clean them up in patches, or place them in another PostgreSQL schema.
+- Keep generated prune SQL quoted and without `CASCADE` so hidden dependencies fail instead of widening the blast radius.
 
 Resolution:
 
-- Added ownership markers to the live schema model for tables, columns, indexes, and constraints.
-- Changed prune planning so extra tables, columns, indexes, and constraints produce destructive SQL only when the live object is marked dygo-owned.
-- Changed unknown public-schema extras into blockers with guidance to restore metadata, write an explicit patch, or mark ownership before pruning.
-- Updated prune tests to cover owned destructive plans and unowned blockers.
-- Kept the current inspector conservative: it does not infer ownership from public-schema presence, so a persisted schema-object ledger remains the next step before prune becomes broadly useful in production.
+- Removed the unused live-object ownership flags from schema inspection.
+- Restored prune planning for metadata-orphaned tables, columns, indexes, and constraints in the managed schema.
+- Kept prune explicit: preview by default, confirmed transaction for destructive cleanup, no `CASCADE`.
+- Updated docs to state that patch-created permanent objects must either become metadata or live outside dygo's managed schema.
+- Updated tests so prune behavior is driven by metadata absence, not synthetic ownership flags.
 
 ## Future Dogfooding Watchlist
 
@@ -994,7 +976,7 @@ Resolution:
 - Background jobs/queueing later: design it as framework primitives from day one, not separate internal tables with separate naming.
 - Importer: design import matching, defaults, links, validation, and dry-run around the same RecordStore/system mutation primitives instead of another fixture-like path.
 - Sharing rules: keep them on the same permission/action and system mutation primitives when record sharing lands.
-- Schema ownership: add the persisted ownership ledger before expanding prune beyond conservative metadata-owned drift cleanup.
+- Managed-schema escape hatches: add documented support for ignored objects or alternate PostgreSQL schemas if long-lived unmanaged database objects become necessary.
 
 ## Verification
 
@@ -1012,7 +994,7 @@ Resolution:
 2. Extract the storage/system-field contract. Table names, system fields, and column names are used by schema sync, Record runtime, patches, prune, and Studio.
 3. Extract a shared field runtime contract. This prevents every new field type from multiplying switches.
 4. Introduce an internal system record writer/mutation planner. Use it for Activity, patch ledger, and runtime session creation while keeping bootstrap exceptions explicit.
-5. Make schema prune conservative until dygo can prove object ownership.
+5. Make schema prune's managed-schema contract explicit: metadata is source of truth, and confirmed prune removes metadata-orphaned objects.
 6. Add a project metadata loader and shared YAML metadata decoder. This is a modest cleanup that removes repeated orchestration across CLI, schema sync, fixtures, hookgen, and config readers.
 7. Centralize patch and hook event registries. Keep public/internal type boundaries where useful, but stop maintaining operation/event lists twice.
 8. Centralize the Record list query contract before adding richer filters, reports, or importer previews.

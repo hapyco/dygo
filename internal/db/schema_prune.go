@@ -152,11 +152,6 @@ func BuildSchemaPrunePlan(entities []catalog.LoadedEntity, live LiveSchema) (Sch
 		if _, ok := desiredTables[name]; ok {
 			continue
 		}
-		liveTable := live.Tables[name]
-		if !liveTable.Owned {
-			plan.Diagnostics = append(plan.Diagnostics, unownedPruneDiagnostic("unowned-extra-table", name, "", "", "table exists but is not known to be dygo-owned"))
-			continue
-		}
 		tables = append(tables, SchemaPruneOperation{
 			Kind:        "drop-table",
 			Table:       name,
@@ -279,16 +274,4 @@ func pruneExtraColumns(desired desiredTable, live liveTable) ([]SchemaPruneOpera
 		})
 	}
 	return operations, diagnostics
-}
-
-func unownedPruneDiagnostic(kind string, table string, column string, name string, message string) SchemaDiagnostic {
-	return SchemaDiagnostic{
-		Classification: SchemaDiagnosticUnsafe,
-		Kind:           kind,
-		Table:          table,
-		Column:         column,
-		Name:           name,
-		Message:        message + "; use an explicit patch, restore metadata, or mark ownership before pruning",
-		Source:         "database public schema",
-	}
 }

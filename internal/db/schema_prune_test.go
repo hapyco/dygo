@@ -15,22 +15,21 @@ func TestBuildSchemaPrunePlanPlansExtraObjects(t *testing.T) {
 		"updated_at": {Name: "updated_at", Type: "timestamptz", Nullable: false},
 		"name":       {Name: "name", Type: "text", Nullable: false},
 		"status":     {Name: "status", Type: "text", Nullable: false},
-		"legacy":     {Name: "legacy", Owned: true, Type: "text", Nullable: true},
+		"legacy":     {Name: "legacy", Type: "text", Nullable: true},
 	}
 	plan, err := BuildSchemaPrunePlan([]catalog.LoadedEntity{appEntity()}, LiveSchema{Tables: map[string]liveTable{
 		"app": liveSchemaTable("app", columns, map[string]liveConstraint{
 			"app_pkey":         {Name: "app_pkey", Type: "primary-key"},
 			"app_name_key":     {Name: "app_name_key", Type: "unique"},
 			"app_status_check": {Name: "app_status_check", Type: "check"},
-			"app_legacy_check": {Name: "app_legacy_check", Owned: true, Type: "check"},
+			"app_legacy_check": {Name: "app_legacy_check", Type: "check"},
 		}, map[string]liveIndex{
 			"app_pkey":       {Name: "app_pkey"},
 			"app_name_key":   {Name: "app_name_key"},
-			"app_legacy_idx": {Name: "app_legacy_idx", Owned: true},
+			"app_legacy_idx": {Name: "app_legacy_idx"},
 		}),
 		"old_import": {
-			Name:  "old_import",
-			Owned: true,
+			Name: "old_import",
 			Columns: map[string]liveColumn{
 				"id": {Name: "id", Type: "bigint", Nullable: false},
 			},
@@ -66,7 +65,7 @@ func TestBuildSchemaPrunePlanPlansExtraObjects(t *testing.T) {
 	}
 }
 
-func TestBuildSchemaPrunePlanBlocksUnknownTables(t *testing.T) {
+func TestBuildSchemaPrunePlanDropsExtraTables(t *testing.T) {
 	plan, err := BuildSchemaPrunePlan([]catalog.LoadedEntity{appEntity()}, LiveSchema{Tables: map[string]liveTable{
 		"app": liveSchemaTable("app", systemColumns(), nil, nil),
 		"old_import": liveSchemaTable("old_import", systemColumns(), map[string]liveConstraint{
@@ -76,15 +75,13 @@ func TestBuildSchemaPrunePlanBlocksUnknownTables(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildSchemaPrunePlan() error = %v, want nil", err)
 	}
-	if len(plan.Operations) != 0 {
-		t.Fatalf("BuildSchemaPrunePlan() operations = %v, want none for unknown table", plan.Operations)
+	if plan.HasBlockers() {
+		t.Fatalf("BuildSchemaPrunePlan() blockers = %v, want none", plan.Diagnostics)
 	}
-	if !plan.HasBlockers() {
-		t.Fatal("BuildSchemaPrunePlan() blockers = false, want unknown table blocker")
+	if len(plan.Operations) != 1 || plan.Operations[0].Description != "drop table old_import" {
+		t.Fatalf("BuildSchemaPrunePlan() operations = %v, want old_import table drop", plan.Operations)
 	}
-	errText := plan.BlockerError().Error()
-	assertContains(t, errText, "old_import")
-	assertContains(t, errText, "table exists but is not known to be dygo-owned")
+	assertContains(t, pruneSQL(plan), `DROP TABLE "old_import"`)
 }
 
 func TestBuildSchemaPrunePlanSkipsProtectedObjects(t *testing.T) {
@@ -124,7 +121,7 @@ func TestBuildSchemaPrunePlanBlocksNonPrunableDrift(t *testing.T) {
 		"updated_at": {Name: "updated_at", Type: "timestamptz", Nullable: false},
 		"name":       {Name: "name", Type: "integer", Nullable: false},
 		"status":     {Name: "status", Type: "text", Nullable: false},
-		"legacy":     {Name: "legacy", Owned: true, Type: "text", Nullable: true},
+		"legacy":     {Name: "legacy", Type: "text", Nullable: true},
 	}
 	plan, err := BuildSchemaPrunePlan([]catalog.LoadedEntity{appEntity()}, LiveSchema{Tables: map[string]liveTable{
 		"app": liveSchemaTable("app", columns, map[string]liveConstraint{
