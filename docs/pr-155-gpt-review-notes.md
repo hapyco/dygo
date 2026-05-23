@@ -46,6 +46,8 @@ Future work should be split into smaller PRs, for example:
 
 ### 2. `SystemMutationOptions` Is Boolean-Heavy
 
+Status: locked for implementation.
+
 Current shape:
 
 ```go
@@ -85,6 +87,39 @@ Alternative: constructors like:
 - `SystemMutationOptions.FrameworkOnly()`
 
 The current implementation validates at least one invalid combination, but the API shape remains easy to misuse.
+
+Decision:
+
+Replace the boolean-heavy mutation options with one named mutation policy. The goal is not to change runtime behavior; it is to make the allowed behavior explicit and prevent nonsensical combinations.
+
+Preferred shape:
+
+```go
+type SystemMutationPolicy string
+
+const (
+    SystemMutationBootstrap SystemMutationPolicy = "bootstrap"
+    SystemMutationSilent    SystemMutationPolicy = "silent"
+    SystemMutationFramework SystemMutationPolicy = "framework"
+    SystemMutationFull      SystemMutationPolicy = "full"
+)
+```
+
+Policy meaning:
+
+| Policy | Meaning |
+| --- | --- |
+| `bootstrap` | Core setup/bootstrap writes. No hooks, no activity. Used while metadata or schema state may still be coming online. |
+| `silent` | Metadata-backed internal write with no hooks and no activity. Useful for Activity itself, patch ledger, and other system writes that must not recurse. |
+| `framework` | Framework behavior only. Run framework hooks/activity as needed, but do not run app hooks. |
+| `full` | Normal Record-like behavior. Use only when an internal write should behave like a public Record mutation. |
+
+Implementation notes:
+
+- Keep `ReturnRecord` separate only if the writer still needs a performance toggle.
+- If `ReturnRecord` remains, prefer an explicit method split later, such as `InsertByIdentity` vs `InsertReturningByIdentity`, instead of packing more booleans into policy.
+- Add tests for each policy and for invalid/default behavior.
+- Replace call sites that currently pass `{Bootstrap: true}` or empty options with the named policy.
 
 ### 3. Query Params Are Loose
 
