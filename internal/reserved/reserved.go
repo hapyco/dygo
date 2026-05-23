@@ -14,10 +14,9 @@ import (
 var wordsYAML []byte
 
 type wordSet struct {
-	Slugs    []string `yaml:"slugs"`
-	Fields   []string `yaml:"fields"`
-	Queries  []string `yaml:"queries"`
-	Entities []string `yaml:"entities"`
+	Slugs   []string `yaml:"slugs"`
+	Fields  []string `yaml:"fields"`
+	Queries []string `yaml:"queries"`
 }
 
 var defaultWords = mustLoadWords(wordsYAML)
@@ -37,11 +36,6 @@ func IsQuery(value string) bool {
 	return contains(defaultWords.Queries, value)
 }
 
-// IsEntity reports whether value is reserved in Entity-name space.
-func IsEntity(value string) bool {
-	return contains(defaultWords.Entities, value)
-}
-
 // Slugs returns reserved root route slugs in stable order.
 func Slugs() []string {
 	return sortedCopy(defaultWords.Slugs)
@@ -55,11 +49,6 @@ func Fields() []string {
 // Queries returns reserved query parameters in stable order.
 func Queries() []string {
 	return sortedCopy(defaultWords.Queries)
-}
-
-// Entities returns reserved Entity names in stable order.
-func Entities() []string {
-	return sortedCopy(defaultWords.Entities)
 }
 
 func mustLoadWords(data []byte) wordSet {
@@ -78,7 +67,6 @@ func loadWords(data []byte) (wordSet, error) {
 	normalizeCategory(&words.Slugs)
 	normalizeCategory(&words.Fields)
 	normalizeCategory(&words.Queries)
-	normalizeCategory(&words.Entities)
 	return words, nil
 }
 

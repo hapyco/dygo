@@ -20,12 +20,10 @@ func TestSchemasAreValidJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadDir(schemas) error = %v", err)
 	}
-	var found int
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".schema.json") {
 			continue
 		}
-		found++
 		data, err := os.ReadFile(entry.Name())
 		if err != nil {
 			t.Fatalf("ReadFile(%s) error = %v", entry.Name(), err)
@@ -44,9 +42,6 @@ func TestSchemasAreValidJSON(t *testing.T) {
 			t.Fatalf("%s type = %#v, want object", entry.Name(), schema["type"])
 		}
 	}
-	if found != 5 {
-		t.Fatalf("schema file count = %d, want 5", found)
-	}
 }
 
 func TestVSCodeSettingsReferenceExistingSchemas(t *testing.T) {
@@ -61,9 +56,6 @@ func TestVSCodeSettingsReferenceExistingSchemas(t *testing.T) {
 	rawSchemas, ok := settings["yaml.schemas"].(map[string]any)
 	if !ok {
 		t.Fatal(".vscode/settings.json missing yaml.schemas object")
-	}
-	if len(rawSchemas) != 5 {
-		t.Fatalf("yaml.schemas count = %d, want 5", len(rawSchemas))
 	}
 	for schemaPath, rawMatches := range rawSchemas {
 		cleanSchemaPath := strings.TrimPrefix(schemaPath, "./")

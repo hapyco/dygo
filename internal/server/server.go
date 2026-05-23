@@ -359,19 +359,10 @@ func decodeLoginInput(r *http.Request) (auth.LoginRequest, error) {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return auth.LoginRequest{}, auth.Error{Code: auth.ErrorInvalidRequest, Message: "request body must contain one JSON object", Err: err}
 	}
-	if loginIdentifier(envelope.Data) == "" || strings.TrimSpace(envelope.Data.Password) == "" {
-		return auth.LoginRequest{}, auth.Error{Code: auth.ErrorInvalidRequest, Message: "email or username and password are required"}
+	if strings.TrimSpace(envelope.Data.Email) == "" || strings.TrimSpace(envelope.Data.Password) == "" {
+		return auth.LoginRequest{}, auth.Error{Code: auth.ErrorInvalidRequest, Message: "email and password are required"}
 	}
 	return envelope.Data, nil
-}
-
-func loginIdentifier(input auth.LoginRequest) string {
-	for _, value := range []string{input.Email, input.Username, input.Identifier} {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func sessionCookie(token string, expiresAt time.Time, remember bool, secure bool) *http.Cookie {
@@ -973,7 +964,6 @@ func (h recordHandler) authorize(w http.ResponseWriter, r *http.Request, entity 
 func activityRequestContext(r *http.Request) context.Context {
 	ctx := db.WithActivitySource(r.Context(), db.ActivitySourceAPI)
 	if user, ok := CurrentUserFromContext(r.Context()); ok {
-		ctx = db.WithActivityActor(ctx, user.ID)
 		ctx = db.WithActivityActorName(ctx, user.Email)
 	}
 	return ctx

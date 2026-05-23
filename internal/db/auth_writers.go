@@ -22,7 +22,7 @@ func NewAuthSessionWriter(queryer RecordQueryer) AuthSessionWriter {
 // CreateSession creates one Core session Record.
 func (w AuthSessionWriter) CreateSession(ctx context.Context, input auth.SessionInput) error {
 	recordInput := RecordInput{
-		"user":         systemRecordInt(input.UserID),
+		"user":         systemRecordString(input.UserName),
 		"token-digest": systemRecordString(input.TokenDigest),
 		"status":       systemRecordString(input.Status),
 		"started-at":   systemRecordTime(input.StartedAt),

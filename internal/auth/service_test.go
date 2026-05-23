@@ -51,8 +51,8 @@ func TestServiceLogin(t *testing.T) {
 		t.Fatalf("session writer calls = %d, want one", len(sessionWriter.inputs))
 	}
 	sessionInput := sessionWriter.inputs[0]
-	if sessionInput.UserID != 7 {
-		t.Fatalf("session user id = %d, want 7", sessionInput.UserID)
+	if sessionInput.UserName != "admin@example.com" {
+		t.Fatalf("session user name = %q, want admin@example.com", sessionInput.UserName)
 	}
 	if sessionInput.TokenDigest == "raw-session-token" {
 		t.Fatal("session writer received raw token")

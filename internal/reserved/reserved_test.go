@@ -19,9 +19,6 @@ func TestReservedWords(t *testing.T) {
 	if !IsQuery("limit") || !IsQuery("fields") || !IsQuery("cursor") {
 		t.Fatal("IsQuery() did not include reserved query params")
 	}
-	if IsEntity("app") || IsEntity("customer") {
-		t.Fatal("IsEntity() mismatch")
-	}
 }
 
 func TestReservedListsAreSortedCopies(t *testing.T) {
@@ -41,11 +38,7 @@ func TestReservedListsAreSortedCopies(t *testing.T) {
 		}
 		values[0] = "mutated"
 	}
-	if entities := Entities(); len(entities) != 0 {
-		t.Fatalf("Entities() = %#v, want no reserved entity names", entities)
-	}
-
-	if IsSlug("mutated") || IsField("mutated") || IsQuery("mutated") || IsEntity("mutated") {
+	if IsSlug("mutated") || IsField("mutated") || IsQuery("mutated") {
 		t.Fatal("reserved list mutation changed package state")
 	}
 }

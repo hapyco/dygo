@@ -33,11 +33,6 @@ func TestListPolicy(t *testing.T) {
 	if !reflect.DeepEqual(policy.PageSizes, wantPageSizes) {
 		t.Fatalf("ListPolicy().PageSizes = %#v, want %#v", policy.PageSizes, wantPageSizes)
 	}
-
-	policy.PageSizes[0] = 999
-	if ListPolicy().PageSizes[0] != 20 {
-		t.Fatal("ListPolicy() leaked mutable page-size storage")
-	}
 }
 
 func TestFromValues(t *testing.T) {

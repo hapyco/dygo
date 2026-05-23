@@ -246,7 +246,7 @@ func ApplyFiles(ctx context.Context, store Store, files []LoadedFile) (Result, e
 	if store == nil {
 		return Result{}, fmt.Errorf("fixture store is required")
 	}
-	ctx = db.WithActivityActor(db.WithActivitySource(ctx, db.ActivitySourceFixtures), 0)
+	ctx = db.WithActivitySource(ctx, db.ActivitySourceFixtures)
 	prepared := make([]preparedFile, 0, len(files))
 	for _, file := range files {
 		parsed, err := prepareFile(ctx, store, file)

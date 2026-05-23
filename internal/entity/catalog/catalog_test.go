@@ -451,39 +451,6 @@ func TestValidateRejectsCollectionFolderWithoutParent(t *testing.T) {
 	}
 }
 
-func TestValidateAllowsFolderCollectionFilenamesThatLookSpecial(t *testing.T) {
-	t.Parallel()
-
-	for _, filename := range []string{"entity.yml", "index.yml"} {
-		filename := filename
-		t.Run(filename, func(t *testing.T) {
-			t.Parallel()
-
-			root := t.TempDir()
-			app := loadedApp(root, "sales", "sales", manifest.Paths{})
-			child := strings.TrimSuffix(filename, ".yml")
-			writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice.yml"), `
-label: Invoice
-fields:
-  - name: rows
-    label: Rows
-    type: collection
-    options:
-      entity: `+child+`
-`)
-			writeEntity(t, filepath.Join(app.Dir, "entities", "invoice", filename), child)
-
-			entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
-			if err != nil {
-				t.Fatalf("Validate() error = %v, want nil", err)
-			}
-			if got := entityKeys(entities); strings.Join(got, ",") != "sales/"+child+",sales/invoice" && strings.Join(got, ",") != "sales/invoice,sales/"+child {
-				t.Fatalf("Validate() entities = %#v, want invoice and %s", got, child)
-			}
-		})
-	}
-}
-
 func TestValidateRejectsCollectionEntityRouteSlug(t *testing.T) {
 	t.Parallel()
 

@@ -38,16 +38,33 @@ func (s RecordStore) SystemWriter() SystemRecordWriter {
 
 // InsertByIdentity inserts one app-scoped system Record without returning it.
 func (w SystemRecordWriter) InsertByIdentity(ctx context.Context, appName string, entity string, input RecordInput, policy SystemMutationPolicy) error {
-	_, err := w.insertByIdentity(ctx, appName, entity, input, policy, false)
+	if err := w.store.requireQueryer(); err != nil {
+		return err
+	}
+	store, err := w.mutationStore(appName, entity, policy)
+	if err != nil {
+		return err
+	}
+	if policy == SystemMutationFramework || policy == SystemMutationFull {
+		_, err := store.createRecordByIdentity(ctx, appName, entity, input)
+		return err
+	}
+	layout, err := store.recordLayoutByIdentity(ctx, appName, entity)
+	if err != nil {
+		return err
+	}
+	if layout.IsSingle {
+		return singleRecordOperationError(layout, "create")
+	}
+	if layout.IsCollection {
+		return collectionRecordOperationError(layout, "create")
+	}
+	_, err = store.insertRecordWithLayout(ctx, layout, cloneRecordInput(input), false)
 	return err
 }
 
 // InsertReturningByIdentity inserts one app-scoped system Record and returns it.
 func (w SystemRecordWriter) InsertReturningByIdentity(ctx context.Context, appName string, entity string, input RecordInput, policy SystemMutationPolicy) (Record, error) {
-	return w.insertByIdentity(ctx, appName, entity, input, policy, true)
-}
-
-func (w SystemRecordWriter) insertByIdentity(ctx context.Context, appName string, entity string, input RecordInput, policy SystemMutationPolicy, returning bool) (Record, error) {
 	if err := w.store.requireQueryer(); err != nil {
 		return nil, err
 	}
@@ -55,21 +72,7 @@ func (w SystemRecordWriter) insertByIdentity(ctx context.Context, appName string
 	if err != nil {
 		return nil, err
 	}
-	if returning || systemMutationRunsHooks(policy) {
-		return store.createRecordByIdentity(ctx, appName, entity, input)
-	}
-	layout, err := store.recordLayoutByIdentity(ctx, appName, entity)
-	if err != nil {
-		return nil, err
-	}
-	if layout.IsSingle {
-		return nil, singleRecordOperationError(layout, "create")
-	}
-	if layout.IsCollection {
-		return nil, collectionRecordOperationError(layout, "create")
-	}
-	_, err = store.insertRecordWithLayout(ctx, layout, cloneRecordInput(input), false)
-	return nil, err
+	return store.createRecordByIdentity(ctx, appName, entity, input)
 }
 
 // UpsertByIdentity creates or updates one app-scoped system Record by a metadata-backed match without returning it.
@@ -123,10 +126,6 @@ func (w SystemRecordWriter) mutationStore(appName string, entity string, policy 
 		return RecordStore{}, recordError(RecordErrorInvalidRequest, "system mutation policy is invalid", map[string]any{"app": appName, "entity": entity, "policy": string(policy)}, nil)
 	}
 	return store, nil
-}
-
-func systemMutationRunsHooks(policy SystemMutationPolicy) bool {
-	return policy == SystemMutationFramework || policy == SystemMutationFull
 }
 
 func isRecordNotFound(err error) bool {

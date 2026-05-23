@@ -33,7 +33,7 @@ func (c linkValueCodec) storageValue(ctx context.Context, layout recordLayout, f
 	if err := json.Unmarshal(raw, &name); err == nil {
 		return c.idByName(ctx, layout, field, name)
 	}
-	return jsonIntValue(field, raw)
+	return nil, linkNameRequiredError(layout, field)
 }
 
 func (c linkValueCodec) displaySQL(layout recordLayout, field recordField) string {
@@ -52,11 +52,7 @@ func (c linkValueCodec) nameFromRaw(ctx context.Context, layout recordLayout, fi
 	if err := json.Unmarshal(raw, &name); err == nil {
 		return name, nil
 	}
-	id, err := jsonIntValue(field, raw)
-	if err != nil {
-		return "", err
-	}
-	return c.nameByID(ctx, layout, field, id)
+	return "", linkNameRequiredError(layout, field)
 }
 
 func (c linkValueCodec) idByName(ctx context.Context, layout recordLayout, field recordField, name string) (int64, error) {
@@ -75,22 +71,6 @@ func (c linkValueCodec) idByName(ctx context.Context, layout recordLayout, field
 	return id, nil
 }
 
-func (c linkValueCodec) nameByID(ctx context.Context, layout recordLayout, field recordField, id int64) (string, error) {
-	targetTable, ok := linkTargetTable(layout, field)
-	if !ok {
-		return "", recordError(RecordErrorInternal, "link field target metadata is invalid", map[string]any{"entity": layout.Entity, "field": field.Name}, nil)
-	}
-	var name string
-	err := c.queryer.QueryRow(ctx, fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", quoteIdent("name"), quoteIdent(targetTable), quoteIdent("id")), id).Scan(&name)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", recordError(RecordErrorValidation, "link target not found", map[string]any{"entity": layout.Entity, "field": field.Name, "target": field.Options.Entity, "id": id}, err)
-	}
-	if err != nil {
-		return "", classifyRecordDBError(err, field.Options.Entity)
-	}
-	return name, nil
-}
-
 func linkTargetTable(layout recordLayout, field recordField) (string, bool) {
 	targetEntity := strings.TrimSpace(field.Options.Entity)
 	if targetEntity == "" {
@@ -101,4 +81,8 @@ func linkTargetTable(layout recordLayout, field recordField) (string, bool) {
 		targetApp = layout.AppName
 	}
 	return entityTableName(targetApp, targetEntity), true
+}
+
+func linkNameRequiredError(layout recordLayout, field recordField) error {
+	return recordError(RecordErrorValidation, "link field must be a record name", map[string]any{"entity": layout.Entity, "field": field.Name, "target": field.Options.Entity}, nil)
 }

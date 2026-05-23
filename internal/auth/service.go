@@ -65,11 +65,9 @@ type User struct {
 
 // LoginRequest contains user credentials.
 type LoginRequest struct {
-	Email      string `json:"email"`
-	Username   string `json:"username,omitempty"`
-	Identifier string `json:"identifier,omitempty"`
-	Password   string `json:"password"`
-	Remember   bool   `json:"remember,omitempty"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Remember bool   `json:"remember,omitempty"`
 }
 
 // LoginResult contains the authenticated user and raw session token.
@@ -81,7 +79,7 @@ type LoginResult struct {
 
 // SessionInput is one authenticated login session to persist.
 type SessionInput struct {
-	UserID      int64
+	UserName    string
 	TokenDigest string
 	Status      string
 	StartedAt   time.Time
@@ -140,8 +138,7 @@ func (s Service) Login(ctx context.Context, request LoginRequest) (LoginResult, 
 	if err := s.requireQueryer(); err != nil {
 		return LoginResult{}, err
 	}
-	identifier := firstNonEmpty(request.Email, request.Username, request.Identifier)
-	email, err := normalizeEmail(identifier)
+	email, err := normalizeEmail(request.Email)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -176,7 +173,7 @@ LIMIT 1`, email).Scan(&user.ID, &user.Email, &user.FullName, &user.Enabled, &use
 	now := s.now()
 	expiresAt := now.Add(s.ttl())
 	if err := s.createSession(ctx, SessionInput{
-		UserID:      user.ID,
+		UserName:    user.Email,
 		TokenDigest: SessionTokenDigest(token),
 		Status:      corevalues.SessionStatusActive,
 		StartedAt:   now,
@@ -187,15 +184,6 @@ LIMIT 1`, email).Scan(&user.ID, &user.Email, &user.FullName, &user.Enabled, &use
 	}
 
 	return LoginResult{User: user, Token: token, ExpiresAt: expiresAt}, nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 // CurrentUser resolves a raw session token to an authenticated user.

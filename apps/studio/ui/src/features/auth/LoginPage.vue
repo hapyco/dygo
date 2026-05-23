@@ -9,13 +9,13 @@ import { useAuthStore } from '@/stores/auth.store'
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-const identifier = ref('')
+const email = ref('')
 const password = ref('')
 const remember = ref(false)
 const loading = ref(false)
 const error = ref('')
 
-const canSubmit = computed(() => identifier.value.trim() !== '' && password.value !== '')
+const canSubmit = computed(() => email.value.trim() !== '' && password.value !== '')
 
 function redirectPath(): string {
   const redirect = route.query.redirect
@@ -35,7 +35,7 @@ async function submitLogin() {
 
   try {
     const user = await login({
-      identifier: identifier.value.trim(),
+      email: email.value.trim(),
       password: password.value,
       remember: remember.value,
     })
@@ -68,11 +68,11 @@ async function submitLogin() {
 
       <form class="login-form" @submit.prevent="submitLogin">
         <TextField
-          id="studio-identifier"
-          v-model="identifier"
-          label="Email or username"
-          name="identifier"
-          autocomplete="username"
+          id="studio-email"
+          v-model="email"
+          label="Email"
+          name="email"
+          autocomplete="email"
           placeholder="you@example.com"
           :disabled="loading"
           required

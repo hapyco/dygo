@@ -17,7 +17,6 @@ import { usePlatformStore } from './platform.store'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
 
 const pageSizeStorageKey = 'dygo.studio.records.pageSize'
-const fallbackPageSize = 20
 export const singleRecordKey = '__single__'
 
 type LoadInitialOptions = {
@@ -112,13 +111,21 @@ function writeStoredPageSize(pageSize: number, policy: RecordListPolicy) {
   window.localStorage.setItem(pageSizeStorageKey, String(pageSize))
 }
 
+function missingRecordListPolicyError(platformStore: ReturnType<typeof usePlatformStore>): Error {
+  const error = new Error(platformStore.error?.message ?? 'Studio could not load record list settings.')
+  const apiError = error as Error & { code?: string; details?: Record<string, unknown> }
+  apiError.code = platformStore.error?.code ?? 'platform_failed'
+  apiError.details = platformStore.error?.details
+  return error
+}
+
 function sortsEqual(left: DataTableSort | null, right: DataTableSort | null): boolean {
   return left?.key === right?.key && left?.direction === right?.direction
 }
 
 export const useRecordsStore = defineStore('records', {
   state: (): RecordsState => ({
-    pageSize: fallbackPageSize,
+    pageSize: 0,
     byEntity: {},
     pendingInitialByEntity: {},
     byRecord: {},
@@ -153,10 +160,13 @@ export const useRecordsStore = defineStore('records', {
       return this.byRecord[key]
     },
 
-    async ensureRecordListPolicy() {
+    async ensureRecordListPolicy(): Promise<RecordListPolicy> {
       const platformStore = usePlatformStore()
       await platformStore.loadPlatform()
       const policy = platformStore.recordListPolicy
+      if (!policy) {
+        throw missingRecordListPolicyError(platformStore)
+      }
       const nextPageSize = readStoredPageSize(policy)
 
       if (this.pageSize !== nextPageSize) {
@@ -171,16 +181,29 @@ export const useRecordsStore = defineStore('records', {
           state.stale = true
         })
       }
+
+      return policy
     },
 
     async loadInitial(entity: string, options: LoadInitialOptions = {}): Promise<RecordEntityState> {
-      await this.ensureRecordListPolicy()
+      const state = this.ensureEntity(entity)
+
+      try {
+        await this.ensureRecordListPolicy()
+      } catch (error: unknown) {
+        const normalized = storeError(error, 'Studio could not load record list settings.')
+        state.rows = []
+        state.total = 0
+        state.selectedRowKeys = []
+        state.error = normalized
+        state.loadMoreError = null
+        state.status = statusForError(normalized)
+        return state
+      }
 
       if (options.pageSize) {
         this.setGlobalPageSize(options.pageSize)
       }
-
-      const state = this.ensureEntity(entity)
 
       if (!options.force && !state.stale && (state.status === 'ready' || state.status === 'empty')) {
         return state
@@ -435,6 +458,9 @@ export const useRecordsStore = defineStore('records', {
 
     setGlobalPageSize(pageSize: number) {
       const policy = usePlatformStore().recordListPolicy
+      if (!policy) {
+        return
+      }
       if (!isAllowedRecordPageSize(pageSize, policy['page-sizes'])) {
         return
       }

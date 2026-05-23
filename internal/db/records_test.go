@@ -555,6 +555,21 @@ func TestRecordStoreCreateRecordResolvesLinkNamesToStoredIDs(t *testing.T) {
 	}
 }
 
+func TestRecordStoreCreateRecordRejectsNumericLinkInput(t *testing.T) {
+	_, err := NewRecordStore(newActivityRecordQueryer()).CreateRecord(context.Background(), "activity", recordInput(map[string]string{
+		"actor":     `99`,
+		"entity":    `"core.user"`,
+		"kind":      `"record"`,
+		"operation": `"create"`,
+		"status":    `"success"`,
+		"title":     `"Created User"`,
+	}))
+	assertRecordError(t, err, RecordErrorValidation, "actor")
+	if err == nil || !strings.Contains(err.Error(), "link field must be a record name") {
+		t.Fatalf("CreateRecord(numeric link) error = %v, want link name validation", err)
+	}
+}
+
 func TestRecordStoreUpdateRecord(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
@@ -713,7 +728,7 @@ func TestRecordStoreCreateRecordWritesActivity(t *testing.T) {
 		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
 	}))
 
-	ctx := WithActivityActorName(WithActivityActor(WithActivitySource(context.Background(), ActivitySourceAPI), 77), "admin@example.com")
+	ctx := WithActivityActorName(WithActivitySource(context.Background(), ActivitySourceAPI), "admin@example.com")
 	record, err := NewRecordStore(queryer).CreateRecord(ctx, "user", recordInput(map[string]string{
 		"email":     `"a@example.com"`,
 		"full-name": `"A User"`,
@@ -738,27 +753,6 @@ func TestRecordStoreCreateRecordWritesActivity(t *testing.T) {
 	details := decodeActivityObject(t, args[10])
 	if details["source"] != ActivitySourceAPI {
 		t.Fatalf("activity details = %#v, want api source", details)
-	}
-}
-
-func TestRecordStoreCreateRecordWritesActivityActorIDFallback(t *testing.T) {
-	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
-	queryer := newUserRecordQueryer()
-	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
-	}))
-
-	ctx := WithActivityActor(context.Background(), 99)
-	_, err := NewRecordStore(queryer).CreateRecord(ctx, "user", recordInput(map[string]string{
-		"email":     `"a@example.com"`,
-		"full-name": `"A User"`,
-	}))
-	if err != nil {
-		t.Fatalf("CreateRecord() error = %v, want nil", err)
-	}
-	args := activityArgs(t, queryer)
-	if args[5] != int64(99) {
-		t.Fatalf("activity actor arg = %#v, want actor id fallback", args[5])
 	}
 }
 

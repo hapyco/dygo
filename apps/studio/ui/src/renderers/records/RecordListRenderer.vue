@@ -28,7 +28,7 @@ const platformStore = usePlatformStore()
 const hiddenColumnKeys = ref<string[]>([])
 
 const columns = computed(() => buildRecordListColumns(props.fields, props.systemFields ?? []))
-const pageSizeOptions = computed(() => platformStore.recordListPolicy['page-sizes'])
+const pageSizeOptions = computed(() => platformStore.recordListPolicy?.['page-sizes'] ?? [])
 const hiddenColumnKeySet = computed(() => new Set(hiddenColumnKeys.value.filter((key) => key !== 'name')))
 const visibleColumns = computed(() => columns.value.filter((column) => (
   column.key === 'name' || !hiddenColumnKeySet.value.has(column.key)
@@ -111,7 +111,6 @@ watch(
   () => props.entity,
   async (entity) => {
     hiddenColumnKeys.value = readHiddenColumnKeys(entity)
-    await platformStore.loadPlatform()
     await recordsStore.loadInitial(entity)
   },
   { immediate: true },

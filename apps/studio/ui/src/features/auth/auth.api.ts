@@ -1,7 +1,7 @@
 import { ApiClientError, apiRequest, type ApiErrorEnvelope, type DataEnvelope } from '@/features/api/client'
 
 export type LoginInput = {
-  identifier: string
+  email: string
   password: string
   remember: boolean
 }
@@ -28,7 +28,7 @@ export async function login(input: LoginInput): Promise<CurrentUser> {
     },
     body: JSON.stringify({
       data: {
-        identifier: input.identifier,
+        email: input.email,
         password: input.password,
         remember: input.remember,
       },
@@ -70,11 +70,11 @@ function currentUserErrorMessage(payload: ApiErrorEnvelope): string {
 function loginErrorMessage(payload: ApiErrorEnvelope): string {
   switch (payload.error?.code) {
     case 'invalid_credentials':
-      return 'Email, username, or password is incorrect.'
+      return 'Email or password is incorrect.'
     case 'schema_not_ready':
       return 'Studio is not ready yet. Run dygo migrate, then try again.'
     case 'invalid_request':
-      return payload.error.message ?? 'Enter a valid email or username and password.'
+      return payload.error.message ?? 'Enter a valid email and password.'
     default:
       return 'Sign in failed. Check the server and try again.'
   }

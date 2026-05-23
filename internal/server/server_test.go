@@ -485,13 +485,29 @@ func TestAuthRoutes(t *testing.T) {
 			wantCookie: true,
 		},
 		{
-			name:       "login with identifier and remember",
+			name:       "login with email and remember",
 			method:     http.MethodPost,
 			path:       "/api/v1/auth/login",
-			body:       `{"data":{"identifier":"admin@example.com","password":"secret","remember":true}}`,
+			body:       `{"data":{"email":"admin@example.com","password":"secret","remember":true}}`,
 			status:     http.StatusOK,
 			want:       `"administrator":true`,
 			wantCookie: true,
+		},
+		{
+			name:   "login rejects identifier",
+			method: http.MethodPost,
+			path:   "/api/v1/auth/login",
+			body:   `{"data":{"identifier":"admin@example.com","password":"secret"}}`,
+			status: http.StatusBadRequest,
+			want:   `"code":"invalid_request"`,
+		},
+		{
+			name:   "login rejects username",
+			method: http.MethodPost,
+			path:   "/api/v1/auth/login",
+			body:   `{"data":{"username":"admin","password":"secret"}}`,
+			status: http.StatusBadRequest,
+			want:   `"code":"invalid_request"`,
 		},
 		{
 			name:   "me",
@@ -681,9 +697,6 @@ func TestRecordRoutes(t *testing.T) {
 	if store.deletedID != 1 {
 		t.Fatalf("deleted id = %d, want 1", store.deletedID)
 	}
-	if store.createActor != 7 || store.updateActor != 7 || store.deleteActor != 7 {
-		t.Fatalf("activity actors create/update/delete = %d/%d/%d, want authenticated user 7", store.createActor, store.updateActor, store.deleteActor)
-	}
 	if store.createActorName != "admin@example.com" || store.updateActorName != "admin@example.com" || store.deleteActorName != "admin@example.com" {
 		t.Fatalf("activity actor names create/update/delete = %q/%q/%q, want authenticated user email", store.createActorName, store.updateActorName, store.deleteActorName)
 	}
@@ -760,8 +773,8 @@ func TestSingleRecordRoutes(t *testing.T) {
 	if !reflect.DeepEqual(checker.requests, wantPermissions) {
 		t.Fatalf("permission requests = %+v, want %+v", checker.requests, wantPermissions)
 	}
-	if store.updateActor != 7 || store.updateSource != db.ActivitySourceAPI {
-		t.Fatalf("single update actor/source = %d/%q, want API user", store.updateActor, store.updateSource)
+	if store.updateActorName != "admin@example.com" || store.updateSource != db.ActivitySourceAPI {
+		t.Fatalf("single update actor/source = %q/%q, want API user", store.updateActorName, store.updateSource)
 	}
 }
 
@@ -1251,9 +1264,6 @@ type fakeRecordStore struct {
 	created         db.RecordInput
 	updated         db.RecordInput
 	deletedID       int64
-	createActor     int64
-	updateActor     int64
-	deleteActor     int64
 	createActorName string
 	updateActorName string
 	deleteActorName string
@@ -1289,7 +1299,6 @@ func (s *fakeRecordStore) GetSingleRecord(context.Context, string) (db.Record, e
 func (s *fakeRecordStore) CreateRecord(ctx context.Context, _ string, input db.RecordInput) (db.Record, error) {
 	s.calls = append(s.calls, "create")
 	s.created = input
-	s.createActor, _ = db.ActivityActorFromContext(ctx)
 	s.createActorName, _ = db.ActivityActorNameFromContext(ctx)
 	s.createSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.record, s.createErr
@@ -1298,7 +1307,6 @@ func (s *fakeRecordStore) CreateRecord(ctx context.Context, _ string, input db.R
 func (s *fakeRecordStore) UpdateRecord(ctx context.Context, _ string, _ int64, input db.RecordInput) (db.Record, error) {
 	s.calls = append(s.calls, "update")
 	s.updated = input
-	s.updateActor, _ = db.ActivityActorFromContext(ctx)
 	s.updateActorName, _ = db.ActivityActorNameFromContext(ctx)
 	s.updateSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.record, s.updateErr
@@ -1307,7 +1315,6 @@ func (s *fakeRecordStore) UpdateRecord(ctx context.Context, _ string, _ int64, i
 func (s *fakeRecordStore) UpdateSingleRecord(ctx context.Context, _ string, input db.RecordInput) (db.Record, error) {
 	s.calls = append(s.calls, "update-single")
 	s.updated = input
-	s.updateActor, _ = db.ActivityActorFromContext(ctx)
 	s.updateActorName, _ = db.ActivityActorNameFromContext(ctx)
 	s.updateSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.record, s.updateSingleErr
@@ -1316,7 +1323,6 @@ func (s *fakeRecordStore) UpdateSingleRecord(ctx context.Context, _ string, inpu
 func (s *fakeRecordStore) DeleteRecord(ctx context.Context, _ string, id int64) error {
 	s.calls = append(s.calls, "delete")
 	s.deletedID = id
-	s.deleteActor, _ = db.ActivityActorFromContext(ctx)
 	s.deleteActorName, _ = db.ActivityActorNameFromContext(ctx)
 	s.deleteSource, _ = db.ActivitySourceFromContext(ctx)
 	return s.deleteErr

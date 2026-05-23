@@ -8,12 +8,6 @@ import {
 } from '@/features/platform/platform.api'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
 
-const fallbackRecordListPolicy: RecordListPolicy = {
-  'default-limit': 20,
-  'max-limit': 20,
-  'page-sizes': [20],
-}
-
 type PlatformState = {
   config: PlatformConfig | null
   status: LoadStatus
@@ -30,9 +24,7 @@ export const usePlatformStore = defineStore('platform', {
   }),
 
   getters: {
-    recordListPolicy: (state): RecordListPolicy => (
-      state.config?.['record-list'] ?? fallbackRecordListPolicy
-    ),
+    recordListPolicy: (state): RecordListPolicy | null => state.config?.['record-list'] ?? null,
   },
 
   actions: {

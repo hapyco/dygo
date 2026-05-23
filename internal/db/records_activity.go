@@ -19,20 +19,11 @@ const (
 	ActivitySourceFixtures = "fixtures"
 )
 
-type activityActorContextKey struct{}
 type activityActorNameContextKey struct{}
 type activitySourceContextKey struct{}
 
 type recordBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
-}
-
-// WithActivityActor attaches an optional actor user ID to Record mutation Activity.
-func WithActivityActor(ctx context.Context, userID int64) context.Context {
-	if ctx == nil {
-		return ctx
-	}
-	return context.WithValue(ctx, activityActorContextKey{}, userID)
 }
 
 // WithActivityActorName attaches an optional actor user Record name to Record mutation Activity.
@@ -57,18 +48,6 @@ func WithActivitySource(ctx context.Context, source string) context.Context {
 		return ctx
 	}
 	return context.WithValue(ctx, activitySourceContextKey{}, source)
-}
-
-// ActivityActorFromContext returns the optional actor user ID for Record mutation Activity.
-func ActivityActorFromContext(ctx context.Context) (int64, bool) {
-	if ctx == nil {
-		return 0, false
-	}
-	value, ok := ctx.Value(activityActorContextKey{}).(int64)
-	if !ok || value <= 0 {
-		return 0, false
-	}
-	return value, true
 }
 
 // ActivityActorNameFromContext returns the optional actor user Record name for Record mutation Activity.
@@ -146,8 +125,6 @@ func recordActivityHook(ctx context.Context, hookCtx RecordHookContext) error {
 	}
 	if actorName, ok := ActivityActorNameFromContext(ctx); ok {
 		input["actor"] = systemRecordString(actorName)
-	} else if actorID, ok := ActivityActorFromContext(ctx); ok {
-		input["actor"] = systemRecordInt(actorID)
 	}
 	if changesJSON != nil {
 		input["changes"] = changesJSON
