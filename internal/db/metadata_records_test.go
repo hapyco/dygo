@@ -55,7 +55,7 @@ func TestBuildMetadataRecords(t *testing.T) {
 	if len(records.Apps) != 1 || records.Apps[0].Name != "core" || records.Apps[0].Status != "active" {
 		t.Fatalf("app records = %+v, want active core app", records.Apps)
 	}
-	if len(records.Entities) != 1 || records.Entities[0].Name != "core.user" || records.Entities[0].Key != "user" || records.Entities[0].Slug != "user" || records.Entities[0].Icon != "user" || records.Entities[0].AppName != "core" || !records.Entities[0].IsSingle {
+	if len(records.Entities) != 1 || records.Entities[0].Name != "core.user" || records.Entities[0].Key != "user" || records.Entities[0].Slug == nil || *records.Entities[0].Slug != "user" || records.Entities[0].Icon != "user" || records.Entities[0].AppName != "core" || !records.Entities[0].IsSingle {
 		t.Fatalf("entity records = %+v, want core/user", records.Entities)
 	}
 	if records.Entities[0].Naming != nil {
@@ -203,6 +203,34 @@ func TestBuildMetadataRecordsUsesEntityTableNamingTemplate(t *testing.T) {
 	}
 	if !strings.Contains(string(records.Entities[0].Naming), `"strategy":"template"`) || !strings.Contains(string(records.Entities[0].Naming), `"{app}.{key}"`) {
 		t.Fatalf("entity naming metadata = %s, want template strategy", records.Entities[0].Naming)
+	}
+}
+
+func TestBuildMetadataRecordsStoresNullSlugForCollectionEntities(t *testing.T) {
+	records, err := buildMetadataRecords(metadataCatalog{
+		Apps: []manifest.LoadedApp{
+			{Manifest: manifest.Manifest{Name: "sales", Label: "Sales", Version: "0.1.0"}},
+		},
+		Entities: []catalog.LoadedEntity{
+			{
+				AppName:          "sales",
+				Path:             "apps/sales/entities/invoice/invoice-item.yml",
+				CollectionParent: "invoice",
+				Entity: schema.Entity{
+					Name:  "invoice-item",
+					Label: "Invoice Item",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildMetadataRecords() error = %v, want nil", err)
+	}
+	if len(records.Entities) != 1 {
+		t.Fatalf("entity records count = %d, want 1", len(records.Entities))
+	}
+	if records.Entities[0].Slug != nil {
+		t.Fatalf("collection entity slug = %q, want nil", *records.Entities[0].Slug)
 	}
 }
 

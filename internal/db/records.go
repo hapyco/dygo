@@ -848,14 +848,18 @@ type recordMutation struct {
 
 func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 	naming, err := parseRecordNaming(meta.Naming)
+	routeSlug := meta.RouteSlug()
+	if routeSlug == "" {
+		routeSlug = meta.Key
+	}
 	if err != nil {
-		return recordLayout{}, recordError(RecordErrorInternal, "entity naming metadata is invalid", map[string]any{"entity": meta.Slug}, err)
+		return recordLayout{}, recordError(RecordErrorInternal, "entity naming metadata is invalid", map[string]any{"entity": routeSlug}, err)
 	}
 	layout := recordLayout{
 		EntityID:     meta.ID,
 		AppName:      meta.App.Name,
 		Entity:       meta.Key,
-		Slug:         meta.Slug,
+		Slug:         routeSlug,
 		Label:        meta.Label,
 		IsSingle:     meta.IsSingle,
 		IsCollection: meta.IsCollection,
@@ -866,7 +870,7 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 	for _, metadataField := range meta.Fields {
 		definition, ok := fieldtype.DefaultDefinition(metadataField.Type)
 		if !ok {
-			return recordLayout{}, recordError(RecordErrorInternal, "field type metadata is invalid", map[string]any{"entity": meta.Slug, "field": metadataField.Name, "type": metadataField.Type}, nil)
+			return recordLayout{}, recordError(RecordErrorInternal, "field type metadata is invalid", map[string]any{"entity": routeSlug, "field": metadataField.Name, "type": metadataField.Type}, nil)
 		}
 		field := recordField{
 			Name:      metadataField.Name,
@@ -884,7 +888,7 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 		}
 		if len(metadataField.Options) > 0 {
 			if err := json.Unmarshal(metadataField.Options, &field.Options); err != nil {
-				return recordLayout{}, recordError(RecordErrorInternal, "field options metadata is invalid", map[string]any{"entity": meta.Slug, "field": metadataField.Name}, err)
+				return recordLayout{}, recordError(RecordErrorInternal, "field options metadata is invalid", map[string]any{"entity": routeSlug, "field": metadataField.Name}, err)
 			}
 		}
 		if field.Storage && !field.SystemName {

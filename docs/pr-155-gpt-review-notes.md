@@ -123,7 +123,7 @@ Implementation notes:
 
 ### 3. Query Params Are Loose
 
-Status: locked for implementation.
+Status: done.
 
 `recordquery.FromValues` treats every unknown query param as a filter field, except reserved keys like:
 
@@ -184,13 +184,7 @@ slugs:
   - login
   - logout
   - setup
-  - settings
   - me
-  - files
-  - jobs
-  - audit
-  - admin
-  - studio
 
 fields:
   - id
@@ -224,11 +218,7 @@ queries:
   - expand
   - debug
 
-entities:
-  - app
-  - entity
-  - field
-  - record
+entities: []
 ```
 
 Expected package API:
@@ -254,6 +244,7 @@ Implementation notes:
 - Use `queries` in `recordquery.FromValues` instead of scattered reserved query constants.
 - Use the reserved registry from schema validation and JSON schema contract tests.
 - Keep the registry framework-owned, not app-configurable.
+- Entity keys do not need a separate reserved list for existing Core Entity names. Real Entity definitions already occupy those keys inside their app scope.
 
 ### 4. Frontend And Backend Query Limits Are Duplicated
 
@@ -447,7 +438,7 @@ Implementation notes:
 
 ### 7. Route Reserved Slugs May Be Too Narrow
 
-Status: locked for implementation.
+Status: done.
 
 Route identity cleanup is good, but root route reservations should be stronger.
 
@@ -492,7 +483,7 @@ Implementation notes:
 
 ### 8. Collection Folder Convention Needs Verification
 
-Status: locked for implementation.
+Status: done.
 
 The PR derives Entity identity from file path and uses computed `Entity.Name`.
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/dygo-dev/dygo/internal/reserved"
 	"github.com/dygo-dev/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
@@ -718,6 +719,8 @@ func validateField(field Field, registry fieldtype.Registry, seenFields map[stri
 		*problems = append(*problems, withLine(field.Line, "field name is required"))
 	} else if !fieldtype.IsName(field.Name) {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q name must be kebab-case", field.Name)))
+	} else if field.Name != "name" && reserved.IsField(field.Name) {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q is reserved", field.Name)))
 	}
 	if _, ok := seenFields[field.Name]; ok {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("duplicate field %q", field.Name)))

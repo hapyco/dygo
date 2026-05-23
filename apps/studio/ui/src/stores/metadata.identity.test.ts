@@ -15,6 +15,12 @@ test('findEntityByRouteSlug uses slug only', () => {
   assert.equal(findEntityByRouteSlug(entities, 'customer'), undefined)
 })
 
+test('findEntityByRouteSlug ignores collection entities without slugs', () => {
+  const collection = metadataEntity({ key: 'invoice-item', slug: null, 'is-collection': true })
+
+  assert.equal(findEntityByRouteSlug([collection], 'invoice-item'), undefined)
+})
+
 test('metadataCacheSlugs stores requested slug and canonical slug once', () => {
   const meta = metadataEntity({ key: 'customer', slug: 'crm-customer' }) as MetadataEntityMeta
 
@@ -26,7 +32,7 @@ function metadataEntity(overrides: Partial<MetadataEntity>): MetadataEntity {
   return {
     name: `core.${overrides.key ?? 'entity'}`,
     key: overrides.key ?? 'entity',
-    slug: overrides.slug ?? overrides.key ?? 'entity',
+    slug: overrides.slug === undefined ? (overrides.key ?? 'entity') : overrides.slug,
     label: overrides.label ?? 'Entity',
     description: '',
     icon: 'box',

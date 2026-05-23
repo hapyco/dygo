@@ -11,6 +11,7 @@ import (
 	"github.com/dygo-dev/dygo/internal/app/manifest"
 	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
 	"github.com/dygo-dev/dygo/internal/entity/schema"
+	"github.com/dygo-dev/dygo/internal/reserved"
 )
 
 // LoadedEntity is one Entity loaded from an owning app.
@@ -27,9 +28,17 @@ func (e LoadedEntity) Key() string {
 	return EntityKey(e.AppName, e.Entity.Name)
 }
 
-// RouteSlug returns the globally unique Studio route slug for the Entity.
+// RouteSlug returns the globally unique Studio route slug for routeable Entities.
 func (e LoadedEntity) RouteSlug() string {
+	if !e.HasRouteSlug() {
+		return ""
+	}
 	return e.Entity.EffectiveRouteSlug()
+}
+
+// HasRouteSlug reports whether the Entity owns public root route space.
+func (e LoadedEntity) HasRouteSlug() bool {
+	return !e.IsCollection()
 }
 
 // IsCollection reports whether the Entity is an owned collection row Entity.
@@ -42,22 +51,9 @@ func EntityKey(appName string, entityName string) string {
 	return appName + "\x00" + entityName
 }
 
-var rootReservedSlugs = map[string]struct{}{
-	"api":    {},
-	"assets": {},
-	"health": {},
-	"login":  {},
-	"logout": {},
-}
-
 // ReservedRootRouteSlugs returns route slugs reserved by Studio and HTTP handlers.
 func ReservedRootRouteSlugs() []string {
-	slugs := make([]string, 0, len(rootReservedSlugs))
-	for slug := range rootReservedSlugs {
-		slugs = append(slugs, slug)
-	}
-	sort.Strings(slugs)
-	return slugs
+	return reserved.Slugs()
 }
 
 // Catalog loads Entity metadata from a set of discovered apps.
@@ -172,9 +168,6 @@ func (c Catalog) discoverEntityFolder(app manifest.LoadedApp, entitiesDir string
 		hasEntityFiles = true
 		name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
 		path := filepath.Join(folderPath, entry.Name())
-		if isForbiddenFolderEntityFilename(name) {
-			return nil, fmt.Errorf("load entity for app %q from %s: folder Entity files must use %s.yml for the parent or a collection Entity filename", app.Manifest.Name, path, folderName)
-		}
 		if name == folderName {
 			hasParent = true
 			if rootPath, ok := rootFiles[name]; ok {
@@ -244,14 +237,19 @@ func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
 			seenIdentities[entity.Key()] = entity
 		}
 
-		routeSlug := entity.RouteSlug()
-		if isReservedRootSlug(routeSlug) {
-			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q uses reserved root route slug %q; set route.slug to a non-reserved stable slug", entity.AppName, entity.Entity.Name, routeSlug)))
+		if entity.IsCollection() && strings.TrimSpace(entity.Entity.Route.Slug) != "" {
+			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("collection Entity %q cannot define route.slug; collection Entities are not routeable", entity.Entity.Name)))
 		}
-		if previous, ok := seenRouteSlugs[routeSlug]; ok {
-			problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q route slug %q conflicts with app %q entity %q at %s; set route.slug to a stable unique slug such as %q", entity.AppName, entity.Entity.Name, routeSlug, previous.AppName, previous.Entity.Name, location(previous.Path, previous.Entity.Line), suggestedRouteSlug(entity))))
-		} else {
-			seenRouteSlugs[routeSlug] = entity
+		if entity.HasRouteSlug() {
+			routeSlug := entity.RouteSlug()
+			if isReservedRootSlug(routeSlug) {
+				problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q uses reserved root route slug %q; set route.slug to a non-reserved stable slug", entity.AppName, entity.Entity.Name, routeSlug)))
+			}
+			if previous, ok := seenRouteSlugs[routeSlug]; ok {
+				problems = append(problems, entityDiagnostic(entity, fmt.Sprintf("app %q entity %q route slug %q conflicts with app %q entity %q at %s; set route.slug to a stable unique slug such as %q", entity.AppName, entity.Entity.Name, routeSlug, previous.AppName, previous.Entity.Name, location(previous.Path, previous.Entity.Line), suggestedRouteSlug(entity))))
+			} else {
+				seenRouteSlugs[routeSlug] = entity
+			}
 		}
 	}
 
@@ -379,8 +377,7 @@ func validateHookFiles(apps []manifest.LoadedApp, entities []LoadedEntity, probl
 }
 
 func isReservedRootSlug(slug string) bool {
-	_, ok := rootReservedSlugs[strings.ToLower(strings.TrimSpace(slug))]
-	return ok
+	return reserved.IsSlug(slug)
 }
 
 func sortEntities(entities []LoadedEntity) {
@@ -444,15 +441,6 @@ func suggestedRouteSlug(entity LoadedEntity) string {
 		return entity.Entity.Name
 	}
 	return entity.AppName + "-" + entity.Entity.Name
-}
-
-func isForbiddenFolderEntityFilename(name string) bool {
-	switch name {
-	case "entity", "_entity", "index":
-		return true
-	default:
-		return false
-	}
 }
 
 func simpleFolderDuplicate(left LoadedEntity, right LoadedEntity) bool {

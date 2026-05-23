@@ -43,7 +43,7 @@ type entityRecord struct {
 	AppName      string
 	Name         string
 	Key          string
-	Slug         string
+	Slug         *string
 	Label        string
 	Description  string
 	Icon         string
@@ -221,7 +221,7 @@ func persistIndexRecord(ctx context.Context, tx pgx.Tx, entityID int64, index in
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO "index" (name, entity_id, index_name, fields, position)
+INSERT INTO "index" (name, entity_id, index_name, field_names, position)
 VALUES ($1, $2, $3, $4, $5)`, index.RecordName, entityID, index.Name, index.Fields, index.Position); err != nil {
 			return fmt.Errorf("persist index metadata %s/%s.%s: %w", index.EntityAppName, index.EntityName, index.Name, err)
 		}
@@ -230,7 +230,7 @@ VALUES ($1, $2, $3, $4, $5)`, index.RecordName, entityID, index.Name, index.Fiel
 	if _, err := tx.Exec(ctx, `
 UPDATE "index"
 SET name = $2,
-	fields = $3,
+	field_names = $3,
 	position = $4,
 	updated_at = now()
 WHERE id = $1`, id, index.RecordName, index.Fields, index.Position); err != nil {
@@ -247,7 +247,7 @@ func persistConstraintRecord(ctx context.Context, tx pgx.Tx, entityID int64, con
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO "constraint" (name, entity_id, constraint_name, type, fields, field, operator, value, position)
+INSERT INTO "constraint" (name, entity_id, constraint_name, type, field_names, field, operator, value, position)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, constraint.RecordName, entityID, constraint.Name, constraint.Type, constraint.Fields, nullIfEmpty(constraint.Field), nullIfEmpty(constraint.Operator), constraint.Value, constraint.Position); err != nil {
 			return fmt.Errorf("persist constraint metadata %s/%s.%s: %w", constraint.EntityAppName, constraint.EntityName, constraint.Name, err)
 		}
@@ -257,7 +257,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, constraint.RecordName, entityID, c
 UPDATE "constraint"
 SET name = $2,
 	type = $3,
-	fields = $4,
+	field_names = $4,
 	field = $5,
 	operator = $6,
 	value = $7,
@@ -293,11 +293,12 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 		if err != nil {
 			return metadataRecordSet{}, fmt.Errorf("build entity metadata %s/%s name: %w", loaded.AppName, loaded.Entity.Name, err)
 		}
+		slug := stringPointerOrNil(loaded.RouteSlug())
 		records.Entities = append(records.Entities, entityRecord{
 			AppName:      loaded.AppName,
 			Name:         entityName,
 			Key:          loaded.Entity.Name,
-			Slug:         loaded.Entity.EffectiveRouteSlug(),
+			Slug:         slug,
 			Label:        loaded.Entity.Label,
 			Description:  loaded.Entity.Description,
 			Icon:         strings.TrimSpace(loaded.Entity.Icon),
@@ -449,7 +450,7 @@ func metadataEntityRecordName(loaded catalog.LoadedEntity, naming schema.Naming)
 	values := map[string]string{
 		"app":           loaded.AppName,
 		"key":           loaded.Entity.Name,
-		"slug":          loaded.Entity.EffectiveRouteSlug(),
+		"slug":          loaded.RouteSlug(),
 		"label":         loaded.Entity.Label,
 		"description":   loaded.Entity.Description,
 		"icon":          strings.TrimSpace(loaded.Entity.Icon),

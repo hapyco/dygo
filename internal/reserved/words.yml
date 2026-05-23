@@ -1,0 +1,42 @@
+slugs:
+  - api
+  - assets
+  - health
+  - login
+  - logout
+  - me
+  - setup
+
+fields:
+  - created-at
+  - cursor
+  - debug
+  - expand
+  - fields
+  - group
+  - id
+  - include
+  - limit
+  - name
+  - offset
+  - q
+  - search
+  - sort
+  - updated-at
+  - view
+
+queries:
+  - cursor
+  - debug
+  - expand
+  - fields
+  - group
+  - include
+  - limit
+  - offset
+  - q
+  - search
+  - sort
+  - view
+
+entities: []

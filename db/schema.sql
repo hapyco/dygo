@@ -135,7 +135,7 @@ CREATE TABLE public."constraint" (
     entity_id bigint NOT NULL,
     constraint_name text NOT NULL,
     type text NOT NULL,
-    fields jsonb,
+    field_names jsonb,
     field text,
     operator text,
     value jsonb,
@@ -230,7 +230,7 @@ CREATE TABLE public.entity (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     app_id bigint NOT NULL,
     key text NOT NULL,
-    slug text NOT NULL,
+    slug text,
     label text NOT NULL,
     description text,
     icon text,
@@ -302,7 +302,7 @@ CREATE TABLE public.index (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     entity_id bigint NOT NULL,
     index_name text NOT NULL,
-    fields jsonb NOT NULL,
+    field_names jsonb NOT NULL,
     "position" integer
 );
 

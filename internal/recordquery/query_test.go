@@ -62,6 +62,7 @@ func TestFromValuesRejectsInvalidInput(t *testing.T) {
 		{name: "sort repeated", values: url.Values{"sort": {"name", "-created-at"}}, want: "sort must be provided once"},
 		{name: "sort empty", values: url.Values{"sort": {"-"}}, want: "sort field is required"},
 		{name: "filter repeated", values: url.Values{"status": {"Open", "Closed"}}, want: "filter field is duplicated"},
+		{name: "reserved query", values: url.Values{"search": {"admin"}}, want: `query parameter "search" is reserved`},
 	}
 
 	for _, tt := range tests {

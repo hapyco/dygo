@@ -475,6 +475,17 @@ fields:
 			wantError: "duplicate field",
 		},
 		{
+			name: "reserved field name",
+			body: `
+label: Lead
+fields:
+  - name: search
+    label: Search
+    type: text
+`,
+			wantError: `field "search" is reserved`,
+		},
+		{
 			name: "field validation includes line",
 			body: `
 label: Lead

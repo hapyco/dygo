@@ -57,6 +57,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 		rows: []pgx.Rows{newFakeRows([][]any{
 			{"core.app", "app", "app", "App", "Runtime state", "package", false, false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
 			{"core.user", "user", "user", "User", "User identity", "user", true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
+			{"core.user-role", "user-role", nil, "User Role", "Collection row", "users", false, true, nil, "core", "Core"},
 		})},
 	}
 
@@ -64,7 +65,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntities() error = %v, want nil", err)
 	}
-	if len(entities) != 2 || entities[0].Name != "core.app" || entities[0].Key != "app" || entities[0].Icon != "package" || entities[0].App.Name != "core" || entities[0].IsSingle || entities[1].Name != "core.user" || entities[1].Slug != "user" || !entities[1].IsSingle {
+	if len(entities) != 3 || entities[0].Name != "core.app" || entities[0].Key != "app" || entities[0].Icon != "package" || entities[0].App.Name != "core" || entities[0].IsSingle || entities[1].Name != "core.user" || entities[1].RouteSlug() != "user" || !entities[1].IsSingle || entities[2].Slug != nil || !entities[2].IsCollection {
 		t.Fatalf("ListEntities() = %+v, want core entities", entities)
 	}
 	if !strings.Contains(queryer.queries[0], `JOIN "app"`) || !strings.Contains(queryer.queries[0], "ORDER BY a.name, e.key") {
@@ -94,7 +95,7 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEntityMeta() error = %v, want nil", err)
 	}
-	if meta.Name != "core.user" || meta.Key != "user" || meta.Slug != "user" || meta.Icon != "user" || meta.App.Name != "core" || !meta.IsSingle {
+	if meta.Name != "core.user" || meta.Key != "user" || meta.RouteSlug() != "user" || meta.Icon != "user" || meta.App.Name != "core" || !meta.IsSingle {
 		t.Fatalf("GetEntityMeta() = %+v, want core/user", meta.MetadataEntity)
 	}
 	if len(meta.Fields) != 2 || meta.Fields[0].Name != "email" || string(meta.Fields[0].Options) != `{"entity":"user"}` {
@@ -133,7 +134,7 @@ func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEntityMetaByIdentity() error = %v, want nil", err)
 	}
-	if meta.Name != "crm.lead" || meta.Key != "lead" || meta.Slug != "crm-lead" || meta.Icon != "contact" || meta.App.Name != "crm" {
+	if meta.Name != "crm.lead" || meta.Key != "lead" || meta.RouteSlug() != "crm-lead" || meta.Icon != "contact" || meta.App.Name != "crm" {
 		t.Fatalf("GetEntityMetaByIdentity() = %+v, want crm/lead with crm-lead route slug", meta.MetadataEntity)
 	}
 	if !strings.Contains(queryer.rowSQL[0], `WHERE a.name = $1 AND e.key = $2`) {
@@ -149,7 +150,7 @@ func TestMetadataAPIJSONFieldNames(t *testing.T) {
 		MetadataEntity: MetadataEntity{
 			Name:         "core.user",
 			Key:          "user",
-			Slug:         "user",
+			Slug:         stringPointerOrNil("user"),
 			Label:        "User",
 			Description:  "User identity",
 			Icon:         "user",

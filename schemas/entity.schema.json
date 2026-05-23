@@ -83,7 +83,7 @@
     "routeSlug": {
       "allOf": [
         { "$ref": "#/$defs/kebabName" },
-        { "not": { "enum": ["api", "assets", "health", "login", "logout"] } }
+        { "not": { "enum": ["api", "assets", "health", "login", "logout", "me", "setup"] } }
       ]
     },
     "naming": {

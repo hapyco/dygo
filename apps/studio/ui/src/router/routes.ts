@@ -9,13 +9,7 @@ export const RouteName = {
 
 export type RouteNameValue = (typeof RouteName)[keyof typeof RouteName]
 
-export const rootReservedSlugs = new Set(['api', 'assets', 'health', 'login', 'logout'])
-
 export const entityChildReservedSlugs = new Set(['new'])
-
-export function isRootReservedSlug(value: string): boolean {
-  return rootReservedSlugs.has(normalizeSlug(value))
-}
 
 export function isEntityChildReservedSlug(value: string): boolean {
   return entityChildReservedSlugs.has(normalizeSlug(value))

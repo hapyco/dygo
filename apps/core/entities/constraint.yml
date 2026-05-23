@@ -29,8 +29,8 @@ fields:
         - unique
         - check
 
-  - name: fields
-    label: Fields
+  - name: field-names
+    label: Field Names
     type: json
 
   - name: field

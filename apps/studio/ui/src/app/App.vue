@@ -28,9 +28,9 @@ const fallbackEntityIcon = LucideIcons.Box as Component
 
 const navItems = computed<ShellNavItem[]>(() => {
   return metadataStore.entities
-    .filter((entity) => !entity['is-collection'])
+    .filter((entity) => !entity['is-collection'] && entity.slug)
     .map((entity) => {
-      const slug = entity.slug
+      const slug = entity.slug as string
 
       return {
         label: entity.label || humanizeEntity(slug),

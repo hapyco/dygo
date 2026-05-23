@@ -111,7 +111,7 @@ func NewStudioDevProxy(target string) (http.Handler, error) {
 
 func studioNotFoundHandler(studio http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") {
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
 			return
 		}
@@ -559,7 +559,11 @@ func (h metadataHandler) listEntities(w http.ResponseWriter, r *http.Request) {
 	}
 	filtered := make([]db.MetadataEntity, 0, len(entities))
 	for _, entity := range entities {
-		canRead, err := h.canReadEntity(r.Context(), user, entity.Slug)
+		routeSlug := entity.RouteSlug()
+		if routeSlug == "" {
+			continue
+		}
+		canRead, err := h.canReadEntity(r.Context(), user, routeSlug)
 		if err != nil {
 			writePermissionError(w, err)
 			return
@@ -585,7 +589,7 @@ func (h metadataHandler) getEntityMeta(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, err, "entity", name)
 		return
 	}
-	canRead, err := h.canReadEntity(r.Context(), user, meta.Slug)
+	canRead, err := h.canReadEntity(r.Context(), user, meta.RouteSlug())
 	if err != nil {
 		writePermissionError(w, err)
 		return
@@ -649,7 +653,11 @@ func (h metadataHandler) canReadEntity(ctx context.Context, user auth.User, enti
 func (h metadataHandler) visibleAppNames(ctx context.Context, user auth.User, entities []db.MetadataEntity) (map[string]bool, error) {
 	visible := map[string]bool{}
 	for _, entity := range entities {
-		canRead, err := h.canReadEntity(ctx, user, entity.Slug)
+		routeSlug := entity.RouteSlug()
+		if routeSlug == "" {
+			continue
+		}
+		canRead, err := h.canReadEntity(ctx, user, routeSlug)
 		if err != nil {
 			return nil, err
 		}

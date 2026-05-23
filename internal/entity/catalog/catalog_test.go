@@ -186,6 +186,8 @@ func TestValidateRejectsReservedRootRouteSlugs(t *testing.T) {
 	}{
 		{name: "default route slug", entityName: "login", wantSlug: "login"},
 		{name: "explicit route slug", entityName: "lead", routeSlug: "health", wantSlug: "health"},
+		{name: "new reserved route slug", entityName: "settings", routeSlug: "setup", wantSlug: "setup"},
+		{name: "me route slug", entityName: "me", wantSlug: "me"},
 	}
 
 	for _, tt := range tests {
@@ -426,6 +428,9 @@ fields:
 	if !entities[1].IsCollection() || entities[1].CollectionParent != "invoice" {
 		t.Fatalf("invoice-item IsCollection = %v parent = %q, want collection under invoice", entities[1].IsCollection(), entities[1].CollectionParent)
 	}
+	if entities[1].RouteSlug() != "" || entities[1].HasRouteSlug() {
+		t.Fatalf("invoice-item route slug = %q routeable = %v, want no public route slug", entities[1].RouteSlug(), entities[1].HasRouteSlug())
+	}
 }
 
 func TestValidateRejectsCollectionFolderWithoutParent(t *testing.T) {
@@ -446,27 +451,96 @@ func TestValidateRejectsCollectionFolderWithoutParent(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsForbiddenFolderEntityFilenames(t *testing.T) {
+func TestValidateAllowsFolderCollectionFilenamesThatLookSpecial(t *testing.T) {
 	t.Parallel()
 
-	for _, filename := range []string{"entity.yml", "_entity.yml", "index.yml"} {
+	for _, filename := range []string{"entity.yml", "index.yml"} {
 		filename := filename
 		t.Run(filename, func(t *testing.T) {
 			t.Parallel()
 
 			root := t.TempDir()
 			app := loadedApp(root, "sales", "sales", manifest.Paths{})
-			path := filepath.Join(app.Dir, "entities", "invoice", filename)
-			writeEntity(t, path, strings.TrimSuffix(filename, ".yml"))
+			child := strings.TrimSuffix(filename, ".yml")
+			writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice.yml"), `
+label: Invoice
+fields:
+  - name: rows
+    label: Rows
+    type: collection
+    options:
+      entity: `+child+`
+`)
+			writeEntity(t, filepath.Join(app.Dir, "entities", "invoice", filename), child)
 
-			_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
-			if err == nil {
-				t.Fatal("Validate() error = nil, want forbidden filename error")
+			entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+			if err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
 			}
-			if !strings.Contains(err.Error(), "folder Entity files must use invoice.yml for the parent or a collection Entity filename") {
-				t.Fatalf("Validate() error = %q, want forbidden filename context", err.Error())
+			if got := entityKeys(entities); strings.Join(got, ",") != "sales/"+child+",sales/invoice" && strings.Join(got, ",") != "sales/invoice,sales/"+child {
+				t.Fatalf("Validate() entities = %#v, want invoice and %s", got, child)
 			}
 		})
+	}
+}
+
+func TestValidateRejectsCollectionEntityRouteSlug(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice.yml"), `
+label: Invoice
+fields:
+  - name: items
+    label: Items
+    type: collection
+    options:
+      entity: invoice-item
+`)
+	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice-item.yml"), `
+label: Invoice Item
+route:
+  slug: invoice-item
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+
+	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want collection route slug error")
+	}
+	if !strings.Contains(err.Error(), `collection Entity "invoice-item" cannot define route.slug`) {
+		t.Fatalf("Validate() error = %q, want collection route slug context", err.Error())
+	}
+}
+
+func TestValidateIgnoresCollectionEntitiesForRouteSlugUniqueness(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	support := loadedApp(root, "support", "support", manifest.Paths{})
+	writeEntity(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer")
+	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice.yml"), `
+label: Invoice
+fields:
+  - name: rows
+    label: Rows
+    type: collection
+    options:
+      entity: customer
+`)
+	writeEntity(t, filepath.Join(app.Dir, "entities", "invoice", "customer.yml"), "customer")
+
+	entities, err := New([]manifest.LoadedApp{app, support}, fieldtype.DefaultRegistry()).Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	if got := entityKeys(entities); strings.Join(got, ",") != "sales/customer,sales/invoice,support/customer" {
+		t.Fatalf("Validate() entities = %#v, want normal and collection customer identities", got)
 	}
 }
 

@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/dygo-dev/dygo/internal/reserved"
 )
 
 const (
@@ -85,6 +87,9 @@ func FromValues(values url.Values) (Params, error) {
 			}
 			params.Sort = sortTerms
 		default:
+			if reserved.IsQuery(name) {
+				return Params{}, Error{Message: fmt.Sprintf("query parameter %q is reserved", name), Details: map[string]any{"query": name}}
+			}
 			if len(rawValues) > 1 {
 				return Params{}, Error{Message: "filter field is duplicated", Details: map[string]any{"field": name}}
 			}

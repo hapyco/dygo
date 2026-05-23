@@ -19,8 +19,8 @@ fields:
     required: true
     index: true
 
-  - name: fields
-    label: Fields
+  - name: field-names
+    label: Field Names
     type: json
     required: true
 

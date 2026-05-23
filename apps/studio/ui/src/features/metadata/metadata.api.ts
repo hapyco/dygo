@@ -8,7 +8,7 @@ export type MetadataAppRef = {
 export type MetadataEntity = {
   name: string
   key: string
-  slug: string
+  slug: string | null
   label: string
   description: string
   icon?: string
