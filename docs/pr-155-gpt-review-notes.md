@@ -1,4 +1,4 @@
-# PR 155 GPT Review Notes
+# PR 155 Decision Notes
 
 Source: GPT-5.5 Pro review message shared by Tahseen.
 
@@ -8,166 +8,9 @@ PR: `Dogfood framework internals and remove duplication`
 
 Branch: `codex/framework-dogfood-audit`
 
-## Overall Take
+## Purpose
 
-The PR is directionally very good and represents the kind of cleanup dygo needs before the framework grows further. It reduces framework duplication and pushes Core, Studio, and internal runtime code toward the same primitives that app developers use.
-
-The main caution is size and blast radius. The PR touches backend primitives, DB runtime, metadata contracts, auth/session writers, hooks, Studio API code, docs, JSON schemas, and tests. The architecture direction is good, but subtle behavior regressions can hide inside a broad cleanup.
-
-## What Looks Good
-
-### 1. Dogfooding Audit Mindset
-
-The new `docs/framework-dogfood-audit.md` is acting as an internal architecture checkpoint, not just documentation.
-
-The right lens is:
-
-- find where framework internals bypass framework primitives
-- reduce one-off code
-- make Core and Studio build on the same contracts app developers use
-- avoid a framework where user apps follow rules while Core cheats
-
-The audit covers the right categories:
-
-- naming
-- field types
-- system writers
-- metadata contracts
-- Studio route identity
-- fixtures
-- single Entities
-- permissions
-- API envelopes
-- YAML decoding
-- patch operations
-- hook events
-- doctor checks
-- record list query contract
-- core select values
-- storage/system fields
-- schema prune contract
-
-### 2. Centralized Field Type Behavior
-
-The field type registry now has richer behavior metadata:
-
-- storage
-- SQL type
-- placeholder cast
-- value kind
-- write-only
-- listable
-- name-renderable
-- system-name behavior
-- checkable
-- Studio editor
-- Studio display
-
-This is a major framework win. Field types should mean:
-
-```txt
-field type = storage + validation + API behavior + Studio behavior
-```
-
-not:
-
-```txt
-field type = string label
-```
-
-### 3. `collection` As A Field Type
-
-The field type list now has `collection` with Studio editor/display hints, but without normal scalar storage behavior.
-
-This aligns with the child-table/inline collection direction better than the older `child-table` naming. It separates the user-facing concept from its eventual storage implementation.
-
-### 4. Shared YAML Metadata Parsing
-
-`internal/yamlmeta` centralizes:
-
-- YAML parsing helpers
-- duplicate-key rejection
-- top-level mapping extraction
-- scalar string parsing
-- sequence parsing
-
-This is good for agentic authoring because YAML metadata will exist across many dygo surfaces. Inconsistent YAML parsing would create subtle bugs.
-
-Future expected consumers:
-
-- app manifests
-- Entity metadata
-- fixtures
-- patches
-- secrets
-- config
-- field sets
-- routes/pages
-
-### 5. System Writers Use Framework Primitives
-
-`SystemRecordWriter` writes internal system Records through metadata-backed mutation paths, with explicit options for hooks, activity, return behavior, and bootstrap behavior.
-
-`AuthSessionWriter` and `AuthAdminWriter` use this writer for Core session and first-admin user Records.
-
-This is a framework maturity move: dygo internals are starting to use the same Record runtime as normal app behavior instead of bespoke SQL.
-
-### 6. Naming Engine
-
-`internal/naming` now supports reusable strategies:
-
-- random
-- field
-- series
-- template
-
-Naming is a core framework primitive and should have one engine instead of separate implementations in RecordStore, metadata sync, patch ledger, or auth setup.
-
-### 7. Explicit Metadata Contracts
-
-`metadata_contracts.go` adds shared helpers for questions used by fixtures, RecordStore, metadata APIs, and future Studio behavior:
-
-- Does this field exist?
-- Is this field stored?
-- Can this field uniquely identify a Record?
-- What Entity does this link point to?
-
-### 8. System Record Fields As Backend Contract
-
-`storage_contract.go` centralizes system fields:
-
-- `id`
-- `name`
-- `created-at`
-- `updated-at`
-
-It also centralizes their DB columns:
-
-- `id`
-- `name`
-- `created_at`
-- `updated_at`
-
-And their labels, value kinds, and Studio hints.
-
-System fields should not be rediscovered by every subsystem.
-
-### 9. Shared Record Query Parsing
-
-`internal/recordquery` now handles pagination, exact filters, and sorting through a shared `Params` model.
-
-Studio and backend should speak the same query language.
-
-### 10. Studio API Client Cleanup
-
-Studio now has a shared API client helper for:
-
-- envelope-aware parsing
-- included credentials
-- invalid response handling
-- domain-specific error classes
-
-This is better than repeating fetch/error handling in auth, metadata, and records modules.
+Working list of ambiguities, risks, and follow-up framework decisions from the review. Positive observations were removed so this file can be used as a decision checklist.
 
 ## Risks And Open Concerns
 
@@ -190,7 +33,7 @@ The PR touches many surfaces:
 - system writers
 - permissions
 
-This may still be mergeable if tests are solid, but the blast radius is high.
+The blast radius is high.
 
 Future work should be split into smaller PRs, for example:
 
@@ -290,7 +133,7 @@ recordListMaxLimit = 2500
 recordListPageSizes = [20, 100, 500, recordListMaxLimit]
 ```
 
-This is okay for now, but drift-prone. Later, either expose these through metadata/config or add contract coverage.
+This is drift-prone. Later, either expose these through metadata/config or add contract coverage.
 
 Also, `2500` may be high for normal operational UI. A more conservative set could be:
 
@@ -312,7 +155,7 @@ Studio still has its own system-field helper for:
 - `created-at`
 - `updated-at`
 
-This is understandable because frontend needs UI-specific visibility, but Studio should not invent system field semantics. The backend metadata API should eventually return enough system field metadata that Studio keeps only UI presentation rules.
+Studio should not invent system field semantics. The backend metadata API should eventually return enough system field metadata that Studio keeps only UI presentation rules.
 
 ### 6. `MetadataFieldByName` Naming May Be Misleading
 
@@ -361,8 +204,6 @@ Root-mounted Studio makes route collisions expensive later.
 
 The PR derives Entity identity from file path and uses computed `Entity.Name`.
 
-This aligns with the newer decision that authored Entity YAML should not contain top-level `name`.
-
 Need to verify or finish the exact locked convention:
 
 ```txt
@@ -405,13 +246,9 @@ Do not split prematurely. Just watch the shape.
 - activity operation
 - activity status
 
-This is good as long as Go constants and Core Entity YAML select options stay aligned through contract tests.
+Go constants and Core Entity YAML select options must stay aligned through contract tests.
 
-## Merge Recommendation
-
-Do not reject the PR. The direction is good.
-
-Before merging, review or fix:
+## Pre-Merge Checks To Decide
 
 1. Path-derived Entity naming convention coverage.
 2. `is-collection` and folder-implied collection inference.
@@ -419,7 +256,7 @@ Before merging, review or fix:
 4. `MetadataFieldByName` naming and behavior.
 5. `SystemMutationOptions` invalid-combination tests or stronger API shape.
 
-Acceptable to keep for now, but watch:
+## Watch List
 
 - large PR size
 - field type behavior breadth
@@ -500,11 +337,3 @@ dygo permission explain
 ```
 
 This will matter once field-level and row-level rules arrive.
-
-## Bottom Line
-
-This PR is doing the right thing: reducing framework duplication and forcing dygo internals to use dygo primitives.
-
-That is how dygo avoids becoming a framework where only user apps follow the rules while Core cheats.
-
-The main caution is surface area. The architecture is good, but the PR is wide, so contract tests matter.
