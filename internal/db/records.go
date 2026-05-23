@@ -170,7 +170,7 @@ func (s RecordStore) listRecords(ctx context.Context, layout recordLayout, entit
 	if layout.IsCollection {
 		return RecordListResult{}, collectionRecordOperationError(layout, "list")
 	}
-	query, err := layout.listQuery(params)
+	query, err := s.listQuery(ctx, layout, params)
 	if err != nil {
 		return RecordListResult{}, err
 	}
@@ -326,7 +326,7 @@ func (s RecordStore) findRecordWithLayout(ctx context.Context, layout recordLayo
 	if err := layout.validateMatchFields(match); err != nil {
 		return nil, err
 	}
-	mutation, err := layout.matchMutation(match)
+	mutation, err := s.matchMutation(ctx, layout, match)
 	if err != nil {
 		return nil, err
 	}
@@ -570,7 +570,7 @@ func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLa
 	if err := s.runRecordHooks(ctx, beforeCtx); err != nil {
 		return nil, err
 	}
-	mutation, err := layout.updateMutation(input)
+	mutation, err := s.updateMutation(ctx, layout, input)
 	if err != nil {
 		return nil, err
 	}
@@ -913,26 +913,10 @@ func (l recordLayout) selectList() string {
 	}
 	for _, field := range l.Fields {
 		if field.Storage && !field.WriteOnly && !field.SystemName {
-			columns = append(columns, l.fieldSelectExpression(field))
+			columns = append(columns, linkValueCodec{}.displaySQL(l, field))
 		}
 	}
 	return strings.Join(columns, ", ")
-}
-
-func (l recordLayout) fieldSelectExpression(field recordField) string {
-	if field.Type != "link" {
-		return recordSourceColumn(field.Column)
-	}
-	targetEntity := strings.TrimSpace(field.Options.Entity)
-	if targetEntity == "" {
-		return recordSourceColumn(field.Column)
-	}
-	targetApp := strings.TrimSpace(field.Options.App)
-	if targetApp == "" {
-		targetApp = l.AppName
-	}
-	targetTable := entityTableName(targetApp, targetEntity)
-	return fmt.Sprintf("(SELECT %s FROM %s WHERE %s = %s)", quoteIdent("name"), quoteIdent(targetTable), quoteIdent("id"), recordSourceColumn(field.Column))
 }
 
 func recordSourceColumn(column string) string {
@@ -987,19 +971,19 @@ func scanRecordTotal(value any, entity string) (int, error) {
 	}
 }
 
-func (l recordLayout) listQuery(params RecordListParams) (recordListQuery, error) {
-	where, args, err := l.listWhere(params.Filters)
+func (s RecordStore) listQuery(ctx context.Context, layout recordLayout, params RecordListParams) (recordListQuery, error) {
+	where, args, err := s.listWhere(ctx, layout, params.Filters)
 	if err != nil {
 		return recordListQuery{}, err
 	}
-	orderBy, err := l.listOrderBy(params.Sort)
+	orderBy, err := layout.listOrderBy(params.Sort)
 	if err != nil {
 		return recordListQuery{}, err
 	}
 	return recordListQuery{Where: where, OrderBy: orderBy, Args: args}, nil
 }
 
-func (l recordLayout) listWhere(filters []RecordFilter) (string, []any, error) {
+func (s RecordStore) listWhere(ctx context.Context, layout recordLayout, filters []RecordFilter) (string, []any, error) {
 	if len(filters) == 0 {
 		return "", nil, nil
 	}
@@ -1010,17 +994,17 @@ func (l recordLayout) listWhere(filters []RecordFilter) (string, []any, error) {
 	for _, filter := range filters {
 		fieldName := strings.TrimSpace(filter.Field)
 		if fieldName == "" {
-			return "", nil, recordError(RecordErrorInvalidRequest, "filter field is required", map[string]any{"entity": l.Entity}, nil)
+			return "", nil, recordError(RecordErrorInvalidRequest, "filter field is required", map[string]any{"entity": layout.Entity}, nil)
 		}
 		if _, ok := seen[fieldName]; ok {
-			return "", nil, recordError(RecordErrorInvalidRequest, "filter field is duplicated", map[string]any{"entity": l.Entity, "field": fieldName}, nil)
+			return "", nil, recordError(RecordErrorInvalidRequest, "filter field is duplicated", map[string]any{"entity": layout.Entity, "field": fieldName}, nil)
 		}
 		seen[fieldName] = struct{}{}
-		field, err := l.listField(fieldName, "filter")
+		field, err := layout.listField(fieldName, "filter")
 		if err != nil {
 			return "", nil, err
 		}
-		value, err := recordListValue(field, filter.Value)
+		value, err := s.recordListValue(ctx, layout, field, filter.Value)
 		if err != nil {
 			return "", nil, err
 		}
@@ -1093,7 +1077,14 @@ func (l recordLayout) listField(name string, operation string) (recordField, err
 	return field, nil
 }
 
-func recordListValue(field recordField, value string) (any, error) {
+func (s RecordStore) recordListValue(ctx context.Context, layout recordLayout, field recordField, value string) (any, error) {
+	if field.Type == "link" {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil, recordError(RecordErrorValidation, "field filter is invalid", map[string]any{"field": field.Name}, err)
+		}
+		return s.linkValueCodec().storageValue(ctx, layout, field, raw)
+	}
 	switch field.ValueKind {
 	case fieldtype.ValueString:
 		raw, err := json.Marshal(value)
@@ -1138,7 +1129,7 @@ func (s RecordStore) createMutation(ctx context.Context, layout recordLayout, in
 	if err := layout.validateCreateInput(input); err != nil {
 		return recordMutation{}, err
 	}
-	mutation, err := layout.writeMutation(input)
+	mutation, err := s.writeMutation(ctx, layout, input)
 	if err != nil {
 		return recordMutation{}, err
 	}
@@ -1156,15 +1147,15 @@ func (s RecordStore) createMutation(ctx context.Context, layout recordLayout, in
 	return mutation, nil
 }
 
-func (l recordLayout) updateMutation(input RecordInput) (recordMutation, error) {
+func (s RecordStore) updateMutation(ctx context.Context, layout recordLayout, input RecordInput) (recordMutation, error) {
 	input = normalizeRecordInput(input)
 	if len(input) == 0 {
-		return recordMutation{}, recordError(RecordErrorValidation, "at least one field is required", map[string]any{"entity": l.Entity}, nil)
+		return recordMutation{}, recordError(RecordErrorValidation, "at least one field is required", map[string]any{"entity": layout.Entity}, nil)
 	}
-	if err := l.validateUpdateFields(input); err != nil {
+	if err := layout.validateUpdateFields(input); err != nil {
 		return recordMutation{}, err
 	}
-	return l.writeMutation(input)
+	return s.writeMutation(ctx, layout, input)
 }
 
 func (l recordLayout) validateCreateFields(input RecordInput) error {
@@ -1227,12 +1218,13 @@ func (l recordLayout) allowsNameCreateInput() bool {
 	return l.Naming.Strategy == "field" && l.Naming.Field == "name"
 }
 
-func (l recordLayout) writeMutation(input RecordInput) (recordMutation, error) {
+func (s RecordStore) writeMutation(ctx context.Context, layout recordLayout, input RecordInput) (recordMutation, error) {
 	mutation := recordMutation{}
+	codec := s.linkValueCodec()
 	names := sortedRecordInputNames(input)
 	for _, name := range names {
-		field := l.FieldByName[name]
-		value, err := recordDBValue(field, input[name])
+		field := layout.FieldByName[name]
+		value, err := codec.storageValue(ctx, layout, field, input[name])
 		if err != nil {
 			return recordMutation{}, err
 		}
@@ -1243,8 +1235,9 @@ func (l recordLayout) writeMutation(input RecordInput) (recordMutation, error) {
 	return mutation, nil
 }
 
-func (l recordLayout) matchMutation(input RecordInput) (recordMutation, error) {
+func (s RecordStore) matchMutation(ctx context.Context, layout recordLayout, input RecordInput) (recordMutation, error) {
 	mutation := recordMutation{}
+	codec := s.linkValueCodec()
 	names := sortedRecordInputNames(input)
 	for _, name := range names {
 		if name == "name" {
@@ -1258,8 +1251,8 @@ func (l recordLayout) matchMutation(input RecordInput) (recordMutation, error) {
 			mutation.Values = append(mutation.Values, value)
 			continue
 		}
-		field := l.FieldByName[name]
-		value, err := recordDBValue(field, input[name])
+		field := layout.FieldByName[name]
+		value, err := codec.storageValue(ctx, layout, field, input[name])
 		if err != nil {
 			return recordMutation{}, err
 		}

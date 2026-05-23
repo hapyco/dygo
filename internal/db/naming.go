@@ -3,15 +3,12 @@ package db
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
 	"github.com/dygo-dev/dygo/internal/entity/schema"
 	namegen "github.com/dygo-dev/dygo/internal/naming"
-	"github.com/jackc/pgx/v5"
 )
 
 type recordNaming struct {
@@ -87,24 +84,7 @@ func (r recordNameResolver) value(ctx context.Context, field recordField, raw js
 	if field.Type != "link" {
 		return recordNameValue(field, raw)
 	}
-	id, err := jsonIntValue(field, raw)
-	if err != nil {
-		return "", err
-	}
-	appName := strings.TrimSpace(field.Options.App)
-	if appName == "" {
-		appName = r.layout.AppName
-	}
-	table := entityTableName(appName, field.Options.Entity)
-	var name string
-	err = r.store.queryer.QueryRow(ctx, fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", quoteIdent("name"), quoteIdent(table), quoteIdent("id")), id).Scan(&name)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", recordError(RecordErrorValidation, "naming link target not found", map[string]any{"entity": r.layout.Entity, "field": field.Name, "id": id}, err)
-	}
-	if err != nil {
-		return "", classifyRecordDBError(err, field.Options.Entity)
-	}
-	return name, nil
+	return r.store.linkValueCodec().nameFromRaw(ctx, r.layout, field, raw)
 }
 
 type recordSeriesCounter struct {

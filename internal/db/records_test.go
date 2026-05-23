@@ -74,6 +74,28 @@ func TestRecordStoreListRecordsResolvesLinkFieldsToTargetNames(t *testing.T) {
 	}
 }
 
+func TestRecordStoreListRecordsFiltersResolveLinkNamesToStoredIDs(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newActivityRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(1), "activity-1", now, now, "record", "create", "success", "core.user", int64(7), "admin@example.com", "Created User", nil, nil, nil, nil},
+	}))
+
+	_, err := NewRecordStore(queryer).ListRecords(context.Background(), "activity", RecordListParams{
+		Filters: []RecordFilter{{Field: "entity", Value: "core.user"}},
+	})
+	if err != nil {
+		t.Fatalf("ListRecords(activity link filter) error = %v, want nil", err)
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	if !strings.Contains(lastQuery, `WHERE "entity_id" = $1::bigint`) {
+		t.Fatalf("list query = %q, want link storage filter", lastQuery)
+	}
+	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{int64(10), 20, 0}) {
+		t.Fatalf("list args = %#v, want resolved link id plus pagination", got)
+	}
+}
+
 func TestRecordStoreListRecordsFiltersAndSorts(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
@@ -498,6 +520,38 @@ func TestRecordStoreCreateRecordGeneratesTemplateName(t *testing.T) {
 	_, args := lastQueryContaining(t, queryer, `INSERT INTO "support_ticket"`)
 	if args[len(args)-1] != "T-New-A1" {
 		t.Fatalf("CreateRecord() name arg = %#v, want template name", args[len(args)-1])
+	}
+}
+
+func TestRecordStoreCreateRecordResolvesLinkNamesToStoredIDs(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newActivityRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(1), "activity-1", now, now, "record", "create", "success", "core.user", nil, "admin@example.com", "Created User", nil, nil, nil, nil},
+	}))
+
+	record, err := NewRecordStore(queryer).CreateRecord(context.Background(), "activity", recordInput(map[string]string{
+		"actor":     `"admin@example.com"`,
+		"entity":    `"core.user"`,
+		"kind":      `"record"`,
+		"operation": `"create"`,
+		"status":    `"success"`,
+		"title":     `"Created User"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord(activity links) error = %v, want nil", err)
+	}
+	if record["entity"] != "core.user" || record["actor"] != "admin@example.com" {
+		t.Fatalf("CreateRecord(activity links) = %+v, want public link names", record)
+	}
+	lastQuery, args := lastQueryContaining(t, queryer, `INSERT INTO "activity"`)
+	for _, want := range []string{`"actor_id", "entity_id"`, `(SELECT "name" FROM "entity" WHERE "id" = "_dygo_record"."entity_id")`} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("create query = %q, want %q", lastQuery, want)
+		}
+	}
+	if len(args) < 2 || args[0] != int64(99) || args[1] != int64(10) {
+		t.Fatalf("create args = %#v, want actor/entity link names resolved to ids", args)
 	}
 }
 
@@ -1268,6 +1322,18 @@ func (q *fakeRecordQueryer) QueryRow(_ context.Context, sql string, args ...any)
 	q.rowArgs = append(q.rowArgs, args)
 	if isActivityMetadataQuery(sql, args...) {
 		return fakeActivityEntityRow()
+	}
+	if strings.Contains(sql, `SELECT "id" FROM "entity"`) && len(args) == 1 && args[0] == "core.user" {
+		return newFakeRow(int64(10))
+	}
+	if strings.Contains(sql, `SELECT "id" FROM "user"`) && len(args) == 1 && args[0] == "admin@example.com" {
+		return newFakeRow(int64(99))
+	}
+	if strings.Contains(sql, `SELECT "name" FROM "entity"`) && len(args) == 1 && args[0] == int64(10) {
+		return newFakeRow("core.user")
+	}
+	if strings.Contains(sql, `SELECT "name" FROM "user"`) && len(args) == 1 && args[0] == int64(99) {
+		return newFakeRow("admin@example.com")
 	}
 	if q.row == nil {
 		return fakeRow{err: pgx.ErrNoRows}
