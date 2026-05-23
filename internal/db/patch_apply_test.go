@@ -62,7 +62,7 @@ func TestApplyPatchPlanAppliesPatchesInTransactions(t *testing.T) {
 	if !reflect.DeepEqual(beginner.txs[0].execSQL, wantSQL) {
 		t.Fatalf("first transaction SQL = %#v, want %#v", beginner.txs[0].execSQL, wantSQL)
 	}
-	wantEvents := []string{"exec", "exec", "queryrow:get", "queryrow:app", "queryrow:insert", "commit"}
+	wantEvents := []string{"exec", "exec", "queryrow:get", "queryrow:app", "queryrow:naming", "queryrow:insert", "commit"}
 	if !reflect.DeepEqual(beginner.txs[0].events, wantEvents) {
 		t.Fatalf("first transaction events = %#v, want %#v", beginner.txs[0].events, wantEvents)
 	}
@@ -441,6 +441,9 @@ func (tx *fakePatchApplyTx) QueryRow(_ context.Context, sql string, args ...any)
 	case strings.Contains(sql, `SELECT id FROM "app"`):
 		tx.events = append(tx.events, "queryrow:app")
 		return newFakeRow(int64(10))
+	case strings.Contains(sql, `FROM "entity" e`) && strings.Contains(sql, `e.key = 'patch-run'`):
+		tx.events = append(tx.events, "queryrow:naming")
+		return newFakeRow(`{"strategy":"template","template":"{app}.{patch-id}"}`)
 	case strings.Contains(sql, `INSERT INTO "patch_run"`):
 		tx.events = append(tx.events, "queryrow:insert")
 		if tx.insertErr != nil {

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dygo-dev/dygo/internal/entity/schema"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -70,6 +71,7 @@ func TestPatchLedgerRecordPatchRunInserts(t *testing.T) {
 		row: []pgx.Row{
 			fakeRow{err: pgx.ErrNoRows},
 			newFakeRow(int64(10)),
+			newFakeRow(`{"strategy":"template","template":"{app}.{patch-id}"}`),
 			newFakeRow(int64(20)),
 		},
 	}
@@ -87,12 +89,25 @@ func TestPatchLedgerRecordPatchRunInserts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordPatchRun() error = %v, want nil", err)
 	}
-	if !strings.Contains(queryer.rowSQL[2], `INSERT INTO "patch_run"`) || !strings.Contains(queryer.rowSQL[2], `RETURNING id`) {
-		t.Fatalf("RecordPatchRun() insert SQL = %q, want insert returning id", queryer.rowSQL[2])
+	if !strings.Contains(queryer.rowSQL[3], `INSERT INTO "patch_run"`) || !strings.Contains(queryer.rowSQL[3], `RETURNING id`) {
+		t.Fatalf("RecordPatchRun() insert SQL = %q, want insert returning id", queryer.rowSQL[3])
 	}
-	wantArgs := []any{"crm/0001_rename_email", int64(10), "0001_rename_email", "apps/crm/patches/0001_rename_email.yml", PatchPhasePreSync, "sha256:a", appliedAt, "0.1.0"}
-	if !reflect.DeepEqual(queryer.rowArgs[2], wantArgs) {
-		t.Fatalf("RecordPatchRun() insert args = %#v, want %#v", queryer.rowArgs[2], wantArgs)
+	wantArgs := []any{"crm.0001_rename_email", int64(10), "0001_rename_email", "apps/crm/patches/0001_rename_email.yml", PatchPhasePreSync, "sha256:a", appliedAt, "0.1.0"}
+	if !reflect.DeepEqual(queryer.rowArgs[3], wantArgs) {
+		t.Fatalf("RecordPatchRun() insert args = %#v, want %#v", queryer.rowArgs[3], wantArgs)
+	}
+}
+
+func TestPatchRunRecordNameUsesTemplate(t *testing.T) {
+	got, err := patchRunRecordName(
+		PatchRun{AppName: "crm", PatchID: "0001_rename_email"},
+		schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{patch-id}"},
+	)
+	if err != nil {
+		t.Fatalf("patchRunRecordName() error = %v, want nil", err)
+	}
+	if got != "crm.0001_rename_email" {
+		t.Fatalf("patchRunRecordName() = %q, want crm.0001_rename_email", got)
 	}
 }
 

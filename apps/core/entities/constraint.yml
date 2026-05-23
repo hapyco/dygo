@@ -2,7 +2,8 @@ label: Constraint
 description: Top-level unique or check constraint definition belonging to an Entity.
 icon: shield-check
 naming:
-  strategy: random
+  strategy: template
+  template: "{entity}.{constraint-name}"
 fields:
   - name: entity
     label: Entity

@@ -2,7 +2,8 @@ label: Index
 description: Top-level non-unique index definition belonging to an Entity.
 icon: list-tree
 naming:
-  strategy: random
+  strategy: template
+  template: "{entity}.{index-name}"
 fields:
   - name: entity
     label: Entity

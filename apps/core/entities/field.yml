@@ -2,7 +2,8 @@ label: Field
 description: Field definition belonging to an Entity.
 icon: columns-3
 naming:
-  strategy: random
+  strategy: template
+  template: "{entity}.{field-name}"
 fields:
   - name: entity
     label: Entity

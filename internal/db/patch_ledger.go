@@ -2,11 +2,13 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/dygo-dev/dygo/internal/entity/schema"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -117,7 +119,7 @@ JOIN "app" a ON a.id = p.app_id
 WHERE a.name = $1 AND p.patch_id = $2`, appName, patchID)
 	run, err := scanPatchRun(row)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return PatchRun{}, MetadataNotFoundError{Kind: "patch-run", Name: appName + "/" + patchID}
+		return PatchRun{}, MetadataNotFoundError{Kind: "patch-run", Name: patchRunIdentityName(appName, patchID)}
 	}
 	if err != nil {
 		return PatchRun{}, fmt.Errorf("query patch run %s/%s: %w", appName, patchID, err)
@@ -157,7 +159,14 @@ func (l PatchLedger) RecordPatchRun(ctx context.Context, run PatchRun) error {
 	if appliedAt.IsZero() {
 		appliedAt = time.Now().UTC()
 	}
-	name := run.AppName + "/" + run.PatchID
+	naming, err := l.patchRunNaming(ctx)
+	if err != nil {
+		return err
+	}
+	name, err := patchRunRecordName(run, naming)
+	if err != nil {
+		return err
+	}
 	if err := l.queryer.QueryRow(ctx, `
 INSERT INTO "patch_run" (name, app_id, patch_id, path, phase, checksum, applied_at, dygo_version)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -165,6 +174,41 @@ RETURNING id`, name, appID, run.PatchID, run.Path, run.Phase, run.Checksum, appl
 		return fmt.Errorf("record patch run %s/%s: %w", run.AppName, run.PatchID, err)
 	}
 	return nil
+}
+
+func (l PatchLedger) patchRunNaming(ctx context.Context) (schema.Naming, error) {
+	var raw string
+	err := l.queryer.QueryRow(ctx, `
+SELECT COALESCE(e.naming::text, '')
+FROM "entity" e
+JOIN "app" a ON a.id = e.app_id
+WHERE a.name = 'core' AND e.key = 'patch-run'`).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return schema.Naming{}, MetadataNotFoundError{Kind: "entity", Name: "core.patch-run"}
+	}
+	if err != nil {
+		return schema.Naming{}, fmt.Errorf("query patch-run naming metadata: %w", err)
+	}
+	var naming schema.Naming
+	if err := json.Unmarshal([]byte(raw), &naming); err != nil {
+		return schema.Naming{}, fmt.Errorf("decode patch-run naming metadata: %w", err)
+	}
+	return naming, nil
+}
+
+func patchRunRecordName(run PatchRun, naming schema.Naming) (string, error) {
+	return deterministicRecordNameFromValues("patch-run", naming, map[string]string{
+		"app":          run.AppName,
+		"patch-id":     run.PatchID,
+		"path":         run.Path,
+		"phase":        run.Phase,
+		"checksum":     run.Checksum,
+		"dygo-version": run.DygoVersion,
+	})
+}
+
+func patchRunIdentityName(appName string, patchID string) string {
+	return appName + "." + patchID
 }
 
 func (l PatchLedger) appID(ctx context.Context, appName string) (int64, error) {

@@ -269,7 +269,7 @@ WHERE id = $1`, id, constraint.RecordName, constraint.Type, constraint.Fields, n
 
 func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 	records := metadataRecordSet{}
-	entityTableNaming := metadataEntityTableNaming(metadata.Entities)
+	namings := metadataRecordNamings(metadata.Entities)
 	for _, app := range metadata.Apps {
 		records.Apps = append(records.Apps, appRecord{
 			Name:    app.Manifest.Name,
@@ -287,7 +287,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 				return metadataRecordSet{}, fmt.Errorf("build entity metadata %s/%s naming: %w", loaded.AppName, loaded.Entity.Name, err)
 			}
 		}
-		entityName, err := metadataEntityRecordName(loaded, entityTableNaming)
+		entityName, err := metadataEntityRecordName(loaded, namings.Entity)
 		if err != nil {
 			return metadataRecordSet{}, fmt.Errorf("build entity metadata %s/%s name: %w", loaded.AppName, loaded.Entity.Name, err)
 		}
@@ -316,10 +316,23 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			if err != nil {
 				return metadataRecordSet{}, fmt.Errorf("build field metadata %s/%s.%s check: %w", loaded.AppName, loaded.Entity.Name, field.Name, err)
 			}
+			recordName, err := deterministicRecordNameFromValues("field", namings.Field, map[string]string{
+				"entity":     entityName,
+				"field-name": field.Name,
+				"label":      field.Label,
+				"type":       field.Type,
+				"required":   strconv.FormatBool(field.Required),
+				"unique":     strconv.FormatBool(field.Unique),
+				"index":      strconv.FormatBool(field.Index),
+				"position":   strconv.Itoa(index + 1),
+			})
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build field metadata %s/%s.%s name: %w", loaded.AppName, loaded.Entity.Name, field.Name, err)
+			}
 			records.Fields = append(records.Fields, fieldRecord{
 				EntityAppName: loaded.AppName,
 				EntityName:    loaded.Entity.Name,
-				RecordName:    childMetadataRecordName(loaded.AppName, loaded.Entity.Name, field.Name),
+				RecordName:    recordName,
 				Name:          field.Name,
 				Label:         field.Label,
 				Type:          field.Type,
@@ -337,29 +350,50 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			if err != nil {
 				return metadataRecordSet{}, fmt.Errorf("build index metadata %s/%s.%s fields: %w", loaded.AppName, loaded.Entity.Name, index.EffectiveName(loaded.Entity), err)
 			}
+			indexName := index.EffectiveName(loaded.Entity)
+			recordName, err := deterministicRecordNameFromValues("index", namings.Index, map[string]string{
+				"entity":     entityName,
+				"index-name": indexName,
+				"position":   strconv.Itoa(indexPosition + 1),
+			})
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build index metadata %s/%s.%s name: %w", loaded.AppName, loaded.Entity.Name, indexName, err)
+			}
 			records.Indexes = append(records.Indexes, indexRecord{
 				EntityAppName: loaded.AppName,
 				EntityName:    loaded.Entity.Name,
-				RecordName:    childMetadataRecordName(loaded.AppName, loaded.Entity.Name, index.EffectiveName(loaded.Entity)),
-				Name:          index.EffectiveName(loaded.Entity),
+				RecordName:    recordName,
+				Name:          indexName,
 				Fields:        fieldsJSON,
 				Position:      indexPosition + 1,
 			})
 		}
 		for constraintPosition, constraint := range loaded.Entity.Constraints {
+			constraintName := constraint.EffectiveName(loaded.Entity)
 			fieldsJSON, err := json.Marshal(constraint.Fields)
 			if err != nil {
-				return metadataRecordSet{}, fmt.Errorf("build constraint metadata %s/%s.%s fields: %w", loaded.AppName, loaded.Entity.Name, constraint.EffectiveName(loaded.Entity), err)
+				return metadataRecordSet{}, fmt.Errorf("build constraint metadata %s/%s.%s fields: %w", loaded.AppName, loaded.Entity.Name, constraintName, err)
 			}
 			valueJSON, err := constraintValueJSON(constraint.Value)
 			if err != nil {
-				return metadataRecordSet{}, fmt.Errorf("build constraint metadata %s/%s.%s value: %w", loaded.AppName, loaded.Entity.Name, constraint.EffectiveName(loaded.Entity), err)
+				return metadataRecordSet{}, fmt.Errorf("build constraint metadata %s/%s.%s value: %w", loaded.AppName, loaded.Entity.Name, constraintName, err)
+			}
+			recordName, err := deterministicRecordNameFromValues("constraint", namings.Constraint, map[string]string{
+				"entity":          entityName,
+				"constraint-name": constraintName,
+				"type":            constraint.Type,
+				"field":           constraint.Field,
+				"operator":        constraint.Operator,
+				"position":        strconv.Itoa(constraintPosition + 1),
+			})
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build constraint metadata %s/%s.%s name: %w", loaded.AppName, loaded.Entity.Name, constraintName, err)
 			}
 			records.Constraints = append(records.Constraints, constraintRecord{
 				EntityAppName: loaded.AppName,
 				EntityName:    loaded.Entity.Name,
-				RecordName:    childMetadataRecordName(loaded.AppName, loaded.Entity.Name, constraint.EffectiveName(loaded.Entity)),
-				Name:          constraint.EffectiveName(loaded.Entity),
+				RecordName:    recordName,
+				Name:          constraintName,
 				Type:          constraint.Type,
 				Fields:        fieldsJSON,
 				Field:         constraint.Field,
@@ -372,19 +406,44 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 	return records, nil
 }
 
-func metadataEntityTableNaming(entities []catalog.LoadedEntity) schema.Naming {
+type metadataNamings struct {
+	Entity     schema.Naming
+	Field      schema.Naming
+	Index      schema.Naming
+	Constraint schema.Naming
+}
+
+func metadataRecordNamings(entities []catalog.LoadedEntity) metadataNamings {
+	return metadataNamings{
+		Entity: metadataCoreEntityNaming(entities, "entity", schema.Naming{
+			Strategy: schema.NamingStrategyTemplate,
+			Template: "{app}.{key}",
+		}),
+		Field: metadataCoreEntityNaming(entities, "field", schema.Naming{
+			Strategy: schema.NamingStrategyTemplate,
+			Template: "{entity}.{field-name}",
+		}),
+		Index: metadataCoreEntityNaming(entities, "index", schema.Naming{
+			Strategy: schema.NamingStrategyTemplate,
+			Template: "{entity}.{index-name}",
+		}),
+		Constraint: metadataCoreEntityNaming(entities, "constraint", schema.Naming{
+			Strategy: schema.NamingStrategyTemplate,
+			Template: "{entity}.{constraint-name}",
+		}),
+	}
+}
+
+func metadataCoreEntityNaming(entities []catalog.LoadedEntity, key string, fallback schema.Naming) schema.Naming {
 	for _, loaded := range entities {
-		if loaded.AppName == "core" && loaded.Entity.Name == "entity" {
+		if loaded.AppName == "core" && loaded.Entity.Name == key {
 			return loaded.Entity.EffectiveNaming()
 		}
 	}
-	return schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{key}"}
+	return fallback
 }
 
 func metadataEntityRecordName(loaded catalog.LoadedEntity, naming schema.Naming) (string, error) {
-	if naming.Strategy != schema.NamingStrategyTemplate {
-		return entityRecordName(loaded.AppName, loaded.Entity.Name), nil
-	}
 	values := map[string]string{
 		"app":           loaded.AppName,
 		"key":           loaded.Entity.Name,
@@ -395,21 +454,32 @@ func metadataEntityRecordName(loaded catalog.LoadedEntity, naming schema.Naming)
 		"is-single":     strconv.FormatBool(loaded.Entity.IsSingle),
 		"is-collection": strconv.FormatBool(loaded.IsCollection() || loaded.Entity.IsCollection),
 	}
-	return renderNameTemplate(naming.Template, func(token string) (string, error) {
-		value, ok := values[token]
+	return deterministicRecordNameFromValues("entity", naming, values)
+}
+
+func deterministicRecordNameFromValues(kind string, naming schema.Naming, values map[string]string) (string, error) {
+	switch naming.Strategy {
+	case schema.NamingStrategyTemplate:
+		return renderNameTemplate(naming.Template, func(token string) (string, error) {
+			value, ok := values[token]
+			if !ok {
+				return "", fmt.Errorf("template references unknown field %q", token)
+			}
+			return value, nil
+		})
+	case schema.NamingStrategyField:
+		value, ok := values[naming.Field]
 		if !ok {
-			return "", fmt.Errorf("template references unknown field %q", token)
+			return "", fmt.Errorf("field naming references unknown field %q", naming.Field)
 		}
 		return value, nil
-	})
+	default:
+		return "", fmt.Errorf("%s metadata naming strategy %q is not deterministic", kind, naming.Strategy)
+	}
 }
 
 func entityRecordName(appName string, key string) string {
 	return appName + "." + key
-}
-
-func childMetadataRecordName(appName string, entityKey string, name string) string {
-	return entityRecordName(appName, entityKey) + "." + name
 }
 
 func fieldOptionsJSON(options fieldtype.Options) ([]byte, error) {
