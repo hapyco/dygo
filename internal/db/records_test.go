@@ -16,11 +16,13 @@ import (
 )
 
 func TestRecordStoreListRecords(t *testing.T) {
-	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	pkt := time.FixedZone("PKT", 5*60*60)
+	createdAt := time.Date(2026, 5, 7, 12, 0, 0, 637443000, pkt)
+	updatedAt := time.Date(2026, 5, 7, 12, 30, 0, 0, pkt)
 	queryer := newUserRecordQueryer()
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
-		{int64(1), "a@example.com", now, now, "a@example.com", "A User", true},
-		{int64(2), "b@example.com", now, now, "b@example.com", "B User", false},
+		{int64(1), "a@example.com", createdAt, updatedAt, "a@example.com", "A User", true},
+		{int64(2), "b@example.com", createdAt, updatedAt, "b@example.com", "B User", false},
 	}))
 
 	result, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{})
@@ -33,6 +35,9 @@ func TestRecordStoreListRecords(t *testing.T) {
 	if result.Records[0]["email"] != "a@example.com" || result.Records[0]["full-name"] != "A User" {
 		t.Fatalf("ListRecords() first record = %+v, want metadata field names", result.Records[0])
 	}
+	if result.Records[0]["created-at"] != "2026-05-07T07:00:00.637443Z" || result.Records[0]["updated-at"] != "2026-05-07T07:30:00Z" {
+		t.Fatalf("ListRecords() timestamps = created:%#v updated:%#v, want UTC RFC3339Nano", result.Records[0]["created-at"], result.Records[0]["updated-at"])
+	}
 	if _, ok := result.Records[0]["password"]; ok {
 		t.Fatalf("ListRecords() returned password field: %+v", result.Records[0])
 	}
@@ -42,6 +47,25 @@ func TestRecordStoreListRecords(t *testing.T) {
 	}
 	if got := queryer.args[len(queryer.args)-1]; len(got) != 2 || got[0] != 20 || got[1] != 0 {
 		t.Fatalf("list args = %#v, want default limit/offset", got)
+	}
+}
+
+func TestRecordStoreListRecordsNormalizesAuthoredDatetime(t *testing.T) {
+	pkt := time.FixedZone("PKT", 5*60*60)
+	createdAt := time.Date(2026, 5, 7, 12, 0, 0, 0, pkt)
+	updatedAt := time.Date(2026, 5, 7, 12, 30, 0, 0, pkt)
+	startsAt := time.Date(2026, 5, 7, 14, 29, 14, 123456000, pkt)
+	queryer := newEventRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(1), "launch", createdAt, updatedAt, startsAt},
+	}))
+
+	result, err := NewRecordStore(queryer).ListRecords(context.Background(), "event", RecordListParams{})
+	if err != nil {
+		t.Fatalf("ListRecords(event) error = %v, want nil", err)
+	}
+	if result.Records[0]["starts-at"] != "2026-05-07T09:29:14.123456Z" {
+		t.Fatalf("ListRecords(event) starts-at = %#v, want UTC RFC3339Nano", result.Records[0]["starts-at"])
 	}
 }
 
@@ -144,7 +168,7 @@ func TestRecordStoreListRecordsSupportsSystemFiltersAndSortTieBreaker(t *testing
 	_, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{
 		Filters: []RecordFilter{
 			{Field: "id", Value: "7"},
-			{Field: "created-at", Value: "2026-05-07T12:00:00Z"},
+			{Field: "created-at", Value: "2026-05-07T17:00:00+05:00"},
 		},
 		Sort: []RecordSort{{Field: "updated-at", Desc: true}},
 	})
@@ -160,7 +184,7 @@ func TestRecordStoreListRecordsSupportsSystemFiltersAndSortTieBreaker(t *testing
 			t.Fatalf("list query = %q, want %q", lastQuery, want)
 		}
 	}
-	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{"2026-05-07T12:00:00Z", int64(7), 20, 0}) {
+	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{"2026-05-07T17:00:00+05:00", int64(7), 20, 0}) {
 		t.Fatalf("list args = %#v, want system filter args", got)
 	}
 }
@@ -1402,6 +1426,19 @@ func newTemplateRecordQueryer() *fakeRecordQueryer {
 			newFakeRows([][]any{
 				{"code", "Code", "text", true, false, false, nil, nil, 1, nil},
 				{"status", "Status", "select", true, false, false, nil, nil, 2, []byte(`{"values":["New","Closed"]}`)},
+			}),
+			newFakeRows(nil),
+			newFakeRows(nil),
+		},
+	}
+}
+
+func newEventRecordQueryer() *fakeRecordQueryer {
+	return &fakeRecordQueryer{
+		row: newFakeRow(int64(60), "core.event", "event", "event", "Event", "Calendar event", "calendar", false, false, false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"),
+		rows: []pgx.Rows{
+			newFakeRows([][]any{
+				{"starts-at", "Starts At", "datetime", true, false, false, nil, nil, 1, nil},
 			}),
 			newFakeRows(nil),
 			newFakeRows(nil),

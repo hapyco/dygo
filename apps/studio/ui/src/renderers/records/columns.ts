@@ -1,6 +1,7 @@
 import type { DataTableColumn } from '@/design/types'
 import type { MetadataField } from '@/features/metadata/metadata.api'
 import { recordSystemListColumns } from '../../features/records/system-fields.ts'
+import { formatRecordDisplayValue } from './values.ts'
 
 export type RecordListColumnSource = 'name' | 'field' | 'system'
 
@@ -33,5 +34,12 @@ export function buildRecordListColumns(fields: MetadataField[], systemFields: Me
 
     seen.add(column.key)
     return true
-  })
+  }).map(withRecordDisplayFormatter)
+}
+
+function withRecordDisplayFormatter(column: RecordListColumn): RecordListColumn {
+  return {
+    ...column,
+    formatValue: (value) => formatRecordDisplayValue(value, column.cellType),
+  }
 }

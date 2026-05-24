@@ -30,7 +30,7 @@ type ActivityActor struct {
 // ActivityEntry is one append-only Record history entry.
 type ActivityEntry struct {
 	ID        int64          `json:"id"`
-	CreatedAt time.Time      `json:"created-at"`
+	CreatedAt string         `json:"created-at"`
 	Entity    string         `json:"entity"`
 	RecordID  int64          `json:"record-id"`
 	Kind      string         `json:"kind"`
@@ -110,9 +110,10 @@ LIMIT $3 OFFSET $4`, entityID, recordID, params.Limit, params.Offset)
 		var actorID int64
 		var actorEmail string
 		var actorFullName string
+		var createdAt time.Time
 		if err := rows.Scan(
 			&entry.ID,
-			&entry.CreatedAt,
+			&createdAt,
 			&entry.Entity,
 			&entry.RecordID,
 			&entry.Kind,
@@ -129,6 +130,7 @@ LIMIT $3 OFFSET $4`, entityID, recordID, params.Limit, params.Offset)
 		); err != nil {
 			return ActivityListResult{}, recordError(RecordErrorInternal, "scan activity row failed", map[string]any{"entity": entity, "id": recordID}, err)
 		}
+		entry.CreatedAt = normalizeDatetimeValue(createdAt)
 		entry.Changes, err = decodeActivityJSON(changes)
 		if err != nil {
 			return ActivityListResult{}, err

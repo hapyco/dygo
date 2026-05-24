@@ -847,7 +847,7 @@ func TestRecordActivityRoute(t *testing.T) {
 		result: db.ActivityListResult{
 			Activities: []db.ActivityEntry{{
 				ID:        9,
-				CreatedAt: created,
+				CreatedAt: created.Format(time.RFC3339Nano),
 				Entity:    "user",
 				RecordID:  1,
 				Kind:      "record",
@@ -882,6 +882,7 @@ func TestRecordActivityRoute(t *testing.T) {
 		t.Fatalf("ReadAll(activity body) error = %v", err)
 	}
 	for _, want := range []string{
+		`"created-at":"2026-05-09T12:00:00Z"`,
 		`"operation":"update"`,
 		`"actor":{"id":7,"email":"admin@example.com","full-name":"Admin User"}`,
 		`"meta":{"limit":25,"offset":5,"count":1}`,

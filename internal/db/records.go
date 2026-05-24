@@ -1464,7 +1464,12 @@ func normalizeRecordValue(fieldType string, value any) any {
 			return typed.Format("2006-01-02")
 		case "time":
 			return typed.Format("15:04:05")
+		case "datetime":
+			return normalizeDatetimeValue(typed)
 		default:
+			if valueKind == fieldtype.ValueDatetime {
+				return normalizeDatetimeValue(typed)
+			}
 			return typed
 		}
 	case float64:
@@ -1475,6 +1480,10 @@ func normalizeRecordValue(fieldType string, value any) any {
 	default:
 		return typed
 	}
+}
+
+func normalizeDatetimeValue(value time.Time) string {
+	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func sortedRecordInputNames(input RecordInput) []string {

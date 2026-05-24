@@ -13,7 +13,8 @@ import (
 )
 
 func TestActivityReaderListRecordActivity(t *testing.T) {
-	newer := time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)
+	pkt := time.FixedZone("PKT", 5*60*60)
+	newer := time.Date(2026, 5, 9, 17, 0, 0, 123456000, pkt)
 	older := newer.Add(-time.Hour)
 	queryer := &fakeMetadataQueryer{
 		row: newFakeRow(int64(10)),
@@ -55,6 +56,9 @@ func TestActivityReaderListRecordActivity(t *testing.T) {
 	first := result.Activities[0]
 	if first.Entity != "user" || first.RecordID != 42 || first.Operation != "update" || first.Status != "success" {
 		t.Fatalf("first activity = %+v, want user/update/success", first)
+	}
+	if first.CreatedAt != "2026-05-09T12:00:00.123456Z" {
+		t.Fatalf("first created-at = %q, want UTC RFC3339Nano", first.CreatedAt)
 	}
 	if first.Actor == nil || first.Actor.ID != 7 || first.Actor.Email != "admin@example.com" || first.Actor.FullName != "Admin User" {
 		t.Fatalf("first actor = %+v, want admin actor", first.Actor)

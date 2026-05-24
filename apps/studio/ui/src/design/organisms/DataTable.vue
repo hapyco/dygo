@@ -173,7 +173,11 @@ function rowIdentifier(row: DataTableRow, index: number): DataTableRowKey {
   return index
 }
 
-function cellText(value: unknown): string {
+function cellText(value: unknown, column: DataTableColumn): string {
+  if (column.formatValue) {
+    return column.formatValue(value)
+  }
+
   if (value === null || value === undefined || value === '') {
     return '-'
   }
@@ -410,7 +414,7 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
                 />
               </td>
               <td v-for="column in columns" :key="column.key">
-                {{ cellText(row[column.key]) }}
+                {{ cellText(row[column.key], column) }}
               </td>
             </tr>
           </tbody>

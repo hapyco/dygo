@@ -13,6 +13,7 @@ test('buildRecordListColumns uses metadata display hints and listability', () =>
 
   assert.deepEqual(columns.map((column) => column.key), ['name', 'email', 'created-at', 'updated-at'])
   assert.equal(columns.find((column) => column.key === 'email')?.cellType, 'email')
+  assert.equal(columns.find((column) => column.key === 'created-at')?.formatValue?.('bad datetime'), 'bad datetime')
 })
 
 test('buildRecordListColumns keeps the system name column authoritative', () => {
@@ -36,6 +37,7 @@ test('buildRecordListColumns uses system field metadata when provided', () => {
   assert.deepEqual(columns.map((column) => column.key), ['name', 'email', 'updated-at'])
   assert.equal(columns[0].label, 'Record Name')
   assert.equal(columns.find((column) => column.key === 'updated-at')?.cellType, 'datetime')
+  assert.equal(columns.find((column) => column.key === 'updated-at')?.formatValue?.(new Date(2026, 4, 24, 3, 29, 14)), '2026-05-24 03:29:14')
 })
 
 function metadataField(overrides: {
