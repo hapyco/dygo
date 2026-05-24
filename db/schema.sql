@@ -235,9 +235,9 @@ CREATE TABLE public.entity (
     description text,
     icon text,
     is_single boolean DEFAULT false NOT NULL,
+    is_system boolean DEFAULT false NOT NULL,
     is_collection boolean DEFAULT false NOT NULL,
-    naming jsonb,
-    is_system boolean DEFAULT false NOT NULL
+    naming jsonb
 );
 
 
@@ -906,55 +906,6 @@ ALTER TABLE ONLY public.user_role
 
 
 --
--- Name: activity_actor_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX activity_actor_id_idx ON public.activity USING btree (actor_id);
-
-
---
--- Name: activity_entity_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX activity_entity_id_idx ON public.activity USING btree (entity_id);
-
-
---
--- Name: activity_kind_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX activity_kind_idx ON public.activity USING btree (kind);
-
-
---
--- Name: activity_operation_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX activity_operation_idx ON public.activity USING btree (operation);
-
-
---
--- Name: activity_record_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX activity_record_id_idx ON public.activity USING btree (record_id);
-
-
---
--- Name: activity_status_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX activity_status_idx ON public.activity USING btree (status);
-
-
---
--- Name: by_kind_operation; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX by_kind_operation ON public.activity USING btree (kind, operation);
-
-
---
 -- Name: by_record; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1162,6 +1113,118 @@ CREATE INDEX user_role_role_id_idx ON public.user_role USING btree (role_id);
 --
 
 CREATE INDEX user_role_user_id_idx ON public.user_role USING btree (user_id);
+
+
+--
+-- Name: configuration configuration_country_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.configuration
+    ADD CONSTRAINT configuration_country_id_fkey FOREIGN KEY (country_id) REFERENCES public.country(id);
+
+
+--
+-- Name: configuration configuration_currency_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.configuration
+    ADD CONSTRAINT configuration_currency_id_fkey FOREIGN KEY (currency_id) REFERENCES public.currency(id);
+
+
+--
+-- Name: configuration configuration_language_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.configuration
+    ADD CONSTRAINT configuration_language_id_fkey FOREIGN KEY (language_id) REFERENCES public.language(id);
+
+
+--
+-- Name: constraint constraint_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public."constraint"
+    ADD CONSTRAINT constraint_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id);
+
+
+--
+-- Name: entity entity_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.entity
+    ADD CONSTRAINT entity_app_id_fkey FOREIGN KEY (app_id) REFERENCES public.app(id);
+
+
+--
+-- Name: field field_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.field
+    ADD CONSTRAINT field_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id);
+
+
+--
+-- Name: index index_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.index
+    ADD CONSTRAINT index_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id);
+
+
+--
+-- Name: naming_series naming_series_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.naming_series
+    ADD CONSTRAINT naming_series_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id);
+
+
+--
+-- Name: patch_run patch_run_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.patch_run
+    ADD CONSTRAINT patch_run_app_id_fkey FOREIGN KEY (app_id) REFERENCES public.app(id);
+
+
+--
+-- Name: permission permission_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.permission
+    ADD CONSTRAINT permission_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id);
+
+
+--
+-- Name: permission permission_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.permission
+    ADD CONSTRAINT permission_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.role(id);
+
+
+--
+-- Name: session session_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.session
+    ADD CONSTRAINT session_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id);
+
+
+--
+-- Name: user_role user_role_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_role
+    ADD CONSTRAINT user_role_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.role(id);
+
+
+--
+-- Name: user_role user_role_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_role
+    ADD CONSTRAINT user_role_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id);
 
 
 --
