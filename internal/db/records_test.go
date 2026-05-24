@@ -1636,7 +1636,6 @@ func leadContactEntityMeta() testEntityMeta {
 		description:  "Lead contact row",
 		icon:         "contact",
 		isCollection: true,
-		naming:       []byte(`{"strategy":"random","length":16}`),
 		app:          "crm",
 		appLabel:     "CRM",
 	}
@@ -1698,7 +1697,6 @@ func collectionEntityMeta() testEntityMeta {
 		description:  "Invoice line item",
 		icon:         "list",
 		isCollection: true,
-		naming:       []byte(`{"strategy":"random","length":16}`),
 		app:          "sales",
 		appLabel:     "Sales",
 	}

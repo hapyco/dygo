@@ -700,7 +700,7 @@ func TestBuildMetadataSchemaPlanCreatesCollectionChildTable(t *testing.T) {
 	assertContains(t, sql, `"position" bigint NOT NULL`)
 	assertContains(t, sql, `ALTER TABLE "crm_lead_contact" ADD CONSTRAINT "crm_lead_contact_parent_entity_id_fkey" FOREIGN KEY ("parent_entity_id") REFERENCES "entity"("id")`)
 	assertContains(t, sql, `ALTER TABLE "crm_lead_contact" ADD CONSTRAINT "crm_lead_contact_parent_field_id_fkey" FOREIGN KEY ("parent_field_id") REFERENCES "field"("id")`)
-	assertContains(t, sql, `ALTER TABLE "crm_lead_contact" ADD CONSTRAINT "crm_lead_contact_parent_position_key" UNIQUE ("parent_entity_id", "parent_record_id", "parent_field_id", "position")`)
+	assertContains(t, sql, `ALTER TABLE "crm_lead_contact" ADD CONSTRAINT "crm_lead_contact_parent_position_key" UNIQUE ("parent_entity_id", "parent_record_id", "parent_field_id", "position") DEFERRABLE INITIALLY DEFERRED`)
 	assertContains(t, sql, `CREATE INDEX "crm_lead_contact_parent_lookup_idx" ON "crm_lead_contact" ("parent_entity_id", "parent_record_id", "parent_field_id")`)
 	if strings.Contains(sql, `ADD COLUMN "contacts"`) {
 		t.Fatalf("operation SQL = %q, want parent collection field to stay virtual", sql)

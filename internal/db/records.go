@@ -916,7 +916,13 @@ type recordMutation struct {
 }
 
 func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
-	naming, err := parseRecordNaming(meta.Naming)
+	var naming schema.Naming
+	var err error
+	if meta.IsCollection {
+		naming = schema.CollectionRowNaming()
+	} else {
+		naming, err = parseRecordNaming(meta.Naming)
+	}
 	routeSlug := meta.RouteSlug()
 	if routeSlug == "" {
 		routeSlug = meta.Key

@@ -284,7 +284,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 	}
 	for _, loaded := range metadata.Entities {
 		var namingJSON []byte
-		if !loaded.Entity.IsSingle {
+		if !loaded.Entity.IsSingle && !loaded.IsCollection() {
 			var err error
 			namingJSON, err = entityNamingJSON(loaded.Entity.EffectiveNaming())
 			if err != nil {

@@ -54,6 +54,7 @@ const (
 	NamingStrategyFormat = "format"
 
 	DefaultRandomNameLength = 16
+	CollectionRowNameLength = 16
 	MinRandomNameLength     = 8
 	MaxRandomNameLength     = 64
 )
@@ -261,13 +262,19 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	}
 	validateIndexes(e, fields, fieldTypes, &problems)
 	validateConstraints(e, fields, fieldTypes, &problems)
-	if e.IsSingle && hasExplicitNaming(e.Naming) {
+	if e.IsCollection && hasExplicitNaming(e.Naming) {
+		line := e.Naming.Line
+		if line == 0 {
+			line = e.Line
+		}
+		problems = append(problems, withLine(line, "collection Entities do not support explicit name configuration"))
+	} else if e.IsSingle && hasExplicitNaming(e.Naming) {
 		line := e.Naming.Line
 		if line == 0 {
 			line = e.Line
 		}
 		problems = append(problems, withLine(line, "single Entities do not support explicit name configuration"))
-	} else if !e.IsSingle && !hasExplicitNaming(e.Naming) {
+	} else if !e.IsSingle && !e.IsCollection && !hasExplicitNaming(e.Naming) {
 		problems = append(problems, withLine(e.Line, "Entity must define name. Use name.strategy: random for generated names."))
 	}
 	validateNaming(e, fields, fieldTypes, &problems)
@@ -288,6 +295,9 @@ func (e Entity) EffectiveRouteSlug() string {
 
 // EffectiveNaming returns explicit Entity naming or the v1 default.
 func (e Entity) EffectiveNaming() Naming {
+	if e.IsCollection {
+		return CollectionRowNaming()
+	}
 	naming := e.Naming
 	if strings.TrimSpace(naming.Strategy) == "" {
 		naming.Strategy = NamingStrategyRandom
@@ -296,6 +306,11 @@ func (e Entity) EffectiveNaming() Naming {
 		naming.Length = DefaultRandomNameLength
 	}
 	return naming
+}
+
+// CollectionRowNaming returns the framework-owned naming plan for collection rows.
+func CollectionRowNaming() Naming {
+	return Naming{Strategy: NamingStrategyRandom, Length: CollectionRowNameLength}
 }
 
 func hasExplicitNaming(naming Naming) bool {
@@ -325,6 +340,9 @@ func validateSingleFieldDefault(field Field, definition fieldtype.Definition, pr
 }
 
 func validateNaming(entity Entity, fields map[string]Field, fieldTypes map[string]fieldtype.Definition, problems *[]string) {
+	if field, ok := fields["name"]; ok {
+		*problems = append(*problems, withLine(field.Line, `field "name" is reserved; configure Record names with top-level name metadata`))
+	}
 	if !hasExplicitNaming(entity.Naming) {
 		return
 	}
@@ -354,9 +372,6 @@ func validateNaming(entity Entity, fields map[string]Field, fieldTypes map[strin
 		*problems = append(*problems, withLine(line, fmt.Sprintf("naming strategy %q is not supported", naming.Strategy)))
 	}
 
-	if field, ok := fields["name"]; ok {
-		*problems = append(*problems, withLine(field.Line, `field "name" is reserved; configure Record names with top-level name metadata`))
-	}
 }
 
 func validateManualNaming(naming Naming, line int, problems *[]string) {

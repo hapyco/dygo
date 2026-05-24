@@ -122,7 +122,7 @@ func TestMetadataReaderEmbedsCollectionMetadata(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
 		row: newFakeRow(int64(20), "crm.lead", "lead", "lead", "Lead", "Sales lead", "contact", false, false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		identityRows: map[string]pgx.Row{
-			"crm/lead-contact": newFakeRow(int64(21), "crm.lead-contact", "lead-contact", "", "Lead Contact", "Child row", "contact", false, false, true, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+			"crm/lead-contact": newFakeRow(int64(21), "crm.lead-contact", "lead-contact", "", "Lead Contact", "Child row", "contact", false, false, true, nil, "crm", "CRM"),
 		},
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
@@ -149,6 +149,9 @@ func TestMetadataReaderEmbedsCollectionMetadata(t *testing.T) {
 	}
 	if child.Key != "lead-contact" || !child.IsCollection || len(child.Fields) != 1 || child.Fields[0].Name != "email" {
 		t.Fatalf("embedded child metadata = %+v fields %+v, want lead-contact email field", child.MetadataEntity, child.Fields)
+	}
+	if child.Naming != nil {
+		t.Fatalf("embedded child naming = %s, want nil framework-owned naming metadata", string(child.Naming))
 	}
 }
 

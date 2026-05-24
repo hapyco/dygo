@@ -697,7 +697,11 @@ func constraintDefinitionMatches(live liveConstraint, desired desiredConstraint)
 	}
 	switch desired.Type {
 	case "unique":
-		return strings.Contains(definition, "unique ("+strings.Join(desired.Columns, ", ")+")")
+		matchesColumns := strings.Contains(definition, "unique ("+strings.Join(desired.Columns, ", ")+")")
+		if strings.Contains(expected, "deferrable initially deferred") {
+			return matchesColumns && strings.Contains(definition, "deferrable initially deferred")
+		}
+		return matchesColumns
 	case "foreign-key":
 		return strings.Contains(definition, "foreign key ("+strings.Join(desired.Columns, ", ")+")")
 	case "check":
@@ -843,7 +847,7 @@ func collectionOwnershipConstraints(table string, entity catalog.LoadedEntity) [
 			Name:       collectionParentPositionConstraintName(table),
 			Type:       "unique",
 			Columns:    []string{systemColumnParentEntityID, systemColumnParentRecordID, systemColumnParentFieldID, systemColumnPosition},
-			Definition: fmt.Sprintf("UNIQUE (%s)", quoteIdentList([]string{systemColumnParentEntityID, systemColumnParentRecordID, systemColumnParentFieldID, systemColumnPosition})),
+			Definition: fmt.Sprintf("UNIQUE (%s) DEFERRABLE INITIALLY DEFERRED", quoteIdentList([]string{systemColumnParentEntityID, systemColumnParentRecordID, systemColumnParentFieldID, systemColumnPosition})),
 			Source:     source,
 		},
 	}

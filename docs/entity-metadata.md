@@ -145,9 +145,9 @@ A collection Entity may be reused by multiple parent Entities or multiple collec
 
 Collection Entities are non-routeable, hidden from normal Studio navigation, and cannot be targets of `link` fields. Collection fields cannot target normal or Single Entities. Collection-in-collection is not supported in v1.
 
-Collection row Entities use normal Entity naming metadata. They must define top-level `name:` unless they are Single Entities, which collection Entities cannot be.
+Collection row Entities do not define top-level `name:` metadata. dygo assigns framework-owned random row names with length `16`, and inline collection editors do not expose `name` as an editable field.
 
-Current metadata-driven schema sync supports scalar fields, `select`, `link`, `password`, and collection row storage. Parent collection fields are virtual and do not create a parent table column. The child collection table stores `id`, `name`, `created_at`, `updated_at`, `parent_entity_id`, `parent_record_id`, `parent_field_id`, `position`, and the child Entity's own stored field columns. `parent_entity_id` is an FK to Core `entity`, `parent_field_id` is an FK to Core `field`, and `parent_record_id` is a bigint because the parent table depends on `parent_entity_id`. dygo deletes child rows transactionally when deleting the parent Record. `(parent_entity_id, parent_record_id, parent_field_id, position)` is unique, and `(parent_entity_id, parent_record_id, parent_field_id)` is indexed for ordered child row reads.
+Current metadata-driven schema sync supports scalar fields, `select`, `link`, `password`, and collection row storage. Parent collection fields are virtual and do not create a parent table column. The child collection table stores `id`, `name`, `created_at`, `updated_at`, `parent_entity_id`, `parent_record_id`, `parent_field_id`, `position`, and the child Entity's own stored field columns. `parent_entity_id` is an FK to Core `entity`, `parent_field_id` is an FK to Core `field`, and `parent_record_id` is a bigint because the parent table depends on `parent_entity_id`. dygo deletes child rows transactionally when deleting the parent Record. `(parent_entity_id, parent_record_id, parent_field_id, position)` is unique with a deferrable initially deferred constraint, and `(parent_entity_id, parent_record_id, parent_field_id)` is indexed for ordered child row reads.
 
 Field `name`, `label`, and `type` are required.
 
@@ -164,7 +164,7 @@ updated-at
 
 `id` is the internal numeric primary key. `name` is the stable system/business identifier. Entity `name` metadata controls how `name` is created.
 
-Normal routeable Entities and collection row Entities must define `name`. Use random naming when dygo should generate opaque Record names:
+Normal routeable Entities must define `name`. Use random naming when dygo should generate opaque Record names:
 
 ```yaml
 name:
@@ -260,7 +260,7 @@ Supported field check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`,
 
 Check fields must be DB-backed scalar fields. `password`, `collection`, `json`, `attachment`, and `link` checks are not supported in v1.
 
-During `dygo migrate`, Entity name metadata is upserted into the Core `entity` table. Field metadata is upserted into the Core `field` table with field-name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
+During `dygo migrate`, normal Entity name metadata is upserted into the Core `entity` table. Collection row Entities omit naming metadata because their row names are framework-owned. Field metadata is upserted into the Core `field` table with field-name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
 
 Type-specific settings live under `options`.
 

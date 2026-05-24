@@ -86,10 +86,11 @@ func TestDecodeCollectionEntityNaming(t *testing.T) {
 		name         string
 		body         string
 		wantStrategy string
+		wantLength   int
 		wantError    string
 	}{
 		{
-			name: "omitted name uses normal entity requirement",
+			name: "omitted name uses framework random naming",
 			body: `
 label: Invoice Item
 fields:
@@ -97,10 +98,11 @@ fields:
     label: Item Code
     type: text
 `,
-			wantError: "Entity must define name",
+			wantStrategy: NamingStrategyRandom,
+			wantLength:   CollectionRowNameLength,
 		},
 		{
-			name: "random allowed",
+			name: "explicit random rejected",
 			body: `
 label: Invoice Item
 name:
@@ -110,10 +112,10 @@ fields:
     label: Item Code
     type: text
 `,
-			wantStrategy: NamingStrategyRandom,
+			wantError: "collection Entities do not support explicit name configuration",
 		},
 		{
-			name: "manual allowed",
+			name: "manual rejected",
 			body: `
 label: Invoice Item
 name:
@@ -123,10 +125,10 @@ fields:
     label: Item Code
     type: text
 `,
-			wantStrategy: NamingStrategyManual,
+			wantError: "collection Entities do not support explicit name configuration",
 		},
 		{
-			name: "series allowed",
+			name: "series rejected",
 			body: `
 label: Invoice Item
 name:
@@ -137,10 +139,10 @@ fields:
     label: Item Code
     type: text
 `,
-			wantStrategy: NamingStrategySeries,
+			wantError: "collection Entities do not support explicit name configuration",
 		},
 		{
-			name: "format allowed",
+			name: "format rejected",
 			body: `
 label: Invoice Item
 name:
@@ -152,7 +154,7 @@ fields:
     type: text
     required: true
 `,
-			wantStrategy: NamingStrategyFormat,
+			wantError: "collection Entities do not support explicit name configuration",
 		},
 		{
 			name: "nested collection rejected",
@@ -186,6 +188,9 @@ fields:
 			}
 			if got := entity.EffectiveNaming(); got.Strategy != tt.wantStrategy {
 				t.Fatalf("EffectiveNaming().Strategy = %q, want %q", got.Strategy, tt.wantStrategy)
+			}
+			if got := entity.EffectiveNaming(); got.Length != tt.wantLength {
+				t.Fatalf("EffectiveNaming().Length = %d, want %d", got.Length, tt.wantLength)
 			}
 		})
 	}
