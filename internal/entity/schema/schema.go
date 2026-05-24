@@ -22,6 +22,7 @@ type Entity struct {
 	Description  string       `yaml:"description,omitempty"`
 	Icon         string       `yaml:"icon,omitempty"`
 	IsSingle     bool         `yaml:"is-single,omitempty"`
+	IsSystem     bool         `yaml:"is-system,omitempty"`
 	IsCollection bool         `yaml:"-"`
 	Route        Route        `yaml:"route,omitempty"`
 	Naming       Naming       `yaml:"naming,omitempty"`

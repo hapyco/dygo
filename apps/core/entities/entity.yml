@@ -1,6 +1,7 @@
 label: Entity
 description: Registry entry for a known Entity definition.
 icon: boxes
+is-system: true
 naming:
   strategy: template
   template: "{app}.{key}"
@@ -40,6 +41,13 @@ fields:
 
   - name: is-single
     label: Is Single
+    type: boolean
+    required: true
+    default: false
+    index: true
+
+  - name: is-system
+    label: Is System
     type: boolean
     required: true
     default: false

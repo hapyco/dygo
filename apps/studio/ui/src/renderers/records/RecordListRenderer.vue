@@ -16,6 +16,7 @@ const props = defineProps<{
   entityLabel: string
   fields: MetadataField[]
   systemFields?: MetadataField[]
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -121,6 +122,9 @@ function updatePageSize(value: number) {
 }
 
 function updateSelectedRowKeys(value: DataTableRowKey[]) {
+  if (props.readOnly) {
+    return
+  }
   recordsStore.setSelectedRowKeys(props.entity, value)
 }
 
@@ -183,6 +187,13 @@ function writeHiddenColumnKeys(entity: string, keys: string[]) {
 
   window.localStorage.setItem(hiddenColumnStorageKey(entity), JSON.stringify(keys.filter((key) => key !== 'name')))
 }
+
+function createRecord() {
+  if (props.readOnly) {
+    return
+  }
+  emit('create-record')
+}
 </script>
 
 <template>
@@ -218,16 +229,16 @@ function writeHiddenColumnKeys(entity: string, keys: string[]) {
       :total-rows="recordState.total"
       :has-more="hasMore"
       :sort="recordState.sort"
-      selectable
+      :selectable="!readOnly"
       :selected-row-keys="recordState.selectedRowKeys"
-      empty-action-label="Add first record"
+      :empty-action-label="readOnly ? '' : 'Add first record'"
       row-activatable
       @update:page-size="updatePageSize"
       @update:selected-row-keys="updateSelectedRowKeys"
       @update:sort="updateSort"
       @row-activate="(row) => emit('open-record', row)"
       @load-more="recordsStore.loadMore(props.entity)"
-      @empty-action="emit('create-record')"
+      @empty-action="createRecord"
     />
   </section>
 </template>

@@ -22,6 +22,7 @@ const entityMeta = computed(() => metadataStore.entityMeta(props.entity))
 const entityMetaStatus = computed(() => metadataStore.entityMetaStatus(props.entity))
 const entityMetaError = computed(() => metadataStore.entityMetaError(props.entity))
 const isSingle = computed(() => entityMeta.value?.['is-single'] === true)
+const isSystem = computed(() => entityMeta.value?.['is-system'] === true)
 const canShowList = computed(() => entityMetaStatus.value === 'ready' && !isSingle.value)
 
 const entityLabel = computed(() => {
@@ -29,6 +30,9 @@ const entityLabel = computed(() => {
 })
 
 function openNewRecord() {
+  if (isSystem.value) {
+    return
+  }
   void router.push({ name: RouteName.RecordNew, params: { entity: props.entity } })
 }
 
@@ -41,21 +45,28 @@ function openRecord(row: Record<string, unknown>) {
   void router.push({ name: RouteName.RecordDetail, params: { entity: props.entity, recordName } })
 }
 
-const actions = computed<PageHeaderAction[]>(() => [
-  {
-    label: 'Filter',
-    icon: ListFilter,
-    variant: 'secondary',
-    disabled: true,
-  },
-  {
-    label: 'New record',
-    icon: Plus,
-    variant: 'primary',
-    disabled: entityMetaStatus.value !== 'ready',
-    onSelect: openNewRecord,
-  },
-])
+const actions = computed<PageHeaderAction[]>(() => {
+  const next: PageHeaderAction[] = [
+    {
+      label: 'Filter',
+      icon: ListFilter,
+      variant: 'secondary',
+      disabled: true,
+    },
+  ]
+
+  if (!isSystem.value) {
+    next.push({
+      label: 'New record',
+      icon: Plus,
+      variant: 'primary',
+      disabled: entityMetaStatus.value !== 'ready',
+      onSelect: openNewRecord,
+    })
+  }
+
+  return next
+})
 
 watch(
   () => props.entity,
@@ -102,6 +113,7 @@ function humanizeEntity(value: string): string {
       :entity-label="entityLabel"
       :fields="entityMeta?.fields ?? []"
       :system-fields="entityMeta?.['system-fields'] ?? []"
+      :read-only="isSystem"
       @create-record="openNewRecord"
       @open-record="openRecord"
     />

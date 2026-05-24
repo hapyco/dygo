@@ -217,7 +217,7 @@ func TestRecordDataListPassesFiltersAndSortThroughHookQueryer(t *testing.T) {
 			t.Fatalf("Records.List() query = %q, want %q", lastQuery, want)
 		}
 	}
-	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{true, 50, 0}) {
+	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{true, 20, 0}) {
 		t.Fatalf("Records.List() args = %#v, want filter and pagination args", got)
 	}
 }
@@ -398,7 +398,7 @@ type recordDataMutationQueryer struct {
 
 func newUserRecordDataMutationQueryer(recordRows ...[]any) *recordDataMutationQueryer {
 	queryer := &recordDataMutationQueryer{
-		row: newRecordDataMutationRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newRecordDataMutationRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newRecordDataMutationRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
@@ -439,7 +439,13 @@ func (q *recordDataMutationQueryer) QueryRow(_ context.Context, sql string, args
 	q.rowSQL = append(q.rowSQL, sql)
 	q.rowArgs = append(q.rowArgs, args)
 	if isHookActivityMetadataQuery(sql, args...) {
-		return newRecordDataMutationRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core")
+		return newRecordDataMutationRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core")
+	}
+	if strings.Contains(sql, `SELECT "id" FROM "entity"`) && len(args) == 1 && args[0] == "core.user" {
+		return newRecordDataMutationRow(int64(10))
+	}
+	if strings.Contains(sql, `SELECT "name" FROM "entity"`) && len(args) == 1 && args[0] == int64(10) {
+		return newRecordDataMutationRow("core.user")
 	}
 	if q.row == nil {
 		return recordDataMutationRow{err: pgx.ErrNoRows}

@@ -13,6 +13,7 @@ export type MetadataEntity = {
   description: string
   icon?: string
   'is-single': boolean
+  'is-system': boolean
   'is-collection': boolean
   app: MetadataAppRef
 }

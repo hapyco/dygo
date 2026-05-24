@@ -55,9 +55,9 @@ func TestMetadataReaderGetApp(t *testing.T) {
 func TestMetadataReaderListEntities(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
 		rows: []pgx.Rows{newFakeRows([][]any{
-			{"core.app", "app", "app", "App", "Runtime state", "package", false, false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
-			{"core.user", "user", "user", "User", "User identity", "user", true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
-			{"core.user-role", "user-role", nil, "User Role", "Collection row", "users", false, true, nil, "core", "Core"},
+			{"core.app", "app", "app", "App", "Runtime state", "package", false, false, false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
+			{"core.user", "user", "user", "User", "User identity", "user", true, true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
+			{"core.user-role", "user-role", nil, "User Role", "Collection row", "users", false, false, true, nil, "core", "Core"},
 		})},
 	}
 
@@ -65,7 +65,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntities() error = %v, want nil", err)
 	}
-	if len(entities) != 3 || entities[0].Name != "core.app" || entities[0].Key != "app" || entities[0].Icon != "package" || entities[0].App.Name != "core" || entities[0].IsSingle || entities[1].Name != "core.user" || entities[1].RouteSlug() != "user" || !entities[1].IsSingle || entities[2].Slug != nil || !entities[2].IsCollection {
+	if len(entities) != 3 || entities[0].Name != "core.app" || entities[0].Key != "app" || entities[0].Icon != "package" || entities[0].App.Name != "core" || entities[0].IsSingle || entities[1].Name != "core.user" || entities[1].RouteSlug() != "user" || !entities[1].IsSingle || !entities[1].IsSystem || entities[2].Slug != nil || !entities[2].IsCollection {
 		t.Fatalf("ListEntities() = %+v, want core entities", entities)
 	}
 	if !strings.Contains(queryer.queries[0], `JOIN "app"`) || !strings.Contains(queryer.queries[0], "ORDER BY a.name, e.key") {
@@ -75,7 +75,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 
 func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", true, true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, true, nil, nil, 1, []byte(`{"entity":"user"}`)},
@@ -95,7 +95,7 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEntityMeta() error = %v, want nil", err)
 	}
-	if meta.Name != "core.user" || meta.Key != "user" || meta.RouteSlug() != "user" || meta.Icon != "user" || meta.App.Name != "core" || !meta.IsSingle {
+	if meta.Name != "core.user" || meta.Key != "user" || meta.RouteSlug() != "user" || meta.Icon != "user" || meta.App.Name != "core" || !meta.IsSingle || !meta.IsSystem {
 		t.Fatalf("GetEntityMeta() = %+v, want core/user", meta.MetadataEntity)
 	}
 	if len(meta.Fields) != 2 || meta.Fields[0].Name != "email" || string(meta.Fields[0].Options) != `{"entity":"user"}` {
@@ -120,7 +120,7 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 
 func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		row: newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New"]}`)},
@@ -155,6 +155,7 @@ func TestMetadataAPIJSONFieldNames(t *testing.T) {
 			Description:  "User identity",
 			Icon:         "user",
 			IsSingle:     false,
+			IsSystem:     false,
 			IsCollection: false,
 			Naming:       json.RawMessage(`{"strategy":"field","field":"email"}`),
 			App:          MetadataAppRef{Name: "core", Label: "Core"},
@@ -209,6 +210,7 @@ func TestMetadataAPIJSONFieldNames(t *testing.T) {
 		"indexes",
 		"is-collection",
 		"is-single",
+		"is-system",
 		"key",
 		"label",
 		"name",
@@ -216,7 +218,7 @@ func TestMetadataAPIJSONFieldNames(t *testing.T) {
 		"slug",
 		"system-fields",
 	})
-	for _, legacy := range []string{"route-slug", "route_slug", "is_single", "is_collection"} {
+	for _, legacy := range []string{"route-slug", "route_slug", "is_single", "is_system", "is_collection"} {
 		if _, ok := payload[legacy]; ok {
 			t.Fatalf("metadata payload has legacy key %q: %s", legacy, encoded)
 		}

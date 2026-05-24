@@ -182,7 +182,7 @@ func TestRecordStoreListRecordsSortByIDSkipsTieBreaker(t *testing.T) {
 func TestRecordStoreListRecordsByIdentityHonorsFiltersAndSort(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -231,7 +231,7 @@ func TestRecordStoreGetRecord(t *testing.T) {
 func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -258,7 +258,7 @@ func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
 func TestRecordStoreRouteSlugMethodsKeepUsingRouteSlugLookup(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newLeadRecordQueryer()
-	queryer.row = newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
+	queryer.row = newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM")
 	queryer.rows = append(queryer.rows, newFakeRows([][]any{
 		{int64(7), "lead-7", now, now, "New"},
 	}))
@@ -443,6 +443,149 @@ func TestRecordStoreRejectsCollectionEntityNormalEndpoints(t *testing.T) {
 			err := tt.run(NewRecordStore(newCollectionRecordQueryer()))
 			assertRecordError(t, err, RecordErrorInvalidRequest, "")
 		})
+	}
+}
+
+func TestRecordStoreRejectsSystemEntityMutations(t *testing.T) {
+	tests := []struct {
+		name    string
+		queryer *fakeRecordQueryer
+		run     func(RecordStore) error
+	}{
+		{
+			name:    "create",
+			queryer: newSystemUserRecordQueryer(),
+			run: func(store RecordStore) error {
+				_, err := store.CreateRecord(context.Background(), "user", recordInput(map[string]string{"email": `"a@example.com"`}))
+				return err
+			},
+		},
+		{
+			name:    "create by identity",
+			queryer: newSystemUserRecordQueryer(),
+			run: func(store RecordStore) error {
+				_, err := store.CreateRecordByIdentity(context.Background(), "core", "user", recordInput(map[string]string{"email": `"a@example.com"`}))
+				return err
+			},
+		},
+		{
+			name:    "update",
+			queryer: newSystemUserRecordQueryer(),
+			run: func(store RecordStore) error {
+				_, err := store.UpdateRecord(context.Background(), "user", 7, recordInput(map[string]string{"full-name": `"A User"`}))
+				return err
+			},
+		},
+		{
+			name:    "update by identity",
+			queryer: newSystemUserRecordQueryer(),
+			run: func(store RecordStore) error {
+				_, err := store.UpdateRecordByIdentity(context.Background(), "core", "user", 7, recordInput(map[string]string{"full-name": `"A User"`}))
+				return err
+			},
+		},
+		{
+			name:    "update single",
+			queryer: newSystemSingleSettingsRecordQueryer(),
+			run: func(store RecordStore) error {
+				_, err := store.UpdateSingleRecord(context.Background(), "invoice-settings", recordInput(map[string]string{"default-due-days": "45"}))
+				return err
+			},
+		},
+		{
+			name:    "delete",
+			queryer: newSystemUserRecordQueryer(),
+			run: func(store RecordStore) error {
+				return store.DeleteRecord(context.Background(), "user", 7)
+			},
+		},
+		{
+			name:    "delete by identity",
+			queryer: newSystemUserRecordQueryer(),
+			run: func(store RecordStore) error {
+				return store.DeleteRecordByIdentity(context.Background(), "core", "user", 7)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run(NewRecordStore(tt.queryer))
+			assertRecordError(t, err, RecordErrorInvalidRequest, "")
+		})
+	}
+}
+
+func TestRecordStoreReadsSystemEntityRecords(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+
+	t.Run("list", func(t *testing.T) {
+		queryer := newSystemUserRecordQueryer()
+		queryer.rows = append(queryer.rows, newFakeRows([][]any{
+			{int64(7), "a@example.com", now, now, "a@example.com", "A User", true, int64(1)},
+		}))
+
+		result, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{})
+		if err != nil {
+			t.Fatalf("ListRecords(system) error = %v, want nil", err)
+		}
+		if result.Count != 1 || result.Records[0]["email"] != "a@example.com" {
+			t.Fatalf("ListRecords(system) = %+v, want user record", result)
+		}
+	})
+
+	t.Run("get", func(t *testing.T) {
+		queryer := newSystemUserRecordQueryer()
+		queryer.rows = append(queryer.rows, newFakeRows([][]any{
+			{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+		}))
+
+		record, err := NewRecordStore(queryer).GetRecord(context.Background(), "user", 7)
+		if err != nil {
+			t.Fatalf("GetRecord(system) error = %v, want nil", err)
+		}
+		if record["email"] != "a@example.com" {
+			t.Fatalf("GetRecord(system) = %+v, want user record", record)
+		}
+	})
+
+	t.Run("find", func(t *testing.T) {
+		queryer := newSystemUserRecordQueryer()
+		queryer.rows = append(queryer.rows, newFakeRows([][]any{
+			{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+		}))
+
+		record, err := NewRecordStore(queryer).FindRecord(context.Background(), "user", recordInput(map[string]string{
+			"email": `"a@example.com"`,
+		}))
+		if err != nil {
+			t.Fatalf("FindRecord(system) error = %v, want nil", err)
+		}
+		if record["email"] != "a@example.com" {
+			t.Fatalf("FindRecord(system) = %+v, want user record", record)
+		}
+	})
+}
+
+func TestSystemRecordWriterCanMutateSystemEntity(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newSystemUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+
+	record, err := NewSystemRecordWriter(queryer).InsertReturningByIdentity(context.Background(), "core", "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"A User"`,
+	}), SystemMutationSilent)
+	if err != nil {
+		t.Fatalf("InsertReturningByIdentity(system) error = %v, want nil", err)
+	}
+	if record["email"] != "a@example.com" {
+		t.Fatalf("InsertReturningByIdentity(system) = %+v, want user record", record)
+	}
+	if len(queryer.execSQL) != 0 {
+		t.Fatalf("exec SQL = %#v, want no activity insert for silent system mutation", queryer.execSQL)
 	}
 }
 
@@ -1218,7 +1361,7 @@ func TestRecordStoreInvalidListFiltersAndSorts(t *testing.T) {
 
 func newUserRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
@@ -1232,9 +1375,15 @@ func newUserRecordQueryer() *fakeRecordQueryer {
 	}
 }
 
+func newSystemUserRecordQueryer() *fakeRecordQueryer {
+	queryer := newUserRecordQueryer()
+	queryer.row = newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core")
+	return queryer
+}
+
 func newLeadRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(20), "crm.lead", "lead", "lead", "Lead", "Sales lead", "contact", false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		row: newFakeRow(int64(20), "crm.lead", "lead", "lead", "Lead", "Sales lead", "contact", false, false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New","Qualified"]}`)},
@@ -1248,7 +1397,7 @@ func newLeadRecordQueryer() *fakeRecordQueryer {
 
 func newTemplateRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(50), "support.ticket", "ticket", "ticket", "Ticket", "Support ticket", "ticket", false, false, []byte(`{"strategy":"template","template":"T-{status}-{code}"}`), "support", "Support"),
+		row: newFakeRow(int64(50), "support.ticket", "ticket", "ticket", "Ticket", "Support ticket", "ticket", false, false, false, []byte(`{"strategy":"template","template":"T-{status}-{code}"}`), "support", "Support"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"code", "Code", "text", true, false, false, nil, nil, 1, nil},
@@ -1263,7 +1412,7 @@ func newTemplateRecordQueryer() *fakeRecordQueryer {
 func newSingleSettingsRecordQueryer() *fakeRecordQueryer {
 	now := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(30), "sales.invoice-settings", "invoice-settings", "invoice-settings", "Invoice Settings", "Invoice defaults", "settings", true, false, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
+		row: newFakeRow(int64(30), "sales.invoice-settings", "invoice-settings", "invoice-settings", "Invoice Settings", "Invoice defaults", "settings", true, false, false, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"default-due-days", "Default Due Days", "int", true, false, false, []byte("30"), nil, 1, nil},
@@ -1277,9 +1426,15 @@ func newSingleSettingsRecordQueryer() *fakeRecordQueryer {
 	}
 }
 
+func newSystemSingleSettingsRecordQueryer() *fakeRecordQueryer {
+	queryer := newSingleSettingsRecordQueryer()
+	queryer.row = newFakeRow(int64(30), "sales.invoice-settings", "invoice-settings", "invoice-settings", "Invoice Settings", "Invoice defaults", "settings", true, true, false, []byte(`{"strategy":"random","length":16}`), "sales", "Sales")
+	return queryer
+}
+
 func newCollectionRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(40), "sales.invoice-item", "invoice-item", "invoice-item", "Invoice Item", "Invoice line item", "list", false, true, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
+		row: newFakeRow(int64(40), "sales.invoice-item", "invoice-item", "invoice-item", "Invoice Item", "Invoice line item", "list", false, false, true, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"item-code", "Item Code", "text", true, false, false, nil, nil, 1, nil},
@@ -1292,7 +1447,7 @@ func newCollectionRecordQueryer() *fakeRecordQueryer {
 
 func newActivityRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core"),
+		row: newFakeRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core"),
 	}
 }
 
@@ -1462,7 +1617,7 @@ func executedSQLContaining(queryer *fakeRecordQueryer, fragment string) bool {
 }
 
 func fakeActivityEntityRow() pgx.Row {
-	return newFakeRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core")
+	return newFakeRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core")
 }
 
 func isActivityMetadataQuery(sql string, args ...any) bool {

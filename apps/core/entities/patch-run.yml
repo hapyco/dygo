@@ -1,6 +1,7 @@
 label: Patch Run
 description: Ledger entry for one successfully applied app patch.
 icon: git-pull-request-arrow
+is-system: true
 naming:
   strategy: template
   template: "{app}.{patch-id}"

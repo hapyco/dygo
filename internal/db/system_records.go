@@ -116,6 +116,7 @@ func (w SystemRecordWriter) upsertByIdentity(ctx context.Context, appName string
 
 func (w SystemRecordWriter) mutationStore(appName string, entity string, policy SystemMutationPolicy) (RecordStore, error) {
 	store := w.store
+	store.allowSystemMutations = true
 	switch policy {
 	case SystemMutationBootstrap, SystemMutationSilent:
 		store.hooks = nil

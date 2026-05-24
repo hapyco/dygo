@@ -117,6 +117,26 @@ fields:
 	}
 }
 
+func TestDecodeSystemEntity(t *testing.T) {
+	t.Parallel()
+
+	entity, err := Decode([]byte(`
+label: Session
+is-system: true
+fields:
+  - name: token
+    label: Token
+    type: password
+    required: true
+`), fieldtype.DefaultRegistry())
+	if err != nil {
+		t.Fatalf("Decode(system) error = %v, want nil", err)
+	}
+	if !entity.IsSystem {
+		t.Fatal("Decode(system).IsSystem = false, want true")
+	}
+}
+
 func TestDecodeSingleEntityValidationErrors(t *testing.T) {
 	t.Parallel()
 
@@ -136,6 +156,18 @@ fields:
     type: int
 `,
 			wantError: "is_single",
+		},
+		{
+			name: "underscore system key rejected",
+			body: `
+label: Session
+is_system: true
+fields:
+  - name: token
+    label: Token
+    type: password
+`,
+			wantError: "is_system",
 		},
 		{
 			name: "explicit naming rejected",

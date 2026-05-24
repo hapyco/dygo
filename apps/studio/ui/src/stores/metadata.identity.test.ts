@@ -37,6 +37,7 @@ function metadataEntity(overrides: Partial<MetadataEntity>): MetadataEntity {
     description: '',
     icon: 'box',
     'is-single': false,
+    'is-system': false,
     'is-collection': false,
     app: { name: 'core', label: 'Core' },
   }

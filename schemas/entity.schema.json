@@ -20,6 +20,11 @@
       "default": false,
       "description": "Marks the Entity as a framework-owned singleton with exactly one Record."
     },
+    "is-system": {
+      "type": "boolean",
+      "default": false,
+      "description": "Marks the Entity as framework-owned so normal Record mutation APIs cannot create, update, or delete records."
+    },
     "route": { "$ref": "#/$defs/route" },
     "naming": { "$ref": "#/$defs/naming" },
     "fields": {

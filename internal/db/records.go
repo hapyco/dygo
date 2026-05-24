@@ -45,9 +45,10 @@ type RecordQueryer interface {
 
 // RecordStore reads and mutates Records through persisted Entity metadata.
 type RecordStore struct {
-	queryer  RecordQueryer
-	metadata MetadataReader
-	hooks    *RecordHookRegistry
+	queryer              RecordQueryer
+	metadata             MetadataReader
+	hooks                *RecordHookRegistry
+	allowSystemMutations bool
 }
 
 // Record is one metadata-backed saved Entity instance.
@@ -307,6 +308,9 @@ func (s RecordStore) UpdateSingleRecord(ctx context.Context, entity string, inpu
 		if err != nil {
 			return nil, err
 		}
+		if err := store.rejectSystemMutation(layout, "update"); err != nil {
+			return nil, err
+		}
 		record, err := store.getSingleRecordWithLayout(ctx, layout)
 		if err != nil {
 			return nil, err
@@ -406,6 +410,9 @@ func (s RecordStore) createRecordWithLayout(ctx context.Context, layout recordLa
 	}
 	if layout.IsCollection {
 		return nil, collectionRecordOperationError(layout, "create")
+	}
+	if err := s.rejectSystemMutation(layout, "create"); err != nil {
+		return nil, err
 	}
 	input = cloneRecordInput(input)
 	hookCtx := newRecordHookContext(RecordBeforeValidate, layout)
@@ -542,6 +549,9 @@ func (s RecordStore) updateRecordByIdentity(ctx context.Context, appName string,
 }
 
 func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLayout, id int64, input RecordInput) (Record, error) {
+	if err := s.rejectSystemMutation(layout, "update"); err != nil {
+		return nil, err
+	}
 	input = cloneRecordInput(input)
 	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
 	if err != nil {
@@ -656,6 +666,9 @@ func (s RecordStore) deleteRecordWithLayout(ctx context.Context, layout recordLa
 	if layout.IsCollection {
 		return collectionRecordOperationError(layout, "delete")
 	}
+	if err := s.rejectSystemMutation(layout, "delete"); err != nil {
+		return err
+	}
 	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
 	if err != nil {
 		return err
@@ -724,6 +737,17 @@ func singleRecordOperationError(layout recordLayout, operation string) RecordErr
 
 func collectionRecordOperationError(layout recordLayout, operation string) RecordError {
 	return recordError(RecordErrorInvalidRequest, fmt.Sprintf("collection Entity records cannot use %s through normal record endpoints", operation), map[string]any{"entity": layout.Slug, "operation": operation}, nil)
+}
+
+func (s RecordStore) rejectSystemMutation(layout recordLayout, operation string) error {
+	if !layout.IsSystem || s.allowSystemMutations {
+		return nil
+	}
+	return systemRecordOperationError(layout, operation)
+}
+
+func systemRecordOperationError(layout recordLayout, operation string) RecordError {
+	return recordError(RecordErrorInvalidRequest, "system Entity records are framework-owned", map[string]any{"entity": layout.Slug, "operation": operation}, nil)
 }
 
 func (s RecordStore) queryReturningRecord(ctx context.Context, layout recordLayout, sql string, args []any, notFoundWhenEmpty bool) (Record, error) {
@@ -813,6 +837,7 @@ type recordLayout struct {
 	Slug         string
 	Label        string
 	IsSingle     bool
+	IsSystem     bool
 	IsCollection bool
 	Table        string
 	Naming       schema.Naming
@@ -864,6 +889,7 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 		Slug:         routeSlug,
 		Label:        meta.Label,
 		IsSingle:     meta.IsSingle,
+		IsSystem:     meta.IsSystem,
 		IsCollection: meta.IsCollection,
 		Table:        entityTableName(meta.App.Name, meta.Key),
 		Naming:       naming,

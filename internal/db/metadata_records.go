@@ -48,6 +48,7 @@ type entityRecord struct {
 	Description  string
 	Icon         string
 	IsSingle     bool
+	IsSystem     bool
 	IsCollection bool
 	Naming       []byte
 }
@@ -121,8 +122,8 @@ RETURNING id`, app.Name, app.Label, app.Version, app.Status).Scan(&id); err != n
 		}
 		var id int64
 		if err := tx.QueryRow(ctx, `
-INSERT INTO "entity" (app_id, name, key, slug, label, description, icon, is_single, is_collection, naming)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO "entity" (app_id, name, key, slug, label, description, icon, is_single, is_system, is_collection, naming)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (name) DO UPDATE
 SET app_id = EXCLUDED.app_id,
 	name = EXCLUDED.name,
@@ -132,10 +133,11 @@ SET app_id = EXCLUDED.app_id,
 	description = EXCLUDED.description,
 	icon = EXCLUDED.icon,
 	is_single = EXCLUDED.is_single,
+	is_system = EXCLUDED.is_system,
 	is_collection = EXCLUDED.is_collection,
 	naming = EXCLUDED.naming,
 	updated_at = now()
-RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity.Description, entity.Icon, entity.IsSingle, entity.IsCollection, entity.Naming).Scan(&id); err != nil {
+RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity.Description, entity.Icon, entity.IsSingle, entity.IsSystem, entity.IsCollection, entity.Naming).Scan(&id); err != nil {
 			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %s/%s: %w", entity.AppName, entity.Key, err)
 		}
 		entityIDs[entityKey(entity.AppName, entity.Key)] = id
@@ -303,6 +305,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			Description:  loaded.Entity.Description,
 			Icon:         strings.TrimSpace(loaded.Entity.Icon),
 			IsSingle:     loaded.Entity.IsSingle,
+			IsSystem:     loaded.Entity.IsSystem,
 			IsCollection: loaded.IsCollection() || loaded.Entity.IsCollection,
 			Naming:       namingJSON,
 		})
@@ -455,6 +458,7 @@ func metadataEntityRecordName(loaded catalog.LoadedEntity, naming schema.Naming)
 		"description":   loaded.Entity.Description,
 		"icon":          strings.TrimSpace(loaded.Entity.Icon),
 		"is-single":     strconv.FormatBool(loaded.Entity.IsSingle),
+		"is-system":     strconv.FormatBool(loaded.Entity.IsSystem),
 		"is-collection": strconv.FormatBool(loaded.IsCollection() || loaded.Entity.IsCollection),
 	}
 	return deterministicRecordNameFromValues("entity", naming, values)

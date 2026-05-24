@@ -84,6 +84,7 @@ func (s RecordStore) withRecordMutation(ctx context.Context, fn func(RecordStore
 		return nil, recordError(RecordErrorInternal, "begin record transaction failed", nil, err)
 	}
 	txStore := NewRecordStoreWithHooks(tx, s.hooks)
+	txStore.allowSystemMutations = s.allowSystemMutations
 	record, err := fn(txStore)
 	if err != nil {
 		_ = tx.Rollback(ctx)

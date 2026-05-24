@@ -45,6 +45,7 @@ type MetadataEntity struct {
 	Description  string          `json:"description"`
 	Icon         string          `json:"icon,omitempty"`
 	IsSingle     bool            `json:"is-single"`
+	IsSystem     bool            `json:"is-system"`
 	IsCollection bool            `json:"is-collection"`
 	Naming       json.RawMessage `json:"naming,omitempty"`
 	App          MetadataAppRef  `json:"app"`
@@ -185,7 +186,7 @@ func (r MetadataReader) ListEntities(ctx context.Context) ([]MetadataEntity, err
 		return nil, err
 	}
 	rows, err := r.queryer.Query(ctx, `
-SELECT e.name, e.key, COALESCE(e.slug, ''), e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
+SELECT e.name, e.key, COALESCE(e.slug, ''), e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_system, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
 ORDER BY a.name, e.key`)
@@ -199,7 +200,7 @@ ORDER BY a.name, e.key`)
 		var entity MetadataEntity
 		var naming []byte
 		var slug string
-		if err := rows.Scan(&entity.Name, &entity.Key, &slug, &entity.Label, &entity.Description, &entity.Icon, &entity.IsSingle, &entity.IsCollection, &naming, &entity.App.Name, &entity.App.Label); err != nil {
+		if err := rows.Scan(&entity.Name, &entity.Key, &slug, &entity.Label, &entity.Description, &entity.Icon, &entity.IsSingle, &entity.IsSystem, &entity.IsCollection, &naming, &entity.App.Name, &entity.App.Label); err != nil {
 			return nil, fmt.Errorf("scan metadata entity: %w", err)
 		}
 		entity.Slug = stringPointerOrNil(slug)
@@ -215,7 +216,7 @@ ORDER BY a.name, e.key`)
 // GetEntityMeta returns complete persisted metadata for one Entity slug.
 func (r MetadataReader) GetEntityMeta(ctx context.Context, slug string) (MetadataEntityMeta, error) {
 	return r.getEntityMeta(ctx, slug, `
-SELECT e.id, e.name, e.key, COALESCE(e.slug, ''), e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
+SELECT e.id, e.name, e.key, COALESCE(e.slug, ''), e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_system, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
 WHERE e.slug = $1`, slug)
@@ -224,7 +225,7 @@ WHERE e.slug = $1`, slug)
 // GetEntityMetaByIdentity returns complete persisted metadata for one app-scoped Entity identity.
 func (r MetadataReader) GetEntityMetaByIdentity(ctx context.Context, appName string, entity string) (MetadataEntityMeta, error) {
 	return r.getEntityMeta(ctx, appName+"/"+entity, `
-SELECT e.id, e.name, e.key, COALESCE(e.slug, ''), e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
+SELECT e.id, e.name, e.key, COALESCE(e.slug, ''), e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_system, false), COALESCE(e.is_collection, false), e.naming, a.name, a.label
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
 WHERE a.name = $1 AND e.key = $2`, appName, entity)
@@ -238,7 +239,7 @@ func (r MetadataReader) getEntityMeta(ctx context.Context, name string, sql stri
 	var meta MetadataEntityMeta
 	var naming []byte
 	var slug string
-	err := r.queryer.QueryRow(ctx, sql, args...).Scan(&meta.ID, &meta.Name, &meta.Key, &slug, &meta.Label, &meta.Description, &meta.Icon, &meta.IsSingle, &meta.IsCollection, &naming, &meta.App.Name, &meta.App.Label)
+	err := r.queryer.QueryRow(ctx, sql, args...).Scan(&meta.ID, &meta.Name, &meta.Key, &slug, &meta.Label, &meta.Description, &meta.Icon, &meta.IsSingle, &meta.IsSystem, &meta.IsCollection, &naming, &meta.App.Name, &meta.App.Label)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return MetadataEntityMeta{}, MetadataNotFoundError{Kind: "entity", Name: name}
 	}

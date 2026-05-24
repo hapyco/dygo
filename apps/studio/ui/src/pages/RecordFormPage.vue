@@ -50,6 +50,7 @@ const entityMetaError = computed(() => metadataStore.entityMetaError(props.entit
 const fields = computed(() => entityMeta.value?.fields ?? [])
 const systemFields = computed(() => entityMeta.value?.['system-fields'] ?? [])
 const entityLabel = computed(() => entityMeta.value?.label || humanizeEntity(props.entity))
+const isSystem = computed(() => entityMeta.value?.['is-system'] === true)
 const isNew = computed(() => props.mode === 'new')
 const isSingle = computed(() => props.mode === 'single')
 const loading = computed(() => (
@@ -62,24 +63,30 @@ const blockingError = computed(() => entityMetaError.value?.message ?? recordSta
 const saveError = computed(() => localError.value || recordState.value.saveError?.message || '')
 const showForm = computed(() => Boolean(entityMeta.value) && (isNew.value || Boolean(recordState.value.record)))
 const dirty = computed(() => fields.value.some((field) => !draftValuesEqual(draft.value[field.name], baseline.value[field.name])))
-const canSave = computed(() => showForm.value && dirty.value && !loading.value && !saving.value)
-const actions = computed<PageHeaderAction[]>(() => [
-  {
-    label: 'Reset',
-    icon: RotateCcw,
-    variant: 'secondary',
-    disabled: !dirty.value || loading.value || saving.value,
-    onSelect: resetDraft,
-  },
-  {
-    label: isNew.value ? 'Create record' : 'Save',
-    icon: isNew.value ? Plus : Save,
-    variant: 'primary',
-    disabled: !canSave.value,
-    loading: saving.value,
-    onSelect: saveRecord,
-  },
-])
+const canSave = computed(() => showForm.value && dirty.value && !loading.value && !saving.value && !isSystem.value)
+const actions = computed<PageHeaderAction[]>(() => {
+  if (isSystem.value) {
+    return []
+  }
+
+  return [
+    {
+      label: 'Reset',
+      icon: RotateCcw,
+      variant: 'secondary',
+      disabled: !dirty.value || loading.value || saving.value,
+      onSelect: resetDraft,
+    },
+    {
+      label: isNew.value ? 'Create record' : 'Save',
+      icon: isNew.value ? Plus : Save,
+      variant: 'primary',
+      disabled: !canSave.value,
+      loading: saving.value,
+      onSelect: saveRecord,
+    },
+  ]
+})
 
 watch(
   () => [props.entity, props.mode, props.recordName] as const,
@@ -89,6 +96,11 @@ watch(
     const meta = await metadataStore.loadEntityMeta(entity)
 
     if (meta?.['is-single'] && mode !== 'single') {
+      await router.replace({ name: RouteName.EntityRecords, params: { entity } })
+      return
+    }
+
+    if (meta?.['is-system'] && mode === 'new') {
       await router.replace({ name: RouteName.EntityRecords, params: { entity } })
       return
     }
@@ -392,7 +404,7 @@ function humanizeEntity(value: string): string {
           :mode="props.mode"
           :model-value="draft"
           :field-errors="fieldErrors"
-          :disabled="saving"
+          :disabled="saving || isSystem"
           @update:model-value="updateDraft"
         />
       </template>
