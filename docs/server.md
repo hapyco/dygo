@@ -161,4 +161,4 @@ The CLI listens for interrupt and termination signals, asks the HTTP server to s
 
 ## Boundaries
 
-The current server includes health, session auth, read-only metadata APIs, generic Record CRUD APIs, Entity permission enforcement for Records, a development proxy for Studio, and static serving for generated-project or bundled Studio assets. The server does not include per-Entity controllers, collection row storage, row-level sharing rules, workflow hooks, or audit logging yet.
+The current server includes health, session auth, read-only metadata APIs, generic Record CRUD APIs with parent-owned collection rows, Entity permission enforcement for Records, a development proxy for Studio, and static serving for generated-project or bundled Studio assets. The server does not include per-Entity controllers, row-level sharing rules, workflow hooks, or audit logging yet.

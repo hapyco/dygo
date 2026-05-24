@@ -384,7 +384,7 @@ func TestBuildPatchOperationPlanReportsValidationErrors(t *testing.T) {
 				testEntity("sales", "customer", schema.Field{Name: "contacts", Type: "collection"}),
 			},
 			live: liveWithTables("sales_customer", nil),
-			want: "collection storage is not supported",
+			want: `field type "collection" does not have direct column storage`,
 		},
 		{
 			name: "system column drop",

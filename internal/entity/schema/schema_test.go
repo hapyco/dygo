@@ -79,6 +79,118 @@ func TestLoadFile(t *testing.T) {
 	}
 }
 
+func TestDecodeCollectionEntityNaming(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		body         string
+		wantStrategy string
+		wantError    string
+	}{
+		{
+			name: "omitted name uses normal entity requirement",
+			body: `
+label: Invoice Item
+fields:
+  - name: item-code
+    label: Item Code
+    type: text
+`,
+			wantError: "Entity must define name",
+		},
+		{
+			name: "random allowed",
+			body: `
+label: Invoice Item
+name:
+  strategy: random
+fields:
+  - name: item-code
+    label: Item Code
+    type: text
+`,
+			wantStrategy: NamingStrategyRandom,
+		},
+		{
+			name: "manual allowed",
+			body: `
+label: Invoice Item
+name:
+  strategy: manual
+fields:
+  - name: item-code
+    label: Item Code
+    type: text
+`,
+			wantStrategy: NamingStrategyManual,
+		},
+		{
+			name: "series allowed",
+			body: `
+label: Invoice Item
+name:
+  strategy: series
+  pattern: "ITEM-{####}"
+fields:
+  - name: item-code
+    label: Item Code
+    type: text
+`,
+			wantStrategy: NamingStrategySeries,
+		},
+		{
+			name: "format allowed",
+			body: `
+label: Invoice Item
+name:
+  strategy: format
+  format: "{item-code}"
+fields:
+  - name: item-code
+    label: Item Code
+    type: text
+    required: true
+`,
+			wantStrategy: NamingStrategyFormat,
+		},
+		{
+			name: "nested collection rejected",
+			body: `
+label: Invoice Item
+fields:
+  - name: taxes
+    label: Taxes
+    type: collection
+    options:
+      entity: invoice-tax
+`,
+			wantError: "collection Entities cannot define collection fields in v1",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			entity, err := DecodeWithOptions([]byte(tt.body), fieldtype.DefaultRegistry(), DecodeOptions{IsCollection: true})
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("DecodeWithOptions() error = %v, want %q", err, tt.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DecodeWithOptions() error = %v, want nil", err)
+			}
+			if got := entity.EffectiveNaming(); got.Strategy != tt.wantStrategy {
+				t.Fatalf("EffectiveNaming().Strategy = %q, want %q", got.Strategy, tt.wantStrategy)
+			}
+		})
+	}
+}
+
 func TestLoadFileRejectsInvalidEntityFilename(t *testing.T) {
 	t.Parallel()
 

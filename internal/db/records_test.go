@@ -273,7 +273,7 @@ func TestRecordStoreGetRecordByIdentityUsesAppEntityLookup(t *testing.T) {
 	if !reflect.DeepEqual(queryer.rowArgs[0], []any{"crm", "lead"}) {
 		t.Fatalf("metadata args = %#v, want crm/lead", queryer.rowArgs[0])
 	}
-	lastQuery := queryer.queries[len(queryer.queries)-1]
+	lastQuery, _ := lastQueryContaining(t, queryer, `FROM "crm_lead"`)
 	if !strings.Contains(lastQuery, `FROM "crm_lead"`) {
 		t.Fatalf("get query = %q, want app-scoped storage table", lastQuery)
 	}
@@ -667,6 +667,41 @@ func TestRecordStoreCreateRecordGeneratesRandomName(t *testing.T) {
 	}
 }
 
+func TestRecordStoreCreateRecordWithCollectionRows(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newLeadRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "New"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(10), "contact-10", now, now, "a@example.com", "A Contact"},
+	}))
+
+	record, err := NewRecordStore(queryer).CreateRecord(context.Background(), "lead", recordInput(map[string]string{
+		"status":   `"New"`,
+		"contacts": `[{"email":"a@example.com","full-name":"A Contact"}]`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord(collection) error = %v, want nil", err)
+	}
+	contacts, ok := record["contacts"].([]Record)
+	if !ok || len(contacts) != 1 {
+		t.Fatalf("CreateRecord(collection) contacts = %#v, want one child row", record["contacts"])
+	}
+	if contacts[0]["id"] != int64(10) || contacts[0]["email"] != "a@example.com" {
+		t.Fatalf("CreateRecord(collection) child = %#v, want saved child row", contacts[0])
+	}
+	childSQL, childArgs := lastExecContaining(t, queryer, `INSERT INTO "crm_lead_contact"`)
+	for _, want := range []string{`"email"`, `"full_name"`, `"name"`, `"parent_entity_id"`, `"parent_record_id"`, `"parent_field_id"`, `"position"`} {
+		if !strings.Contains(childSQL, want) {
+			t.Fatalf("child insert SQL = %q, want %q", childSQL, want)
+		}
+	}
+	if tail := childArgs[len(childArgs)-4:]; !reflect.DeepEqual(tail, []any{int64(20), int64(7), int64(2), int64(1)}) {
+		t.Fatalf("child insert args = %#v, want parent entity 20, parent record 7, parent field 2, position 1", childArgs)
+	}
+}
+
 func TestRecordStoreCreateRecordGeneratesTemplateName(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newTemplateRecordQueryer()
@@ -761,6 +796,122 @@ func TestRecordStoreUpdateRecord(t *testing.T) {
 		if !strings.Contains(lastQuery, want) {
 			t.Fatalf("update query = %q, want %q", lastQuery, want)
 		}
+	}
+}
+
+func TestRecordStoreUpdateRecordWithCollectionRows(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newLeadRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "New"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(10), "contact-10", now, now, "old@example.com", "Old Contact"},
+		{int64(11), "contact-11", now, now, "remove@example.com", "Remove Contact"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "Qualified"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{{int64(10)}, {int64(11)}}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(10), "contact-10", now, now, "updated@example.com", "Updated Contact"},
+		{int64(12), "contact-12", now, now, "new@example.com", "New Contact"},
+	}))
+	queryer.execTags = []pgconn.CommandTag{
+		pgconn.NewCommandTag("DELETE 1"),
+		pgconn.NewCommandTag("UPDATE 1"),
+		pgconn.NewCommandTag("INSERT 1"),
+		pgconn.NewCommandTag("INSERT 1"),
+	}
+
+	record, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "lead", 7, recordInput(map[string]string{
+		"status":   `"Qualified"`,
+		"contacts": `[{"id":10,"email":"updated@example.com","full-name":"Updated Contact"},{"email":"new@example.com","full-name":"New Contact"}]`,
+	}))
+	if err != nil {
+		t.Fatalf("UpdateRecord(collection) error = %v, want nil", err)
+	}
+	contacts, ok := record["contacts"].([]Record)
+	if !ok || len(contacts) != 2 {
+		t.Fatalf("UpdateRecord(collection) contacts = %#v, want two child rows", record["contacts"])
+	}
+	if contacts[0]["id"] != int64(10) || contacts[1]["id"] != int64(12) {
+		t.Fatalf("UpdateRecord(collection) child ids = %#v, want preserved then inserted ids", contacts)
+	}
+	deleteSQL, deleteArgs := lastExecContaining(t, queryer, `DELETE FROM "crm_lead_contact"`)
+	if !strings.Contains(deleteSQL, `WHERE "parent_entity_id" = $1 AND "parent_record_id" = $2 AND "parent_field_id" = $3 AND "id" = $4`) || !reflect.DeepEqual(deleteArgs, []any{int64(20), int64(7), int64(2), int64(11)}) {
+		t.Fatalf("child delete = %q %#v, want omitted row 11 deleted for parent entity 20 record 7 field 2", deleteSQL, deleteArgs)
+	}
+	updateSQL, updateArgs := lastExecContaining(t, queryer, `UPDATE "crm_lead_contact"`)
+	for _, want := range []string{`"email" = $1`, `"full_name" = $2`, `"position" = $3::bigint`, `WHERE "id" = $4 AND "parent_entity_id" = $5 AND "parent_record_id" = $6 AND "parent_field_id" = $7`} {
+		if !strings.Contains(updateSQL, want) {
+			t.Fatalf("child update SQL = %q, want %q", updateSQL, want)
+		}
+	}
+	if !reflect.DeepEqual(updateArgs, []any{"updated@example.com", "Updated Contact", int64(1), int64(10), int64(20), int64(7), int64(2)}) {
+		t.Fatalf("child update args = %#v, want update row 10 at position 1 for parent entity 20 record 7 field 2", updateArgs)
+	}
+	insertSQL, insertArgs := lastExecContaining(t, queryer, `INSERT INTO "crm_lead_contact"`)
+	if !strings.Contains(insertSQL, `"parent_entity_id", "parent_record_id", "parent_field_id", "position"`) {
+		t.Fatalf("child insert SQL = %q, want collection ownership columns", insertSQL)
+	}
+	if tail := insertArgs[len(insertArgs)-4:]; !reflect.DeepEqual(tail, []any{int64(20), int64(7), int64(2), int64(2)}) {
+		t.Fatalf("child insert = %q %#v, want new row at position 2 for parent entity 20 record 7 field 2", insertSQL, insertArgs)
+	}
+}
+
+func TestRecordStoreRejectsDuplicateCollectionRowIDs(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newLeadRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "New"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(10), "contact-10", now, now, "old@example.com", "Old Contact"},
+	}))
+
+	_, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "lead", 7, recordInput(map[string]string{
+		"contacts": `[{"id":10,"email":"one@example.com"},{"id":10,"email":"two@example.com"}]`,
+	}))
+	assertRecordError(t, err, RecordErrorValidation, "contacts")
+	if err == nil || !strings.Contains(err.Error(), "duplicated") {
+		t.Fatalf("UpdateRecord(duplicate collection ids) error = %v, want duplicate id validation", err)
+	}
+}
+
+func TestRecordStoreRejectsForeignCollectionRowIDs(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newLeadRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "New"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(10), "contact-10", now, now, "old@example.com", "Old Contact"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "New"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{{int64(10)}}))
+
+	_, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "lead", 7, recordInput(map[string]string{
+		"contacts": `[{"id":99,"email":"foreign@example.com"}]`,
+	}))
+	assertRecordError(t, err, RecordErrorValidation, "contacts")
+	if err == nil || !strings.Contains(err.Error(), "does not belong") {
+		t.Fatalf("UpdateRecord(foreign collection id) error = %v, want ownership validation", err)
+	}
+}
+
+func TestRecordStoreRejectsCollectionPayloadOverMaxRows(t *testing.T) {
+	queryer := newLeadRecordQueryer()
+
+	_, err := NewRecordStore(queryer).CreateRecord(context.Background(), "lead", recordInput(map[string]string{
+		"status":   `"New"`,
+		"contacts": collectionRowsJSON(recordCollectionMaxRows + 1),
+	}))
+	assertRecordError(t, err, RecordErrorValidation, "contacts")
+	if err == nil || !strings.Contains(err.Error(), "too many rows") {
+		t.Fatalf("CreateRecord(collection max rows) error = %v, want max row validation", err)
 	}
 }
 
@@ -885,6 +1036,35 @@ func TestRecordStoreDeleteRecord(t *testing.T) {
 	}
 	if !strings.Contains(queryer.execSQL[0], `DELETE FROM "user" WHERE "id" = $1`) {
 		t.Fatalf("delete SQL = %q, want hard delete by id", queryer.execSQL[0])
+	}
+}
+
+func TestRecordStoreDeleteRecordDeletesCollectionRows(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newLeadRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "New"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows(nil))
+	queryer.execTags = []pgconn.CommandTag{
+		pgconn.NewCommandTag("DELETE 2"),
+		pgconn.NewCommandTag("DELETE 1"),
+	}
+
+	err := NewRecordStore(queryer).DeleteRecord(context.Background(), "lead", 7)
+	if err != nil {
+		t.Fatalf("DeleteRecord(collection owner) error = %v, want nil", err)
+	}
+	if len(queryer.execSQL) < 2 {
+		t.Fatalf("exec SQL count = %d, want child then parent deletes", len(queryer.execSQL))
+	}
+	if !strings.Contains(queryer.execSQL[0], `DELETE FROM "crm_lead_contact" WHERE "parent_entity_id" = $1 AND "parent_record_id" = $2 AND "parent_field_id" = $3`) ||
+		!reflect.DeepEqual(queryer.execArg[0], []any{int64(20), int64(7), int64(2)}) {
+		t.Fatalf("child delete = %q %#v, want parent entity 20 record 7 field 2", queryer.execSQL[0], queryer.execArg[0])
+	}
+	if !strings.Contains(queryer.execSQL[1], `DELETE FROM "crm_lead" WHERE "id" = $1`) ||
+		!reflect.DeepEqual(queryer.execArg[1], []any{int64(7)}) {
+		t.Fatalf("parent delete = %q %#v, want hard delete by id", queryer.execSQL[1], queryer.execArg[1])
 	}
 }
 
@@ -1281,10 +1461,10 @@ func TestRecordStoreValidationErrors(t *testing.T) {
 			wantField: "status",
 		},
 		{
-			name:      "collection write",
+			name:      "collection non-array",
 			entity:    "lead",
 			queryer:   newLeadRecordQueryer(),
-			input:     recordInput(map[string]string{"status": `"New"`, "contacts": `[]`}),
+			input:     recordInput(map[string]string{"status": `"New"`, "contacts": `{}`}),
 			wantCode:  RecordErrorValidation,
 			wantField: "contacts",
 		},
@@ -1447,6 +1627,21 @@ func leadEntityMeta() testEntityMeta {
 	}
 }
 
+func leadContactEntityMeta() testEntityMeta {
+	return testEntityMeta{
+		id:           21,
+		name:         "crm.lead-contact",
+		key:          "lead-contact",
+		label:        "Lead Contact",
+		description:  "Lead contact row",
+		icon:         "contact",
+		isCollection: true,
+		naming:       []byte(`{"strategy":"random","length":16}`),
+		app:          "crm",
+		appLabel:     "CRM",
+	}
+}
+
 func templateEntityMeta() testEntityMeta {
 	return testEntityMeta{
 		id:          50,
@@ -1525,7 +1720,7 @@ func activityEntityMeta() testEntityMeta {
 }
 
 func metadataFieldRow(name string, label string, fieldType string, required bool, unique bool, indexed bool, defaultValue []byte, check []byte, position int, options []byte) []any {
-	return []any{name, label, fieldType, required, unique, indexed, defaultValue, check, position, options}
+	return []any{int64(position), name, label, fieldType, required, unique, indexed, defaultValue, check, position, options}
 }
 
 func userFieldRows() [][]any {
@@ -1541,6 +1736,13 @@ func leadFieldRows() [][]any {
 	return [][]any{
 		metadataFieldRow("status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New","Qualified"]}`)),
 		metadataFieldRow("contacts", "Contacts", "collection", false, false, false, nil, nil, 2, []byte(`{"entity":"lead-contact"}`)),
+	}
+}
+
+func leadContactFieldRows() [][]any {
+	return [][]any{
+		metadataFieldRow("email", "Email", "email", true, false, false, nil, nil, 1, nil),
+		metadataFieldRow("full-name", "Full Name", "text", false, false, false, nil, nil, 2, nil),
 	}
 }
 
@@ -1705,6 +1907,9 @@ func (q *fakeRecordQueryer) Query(_ context.Context, sql string, args ...any) (p
 	if rows, ok := fakeActivityMetadataRows(sql, args...); ok {
 		return rows, nil
 	}
+	if rows, ok := fakeCollectionMetadataRows(sql, args...); ok {
+		return rows, nil
+	}
 	if len(q.queryErrs) > 0 {
 		err := q.queryErrs[0]
 		q.queryErrs = q.queryErrs[1:]
@@ -1725,6 +1930,9 @@ func (q *fakeRecordQueryer) QueryRow(_ context.Context, sql string, args ...any)
 	q.rowArgs = append(q.rowArgs, args)
 	if isActivityMetadataQuery(sql, args...) {
 		return fakeActivityEntityRow()
+	}
+	if isLeadContactMetadataQuery(sql, args...) {
+		return leadContactEntityMeta().row()
 	}
 	if strings.Contains(sql, `SELECT "id" FROM "entity"`) && len(args) == 1 {
 		switch args[0] {
@@ -1829,6 +2037,19 @@ func recordInput(values map[string]string) RecordInput {
 	return input
 }
 
+func collectionRowsJSON(count int) string {
+	var builder strings.Builder
+	builder.WriteByte('[')
+	for index := 0; index < count; index++ {
+		if index > 0 {
+			builder.WriteByte(',')
+		}
+		builder.WriteString(`{"email":"row@example.com"}`)
+	}
+	builder.WriteByte(']')
+	return builder.String()
+}
+
 func lastQueryContaining(t *testing.T, queryer *fakeRecordQueryer, fragment string) (string, []any) {
 	t.Helper()
 	for index := len(queryer.queries) - 1; index >= 0; index-- {
@@ -1837,6 +2058,17 @@ func lastQueryContaining(t *testing.T, queryer *fakeRecordQueryer, fragment stri
 		}
 	}
 	t.Fatalf("query containing %q was not executed; queries = %#v", fragment, queryer.queries)
+	return "", nil
+}
+
+func lastExecContaining(t *testing.T, queryer *fakeRecordQueryer, fragment string) (string, []any) {
+	t.Helper()
+	for index := len(queryer.execSQL) - 1; index >= 0; index-- {
+		if strings.Contains(queryer.execSQL[index], fragment) {
+			return queryer.execSQL[index], queryer.execArg[index]
+		}
+	}
+	t.Fatalf("exec containing %q was not executed; exec SQL = %#v", fragment, queryer.execSQL)
 	return "", nil
 }
 
@@ -1867,6 +2099,27 @@ func fakeActivityMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
 	switch {
 	case strings.Contains(sql, `FROM "field"`):
 		return newFakeRows(activityFieldRows()), true
+	case strings.Contains(sql, `FROM "index"`), strings.Contains(sql, `FROM "constraint"`):
+		return newFakeRows(nil), true
+	default:
+		return nil, false
+	}
+}
+
+func isLeadContactMetadataQuery(sql string, args ...any) bool {
+	return strings.Contains(sql, `WHERE a.name = $1 AND e.key = $2`) &&
+		len(args) == 2 &&
+		args[0] == "crm" &&
+		args[1] == "lead-contact"
+}
+
+func fakeCollectionMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
+	if len(args) != 1 || args[0] != int64(21) {
+		return nil, false
+	}
+	switch {
+	case strings.Contains(sql, `FROM "field"`):
+		return newFakeRows(leadContactFieldRows()), true
 	case strings.Contains(sql, `FROM "index"`), strings.Contains(sql, `FROM "constraint"`):
 		return newFakeRows(nil), true
 	default:

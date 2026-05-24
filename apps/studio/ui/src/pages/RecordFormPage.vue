@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { Plus, RotateCcw, Save } from '@lucide/vue'
 
 import { ErrorState, Spinner } from '@/design'
-import type { MetadataField } from '@/features/metadata/metadata.api'
+import type { MetadataEntityMeta, MetadataField } from '@/features/metadata/metadata.api'
 import type { RecordData } from '@/features/records/records.api'
 import { isHiddenRecordSubmitField } from '@/features/records/system-fields'
 import { RecordFormRenderer } from '@/renderers/records'
@@ -229,6 +229,14 @@ function buildSubmitPayload(): RecordData {
 }
 
 function convertSubmitValue(field: MetadataField, value: unknown, errors: Record<string, string>): ConvertedValue {
+  if (editorForField(field) === 'collection') {
+    return collectionSubmitValue(field, value, errors)
+  }
+
+  if (field.type === 'link') {
+    return stringSubmitValue(field, value)
+  }
+
   if (field.studio?.editor === 'select' && (value === undefined || value === null || value === '') && field.required) {
     errors[field.name] = 'Select a value.'
     return { skip: true }
@@ -255,6 +263,136 @@ function convertSubmitValue(field: MetadataField, value: unknown, errors: Record
       return stringSubmitValue(field, value)
     default:
       return { skip: true }
+  }
+}
+
+function collectionSubmitValue(field: MetadataField, value: unknown, errors: Record<string, string>): ConvertedValue {
+  if (!Array.isArray(value)) {
+    errors[field.name] = 'Use rows for this field.'
+    return { skip: true }
+  }
+
+  if (field.required && value.length === 0) {
+    errors[field.name] = 'Add at least one row.'
+    return { skip: true }
+  }
+
+  if (isNew.value && value.length === 0 && !field.required) {
+    return { skip: true }
+  }
+
+  const childMeta = entityMeta.value?.collections?.[field.name]
+  if (!childMeta) {
+    errors[field.name] = 'Collection metadata is missing.'
+    return { skip: true }
+  }
+
+  const rows: RecordData[] = []
+  value.forEach((row, index) => {
+    if (!isRecordData(row)) {
+      setCollectionError(errors, field, index, 'row is invalid.')
+      return
+    }
+
+    const converted = collectionRowSubmitValue(field, childMeta, row, index, errors)
+    if (converted) {
+      rows.push(converted)
+    }
+  })
+
+  if (errors[field.name]) {
+    return { skip: true }
+  }
+
+  return { value: rows }
+}
+
+function collectionRowSubmitValue(parentField: MetadataField, childMeta: MetadataEntityMeta, row: RecordData, rowIndex: number, errors: Record<string, string>): RecordData | null {
+  const output: RecordData = {}
+  const id = row.id
+  const existing = typeof id === 'number' || (typeof id === 'string' && id.length > 0)
+  if (existing) {
+    output.id = id
+  }
+
+  childMeta.fields.forEach((field) => {
+    if (isHiddenCollectionSubmitField(field)) {
+      return
+    }
+
+    const converted = collectionCellSubmitValue(parentField, field, row[field.name], rowIndex, existing, errors)
+    if (!converted.skip) {
+      output[field.name] = converted.value
+    }
+  })
+
+  if (errors[parentField.name]) {
+    return null
+  }
+
+  return output
+}
+
+function collectionCellSubmitValue(parentField: MetadataField, field: MetadataField, value: unknown, rowIndex: number, existing: boolean, errors: Record<string, string>): ConvertedValue {
+  if (isBlankValue(value)) {
+    if (field.required) {
+      setCollectionError(errors, parentField, rowIndex, `${labelForField(field)} is required.`)
+      return { skip: true }
+    }
+    if (existing && ['string', 'date', 'datetime', 'time'].includes(field['value-kind'])) {
+      return { value: '' }
+    }
+    return { skip: true }
+  }
+
+  if (field.type === 'link') {
+    return { value: String(value) }
+  }
+
+  switch (field['value-kind']) {
+    case 'password':
+      return { value: String(value) }
+    case 'integer': {
+      const number = Number(value)
+      if (!Number.isInteger(number)) {
+        setCollectionError(errors, parentField, rowIndex, `${labelForField(field)} must be an integer.`)
+        return { skip: true }
+      }
+      return { value: number }
+    }
+    case 'number': {
+      const number = Number(value)
+      if (!Number.isFinite(number)) {
+        setCollectionError(errors, parentField, rowIndex, `${labelForField(field)} must be a number.`)
+        return { skip: true }
+      }
+      return { value: number }
+    }
+    case 'boolean':
+      return { value: value === true }
+    case 'json':
+      if (typeof value !== 'string') {
+        return { value }
+      }
+      try {
+        return { value: JSON.parse(value) }
+      } catch {
+        setCollectionError(errors, parentField, rowIndex, `${labelForField(field)} must be valid JSON.`)
+        return { skip: true }
+      }
+    case 'date':
+    case 'datetime':
+    case 'time':
+    case 'string':
+      return { value: String(value) }
+    default:
+      return { skip: true }
+  }
+}
+
+function setCollectionError(errors: Record<string, string>, field: MetadataField, rowIndex: number, message: string) {
+  if (!errors[field.name]) {
+    errors[field.name] = `Row ${rowIndex + 1}: ${message}`
   }
 }
 
@@ -342,6 +480,11 @@ function draftFromRecord(metadataFields: MetadataField[], record: RecordData | n
 }
 
 function initialFieldValue(field: MetadataField, record: RecordData | null): unknown {
+  if (editorForField(field) === 'collection') {
+    const recordValue = record?.[field.name]
+    return Array.isArray(recordValue) ? cloneCollectionRows(recordValue) : []
+  }
+
   if (field['write-only']) {
     return ''
   }
@@ -360,6 +503,47 @@ function initialFieldValue(field: MetadataField, record: RecordData | null): unk
   }
 
   return ''
+}
+
+function editorForField(field: MetadataField): string {
+  return field.studio?.editor || field.type
+}
+
+function labelForField(field: MetadataField): string {
+  return field.label || field.name
+}
+
+function isBlankValue(value: unknown): boolean {
+  return value === null || value === undefined || value === ''
+}
+
+function isRecordData(value: unknown): value is RecordData {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function cloneCollectionRows(value: unknown[]): RecordData[] {
+  return value.filter(isRecordData).map((row) => ({ ...row }))
+}
+
+function isHiddenCollectionSubmitField(field: MetadataField): boolean {
+  // TODO(collections): add nested collection editing after the v1 child-table contract settles.
+  if (field.type === 'collection') {
+    return true
+  }
+
+  return [
+    'id',
+    'name',
+    'created-at',
+    'updated-at',
+    'parent-entity-id',
+    'parent_entity_id',
+    'parent-record-id',
+    'parent_record_id',
+    'parent-field-id',
+    'parent_field_id',
+    'position',
+  ].includes(field.name)
 }
 
 function displayJSON(value: unknown): string {
@@ -425,6 +609,7 @@ function humanizeEntity(value: string): string {
           :entity-label="entityLabel"
           :fields="fields"
           :system-fields="systemFields"
+          :collections="entityMeta.collections"
           :record="recordState.record"
           :mode="props.mode"
           :model-value="draft"

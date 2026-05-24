@@ -130,7 +130,7 @@ go run ./cmd/dygo migrate
 
 Before applying changes, dygo builds a schema plan from metadata and compares it with the live PostgreSQL `public` schema. The plan classifies safe operations separately from unsafe or unsupported drift.
 
-Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Each metadata-backed table has system `id`, `name`, `created_at`, and `updated_at` columns; the Record `name` column is generated from Entity `name` metadata except for Single Entities, where it is fixed to the Entity key. Composite indexes and composite unique constraints come from top-level Entity metadata; single-field structured checks come from Field metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
+Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Each metadata-backed table has system `id`, `name`, `created_at`, and `updated_at` columns. Collection child tables also include `parent_entity_id`, `parent_record_id`, `parent_field_id`, and 1-based `position`, plus a unique constraint on `(parent_entity_id, parent_record_id, parent_field_id, position)`. The Record `name` column is generated from Entity `name` metadata except for Single Entities, where it is fixed to the Entity key. Composite indexes and composite unique constraints come from top-level Entity metadata; single-field structured checks come from Field metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
 
 Existing early-development databases created before system Record names may report a missing `name` system column. That is treated as unsupported drift because dygo cannot safely invent stable names for existing rows without an explicit patch or reset.
 
@@ -204,4 +204,4 @@ go run ./cmd/dygo db schema check
 
 ## Boundaries
 
-The schema sync foundation creates tables and persists metadata. The generic Record API, fixture runner, session auth, and Activity writer can read and write DB-backed fields through that metadata. Activity is append-only Record history for product timelines; compliance-grade audit logging, app lifecycle patches, collection row storage, and destructive metadata transitions are still separate layers.
+The schema sync foundation creates tables and persists metadata. The generic Record API, fixture runner, session auth, and Activity writer can read and write DB-backed fields through that metadata. Activity is append-only Record history for product timelines; compliance-grade audit logging, app lifecycle patches, fixture support for collection rows, and destructive metadata transitions are still separate layers.

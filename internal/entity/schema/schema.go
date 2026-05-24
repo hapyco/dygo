@@ -162,11 +162,21 @@ func (e ValidationError) Error() string {
 
 // LoadFile reads, decodes, and validates one Entity metadata file.
 func LoadFile(path string, registry fieldtype.Registry) (Entity, error) {
+	return LoadFileWithOptions(path, registry, LoadOptions{})
+}
+
+// LoadOptions controls path-aware Entity loading behavior.
+type LoadOptions struct {
+	IsCollection bool
+}
+
+// LoadFileWithOptions reads, decodes, and validates one Entity metadata file with load-time context.
+func LoadFileWithOptions(path string, registry fieldtype.Registry, options LoadOptions) (Entity, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Entity{}, fmt.Errorf("read entity schema %s: %w", path, err)
 	}
-	entity, err := Decode(data, registry)
+	entity, err := DecodeWithOptions(data, registry, DecodeOptions{IsCollection: options.IsCollection})
 	if err != nil {
 		return Entity{}, fmt.Errorf("load entity schema %s: %w", path, err)
 	}
@@ -180,6 +190,16 @@ func LoadFile(path string, registry fieldtype.Registry) (Entity, error) {
 
 // Decode decodes and validates one Entity metadata document.
 func Decode(data []byte, registry fieldtype.Registry) (Entity, error) {
+	return DecodeWithOptions(data, registry, DecodeOptions{})
+}
+
+// DecodeOptions controls Entity decoding behavior.
+type DecodeOptions struct {
+	IsCollection bool
+}
+
+// DecodeWithOptions decodes and validates one Entity metadata document with caller-supplied context.
+func DecodeWithOptions(data []byte, registry fieldtype.Registry, options DecodeOptions) (Entity, error) {
 	source, err := inspectSource(data)
 	if err != nil {
 		return Entity{}, err
@@ -192,6 +212,7 @@ func Decode(data []byte, registry fieldtype.Registry) (Entity, error) {
 		return Entity{}, fmt.Errorf("decode entity schema: %w", err)
 	}
 	source.apply(&entity)
+	entity.IsCollection = options.IsCollection
 	if err := entity.Validate(registry); err != nil {
 		return Entity{}, err
 	}
@@ -224,6 +245,9 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	fieldTypes := map[string]fieldtype.Definition{}
 	for _, field := range e.Fields {
 		validateField(field, registry, seenFields, &problems)
+		if e.IsCollection && field.Type == "collection" {
+			problems = append(problems, withLine(field.Line, "collection Entities cannot define collection fields in v1"))
+		}
 		if field.Name != "" {
 			seenFields[field.Name] = struct{}{}
 			fields[field.Name] = field

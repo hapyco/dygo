@@ -62,14 +62,16 @@ func (e MetadataEntity) RouteSlug() string {
 // MetadataEntityMeta is the complete persisted metadata for one Entity.
 type MetadataEntityMeta struct {
 	MetadataEntity
-	Fields       []MetadataField      `json:"fields"`
-	SystemFields []MetadataField      `json:"system-fields"`
-	Indexes      []MetadataIndex      `json:"indexes"`
-	Constraints  []MetadataConstraint `json:"constraints"`
+	Fields       []MetadataField               `json:"fields"`
+	SystemFields []MetadataField               `json:"system-fields"`
+	Indexes      []MetadataIndex               `json:"indexes"`
+	Constraints  []MetadataConstraint          `json:"constraints"`
+	Collections  map[string]MetadataEntityMeta `json:"collections,omitempty"`
 }
 
 // MetadataField is one persisted Field definition.
 type MetadataField struct {
+	ID             int64               `json:"-"`
 	Name           string              `json:"name"`
 	Label          string              `json:"label"`
 	Type           string              `json:"type"`
@@ -265,7 +267,44 @@ func (r MetadataReader) getEntityMeta(ctx context.Context, name string, sql stri
 	meta.SystemFields = metadataSystemFields()
 	meta.Indexes = indexes
 	meta.Constraints = constraints
+	collections, err := r.entityCollections(ctx, meta, fields)
+	if err != nil {
+		return MetadataEntityMeta{}, err
+	}
+	meta.Collections = collections
 	return meta, nil
+}
+
+func (r MetadataReader) entityCollections(ctx context.Context, parent MetadataEntityMeta, fields []MetadataField) (map[string]MetadataEntityMeta, error) {
+	collections := map[string]MetadataEntityMeta{}
+	for _, field := range fields {
+		if field.Type != "collection" {
+			continue
+		}
+		var options struct {
+			App    string `json:"app"`
+			Entity string `json:"entity"`
+		}
+		if err := json.Unmarshal(field.Options, &options); err != nil {
+			return nil, fmt.Errorf("collection field %s.%s options are invalid: %w", parent.Key, field.Name, err)
+		}
+		appName := options.App
+		if appName == "" {
+			appName = parent.App.Name
+		}
+		if options.Entity == "" {
+			return nil, fmt.Errorf("collection field %s.%s target entity is required", parent.Key, field.Name)
+		}
+		child, err := r.GetEntityMetaByIdentity(ctx, appName, options.Entity)
+		if err != nil {
+			return nil, fmt.Errorf("load collection metadata %s/%s for %s.%s: %w", appName, options.Entity, parent.Key, field.Name, err)
+		}
+		collections[field.Name] = child
+	}
+	if len(collections) == 0 {
+		return nil, nil
+	}
+	return collections, nil
 }
 
 func metadataSystemFields() []MetadataField {
@@ -293,10 +332,10 @@ func metadataSystemFields() []MetadataField {
 
 func (r MetadataReader) entityFields(ctx context.Context, entityID int64) ([]MetadataField, error) {
 	rows, err := r.queryer.Query(ctx, `
-SELECT field_name, label, type, required, "unique", "index", "default", "check", position, options
-FROM "field"
-WHERE entity_id = $1
-ORDER BY position, name`, entityID)
+	SELECT id, field_name, label, type, required, "unique", "index", "default", "check", position, options
+	FROM "field"
+	WHERE entity_id = $1
+	ORDER BY position, name`, entityID)
 	if err != nil {
 		return nil, fmt.Errorf("query metadata fields: %w", err)
 	}
@@ -308,7 +347,7 @@ ORDER BY position, name`, entityID)
 		var defaultValue []byte
 		var check []byte
 		var options []byte
-		if err := rows.Scan(&field.Name, &field.Label, &field.Type, &field.Required, &field.Unique, &field.Index, &defaultValue, &check, &field.Position, &options); err != nil {
+		if err := rows.Scan(&field.ID, &field.Name, &field.Label, &field.Type, &field.Required, &field.Unique, &field.Index, &defaultValue, &check, &field.Position, &options); err != nil {
 			return nil, fmt.Errorf("scan metadata field: %w", err)
 		}
 		field.Default = rawJSONOrNil(defaultValue)

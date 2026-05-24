@@ -324,17 +324,12 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 		seenTables[table] = loaded
 
 		desiredTable := desiredTable{
-			Name:      table,
-			Source:    entitySource(loaded),
-			CreateSQL: createTableSQL(table),
-			SystemColumns: []desiredColumn{
-				{Name: "id", Type: "bigint", Required: true, Source: entitySource(loaded)},
-				{Name: "name", Type: "text", Required: true, Source: entitySource(loaded)},
-				{Name: "created_at", Type: "timestamptz", Required: true, Source: entitySource(loaded)},
-				{Name: "updated_at", Type: "timestamptz", Required: true, Source: entitySource(loaded)},
-			},
-			Constraints: []desiredConstraint{},
+			Name:          table,
+			Source:        entitySource(loaded),
+			SystemColumns: systemColumnsForEntity(loaded),
+			Constraints:   []desiredConstraint{},
 		}
+		desiredTable.CreateSQL = createTableSQL(table, desiredTable.SystemColumns)
 		if requiresSystemNameUniqueConstraint(loaded) {
 			desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
 				Name:       constraintName(table, "name", "key"),
@@ -347,9 +342,20 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 		if loaded.Entity.IsSingle {
 			desiredTable.Constraints = append(desiredTable.Constraints, singleEntityNameConstraint(table, loaded))
 		}
+		if loaded.IsCollection() {
+			desiredTable.Constraints = append(desiredTable.Constraints, collectionOwnershipConstraints(table, loaded)...)
+			desiredTable.Indexes = append(desiredTable.Indexes, desiredIndex{
+				Name:    collectionParentLookupIndexName(table),
+				Columns: []string{systemColumnParentEntityID, systemColumnParentRecordID, systemColumnParentFieldID},
+				Source:  entitySource(loaded),
+			})
+		}
 
 		fieldColumns := map[string]string{}
 		for _, field := range loaded.Entity.Fields {
+			if field.Type == "collection" {
+				continue
+			}
 			if field.Name == "name" {
 				fieldColumns[field.Name] = "name"
 				continue
@@ -766,13 +772,89 @@ func setCheckDefinitionMatches(live string, expected string) bool {
 	return true
 }
 
-func createTableSQL(table string) string {
-	return fmt.Sprintf(`CREATE TABLE %s (
-	%s bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-	%s text NOT NULL,
-	%s timestamptz NOT NULL DEFAULT now(),
-	%s timestamptz NOT NULL DEFAULT now()
-)`, quoteIdent(table), quoteIdent(systemColumnID), quoteIdent(systemColumnName), quoteIdent(systemColumnCreatedAt), quoteIdent(systemColumnUpdatedAt))
+func systemColumnsForEntity(entity catalog.LoadedEntity) []desiredColumn {
+	source := entitySource(entity)
+	columns := []desiredColumn{
+		{Name: systemColumnID, Type: "bigint", Required: true, Source: source},
+		{Name: systemColumnName, Type: "text", Required: true, Source: source},
+		{Name: systemColumnCreatedAt, Type: "timestamptz", Required: true, Source: source},
+		{Name: systemColumnUpdatedAt, Type: "timestamptz", Required: true, Source: source},
+	}
+	if entity.IsCollection() {
+		columns = append(columns,
+			desiredColumn{Name: systemColumnParentEntityID, Type: "bigint", Required: true, Source: source},
+			desiredColumn{Name: systemColumnParentRecordID, Type: "bigint", Required: true, Source: source},
+			desiredColumn{Name: systemColumnParentFieldID, Type: "bigint", Required: true, Source: source},
+			desiredColumn{Name: systemColumnPosition, Type: "bigint", Required: true, Source: source},
+		)
+	}
+	return columns
+}
+
+func createTableSQL(table string, columns []desiredColumn) string {
+	definitions := make([]string, 0, len(columns))
+	for _, column := range columns {
+		definitions = append(definitions, "\t\t"+systemColumnDefinition(column))
+	}
+	return fmt.Sprintf("CREATE TABLE %s (\n%s\n)", quoteIdent(table), strings.Join(definitions, ",\n"))
+}
+
+func systemColumnDefinition(column desiredColumn) string {
+	switch column.Name {
+	case systemColumnID:
+		return fmt.Sprintf("%s bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY", quoteIdent(systemColumnID))
+	case systemColumnName:
+		return fmt.Sprintf("%s text NOT NULL", quoteIdent(systemColumnName))
+	case systemColumnCreatedAt:
+		return fmt.Sprintf("%s timestamptz NOT NULL DEFAULT now()", quoteIdent(systemColumnCreatedAt))
+	case systemColumnUpdatedAt:
+		return fmt.Sprintf("%s timestamptz NOT NULL DEFAULT now()", quoteIdent(systemColumnUpdatedAt))
+	case systemColumnParentEntityID:
+		return fmt.Sprintf("%s bigint NOT NULL", quoteIdent(systemColumnParentEntityID))
+	case systemColumnParentRecordID:
+		return fmt.Sprintf("%s bigint NOT NULL", quoteIdent(systemColumnParentRecordID))
+	case systemColumnParentFieldID:
+		return fmt.Sprintf("%s bigint NOT NULL", quoteIdent(systemColumnParentFieldID))
+	case systemColumnPosition:
+		return fmt.Sprintf("%s bigint NOT NULL", quoteIdent(systemColumnPosition))
+	default:
+		return fmt.Sprintf("%s %s", quoteIdent(column.Name), column.Type)
+	}
+}
+
+func collectionOwnershipConstraints(table string, entity catalog.LoadedEntity) []desiredConstraint {
+	source := entitySource(entity)
+	return []desiredConstraint{
+		{
+			Name:       constraintName(table, systemColumnParentEntityID, "fkey"),
+			Type:       "foreign-key",
+			Columns:    []string{systemColumnParentEntityID},
+			Definition: fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s)", quoteIdent(systemColumnParentEntityID), quoteIdent("entity"), quoteIdent(systemColumnID)),
+			Source:     source,
+		},
+		{
+			Name:       constraintName(table, systemColumnParentFieldID, "fkey"),
+			Type:       "foreign-key",
+			Columns:    []string{systemColumnParentFieldID},
+			Definition: fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s)", quoteIdent(systemColumnParentFieldID), quoteIdent("field"), quoteIdent(systemColumnID)),
+			Source:     source,
+		},
+		{
+			Name:       collectionParentPositionConstraintName(table),
+			Type:       "unique",
+			Columns:    []string{systemColumnParentEntityID, systemColumnParentRecordID, systemColumnParentFieldID, systemColumnPosition},
+			Definition: fmt.Sprintf("UNIQUE (%s)", quoteIdentList([]string{systemColumnParentEntityID, systemColumnParentRecordID, systemColumnParentFieldID, systemColumnPosition})),
+			Source:     source,
+		},
+	}
+}
+
+func collectionParentPositionConstraintName(table string) string {
+	return constraintName(table, "parent_position", "key")
+}
+
+func collectionParentLookupIndexName(table string) string {
+	return constraintName(table, "parent_lookup", "idx")
 }
 
 func tableName(entity catalog.LoadedEntity) (string, error) {
@@ -795,7 +877,7 @@ func columnType(owner catalog.LoadedEntity, field schema.Field, targets schemaTa
 		return "", fmt.Errorf("unsupported field type %q", field.Type)
 	}
 	if !definition.Behavior.Stored {
-		return "", fmt.Errorf("collection storage is not supported by metadata schema sync yet")
+		return "", fmt.Errorf("field type %q does not have direct column storage", field.Type)
 	}
 	if field.Type == "link" {
 		if _, err := targets.resolve(owner, field.Options.App, field.Options.Entity); err != nil {

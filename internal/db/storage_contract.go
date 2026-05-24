@@ -14,10 +14,14 @@ const (
 	systemFieldCreatedAt = "created-at"
 	systemFieldUpdatedAt = "updated-at"
 
-	systemColumnID        = "id"
-	systemColumnName      = "name"
-	systemColumnCreatedAt = "created_at"
-	systemColumnUpdatedAt = "updated_at"
+	systemColumnID             = "id"
+	systemColumnName           = "name"
+	systemColumnCreatedAt      = "created_at"
+	systemColumnUpdatedAt      = "updated_at"
+	systemColumnParentEntityID = "parent_entity_id"
+	systemColumnParentRecordID = "parent_record_id"
+	systemColumnParentFieldID  = "parent_field_id"
+	systemColumnPosition       = "position"
 )
 
 type systemRecordField struct {
@@ -81,7 +85,7 @@ func columnForField(field schema.Field) (string, error) {
 		return "", fmt.Errorf("unsupported field type %q", field.Type)
 	}
 	if !definition.Behavior.Stored {
-		return "", fmt.Errorf("collection storage is not supported by metadata schema sync yet")
+		return "", fmt.Errorf("field type %q does not have direct column storage", field.Type)
 	}
 	return storageName(field.Name) + definition.Behavior.ColumnSuffix, nil
 }

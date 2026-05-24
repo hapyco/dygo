@@ -10,15 +10,17 @@ import {
   type FieldOption,
   type TextInputType,
 } from '@/design'
-import type { MetadataField } from '@/features/metadata/metadata.api'
+import type { MetadataEntityMeta, MetadataField } from '@/features/metadata/metadata.api'
 import type { RecordData } from '@/features/records/records.api'
 import { isHiddenRecordFormField } from '@/features/records/system-fields'
+import RecordCollectionTable from './RecordCollectionTable.vue'
 
 const props = withDefaults(defineProps<{
   entity: string
   entityLabel: string
   fields: MetadataField[]
   systemFields?: MetadataField[]
+  collections?: Record<string, MetadataEntityMeta>
   record?: RecordData | null
   mode: 'new' | 'record' | 'single'
   modelValue: RecordData
@@ -121,8 +123,21 @@ function selectOptions(field: MetadataField): FieldOption[] {
 <template>
   <form class="record-form-renderer" :aria-label="`${entityLabel} form`">
     <template v-for="field in visibleFields" :key="field.name">
+      <RecordCollectionTable
+        v-if="editorForField(field) === 'collection'"
+        :id="fieldId(field)"
+        :label="labelForField(field)"
+        :field="field"
+        :child-meta="collections?.[field.name]"
+        :model-value="modelValue[field.name]"
+        :required="field.required"
+        :disabled="disabled"
+        :error="fieldErrors[field.name]"
+        @update:model-value="updateField(field, $event)"
+      />
+
       <PasswordField
-        v-if="editorForField(field) === 'password'"
+        v-else-if="editorForField(field) === 'password'"
         :id="fieldId(field)"
         :label="labelForField(field)"
         :model-value="textValue(field)"

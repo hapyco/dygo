@@ -1,4 +1,5 @@
 export { default as RecordListRenderer } from './RecordListRenderer.vue'
 export { default as RecordFormRenderer } from './RecordFormRenderer.vue'
+export { default as RecordCollectionTable } from './RecordCollectionTable.vue'
 export { buildRecordListColumns } from './columns'
 export type { RecordListColumn, RecordListColumnSource } from './columns'

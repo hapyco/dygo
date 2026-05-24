@@ -214,12 +214,12 @@ func TestBuildMetadataRecordsStoresNullSlugForCollectionEntities(t *testing.T) {
 		},
 		Entities: []catalog.LoadedEntity{
 			{
-				AppName:          "sales",
-				Path:             "apps/sales/entities/invoice/invoice-item.yml",
-				CollectionParent: "invoice",
+				AppName: "sales",
+				Path:    "apps/sales/entities/collections/invoice-item.yml",
 				Entity: schema.Entity{
-					Name:  "invoice-item",
-					Label: "Invoice Item",
+					Name:         "invoice-item",
+					Label:        "Invoice Item",
+					IsCollection: true,
 				},
 			},
 		},

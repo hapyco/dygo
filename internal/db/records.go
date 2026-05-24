@@ -34,6 +34,8 @@ const (
 	randomNameRetries = 5
 
 	recordSelectSourceAlias = "_dygo_record"
+	// TODO(collections): move row min/max limits into collection field metadata options.
+	recordCollectionMaxRows = 500
 )
 
 // RecordQueryer is the database behavior needed by the Record store.
@@ -365,7 +367,7 @@ func (s RecordStore) findRecordWithLayout(ctx context.Context, layout recordLayo
 	if err := rows.Err(); err != nil {
 		return nil, classifyRecordDBError(err, entity)
 	}
-	return record, nil
+	return s.loadRecordCollections(ctx, layout, record)
 }
 
 // CreateRecord inserts one Record using Entity metadata.
@@ -438,6 +440,13 @@ func (s RecordStore) createRecordWithLayout(ctx context.Context, layout recordLa
 		return nil, err
 	}
 	recordID, err := activityRecordID(record)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.saveSubmittedCollections(ctx, layout, recordID, input, true); err != nil {
+		return nil, err
+	}
+	record, err = s.loadRecordCollections(ctx, layout, record)
 	if err != nil {
 		return nil, err
 	}
@@ -597,8 +606,19 @@ func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLa
 	if err != nil {
 		return nil, err
 	}
-	changes := layout.activityChanges(input, oldRecord, record)
 	recordID, err := activityRecordID(record)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.saveSubmittedCollections(ctx, layout, recordID, input, false); err != nil {
+		return nil, err
+	}
+	record, err = s.loadRecordCollections(ctx, layout, record)
+	if err != nil {
+		return nil, err
+	}
+	changes := layout.activityChanges(input, oldRecord, record)
+	recordID, err = activityRecordID(record)
 	if err != nil {
 		return nil, err
 	}
@@ -680,6 +700,9 @@ func (s RecordStore) deleteRecordWithLayout(ctx context.Context, layout recordLa
 	if err := s.runRecordHooks(ctx, beforeCtx); err != nil {
 		return err
 	}
+	if err := s.deleteRecordCollections(ctx, layout, id); err != nil {
+		return err
+	}
 	tag, err := s.queryer.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE %s = $1", quoteIdent(layout.Table), quoteIdent("id")), id)
 	if err != nil {
 		return classifyRecordDBError(err, entity)
@@ -711,7 +734,11 @@ func (s RecordStore) getSingleRecordWithLayout(ctx context.Context, layout recor
 		return nil, recordError(RecordErrorInvalidRequest, "entity is not single", map[string]any{"entity": layout.Slug}, nil)
 	}
 	sql := fmt.Sprintf("SELECT %s FROM %s AS %s WHERE %s = $1", layout.selectList(), quoteIdent(layout.Table), quoteIdent(recordSelectSourceAlias), quoteIdent("name"))
-	return s.queryOneRecord(ctx, layout, sql, SingleRecordName(layout.Entity))
+	record, err := s.queryOneRecord(ctx, layout, sql, SingleRecordName(layout.Entity))
+	if err != nil {
+		return nil, err
+	}
+	return s.loadRecordCollections(ctx, layout, record)
 }
 
 func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayout, id int64) (Record, error) {
@@ -728,7 +755,7 @@ func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayou
 		}
 		return nil, err
 	}
-	return record, nil
+	return s.loadRecordCollections(ctx, layout, record)
 }
 
 func singleRecordOperationError(layout recordLayout, operation string) RecordError {
@@ -843,9 +870,11 @@ type recordLayout struct {
 	Naming       schema.Naming
 	Fields       []recordField
 	FieldByName  map[string]recordField
+	Collections  map[string]recordCollection
 }
 
 type recordField struct {
+	ID          int64
 	Name        string
 	Type        string
 	Required    bool
@@ -866,6 +895,18 @@ type recordFieldOptions struct {
 	Values     []string `json:"values,omitempty"`
 	Entity     string   `json:"entity,omitempty"`
 	ForeignKey *bool    `json:"foreign-key,omitempty"`
+}
+
+type recordCollection struct {
+	Field          recordField
+	ParentEntityID int64
+	Layout         *recordLayout
+}
+
+type recordCollectionRowInput struct {
+	ID       int64
+	Position int64
+	Input    RecordInput
 }
 
 type recordMutation struct {
@@ -895,6 +936,7 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 		Table:        entityTableName(meta.App.Name, meta.Key),
 		Naming:       naming,
 		FieldByName:  map[string]recordField{},
+		Collections:  map[string]recordCollection{},
 	}
 	if naming.Strategy == schema.NamingStrategyManual {
 		nameField, ok := systemRecordFieldByName(systemFieldName)
@@ -921,6 +963,7 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 			return recordLayout{}, recordError(RecordErrorInternal, "field type metadata is invalid", map[string]any{"entity": routeSlug, "field": metadataField.Name, "type": metadataField.Type}, nil)
 		}
 		field := recordField{
+			ID:        metadataField.ID,
 			Name:      metadataField.Name,
 			Type:      metadataField.Type,
 			Required:  metadataField.Required,
@@ -944,6 +987,20 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 		}
 		layout.Fields = append(layout.Fields, field)
 		layout.FieldByName[field.Name] = field
+	}
+	for fieldName, childMeta := range meta.Collections {
+		field, ok := layout.FieldByName[fieldName]
+		if !ok || field.Type != "collection" {
+			return recordLayout{}, recordError(RecordErrorInternal, "collection metadata does not match parent field", map[string]any{"entity": routeSlug, "field": fieldName}, nil)
+		}
+		childLayout, err := newRecordLayout(childMeta)
+		if err != nil {
+			return recordLayout{}, err
+		}
+		if field.ID <= 0 {
+			return recordLayout{}, recordError(RecordErrorInternal, "collection field metadata id is missing", map[string]any{"entity": routeSlug, "field": fieldName}, nil)
+		}
+		layout.Collections[fieldName] = recordCollection{Field: field, ParentEntityID: layout.EntityID, Layout: &childLayout}
 	}
 	return layout, nil
 }
@@ -974,6 +1031,27 @@ func (l recordLayout) recordValueCount() int {
 		}
 	}
 	return expected
+}
+
+func (l recordLayout) collectionNames() []string {
+	names := make([]string, 0, len(l.Collections))
+	seen := map[string]struct{}{}
+	for _, field := range l.Fields {
+		if _, ok := l.Collections[field.Name]; !ok {
+			continue
+		}
+		names = append(names, field.Name)
+		seen[field.Name] = struct{}{}
+	}
+	extra := []string{}
+	for name := range l.Collections {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		extra = append(extra, name)
+	}
+	sortStrings(extra)
+	return append(names, extra...)
 }
 
 func (l recordLayout) recordFromValues(values []any) (Record, error) {
@@ -1232,6 +1310,73 @@ func (l recordLayout) validateMatchFields(input RecordInput) error {
 	return l.validateInputFields(input, false, true)
 }
 
+func (l recordLayout) validateCollectionInput(fieldName string, raw json.RawMessage, allowIDs bool) error {
+	_, err := l.collectionRowInputs(fieldName, raw, allowIDs)
+	return err
+}
+
+func (l recordLayout) collectionRowInputs(fieldName string, raw json.RawMessage, allowIDs bool) ([]recordCollectionRowInput, error) {
+	collection, ok := l.Collections[fieldName]
+	if !ok {
+		return nil, recordError(RecordErrorInternal, "collection metadata is missing for field", map[string]any{"entity": l.Entity, "field": fieldName}, nil)
+	}
+	if rawIsNull(raw) {
+		return nil, recordError(RecordErrorValidation, "collection field must be an array", map[string]any{"entity": l.Entity, "field": fieldName}, nil)
+	}
+	var payload []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, recordError(RecordErrorValidation, "collection field must be an array", map[string]any{"entity": l.Entity, "field": fieldName}, err)
+	}
+	if len(payload) > recordCollectionMaxRows {
+		return nil, recordError(RecordErrorValidation, "collection field has too many rows", map[string]any{"entity": l.Entity, "field": fieldName, "max": recordCollectionMaxRows}, nil)
+	}
+	if collection.Field.Required && len(payload) == 0 {
+		return nil, recordError(RecordErrorValidation, "required collection field must include at least one row", map[string]any{"entity": l.Entity, "field": fieldName}, nil)
+	}
+	rows := make([]recordCollectionRowInput, 0, len(payload))
+	seenIDs := map[int64]struct{}{}
+	for index, row := range payload {
+		if row == nil {
+			return nil, recordError(RecordErrorValidation, "collection row must be an object", map[string]any{"entity": l.Entity, "field": fieldName, "row": index + 1}, nil)
+		}
+		input := make(RecordInput, len(row))
+		var rowID int64
+		for name, value := range row {
+			if name == systemFieldID {
+				if rawIsNull(value) {
+					continue
+				}
+				if !allowIDs {
+					return nil, recordError(RecordErrorValidation, "collection row id cannot be written on create", map[string]any{"entity": l.Entity, "field": fieldName, "row": index + 1}, nil)
+				}
+				id, err := collectionRowIDFromRaw(fieldName, value)
+				if err != nil {
+					return nil, err
+				}
+				rowID = id
+				continue
+			}
+			if isCollectionRowSystemInput(name) {
+				continue
+			}
+			cloned := make([]byte, len(value))
+			copy(cloned, value)
+			input[name] = cloned
+		}
+		if rowID > 0 {
+			if _, ok := seenIDs[rowID]; ok {
+				return nil, recordError(RecordErrorValidation, "collection row id is duplicated", map[string]any{"entity": l.Entity, "field": fieldName, "row-id": rowID}, nil)
+			}
+			seenIDs[rowID] = struct{}{}
+		}
+		if err := collection.Layout.validateCreateInput(input); err != nil {
+			return nil, err
+		}
+		rows = append(rows, recordCollectionRowInput{ID: rowID, Position: int64(index + 1), Input: input})
+	}
+	return rows, nil
+}
+
 func (l recordLayout) validateInputFields(input RecordInput, create bool, match bool) error {
 	for name, raw := range input {
 		if isSystemRecordField(name) && !(match && name == "name") && !(create && l.allowsNameCreateInput()) {
@@ -1248,6 +1393,12 @@ func (l recordLayout) validateInputFields(input RecordInput, create bool, match 
 			return recordError(RecordErrorValidation, "unknown field", map[string]any{"entity": l.Entity, "field": name}, nil)
 		}
 		if !field.Storage {
+			if field.Type == "collection" && !match {
+				if err := l.validateCollectionInput(name, raw, !create); err != nil {
+					return err
+				}
+				continue
+			}
 			return recordError(RecordErrorValidation, "field is not supported by record runtime", map[string]any{"entity": l.Entity, "field": name}, nil)
 		}
 		if rawIsNull(raw) && field.Required {
@@ -1266,7 +1417,16 @@ func (s RecordStore) writeMutation(ctx context.Context, layout recordLayout, inp
 	codec := s.linkValueCodec()
 	names := sortedRecordInputNames(input)
 	for _, name := range names {
-		field := layout.FieldByName[name]
+		field, ok := layout.FieldByName[name]
+		if !ok {
+			return recordMutation{}, recordError(RecordErrorValidation, "unknown field", map[string]any{"entity": layout.Entity, "field": name}, nil)
+		}
+		if field.Type == "collection" {
+			continue
+		}
+		if !field.Storage {
+			return recordMutation{}, recordError(RecordErrorValidation, "field is not supported by record runtime", map[string]any{"entity": layout.Entity, "field": name}, nil)
+		}
 		value, err := codec.storageValue(ctx, layout, field, input[name])
 		if err != nil {
 			return recordMutation{}, err
@@ -1448,6 +1608,51 @@ func recordPlaceholder(index int, field recordField) string {
 		return placeholder + "::" + definition.Behavior.PlaceholderCast
 	}
 	return placeholder
+}
+
+func collectionSystemMutationField(name string, column string) recordField {
+	return recordField{Name: name, Type: "bigint", Column: column, Storage: true, ValueKind: fieldtype.ValueInteger}
+}
+
+func collectionRowIDFromRaw(fieldName string, raw json.RawMessage) (int64, error) {
+	id, err := jsonIntValue(recordField{Name: systemFieldID, Type: "bigint", ValueKind: fieldtype.ValueInteger}, raw)
+	if err != nil {
+		return 0, err
+	}
+	if id <= 0 {
+		return 0, recordError(RecordErrorValidation, "collection row id must be a positive integer", map[string]any{"field": fieldName, "row-id": id}, nil)
+	}
+	return id, nil
+}
+
+func recordIDFromDBValue(value any, entity string) (int64, error) {
+	switch typed := value.(type) {
+	case int64:
+		return typed, nil
+	case int:
+		return int64(typed), nil
+	case int32:
+		return int64(typed), nil
+	case float64:
+		if math.Trunc(typed) == typed {
+			return int64(typed), nil
+		}
+	}
+	return 0, recordError(RecordErrorInternal, "record id column has invalid type", map[string]any{"entity": entity, "type": fmt.Sprintf("%T", value)}, nil)
+}
+
+func isCollectionRowSystemInput(name string) bool {
+	switch name {
+	case systemFieldName, systemFieldCreatedAt, systemFieldUpdatedAt,
+		"created_at", "updated_at",
+		"parent-entity-id", systemColumnParentEntityID,
+		"parent-record-id", systemColumnParentRecordID,
+		"parent-field-id", systemColumnParentFieldID,
+		systemColumnPosition:
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeRecordValue(fieldType string, value any) any {
