@@ -1385,7 +1385,7 @@ func TestRecordStoreInvalidListFiltersAndSorts(t *testing.T) {
 
 func newUserRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, false, []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
@@ -1401,7 +1401,7 @@ func newUserRecordQueryer() *fakeRecordQueryer {
 
 func newSystemUserRecordQueryer() *fakeRecordQueryer {
 	queryer := newUserRecordQueryer()
-	queryer.row = newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core")
+	queryer.row = newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, true, false, []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core")
 	return queryer
 }
 
@@ -1421,7 +1421,7 @@ func newLeadRecordQueryer() *fakeRecordQueryer {
 
 func newTemplateRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(50), "support.ticket", "ticket", "ticket", "Ticket", "Support ticket", "ticket", false, false, false, []byte(`{"strategy":"template","template":"T-{status}-{code}"}`), "support", "Support"),
+		row: newFakeRow(int64(50), "support.ticket", "ticket", "ticket", "Ticket", "Support ticket", "ticket", false, false, false, []byte(`{"strategy":"format","format":"T-{status}-{code}"}`), "support", "Support"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"code", "Code", "text", true, false, false, nil, nil, 1, nil},
@@ -1435,7 +1435,7 @@ func newTemplateRecordQueryer() *fakeRecordQueryer {
 
 func newEventRecordQueryer() *fakeRecordQueryer {
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(60), "core.event", "event", "event", "Event", "Calendar event", "calendar", false, false, false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"),
+		row: newFakeRow(int64(60), "core.event", "event", "event", "Event", "Calendar event", "calendar", false, false, false, []byte(`{"strategy":"manual","label":"Name"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"starts-at", "Starts At", "datetime", true, false, false, nil, nil, 1, nil},
@@ -1671,12 +1671,12 @@ func fakeActivityMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
 	switch {
 	case strings.Contains(sql, `FROM "field"`):
 		return newFakeRows([][]any{
-			{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record","comment","workflow","job","email","attachment","auth","system"]}`)},
-			{"operation", "Operation", "select", true, false, true, nil, nil, 2, []byte(`{"values":["create","update","delete","restore","comment","workflow-transition","job-completed","email-sent","attachment-added","login","logout","system"]}`)},
-			{"status", "Status", "select", true, false, true, nil, nil, 3, []byte(`{"values":["success","failed"]}`)},
-			{"entity", "Entity", "link", false, false, true, nil, nil, 4, []byte(`{"entity":"entity"}`)},
-			{"record-id", "Record ID", "bigint", false, false, true, nil, nil, 5, nil},
-			{"actor", "Actor", "link", false, false, true, nil, nil, 6, []byte(`{"entity":"user"}`)},
+			{"kind", "Kind", "select", true, false, false, nil, nil, 1, []byte(`{"values":["record","comment","workflow","job","email","attachment","auth","system"]}`)},
+			{"operation", "Operation", "select", true, false, false, nil, nil, 2, []byte(`{"values":["create","update","delete","restore","comment","workflow-transition","job-completed","email-sent","attachment-added","login","logout","system"]}`)},
+			{"status", "Status", "select", true, false, false, nil, nil, 3, []byte(`{"values":["success","failed"]}`)},
+			{"entity", "Entity", "link", false, false, false, nil, nil, 4, []byte(`{"entity":"entity","foreign-key":false}`)},
+			{"record-id", "Record ID", "bigint", false, false, false, nil, nil, 5, nil},
+			{"actor", "Actor", "link", false, false, false, nil, nil, 6, []byte(`{"entity":"user","foreign-key":false}`)},
 			{"title", "Title", "text", true, false, false, nil, nil, 7, nil},
 			{"message", "Message", "long-text", false, false, false, nil, nil, 8, nil},
 			{"changes", "Changes", "json", false, false, false, nil, nil, 9, nil},

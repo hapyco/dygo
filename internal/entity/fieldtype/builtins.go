@@ -64,7 +64,7 @@ func builtIns() []Definition {
 				StudioEditor:    "link",
 				StudioDisplay:   "link",
 			},
-			Validate: EntityOptions,
+			Validate: LinkOptions,
 		},
 		{
 			Name:          "collection",

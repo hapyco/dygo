@@ -46,9 +46,7 @@ func TestBuildMetadataSchemaPlanForEmptyDatabase(t *testing.T) {
 	assertContains(t, sql, `"name" text NOT NULL`)
 	assertContains(t, sql, `"applied_at" timestamptz NOT NULL`)
 	assertContains(t, sql, `CREATE INDEX "entity_app_id_idx" ON "entity" ("app_id")`)
-	if strings.Contains(sql, "FOREIGN KEY") {
-		t.Fatalf("operationSQL() contains database foreign key, want framework-level links only:\n%s", sql)
-	}
+	assertContains(t, sql, `ALTER TABLE "entity" ADD CONSTRAINT "entity_app_id_fkey" FOREIGN KEY ("app_id") REFERENCES "app"("id")`)
 }
 
 func TestBuildMetadataSchemaPlanForMatchingDatabase(t *testing.T) {
@@ -480,14 +478,51 @@ func TestBuildMetadataSchemaPlanBlocksNonEmptySingleEntityConversion(t *testing.
 	assertContains(t, plan.BlockerError().Error(), "cannot be converted to a single Entity")
 }
 
-func TestBuildMetadataSchemaPlanDoesNotCreateLinkForeignKeys(t *testing.T) {
+func TestBuildMetadataSchemaPlanCreatesLinkForeignKeysByDefault(t *testing.T) {
+	entity := catalog.LoadedEntity{
+		AppName: "sales",
+		Path:    "apps/sales/entities/deal.yml",
+		Entity: schema.Entity{
+			Name: "deal",
+			Fields: []schema.Field{
+				{Name: "company", Type: "link", Options: entityOption("company")},
+			},
+		},
+	}
+	company := catalog.LoadedEntity{
+		AppName: "sales",
+		Path:    "apps/sales/entities/company.yml",
+		Entity: schema.Entity{
+			Name:   "company",
+			Fields: []schema.Field{{Name: "name", Type: "text"}},
+		},
+	}
+	columns := systemColumns()
+	columns["company_id"] = liveColumn{Name: "company_id", Type: "bigint", Nullable: true}
+
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{entity, company}, LiveSchema{Tables: map[string]liveTable{
+		"sales_deal":    liveSchemaTable("sales_deal", columns, map[string]liveConstraint{"sales_deal_pkey": {Name: "sales_deal_pkey", Type: "primary-key"}}, nil),
+		"sales_company": liveSchemaTable("sales_company", systemColumns(), map[string]liveConstraint{"sales_company_pkey": {Name: "sales_company_pkey", Type: "primary-key"}}, nil),
+	}})
+	if err != nil {
+		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
+	}
+	if plan.HasBlockers() {
+		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
+	}
+	assertContains(t, operationDescriptions(plan), "add foreign-key constraint sales_deal_company_id_fkey on sales_deal.company_id")
+	assertContains(t, operationSQL(plan), `ALTER TABLE "sales_deal" ADD CONSTRAINT "sales_deal_company_id_fkey" FOREIGN KEY ("company_id") REFERENCES "sales_company"("id")`)
+}
+
+func TestBuildMetadataSchemaPlanSkipsDisabledLinkForeignKeys(t *testing.T) {
+	disabled := false
 	entity := catalog.LoadedEntity{
 		AppName: "core",
 		Path:    "apps/core/entities/activity.yml",
 		Entity: schema.Entity{
 			Name: "activity",
 			Fields: []schema.Field{
-				{Name: "actor", Type: "link", Options: entityOption("user")},
+				{Name: "actor", Type: "link", Options: fieldtype.Options{Entity: "user", ForeignKey: &disabled}},
 			},
 		},
 	}
@@ -513,7 +548,7 @@ func TestBuildMetadataSchemaPlanDoesNotCreateLinkForeignKeys(t *testing.T) {
 		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
 	}
 	if strings.Contains(operationDescriptions(plan), "foreign-key") || strings.Contains(operationSQL(plan), "FOREIGN KEY") {
-		t.Fatalf("BuildMetadataSchemaPlan() created database foreign key for link field: %#v", plan.Operations)
+		t.Fatalf("BuildMetadataSchemaPlan() created disabled database foreign key: %#v", plan.Operations)
 	}
 }
 
@@ -703,7 +738,7 @@ func coreSchemaEntities() []catalog.LoadedEntity {
 			Path:    "apps/core/entities/entity.yml",
 			Entity: schema.Entity{
 				Name:   "entity",
-				Naming: schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{key}"},
+				Naming: schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{app}.{key}"},
 				Fields: []schema.Field{
 					{Name: "app", Type: "link", Required: true, Index: true, Options: entityOption("app")},
 					{Name: "key", Type: "text", Required: true, Index: true},

@@ -2242,7 +2242,7 @@ fields:
 	if err == nil {
 		t.Fatal("Run(entities validate) error = nil, want missing target error")
 	}
-	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "lead.yml")) + ":3"
+	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "lead.yml")) + ":5"
 	for _, want := range []string{wantPath, `field "company"`, `unknown entity target "company"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
@@ -3148,10 +3148,18 @@ func (r *fakeSchemaSyncRunner) Sync(_ context.Context, root string, databaseURL 
 func writeCLIEntity(t *testing.T, path string, body string) {
 	t.Helper()
 
+	body = strings.TrimSpace(body)
+	if !strings.Contains(body, "\nname:") && !strings.HasPrefix(body, "name:") {
+		if strings.Contains(body, "\nroute:") {
+			body = strings.Replace(body, "\nroute:", "\nname:\n  strategy: random\nroute:", 1)
+		} else {
+			body = strings.Replace(body, "\nfields:", "\nname:\n  strategy: random\nfields:", 1)
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(path), err)
 	}
-	if err := os.WriteFile(path, []byte(strings.TrimSpace(body)+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(body+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
 }

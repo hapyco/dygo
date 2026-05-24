@@ -1,16 +1,10 @@
 label: Language
 description: Supported language for dygo runtime and Studio localization.
 icon: languages
-naming:
-  strategy: field
-  field: name
+name:
+  strategy: manual
+  label: Name
 fields:
-  - name: name
-    label: Name
-    type: text
-    required: true
-    unique: true
-
   - name: code
     label: Code
     type: text

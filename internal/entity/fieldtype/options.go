@@ -8,9 +8,10 @@ import (
 
 // Options contains type-specific field settings from Entity metadata.
 type Options struct {
-	Values []string `yaml:"values,omitempty"`
-	App    string   `yaml:"app,omitempty"`
-	Entity string   `yaml:"entity,omitempty"`
+	Values     []string `yaml:"values,omitempty"`
+	App        string   `yaml:"app,omitempty"`
+	Entity     string   `yaml:"entity,omitempty"`
+	ForeignKey *bool    `yaml:"foreign-key,omitempty"`
 }
 
 // NoOptions rejects type-specific field options.
@@ -24,6 +25,9 @@ func NoOptions(options Options) error {
 	}
 	if options.Entity != "" {
 		problems = append(problems, "entity is not supported")
+	}
+	if options.ForeignKey != nil {
+		problems = append(problems, "foreign-key is not supported")
 	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))
@@ -39,6 +43,9 @@ func SelectOptions(options Options) error {
 	}
 	if options.Entity != "" {
 		problems = append(problems, "entity is not supported")
+	}
+	if options.ForeignKey != nil {
+		problems = append(problems, "foreign-key is not supported")
 	}
 	if len(options.Values) == 0 {
 		problems = append(problems, "values are required")
@@ -60,11 +67,23 @@ func SelectOptions(options Options) error {
 	return nil
 }
 
-// EntityOptions validates link-style field options.
+// LinkOptions validates link field options.
+func LinkOptions(options Options) error {
+	return entityOptions(options, true)
+}
+
+// EntityOptions validates entity-target field options.
 func EntityOptions(options Options) error {
+	return entityOptions(options, false)
+}
+
+func entityOptions(options Options, allowForeignKey bool) error {
 	var problems []string
 	if len(options.Values) > 0 {
 		problems = append(problems, "values are not supported")
+	}
+	if !allowForeignKey && options.ForeignKey != nil {
+		problems = append(problems, "foreign-key is not supported")
 	}
 	if strings.TrimSpace(options.App) != "" && !IsName(options.App) {
 		problems = append(problems, fmt.Sprintf("app %q must be kebab-case", options.App))

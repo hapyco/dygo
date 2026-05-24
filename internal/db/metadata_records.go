@@ -422,20 +422,20 @@ type metadataNamings struct {
 func metadataRecordNamings(entities []catalog.LoadedEntity) metadataNamings {
 	return metadataNamings{
 		Entity: metadataCoreEntityNaming(entities, "entity", schema.Naming{
-			Strategy: schema.NamingStrategyTemplate,
-			Template: "{app}.{key}",
+			Strategy: schema.NamingStrategyFormat,
+			Format:   "{app}.{key}",
 		}),
 		Field: metadataCoreEntityNaming(entities, "field", schema.Naming{
-			Strategy: schema.NamingStrategyTemplate,
-			Template: "{entity}.{field-name}",
+			Strategy: schema.NamingStrategyFormat,
+			Format:   "{entity}.{field-name}",
 		}),
 		Index: metadataCoreEntityNaming(entities, "index", schema.Naming{
-			Strategy: schema.NamingStrategyTemplate,
-			Template: "{entity}.{index-name}",
+			Strategy: schema.NamingStrategyFormat,
+			Format:   "{entity}.{index-name}",
 		}),
 		Constraint: metadataCoreEntityNaming(entities, "constraint", schema.Naming{
-			Strategy: schema.NamingStrategyTemplate,
-			Template: "{entity}.{constraint-name}",
+			Strategy: schema.NamingStrategyFormat,
+			Format:   "{entity}.{constraint-name}",
 		}),
 	}
 }
@@ -487,6 +487,9 @@ func fieldOptionsJSON(options fieldtype.Options) ([]byte, error) {
 	if options.Entity != "" {
 		values["entity"] = options.Entity
 	}
+	if options.ForeignKey != nil {
+		values["foreign-key"] = *options.ForeignKey
+	}
 	if len(values) == 0 {
 		return nil, nil
 	}
@@ -496,10 +499,10 @@ func fieldOptionsJSON(options fieldtype.Options) ([]byte, error) {
 func entityNamingJSON(naming schema.Naming) ([]byte, error) {
 	return json.Marshal(recordNaming{
 		Strategy: naming.Strategy,
+		Label:    naming.Label,
 		Length:   naming.Length,
-		Field:    naming.Field,
 		Pattern:  naming.Pattern,
-		Template: naming.Template,
+		Format:   naming.Format,
 	})
 }
 

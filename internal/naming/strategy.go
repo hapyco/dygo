@@ -12,7 +12,7 @@ import (
 
 var seriesTokenPattern = regexp.MustCompile(`\{(YY|YYYY|MM|#+)\}`)
 
-// ValueResolver provides values for field and template naming tokens.
+// ValueResolver provides values for manual and format naming tokens.
 type ValueResolver interface {
 	Value(ctx context.Context, token string) (string, error)
 }
@@ -68,6 +68,8 @@ type Options struct {
 func Generate(ctx context.Context, plan schema.Naming, resolver ValueResolver, options Options) (string, error) {
 	plan = normalizePlan(plan)
 	switch plan.Strategy {
+	case schema.NamingStrategyManual:
+		return resolveValue(ctx, resolver, "name")
 	case schema.NamingStrategyRandom:
 		random := options.Random
 		if random == nil {
@@ -78,12 +80,10 @@ func Generate(ctx context.Context, plan schema.Naming, resolver ValueResolver, o
 			return "", fmt.Errorf("generate random name: %w", err)
 		}
 		return name, nil
-	case schema.NamingStrategyField:
-		return resolveValue(ctx, resolver, plan.Field)
 	case schema.NamingStrategySeries:
 		return generateSeriesName(ctx, plan, options)
-	case schema.NamingStrategyTemplate:
-		return RenderTemplate(plan.Template, func(token string) (string, error) {
+	case schema.NamingStrategyFormat:
+		return RenderFormat(plan.Format, func(token string) (string, error) {
 			return resolveValue(ctx, resolver, token)
 		})
 	default:
@@ -145,20 +145,20 @@ func namingNow(options Options) time.Time {
 	return time.Now().UTC()
 }
 
-// RenderTemplate replaces {field} tokens by calling resolve for each token.
-func RenderTemplate(template string, resolve func(token string) (string, error)) (string, error) {
+// RenderFormat replaces {field} tokens by calling resolve for each token.
+func RenderFormat(format string, resolve func(token string) (string, error)) (string, error) {
 	if resolve == nil {
-		return "", fmt.Errorf("template resolver is required")
+		return "", fmt.Errorf("format resolver is required")
 	}
 	var rendered strings.Builder
-	for i := 0; i < len(template); {
-		switch template[i] {
+	for i := 0; i < len(format); {
+		switch format[i] {
 		case '{':
-			end := strings.IndexByte(template[i+1:], '}')
+			end := strings.IndexByte(format[i+1:], '}')
 			if end < 0 {
-				return "", fmt.Errorf("template has an unclosed token")
+				return "", fmt.Errorf("format has an unclosed token")
 			}
-			token := template[i+1 : i+1+end]
+			token := format[i+1 : i+1+end]
 			value, err := resolve(token)
 			if err != nil {
 				return "", err
@@ -166,9 +166,9 @@ func RenderTemplate(template string, resolve func(token string) (string, error))
 			rendered.WriteString(value)
 			i += end + 2
 		case '}':
-			return "", fmt.Errorf("template has an unopened token")
+			return "", fmt.Errorf("format has an unopened token")
 		default:
-			rendered.WriteByte(template[i])
+			rendered.WriteByte(format[i])
 			i++
 		}
 	}

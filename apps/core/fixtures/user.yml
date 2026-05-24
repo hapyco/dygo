@@ -1,0 +1,8 @@
+entity: user
+match: [email]
+records:
+  - email: admin@example.com
+    full-name: Administrator
+    password: password
+    enabled: true
+    administrator: true

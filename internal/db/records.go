@@ -862,9 +862,10 @@ type recordField struct {
 }
 
 type recordFieldOptions struct {
-	App    string   `json:"app,omitempty"`
-	Values []string `json:"values,omitempty"`
-	Entity string   `json:"entity,omitempty"`
+	App        string   `json:"app,omitempty"`
+	Values     []string `json:"values,omitempty"`
+	Entity     string   `json:"entity,omitempty"`
+	ForeignKey *bool    `json:"foreign-key,omitempty"`
 }
 
 type recordMutation struct {
@@ -895,6 +896,25 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 		Naming:       naming,
 		FieldByName:  map[string]recordField{},
 	}
+	if naming.Strategy == schema.NamingStrategyManual {
+		nameField, ok := systemRecordFieldByName(systemFieldName)
+		if !ok {
+			return recordLayout{}, recordError(RecordErrorInternal, "system name field metadata is missing", map[string]any{"entity": routeSlug}, nil)
+		}
+		field := recordField{
+			Name:       nameField.Name,
+			Type:       nameField.Type,
+			Required:   true,
+			Storage:    true,
+			Listable:   nameField.Listable,
+			Nameable:   nameField.Nameable,
+			ValueKind:  nameField.ValueKind,
+			SystemName: true,
+			Column:     nameField.Column,
+		}
+		layout.Fields = append(layout.Fields, field)
+		layout.FieldByName[field.Name] = field
+	}
 	for _, metadataField := range meta.Fields {
 		definition, ok := fieldtype.DefaultDefinition(metadataField.Type)
 		if !ok {
@@ -910,9 +930,6 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 			Listable:  definition.Behavior.Listable,
 			Nameable:  definition.Behavior.NameRenderable,
 			ValueKind: definition.Behavior.ValueKind,
-			SystemName: metadataField.Name == "name" &&
-				naming.Strategy == "field" &&
-				naming.Field == "name",
 		}
 		if len(metadataField.Options) > 0 {
 			if err := json.Unmarshal(metadataField.Options, &field.Options); err != nil {
@@ -1241,7 +1258,7 @@ func (l recordLayout) validateInputFields(input RecordInput, create bool, match 
 }
 
 func (l recordLayout) allowsNameCreateInput() bool {
-	return l.Naming.Strategy == "field" && l.Naming.Field == "name"
+	return l.Naming.Strategy == schema.NamingStrategyManual
 }
 
 func (s RecordStore) writeMutation(ctx context.Context, layout recordLayout, input RecordInput) (recordMutation, error) {

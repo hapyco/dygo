@@ -2,14 +2,13 @@ label: Activity
 description: Timeline entry for meaningful Record and system events.
 icon: activity
 is-system: true
-naming:
+name:
   strategy: random
 fields:
   - name: kind
     label: Kind
     type: select
     required: true
-    index: true
     default: record
     options:
       values:
@@ -26,7 +25,6 @@ fields:
     label: Operation
     type: select
     required: true
-    index: true
     options:
       values:
         - create
@@ -46,7 +44,6 @@ fields:
     label: Status
     type: select
     required: true
-    index: true
     default: success
     options:
       values:
@@ -56,21 +53,20 @@ fields:
   - name: entity
     label: Entity
     type: link
-    index: true
     options:
       entity: entity
+      foreign-key: false
 
   - name: record-id
     label: Record ID
     type: bigint
-    index: true
 
   - name: actor
     label: Actor
     type: link
-    index: true
     options:
       entity: user
+      foreign-key: false
 
   - name: title
     label: Title
@@ -96,6 +92,3 @@ fields:
 indexes:
   - name: by-record
     fields: [entity, record-id]
-
-  - name: by-kind-operation
-    fields: [kind, operation]

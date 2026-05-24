@@ -225,6 +225,8 @@ func TestValidateAcceptsResolvedFieldTargets(t *testing.T) {
 	writeEntity(t, filepath.Join(app.Dir, "entities", "company.yml"), "company")
 	writeFile(t, filepath.Join(app.Dir, "entities", "lead", "lead.yml"), `
 label: Lead
+name:
+  strategy: random
 fields:
   - name: company
     label: Company
@@ -275,6 +277,8 @@ fields:
 	entityPath := filepath.Join(app.Dir, "entities", "invoice.yml")
 	writeFile(t, entityPath, `
 label: Invoice
+name:
+  strategy: random
 fields:
   - name: settings
     label: Settings
@@ -287,7 +291,7 @@ fields:
 	if err == nil {
 		t.Fatal("Validate() error = nil, want single target error")
 	}
-	for _, want := range []string{entityPath + ":3", `field "settings"`, `single Entity "invoice-settings"`, `cannot be link targets`} {
+	for _, want := range []string{entityPath + ":5", `field "settings"`, `single Entity "invoice-settings"`, `cannot be link targets`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 		}
@@ -324,6 +328,8 @@ func TestValidateRejectsMissingFieldTarget(t *testing.T) {
 	entityPath := filepath.Join(app.Dir, "entities", "lead.yml")
 	writeFile(t, entityPath, `
 label: Lead
+name:
+  strategy: random
 fields:
   - name: company
     label: Company
@@ -336,7 +342,7 @@ fields:
 	if err == nil {
 		t.Fatal("Validate() error = nil, want missing target error")
 	}
-	for _, want := range []string{entityPath + ":3", `app "sales"`, `entity "lead"`, `field "company"`, `unknown entity target "company"`} {
+	for _, want := range []string{entityPath + ":5", `app "sales"`, `entity "lead"`, `field "company"`, `unknown entity target "company"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 		}
@@ -354,6 +360,8 @@ func TestValidateResolvesSameAppFieldTargetBeforeGlobalNames(t *testing.T) {
 	entityPath := filepath.Join(sales.Dir, "entities", "lead.yml")
 	writeFile(t, entityPath, `
 label: Lead
+name:
+  strategy: random
 fields:
   - name: customer
     label: Customer
@@ -380,6 +388,8 @@ func TestValidateRejectsAmbiguousFieldTargetAcrossApps(t *testing.T) {
 	entityPath := filepath.Join(sales.Dir, "entities", "lead.yml")
 	writeFile(t, entityPath, `
 label: Lead
+name:
+  strategy: random
 fields:
   - name: customer
     label: Customer
@@ -392,7 +402,7 @@ fields:
 	if err == nil {
 		t.Fatal("Validate() error = nil, want ambiguous target error")
 	}
-	for _, want := range []string{entityPath + ":3", `app "sales"`, `field "customer"`, `ambiguous entity target "customer"`, `set options.app`} {
+	for _, want := range []string{entityPath + ":5", `app "sales"`, `field "customer"`, `ambiguous entity target "customer"`, `set options.app`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 		}
@@ -406,6 +416,8 @@ func TestValidateLoadsFolderParentAndCollectionEntities(t *testing.T) {
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
 	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice.yml"), `
 label: Invoice
+name:
+  strategy: random
 fields:
   - name: items
     label: Items
@@ -458,6 +470,8 @@ func TestValidateRejectsCollectionEntityRouteSlug(t *testing.T) {
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
 	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice.yml"), `
 label: Invoice
+name:
+  strategy: random
 fields:
   - name: items
     label: Items
@@ -467,6 +481,8 @@ fields:
 `)
 	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice-item.yml"), `
 label: Invoice Item
+name:
+  strategy: random
 route:
   slug: invoice-item
 fields:
@@ -493,6 +509,8 @@ func TestValidateIgnoresCollectionEntitiesForRouteSlugUniqueness(t *testing.T) {
 	writeEntity(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer")
 	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice.yml"), `
 label: Invoice
+name:
+  strategy: random
 fields:
   - name: rows
     label: Rows
@@ -536,6 +554,8 @@ func TestValidateRejectsCollectionEntityReferencedMoreThanOnce(t *testing.T) {
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
 	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice.yml"), `
 label: Invoice
+name:
+  strategy: random
 fields:
   - name: items
     label: Items
@@ -567,6 +587,8 @@ func TestValidateRejectsLinksToCollectionEntities(t *testing.T) {
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
 	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "invoice.yml"), `
 label: Invoice
+name:
+  strategy: random
 fields:
   - name: items
     label: Items
@@ -598,6 +620,8 @@ func TestValidateRejectsCollectionFieldsTargetingNormalEntities(t *testing.T) {
 	writeEntity(t, filepath.Join(app.Dir, "entities", "invoice-item.yml"), "invoice-item")
 	writeFile(t, filepath.Join(app.Dir, "entities", "invoice.yml"), `
 label: Invoice
+name:
+  strategy: random
 fields:
   - name: items
     label: Items
@@ -708,6 +732,8 @@ func writeEntity(t *testing.T, path string, name string) {
 
 	writeFile(t, path, `
 label: `+labelForName(name)+`
+name:
+  strategy: random
 fields:
   - name: title
     label: Title
@@ -720,6 +746,8 @@ func writeEntityWithRoute(t *testing.T, path string, name string, routeSlug stri
 
 	writeFile(t, path, `
 label: `+labelForName(name)+`
+name:
+  strategy: random
 route:
   slug: `+routeSlug+`
 fields:

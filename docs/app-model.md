@@ -92,7 +92,7 @@ Entity files live in the app's manifest-defined `entities` directory. Entity ide
 
 Entity metadata uses singular keys only. Studio record URLs use `route.slug`, defaulting to the Entity key, at `/{slug}`. Non-Core storage tables are app-scoped by default, so `crm/lead` maps to `crm_lead`.
 
-Every Record also has a system `name` generated from Entity `naming` metadata. Apps can choose random names, field-based names, series names, or template names. The numeric `id` remains dygo's internal primary key.
+Every Record also has a system `name` generated from Entity `name` metadata. Apps can choose manual names, random names, format names, or series names. The numeric `id` remains dygo's internal primary key.
 
 Hooks are app-owned Go code under the app's manifest-defined `hooks` directory. A file such as `hooks/lead.go` belongs to Entity `lead`. dygo validates this filename convention, but the code must still be compiled into a project runner through `pkg/sdk/runtime`; dygo does not dynamically load Go source files.
 

@@ -123,6 +123,8 @@ func TestDecodeSystemEntity(t *testing.T) {
 	entity, err := Decode([]byte(`
 label: Session
 is-system: true
+name:
+  strategy: random
 fields:
   - name: token
     label: Token
@@ -170,18 +172,18 @@ fields:
 			wantError: "is_system",
 		},
 		{
-			name: "explicit naming rejected",
+			name: "explicit name configuration rejected",
 			body: `
 label: Invoice Settings
 is-single: true
-naming:
+name:
   strategy: random
 fields:
   - name: default-due-days
     label: Default Due Days
     type: int
 `,
-			wantError: "single Entities do not support explicit naming",
+			wantError: "single Entities do not support explicit name configuration",
 		},
 		{
 			name: "required field needs default",
@@ -244,6 +246,8 @@ func TestDecodeWithCustomFieldType(t *testing.T) {
 
 	entity, err := Decode([]byte(`
 label: Review
+name:
+  strategy: random
 fields:
   - name: score
     label: Score
@@ -270,7 +274,7 @@ func TestDecodeNamingStrategies(t *testing.T) {
 			name: "random",
 			body: `
 label: Ticket
-naming:
+name:
   strategy: random
   length: 24
 fields:
@@ -281,12 +285,24 @@ fields:
 			want: Naming{Strategy: NamingStrategyRandom, Length: 24},
 		},
 		{
-			name: "field",
+			name: "strategy required",
+			body: `
+label: Ticket
+name: {}
+fields:
+  - name: title
+    label: Title
+    type: text
+`,
+			wantError: "name strategy is required",
+		},
+		{
+			name: "format",
 			body: `
 label: User
-naming:
-  strategy: field
-  field: email
+name:
+  strategy: format
+  format: "{email}"
 fields:
   - name: email
     label: Email
@@ -294,13 +310,13 @@ fields:
     required: true
     unique: true
 `,
-			want: Naming{Strategy: NamingStrategyField, Field: "email"},
+			want: Naming{Strategy: NamingStrategyFormat, Format: "{email}"},
 		},
 		{
 			name: "series",
 			body: `
 label: Sales Invoice
-naming:
+name:
   strategy: series
   pattern: "SINV-{YYYY}-{MM}-{#####}"
 fields:
@@ -311,12 +327,12 @@ fields:
 			want: Naming{Strategy: NamingStrategySeries, Pattern: "SINV-{YYYY}-{MM}-{#####}"},
 		},
 		{
-			name: "template",
+			name: "format with fields",
 			body: `
 label: Entity
-naming:
-  strategy: template
-  template: "{app}.{key}"
+name:
+  strategy: format
+  format: "{app}.{key}"
 fields:
   - name: app
     label: App
@@ -329,12 +345,14 @@ fields:
     type: text
     required: true
 `,
-			want: Naming{Strategy: NamingStrategyTemplate, Template: "{app}.{key}"},
+			want: Naming{Strategy: NamingStrategyFormat, Format: "{app}.{key}"},
 		},
 		{
 			name: "reserved name field",
 			body: `
 label: Role
+name:
+  strategy: random
 fields:
   - name: name
     label: Name
@@ -345,26 +363,25 @@ fields:
 			wantError: `field "name" is reserved`,
 		},
 		{
-			name: "name field allowed as naming source",
+			name: "manual name",
 			body: `
 label: Role
-naming:
-  strategy: field
-  field: name
+name:
+  strategy: manual
+  label: Name
 fields:
-  - name: name
-    label: Name
+  - name: label
+    label: Label
     type: text
     required: true
-    unique: true
 `,
-			want: Naming{Strategy: NamingStrategyField, Field: "name"},
+			want: Naming{Strategy: NamingStrategyManual, Label: "Name"},
 		},
 		{
 			name: "invalid random length",
 			body: `
 label: Ticket
-naming:
+name:
   strategy: random
   length: 3
 fields:
@@ -375,25 +392,24 @@ fields:
 			wantError: "random naming length",
 		},
 		{
-			name: "field source must be unique",
+			name: "format source must be required",
 			body: `
 label: User
-naming:
-  strategy: field
-  field: email
+name:
+  strategy: format
+  format: "{email}"
 fields:
   - name: email
     label: Email
     type: email
-    required: true
 `,
-			wantError: "must be unique",
+			wantError: "must be required",
 		},
 		{
 			name: "series requires counter",
 			body: `
 label: Invoice
-naming:
+name:
   strategy: series
   pattern: "INV-{YYYY}"
 fields:
@@ -404,12 +420,12 @@ fields:
 			wantError: "exactly one hash counter",
 		},
 		{
-			name: "template source must exist",
+			name: "format source must exist",
 			body: `
 label: Entity
-naming:
-  strategy: template
-  template: "{app}.{missing}"
+name:
+  strategy: format
+  format: "{app}.{missing}"
 fields:
   - name: app
     label: App
@@ -438,7 +454,7 @@ fields:
 				t.Fatalf("Decode() error = %v, want nil", err)
 			}
 			got := entity.EffectiveNaming()
-			if got.Strategy != tt.want.Strategy || got.Length != tt.want.Length || got.Field != tt.want.Field || got.Pattern != tt.want.Pattern || got.Template != tt.want.Template {
+			if got.Strategy != tt.want.Strategy || got.Label != tt.want.Label || got.Length != tt.want.Length || got.Pattern != tt.want.Pattern || got.Format != tt.want.Format {
 				t.Fatalf("EffectiveNaming() = %+v, want %+v", got, tt.want)
 			}
 		})
@@ -461,7 +477,7 @@ description: Missing required fields
 			wantError: "label is required",
 		},
 		{
-			name: "top-level name rejected",
+			name: "invalid name config",
 			body: `
 name: lead
 label: Lead
@@ -470,7 +486,7 @@ fields:
     label: Title
     type: text
 `,
-			wantError: "top-level name is not allowed",
+			wantError: "cannot unmarshal",
 		},
 		{
 			name: "missing fields",
@@ -1044,6 +1060,8 @@ func validEntityYAML() string {
 label: Lead
 description: Sales lead
 icon: contact
+name:
+  strategy: random
 fields:
   - name: full-name
     label: Full Name

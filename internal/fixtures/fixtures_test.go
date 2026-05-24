@@ -291,16 +291,16 @@ func TestRepositoryCoreFixturesApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyFiles(core fixtures) error = %v, want nil", err)
 	}
-	if result.Created != 281 || result.Updated != 0 {
-		t.Fatalf("ApplyFiles(core fixtures) result = %+v, want 281 created", result)
+	if result.Created != 282 || result.Updated != 0 {
+		t.Fatalf("ApplyFiles(core fixtures) result = %+v, want 282 created", result)
 	}
 
 	result, err = ApplyFiles(context.Background(), store, files)
 	if err != nil {
 		t.Fatalf("ApplyFiles(core fixtures second run) error = %v, want nil", err)
 	}
-	if result.Created != 0 || result.Updated != 281 {
-		t.Fatalf("ApplyFiles(core fixtures second run) result = %+v, want 281 updated", result)
+	if result.Created != 0 || result.Updated != 282 {
+		t.Fatalf("ApplyFiles(core fixtures second run) result = %+v, want 282 updated", result)
 	}
 }
 
@@ -469,6 +469,16 @@ func newFakeStore() *fakeStore {
 			Type:   "unique",
 			Fields: json.RawMessage(`["entity","role"]`),
 		}},
+	}
+	store.metadata["user"] = db.MetadataEntityMeta{
+		MetadataEntity: db.MetadataEntity{Name: "user"},
+		Fields: []db.MetadataField{
+			{Name: "email", Type: "email", Unique: true, Required: true},
+			{Name: "full-name", Type: "text", Required: true},
+			{Name: "password", Type: "password"},
+			{Name: "enabled", Type: "boolean"},
+			{Name: "administrator", Type: "boolean"},
+		},
 	}
 	store.metadata["lead"] = db.MetadataEntityMeta{
 		MetadataEntity: db.MetadataEntity{Name: "lead"},

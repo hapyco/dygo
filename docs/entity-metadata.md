@@ -13,7 +13,7 @@ label: Lead
 description: Sales lead
 route:
   slug: sales-lead
-naming:
+name:
   strategy: series
   pattern: "LEAD-{YYYY}-{MM}-{#####}"
 fields:
@@ -66,7 +66,7 @@ constraints:
 
 ## Rules
 
-Entity identity comes from the file path. The YAML file must not contain top-level `name`.
+Entity identity comes from the file path. Top-level `name` configures Record system names; it does not define Entity identity.
 
 The simple form `entities/<entity>.yml` defines Entity `<entity>`. The folder form `entities/<entity>/<entity>.yml` defines the same parent Entity. Both forms are equivalent, but an app cannot define both for the same Entity.
 
@@ -80,7 +80,7 @@ dygo uses singular Entity keys only. There is no separate required metadata for 
 
 `is-single: true` marks an Entity as a singleton settings/config surface. Single Entities have exactly one framework-owned Record whose system `name` is the Entity key. dygo seeds that Record during metadata sync, Studio opens the form directly instead of a list, and normal create/delete/list operations are not used.
 
-Single Entities cannot define explicit `naming`; dygo owns the singleton Record name. Every required stored field on a Single Entity must define a non-null default so `dygo migrate` can seed the row deterministically.
+Single Entities cannot define explicit `name` configuration; dygo owns the singleton Record name. Every required stored field on a Single Entity must define a non-null default so `dygo migrate` can seed the row deterministically.
 
 Single Entities cannot be targets of `link` or `collection` fields because there is no meaningful Record selection. A Single Entity may still contain link fields to normal Entities.
 
@@ -97,7 +97,7 @@ fields:
 
 The stable internal Entity identity is `{app, key}`. Two apps may define the same Entity key, such as `crm/contact` and `support/contact`.
 
-The user-facing route slug is separate from that internal identity. `route.slug` is optional and defaults to the Entity key. Route slugs must be globally unique across loaded apps and must not use Studio's reserved root slugs: `api`, `assets`, `health`, `login`, or `logout`. dygo fails validation on route slug conflicts instead of generating unstable numeric suffixes. If two apps both define `contact`, set one explicit slug, such as:
+The user-facing route slug is separate from that internal identity. `route.slug` is optional and defaults to the Entity key. Route slugs must be globally unique across loaded apps and must not use Studio's reserved root slugs: `api`, `assets`, `health`, `login`, `logout`, `me`, or `setup`. dygo fails validation on route slug conflicts instead of generating unstable numeric suffixes. If two apps both define `contact`, set one explicit slug, such as:
 
 ```yaml
 route:
@@ -153,60 +153,60 @@ created-at
 updated-at
 ```
 
-`id` is the internal numeric primary key. `name` is the stable system/business identifier. Entity `naming` metadata controls how `name` is created.
+`id` is the internal numeric primary key. `name` is the stable system/business identifier. Entity `name` metadata controls how `name` is created.
 
-If `naming` is omitted, dygo uses random naming:
+Normal Entities must define `name`. Use random naming when dygo should generate opaque Record names:
 
 ```yaml
-naming:
+name:
   strategy: random
 ```
 
 The effective default random length is `16`, generated with Go `crypto/rand` and a Base58-style alphabet. Builders may override the length:
 
 ```yaml
-naming:
+name:
   strategy: random
   length: 24
 ```
 
-Field-based naming copies a required, unique, stored, non-write-only field into the system `name` on create:
+Manual naming allows create requests and fixtures to provide the system `name` directly:
 
 ```yaml
-naming:
-  strategy: field
-  field: email
+name:
+  strategy: manual
+  label: Name
 ```
 
-A normal Field called `name` is allowed only when it is the naming source:
+`name` is a system field and cannot appear under `fields`.
+
+Format naming renders required stored fields into a deterministic name. Link field tokens render the linked Record's system `name`:
 
 ```yaml
-naming:
-  strategy: field
-  field: name
+name:
+  strategy: format
+  format: "{email}"
 ```
-
-Otherwise `name` is reserved as a system field and cannot appear under `fields`.
 
 Series naming uses a pattern with date tokens and exactly one hash counter token:
 
 ```yaml
-naming:
+name:
   strategy: series
   pattern: "SINV-{YYYY}-{MM}-{#####}"
 ```
 
 Supported v1 series tokens are `{YY}`, `{YYYY}`, `{MM}`, and one counter token such as `{#####}`. The number of hashes controls zero-padding. Series counters are stored in Core `naming-series` Records and incremented transactionally.
 
-Template naming renders required stored fields into a deterministic name. Link field tokens render the linked Record's system `name`:
+Format naming may include multiple field tokens:
 
 ```yaml
-naming:
-  strategy: template
-  template: "{app}.{key}"
+name:
+  strategy: format
+  format: "{app}.{key}"
 ```
 
-Updating a field used for `naming.strategy: field` or `naming.strategy: template` does not rename an existing Record. Explicit Record rename is future work.
+Updating a field used for `name.strategy: format` does not rename an existing Record. Explicit Record rename is future work.
 
 `index: true` creates a non-unique database index for field types that support indexing. It is useful for fields commonly used in filters, lookups, joins, or status screens.
 
@@ -251,7 +251,7 @@ Supported field check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`,
 
 Check fields must be DB-backed scalar fields. `password`, `collection`, `json`, `attachment`, and `link` checks are not supported in v1.
 
-During `dygo migrate`, Entity naming metadata is upserted into the Core `entity` table. Field metadata is upserted into the Core `field` table with field-name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
+During `dygo migrate`, Entity name metadata is upserted into the Core `entity` table. Field metadata is upserted into the Core `field` table with field-name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
 
 Type-specific settings live under `options`.
 
@@ -265,7 +265,13 @@ options:
   entity: contact
 ```
 
-`link` fields are framework-level relationships. They create indexed storage columns and dygo validates linked Records at runtime, but v1 does not create database foreign key constraints for links.
+`link` fields create storage columns and database foreign key constraints by default. PostgreSQL's default delete behavior applies, so deleting a target Record fails while other Records still reference it. Set `index: true` when the link is commonly filtered or joined. Set `options.foreign-key: false` for framework-level links that must not create database constraints, such as audit/history references that should survive target Record deletion:
+
+```yaml
+options:
+  entity: user
+  foreign-key: false
+```
 
 `collection` fields must target a collection Entity owned by the same parent Entity folder. Cross-app collection ownership is not supported in v1.
 

@@ -13,10 +13,10 @@ import (
 
 type recordNaming struct {
 	Strategy string `json:"strategy"`
+	Label    string `json:"label,omitempty"`
 	Length   int    `json:"length,omitempty"`
-	Field    string `json:"field,omitempty"`
 	Pattern  string `json:"pattern,omitempty"`
-	Template string `json:"template,omitempty"`
+	Format   string `json:"format,omitempty"`
 }
 
 func defaultRecordNaming() schema.Naming {

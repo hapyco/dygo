@@ -2,7 +2,7 @@ label: Session
 description: Login session metadata.
 icon: clock
 is-system: true
-naming:
+name:
   strategy: random
 fields:
   - name: user

@@ -99,17 +99,17 @@ func TestBuildMetadataRecords(t *testing.T) {
 	}
 }
 
-func TestBuildMetadataRecordsUsesCoreMetadataNamingTemplates(t *testing.T) {
+func TestBuildMetadataRecordsUsesCoreMetadataNamingFormats(t *testing.T) {
 	records, err := buildMetadataRecords(metadataCatalog{
 		Apps: []manifest.LoadedApp{
 			{Manifest: manifest.Manifest{Name: "core", Label: "Core", Version: "0.1.0"}},
 			{Manifest: manifest.Manifest{Name: "sales", Label: "Sales", Version: "0.1.0"}},
 		},
 		Entities: []catalog.LoadedEntity{
-			metadataNamingEntity("entity", schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{key}"}),
-			metadataNamingEntity("field", schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{entity}.{field-name}"}),
-			metadataNamingEntity("index", schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{entity}.{index-name}"}),
-			metadataNamingEntity("constraint", schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{entity}.{constraint-name}"}),
+			metadataNamingEntity("entity", schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{app}.{key}"}),
+			metadataNamingEntity("field", schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{entity}.{field-name}"}),
+			metadataNamingEntity("index", schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{entity}.{index-name}"}),
+			metadataNamingEntity("constraint", schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{entity}.{constraint-name}"}),
 			{
 				AppName: "sales",
 				Path:    "apps/sales/entities/invoice.yml",
@@ -161,7 +161,7 @@ func metadataNamingEntity(name string, naming schema.Naming) catalog.LoadedEntit
 	}
 }
 
-func TestBuildMetadataRecordsUsesEntityTableNamingTemplate(t *testing.T) {
+func TestBuildMetadataRecordsUsesEntityTableNamingFormat(t *testing.T) {
 	records, err := buildMetadataRecords(metadataCatalog{
 		Apps: []manifest.LoadedApp{
 			{Manifest: manifest.Manifest{Name: "core", Label: "Core", Version: "0.1.0"}},
@@ -173,7 +173,7 @@ func TestBuildMetadataRecordsUsesEntityTableNamingTemplate(t *testing.T) {
 				Entity: schema.Entity{
 					Name:   "entity",
 					Label:  "Entity",
-					Naming: schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{key}"},
+					Naming: schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{app}.{key}"},
 					Fields: []schema.Field{
 						{Name: "app", Label: "App", Type: "link", Required: true, Options: fieldtype.Options{Entity: "app"}},
 						{Name: "key", Label: "Key", Type: "text", Required: true},
@@ -202,8 +202,8 @@ func TestBuildMetadataRecordsUsesEntityTableNamingTemplate(t *testing.T) {
 	if records.Entities[1].Name != "core.user" || records.Entities[1].Key != "user" {
 		t.Fatalf("user record = %+v, want core.user", records.Entities[1])
 	}
-	if !strings.Contains(string(records.Entities[0].Naming), `"strategy":"template"`) || !strings.Contains(string(records.Entities[0].Naming), `"{app}.{key}"`) {
-		t.Fatalf("entity naming metadata = %s, want template strategy", records.Entities[0].Naming)
+	if !strings.Contains(string(records.Entities[0].Naming), `"strategy":"format"`) || !strings.Contains(string(records.Entities[0].Naming), `"format":"{app}.{key}"`) {
+		t.Fatalf("entity naming metadata = %s, want format strategy", records.Entities[0].Naming)
 	}
 }
 
@@ -245,16 +245,16 @@ func TestEntityNamingJSONRoundTrips(t *testing.T) {
 			naming: schema.Naming{Strategy: schema.NamingStrategyRandom, Length: 16},
 		},
 		{
-			name:   "field",
-			naming: schema.Naming{Strategy: schema.NamingStrategyField, Field: "name"},
+			name:   "manual",
+			naming: schema.Naming{Strategy: schema.NamingStrategyManual, Label: "Name"},
 		},
 		{
 			name:   "series",
 			naming: schema.Naming{Strategy: schema.NamingStrategySeries, Pattern: "SINV-{YYYY}-{#####}"},
 		},
 		{
-			name:   "template",
-			naming: schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{app}.{key}"},
+			name:   "format",
+			naming: schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{app}.{key}"},
 		},
 	}
 
@@ -269,10 +269,10 @@ func TestEntityNamingJSONRoundTrips(t *testing.T) {
 				t.Fatalf("json.Unmarshal(entityNamingJSON()) error = %v, want nil", err)
 			}
 			if decoded.Strategy != tt.naming.Strategy ||
+				decoded.Label != tt.naming.Label ||
 				decoded.Length != tt.naming.Length ||
-				decoded.Field != tt.naming.Field ||
 				decoded.Pattern != tt.naming.Pattern ||
-				decoded.Template != tt.naming.Template {
+				decoded.Format != tt.naming.Format {
 				t.Fatalf("entityNamingJSON() decoded = %+v, want %+v", decoded, tt.naming)
 			}
 		})

@@ -1,9 +1,9 @@
 label: User
 description: User account identity.
 icon: user
-naming:
-  strategy: field
-  field: email
+name:
+  strategy: format
+  format: "{email}"
 fields:
   - name: email
     label: Email

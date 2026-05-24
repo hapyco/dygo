@@ -1,9 +1,9 @@
 label: User Role
 description: Role assignment for a User.
 icon: users-round
-naming:
-  strategy: template
-  template: "{user}.{role}"
+name:
+  strategy: format
+  format: "{user}.{role}"
 fields:
   - name: user
     label: User

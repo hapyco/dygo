@@ -80,12 +80,12 @@ func TestEntitySchemaContractsMatchRuntime(t *testing.T) {
 	defs := schemaObject(t, schema, "$defs")
 
 	assertSameStringSet(t, schemaStringEnum(t, schemaObject(t, defs, "fieldType"), "enum"), fieldtype.DefaultRegistry().Names())
-	assertSameStringSet(t, schemaNamingStrategies(t, schemaObject(t, defs, "naming")), entityschema.SupportedNamingStrategies())
+	assertSameStringSet(t, schemaNamingStrategies(t, schemaObject(t, defs, "name")), entityschema.SupportedNamingStrategies())
 	assertSameStringSet(t, schemaCheckOperators(t, schemaObject(t, defs, "check")), entityschema.SupportedCheckOperators())
 	assertSameStringSet(t, schemaConstraintTypes(t, schemaObject(t, defs, "constraint")), entityschema.SupportedConstraintTypes())
 	assertSameStringSet(t, schemaReservedRouteSlugs(t, schemaObject(t, defs, "routeSlug")), catalog.ReservedRootRouteSlugs())
 
-	randomNaming := schemaNamingBranch(t, schemaObject(t, defs, "naming"), entityschema.NamingStrategyRandom)
+	randomNaming := schemaNamingBranch(t, schemaObject(t, defs, "name"), entityschema.NamingStrategyRandom)
 	length := schemaObject(t, schemaObject(t, randomNaming, "properties"), "length")
 	assertNumber(t, length["minimum"], entityschema.MinRandomNameLength, "random naming minimum")
 	assertNumber(t, length["maximum"], entityschema.MaxRandomNameLength, "random naming maximum")
@@ -210,7 +210,7 @@ func schemaNamingStrategies(t *testing.T, naming map[string]any) []string {
 		if !ok {
 			t.Fatalf("naming oneOf branch is %T, want object", rawBranch)
 		}
-		strategies = append(strategies, schemaConstString(t, schemaObject(t, schemaObject(t, branch, "properties"), "strategy"), "naming.strategy"))
+		strategies = append(strategies, schemaConstString(t, schemaObject(t, schemaObject(t, branch, "properties"), "strategy"), "name.strategy"))
 	}
 	return strategies
 }
@@ -222,7 +222,7 @@ func schemaNamingBranch(t *testing.T, naming map[string]any, strategy string) ma
 		if !ok {
 			t.Fatalf("naming oneOf branch is %T, want object", rawBranch)
 		}
-		if schemaConstString(t, schemaObject(t, schemaObject(t, branch, "properties"), "strategy"), "naming.strategy") == strategy {
+		if schemaConstString(t, schemaObject(t, schemaObject(t, branch, "properties"), "strategy"), "name.strategy") == strategy {
 			return branch
 		}
 	}

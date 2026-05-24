@@ -2,16 +2,10 @@ label: App
 description: Runtime state for an installed App.
 icon: package
 is-system: true
-naming:
-  strategy: field
-  field: name
+name:
+  strategy: manual
+  label: Name
 fields:
-  - name: name
-    label: Name
-    type: text
-    required: true
-    unique: true
-
   - name: label
     label: Label
     type: text

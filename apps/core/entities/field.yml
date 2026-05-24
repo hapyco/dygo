@@ -2,9 +2,9 @@ label: Field
 description: Field definition belonging to an Entity.
 icon: columns-3
 is-system: true
-naming:
-  strategy: template
-  template: "{entity}.{field-name}"
+name:
+  strategy: format
+  format: "{entity}.{field-name}"
 fields:
   - name: entity
     label: Entity

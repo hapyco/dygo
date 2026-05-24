@@ -2,9 +2,9 @@ label: Naming Series
 description: Transactional counter state for series-based Record names.
 icon: hash
 is-system: true
-naming:
-  strategy: field
-  field: key
+name:
+  strategy: format
+  format: "{key}"
 fields:
   - name: entity
     label: Entity

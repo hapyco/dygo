@@ -32,14 +32,14 @@ func TestGenerateNameStrategies(t *testing.T) {
 			want: "xxxxxxxxxx",
 		},
 		{
-			name:     "field",
-			plan:     schema.Naming{Strategy: schema.NamingStrategyField, Field: "code"},
-			resolver: MapResolver{"code": "A-001"},
+			name:     "manual",
+			plan:     schema.Naming{Strategy: schema.NamingStrategyManual},
+			resolver: MapResolver{"name": "A-001"},
 			want:     "A-001",
 		},
 		{
-			name:     "template",
-			plan:     schema.Naming{Strategy: schema.NamingStrategyTemplate, Template: "{entity}.{field-name}"},
+			name:     "format",
+			plan:     schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{entity}.{field-name}"},
 			resolver: MapResolver{"entity": "core.user", "field-name": "email"},
 			want:     "core.user.email",
 		},
@@ -99,8 +99,8 @@ func TestGenerateDeterministicRejectsStatefulStrategies(t *testing.T) {
 func TestGeneratePropagatesResolverErrors(t *testing.T) {
 	wantErr := errors.New("missing value")
 	_, err := Generate(context.Background(), schema.Naming{
-		Strategy: schema.NamingStrategyTemplate,
-		Template: "{missing}",
+		Strategy: schema.NamingStrategyFormat,
+		Format:   "{missing}",
 	}, ValueResolverFunc(func(context.Context, string) (string, error) {
 		return "", wantErr
 	}), Options{})

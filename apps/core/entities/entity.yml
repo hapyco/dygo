@@ -2,9 +2,9 @@ label: Entity
 description: Registry entry for a known Entity definition.
 icon: boxes
 is-system: true
-naming:
-  strategy: template
-  template: "{app}.{key}"
+name:
+  strategy: format
+  format: "{app}.{key}"
 fields:
   - name: app
     label: App

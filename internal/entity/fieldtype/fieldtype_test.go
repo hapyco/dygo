@@ -194,26 +194,43 @@ func TestOptionValidators(t *testing.T) {
 		},
 		{
 			name:     "link accepts entity",
-			validate: EntityOptions,
+			validate: LinkOptions,
 			options:  Options{Entity: "company"},
 		},
 		{
+			name:     "link accepts disabled foreign key",
+			validate: LinkOptions,
+			options:  Options{Entity: "activity", ForeignKey: boolOption(false)},
+		},
+		{
 			name:      "link requires entity",
-			validate:  EntityOptions,
+			validate:  LinkOptions,
 			options:   Options{},
 			wantError: "entity is required",
 		},
 		{
 			name:      "link rejects invalid entity",
-			validate:  EntityOptions,
+			validate:  LinkOptions,
 			options:   Options{Entity: "Company"},
 			wantError: "must be kebab-case",
+		},
+		{
+			name:      "collection rejects foreign key",
+			validate:  EntityOptions,
+			options:   Options{Entity: "invoice-item", ForeignKey: boolOption(false)},
+			wantError: "foreign-key is not supported",
 		},
 		{
 			name:      "no options rejects values",
 			validate:  NoOptions,
 			options:   Options{Values: []string{"A"}},
 			wantError: "values are not supported",
+		},
+		{
+			name:      "select rejects foreign key",
+			validate:  SelectOptions,
+			options:   Options{Values: []string{"New"}, ForeignKey: boolOption(false)},
+			wantError: "foreign-key is not supported",
 		},
 	}
 
@@ -237,4 +254,8 @@ func TestOptionValidators(t *testing.T) {
 			}
 		})
 	}
+}
+
+func boolOption(value bool) *bool {
+	return &value
 }

@@ -469,7 +469,7 @@ func (tx *fakePatchApplyTx) QueryRow(_ context.Context, sql string, args ...any)
 		return newFakeRow(int64(10))
 	case isPatchRunMetadataQuery(sql, args...):
 		tx.events = append(tx.events, "queryrow:metadata")
-		return newFakeRow(int64(2), "core.patch-run", "patch-run", "patch-run", "Patch Run", "Ledger entry", "git-pull-request-arrow", false, true, false, []byte(`{"strategy":"template","template":"{app}.{patch-id}"}`), "core", "Core")
+		return newFakeRow(int64(2), "core.patch-run", "patch-run", "patch-run", "Patch Run", "Ledger entry", "git-pull-request-arrow", false, true, false, []byte(`{"strategy":"format","format":"{app}.{patch-id}"}`), "core", "Core")
 	case strings.Contains(sql, `SELECT "name" FROM "app"`) && len(args) == 1 && args[0] == int64(10):
 		tx.events = append(tx.events, "queryrow:link")
 		return newFakeRow("sales")

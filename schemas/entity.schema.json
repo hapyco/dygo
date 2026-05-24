@@ -26,7 +26,7 @@
       "description": "Marks the Entity as framework-owned so normal Record mutation APIs cannot create, update, or delete records."
     },
     "route": { "$ref": "#/$defs/route" },
-    "naming": { "$ref": "#/$defs/naming" },
+    "name": { "$ref": "#/$defs/name" },
     "fields": {
       "type": "array",
       "minItems": 1,
@@ -91,8 +91,20 @@
         { "not": { "enum": ["api", "assets", "health", "login", "logout", "me", "setup"] } }
       ]
     },
-    "naming": {
+    "name": {
       "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy"],
+          "properties": {
+            "strategy": { "const": "manual" },
+            "label": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
         {
           "type": "object",
           "additionalProperties": false,
@@ -105,15 +117,6 @@
               "maximum": 64,
               "default": 16
             }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["strategy", "field"],
-          "properties": {
-            "strategy": { "const": "field" },
-            "field": { "$ref": "#/$defs/kebabName" }
           }
         },
         {
@@ -132,10 +135,10 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["strategy", "template"],
+          "required": ["strategy", "format"],
           "properties": {
-            "strategy": { "const": "template" },
-            "template": {
+            "strategy": { "const": "format" },
+            "format": {
               "type": "string",
               "minLength": 1,
               "description": "Uses field tokens such as {app}.{key}; link field tokens render the linked Record name."
@@ -186,7 +189,19 @@
         },
         {
           "if": {
-            "properties": { "type": { "enum": ["link", "collection"] } },
+            "properties": { "type": { "const": "link" } },
+            "required": ["type"]
+          },
+          "then": {
+            "required": ["options"],
+            "properties": {
+              "options": { "$ref": "#/$defs/linkOptions" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "collection" } },
             "required": ["type"]
           },
           "then": {
@@ -231,7 +246,8 @@
           }
         },
         "app": { "$ref": "#/$defs/kebabName" },
-        "entity": { "$ref": "#/$defs/kebabName" }
+        "entity": { "$ref": "#/$defs/kebabName" },
+        "foreign-key": { "type": "boolean" }
       }
     },
     "selectOptions": {
@@ -248,6 +264,16 @@
             "minLength": 1
           }
         }
+      }
+    },
+    "linkOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity"],
+      "properties": {
+        "app": { "$ref": "#/$defs/kebabName" },
+        "entity": { "$ref": "#/$defs/kebabName" },
+        "foreign-key": { "type": "boolean" }
       }
     },
     "entityOptions": {

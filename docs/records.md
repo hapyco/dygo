@@ -94,7 +94,7 @@ created-at
 updated-at
 ```
 
-`id` is dygo's internal numeric identity. `name` is the stable Record identifier generated from Entity `naming` metadata. System fields cannot be written in update request bodies. Create request bodies may include `name` only when the Entity explicitly uses `naming.strategy: field` with `field: name`; otherwise dygo generates `name` during create, including template names such as `{app}.{key}`.
+`id` is dygo's internal numeric identity. `name` is the stable Record identifier generated from Entity `name` metadata. System fields cannot be written in update request bodies. Create request bodies may include `name` only when the Entity explicitly uses `name.strategy: manual`; otherwise dygo generates `name` during create, including format names such as `{app}.{key}`.
 
 ## Supported Fields
 

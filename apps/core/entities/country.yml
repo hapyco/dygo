@@ -1,16 +1,10 @@
 label: Country
 description: Country defaults used by system configuration and localization.
 icon: flag
-naming:
-  strategy: field
-  field: name
+name:
+  strategy: manual
+  label: Name
 fields:
-  - name: name
-    label: Name
-    type: text
-    required: true
-    unique: true
-
   - name: code
     label: Code
     type: text

@@ -1,9 +1,9 @@
 label: Currency
 description: Currency codes and formatting defaults for monetary values.
 icon: circle-dollar-sign
-naming:
-  strategy: field
-  field: code
+name:
+  strategy: format
+  format: "{code}"
 fields:
   - name: code
     label: Code

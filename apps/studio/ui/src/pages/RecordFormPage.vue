@@ -47,8 +47,20 @@ const recordState = computed(() => recordsStore.recordState(props.entity, record
 const entityMeta = computed(() => metadataStore.entityMeta(props.entity))
 const entityMetaStatus = computed(() => metadataStore.entityMetaStatus(props.entity))
 const entityMetaError = computed(() => metadataStore.entityMetaError(props.entity))
-const fields = computed(() => entityMeta.value?.fields ?? [])
 const systemFields = computed(() => entityMeta.value?.['system-fields'] ?? [])
+const fields = computed(() => {
+  const meta = entityMeta.value
+  if (!meta) {
+    return []
+  }
+
+  if (meta.naming?.strategy !== 'manual') {
+    return meta.fields
+  }
+
+  const nameField = manualNameField(meta.naming?.label)
+  return nameField ? [nameField, ...meta.fields] : meta.fields
+})
 const entityLabel = computed(() => entityMeta.value?.label || humanizeEntity(props.entity))
 const isSystem = computed(() => entityMeta.value?.['is-system'] === true)
 const isNew = computed(() => props.mode === 'new')
@@ -356,6 +368,19 @@ function displayJSON(value: unknown): string {
   }
 
   return JSON.stringify(value, null, 2)
+}
+
+function manualNameField(label?: string): MetadataField | null {
+  const field = systemFields.value.find((candidate) => candidate.name === 'name')
+  if (!field) {
+    return null
+  }
+
+  return {
+    ...field,
+    label: label || field.label,
+    required: true,
+  }
 }
 
 function draftValuesEqual(left: unknown, right: unknown): boolean {

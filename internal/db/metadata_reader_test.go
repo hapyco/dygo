@@ -55,8 +55,8 @@ func TestMetadataReaderGetApp(t *testing.T) {
 func TestMetadataReaderListEntities(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
 		rows: []pgx.Rows{newFakeRows([][]any{
-			{"core.app", "app", "app", "App", "Runtime state", "package", false, false, false, []byte(`{"strategy":"field","field":"name"}`), "core", "Core"},
-			{"core.user", "user", "user", "User", "User identity", "user", true, true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"},
+			{"core.app", "app", "app", "App", "Runtime state", "package", false, false, false, []byte(`{"strategy":"manual","label":"Name"}`), "core", "Core"},
+			{"core.user", "user", "user", "User", "User identity", "user", true, true, false, []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core"},
 			{"core.user-role", "user-role", nil, "User Role", "Collection row", "users", false, false, true, nil, "core", "Core"},
 		})},
 	}
@@ -75,7 +75,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 
 func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", true, true, false, []byte(`{"strategy":"field","field":"email"}`), "core", "Core"),
+		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", true, true, false, []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{"email", "Email", "email", true, true, true, nil, nil, 1, []byte(`{"entity":"user"}`)},
@@ -157,7 +157,7 @@ func TestMetadataAPIJSONFieldNames(t *testing.T) {
 			IsSingle:     false,
 			IsSystem:     false,
 			IsCollection: false,
-			Naming:       json.RawMessage(`{"strategy":"field","field":"email"}`),
+			Naming:       json.RawMessage(`{"strategy":"format","format":"{email}"}`),
 			App:          MetadataAppRef{Name: "core", Label: "Core"},
 		},
 		Fields: []MetadataField{{

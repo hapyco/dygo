@@ -15,7 +15,16 @@ export type MetadataEntity = {
   'is-single': boolean
   'is-system': boolean
   'is-collection': boolean
+  naming?: MetadataNaming
   app: MetadataAppRef
+}
+
+export type MetadataNaming = {
+  strategy: 'manual' | 'random' | 'format' | 'series'
+  label?: string
+  length?: number
+  pattern?: string
+  format?: string
 }
 
 export type MetadataField = {

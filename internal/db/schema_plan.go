@@ -415,6 +415,24 @@ func buildDesiredSchema(entities []catalog.LoadedEntity) (desiredSchema, error) 
 					Source:  fieldSource(loaded, field),
 				})
 			}
+			if field.Type == "link" && linkForeignKeyEnabled(field) {
+				target, err := targets.resolve(loaded, field.Options.App, field.Options.Entity)
+				if err != nil {
+					return desiredSchema{}, fieldSchemaError(loaded, field, err)
+				}
+				targetTable, err := tableName(target)
+				if err != nil {
+					return desiredSchema{}, fieldSchemaError(loaded, field, fmt.Errorf("invalid link target table: %w", err))
+				}
+				constraint := constraintName(table, column, "fkey")
+				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
+					Name:       constraint,
+					Type:       "foreign-key",
+					Columns:    []string{column},
+					Definition: fmt.Sprintf("FOREIGN KEY (%s) REFERENCES %s(%s)", quoteIdent(column), quoteIdent(targetTable), quoteIdent("id")),
+					Source:     fieldSource(loaded, field),
+				})
+			}
 			if field.Type == "select" && len(field.Options.Values) > 0 {
 				constraint := constraintName(table, column, "check")
 				desiredTable.Constraints = append(desiredTable.Constraints, desiredConstraint{
@@ -788,6 +806,11 @@ func columnType(owner catalog.LoadedEntity, field schema.Field, targets schemaTa
 		return "", fmt.Errorf("unsupported field type %q", field.Type)
 	}
 	return definition.Behavior.SQLType, nil
+}
+
+func linkForeignKeyEnabled(field schema.Field) bool {
+	// TODO: Extend link options with explicit on-delete policies when dygo supports non-default referential actions.
+	return field.Options.ForeignKey == nil || *field.Options.ForeignKey
 }
 
 type schemaTargetIndex struct {
