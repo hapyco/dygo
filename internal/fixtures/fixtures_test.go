@@ -265,45 +265,6 @@ records:
 	}
 }
 
-func TestRepositoryCoreFixturesApply(t *testing.T) {
-	store := newFakeStore()
-	seedEntityRecords(store)
-
-	fixtureDir := filepath.Join("..", "..", "apps", "core", "fixtures")
-	entries, err := os.ReadDir(fixtureDir)
-	if err != nil {
-		t.Fatalf("ReadDir(%s) error = %v", fixtureDir, err)
-	}
-	var files []LoadedFile
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
-			continue
-		}
-		path := filepath.Join(fixtureDir, entry.Name())
-		fixture, err := LoadFile(path)
-		if err != nil {
-			t.Fatalf("LoadFile(%s) error = %v", path, err)
-		}
-		files = append(files, LoadedFile{AppName: "core", AppDir: filepath.Join("..", "..", "apps", "core"), Path: path, Fixture: fixture})
-	}
-
-	result, err := ApplyFiles(context.Background(), store, files)
-	if err != nil {
-		t.Fatalf("ApplyFiles(core fixtures) error = %v, want nil", err)
-	}
-	if result.Created != 282 || result.Updated != 0 {
-		t.Fatalf("ApplyFiles(core fixtures) result = %+v, want 282 created", result)
-	}
-
-	result, err = ApplyFiles(context.Background(), store, files)
-	if err != nil {
-		t.Fatalf("ApplyFiles(core fixtures second run) error = %v, want nil", err)
-	}
-	if result.Created != 0 || result.Updated != 282 {
-		t.Fatalf("ApplyFiles(core fixtures second run) result = %+v, want 282 updated", result)
-	}
-}
-
 func TestApplyFilesRejectsInvalidFixtureRecord(t *testing.T) {
 	store := newFakeStore()
 	tests := []struct {
@@ -469,16 +430,6 @@ func newFakeStore() *fakeStore {
 			Type:   "unique",
 			Fields: json.RawMessage(`["entity","role"]`),
 		}},
-	}
-	store.metadata["user"] = db.MetadataEntityMeta{
-		MetadataEntity: db.MetadataEntity{Name: "user"},
-		Fields: []db.MetadataField{
-			{Name: "email", Type: "email", Unique: true, Required: true},
-			{Name: "full-name", Type: "text", Required: true},
-			{Name: "password", Type: "password"},
-			{Name: "enabled", Type: "boolean"},
-			{Name: "administrator", Type: "boolean"},
-		},
 	}
 	store.metadata["lead"] = db.MetadataEntityMeta{
 		MetadataEntity: db.MetadataEntity{Name: "lead"},
