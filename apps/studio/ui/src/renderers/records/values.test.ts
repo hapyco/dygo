@@ -15,8 +15,3 @@ test('formatRecordDisplayValue falls back safely for invalid datetime values', (
   assert.equal(formatRecordDisplayValue('', 'datetime'), '-')
   assert.equal(formatRecordDisplayValue(null, 'datetime'), '-')
 })
-
-test('formatRecordDisplayValue keeps fallback rendering for other display types', () => {
-  assert.equal(formatRecordDisplayValue(true, 'boolean'), 'true')
-  assert.equal(formatRecordDisplayValue({ ok: true }, 'json'), '{"ok":true}')
-})

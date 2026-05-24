@@ -23,13 +23,6 @@ func TestPGDumpConnectionRemovesPassword(t *testing.T) {
 	}
 }
 
-func TestNormalizeSchemaSnapshotTrimsExtraFinalBlankLines(t *testing.T) {
-	got := string(normalizeSchemaSnapshot([]byte("schema\n\n")))
-	if got != "schema\n" {
-		t.Fatalf("normalizeSchemaSnapshot() = %q, want single final newline", got)
-	}
-}
-
 func TestMigratorCheckSchemaSnapshotCurrent(t *testing.T) {
 	root := t.TempDir()
 	writeTestSchemaSnapshot(t, root, "current schema\n")

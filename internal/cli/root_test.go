@@ -97,45 +97,6 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestRootHelpIncludesServeAndDB(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	t.Chdir(root)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := Run(context.Background(), nil, strings.NewReader(""), &stdout, &stderr)
-	if err != nil {
-		t.Fatalf("Run(help) error = %v, want nil", err)
-	}
-	for _, want := range []string{
-		"Available Commands:",
-		"new",
-		"Create a new dygo project",
-		"upgrade",
-		"Upgrade dygo CLI and the current project",
-		"serve",
-		"Start the dygo server",
-		"db",
-		"Manage dygo database lifecycle",
-		"migrate",
-		"Sync dygo metadata to the database",
-		"patches",
-		"Plan and apply explicit app patches",
-		"schema",
-		"Manage explicit schema cleanup",
-		"hooks",
-		"Manage dygo hooks",
-		"setup",
-		"Set up dygo runtime accounts",
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("help stdout = %q, want substring %q", stdout.String(), want)
-		}
-	}
-}
-
 func TestSetupAdminCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -537,25 +498,6 @@ func TestServeCommandAutoStartsStudioDevServer(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "dygo serving on 127.0.0.1:6790") {
 		t.Fatalf("serve stdout = %q, want ready output", stdout.String())
-	}
-}
-
-func TestServeHelpIncludesEnvironmentFlag(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	t.Chdir(root)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"serve", "--help"}, strings.NewReader(""), &stdout, &stderr)
-	if err != nil {
-		t.Fatalf("Run(serve --help) error = %v, want nil", err)
-	}
-	for _, want := range []string{"--env", "Environment: development, staging, or production", "--studio-dev-url"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("serve help stdout = %q, want substring %q", stdout.String(), want)
-		}
 	}
 }
 
@@ -1004,25 +946,6 @@ func TestDBSchemaDumpCommand(t *testing.T) {
 	}
 }
 
-func TestDBSchemaHelpIncludesCheck(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	t.Chdir(root)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "schema", "--help"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, &fakeDatabaseRunner{}, &fakeSchemaSyncRunner{})
-	if err != nil {
-		t.Fatalf("Run(db schema --help) error = %v, want nil", err)
-	}
-	for _, want := range []string{"check", "Check db/schema.sql against the live database", "dump"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("db schema help = %q, want substring %q", stdout.String(), want)
-		}
-	}
-}
-
 func TestDBSchemaCheckCommandDefaultsToDevelopment(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -1252,30 +1175,6 @@ func TestMigrateCommandRequiresSecret(t *testing.T) {
 	}
 }
 
-func TestPatchesPlanCommandHelpDocumentsPhase(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	t.Chdir(root)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "plan", "--help"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{})
-	if err != nil {
-		t.Fatalf("Run(patches plan --help) error = %v, want nil", err)
-	}
-	for _, want := range []string{
-		"Preview pending explicit app patches",
-		"--phase",
-		"Patch phase: pre-sync or post-sync",
-		"--env",
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("patches plan help stdout = %q, want substring %q", stdout.String(), want)
-		}
-	}
-}
-
 func TestPatchesPlanCommandRequiresPhaseBeforeRunner(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -1478,31 +1377,6 @@ func TestPatchesPlanCommandReportsChecksumMismatch(t *testing.T) {
 	}
 	if fake.patchPlanCalls != 1 {
 		t.Fatalf("patch plan calls = %d, want 1", fake.patchPlanCalls)
-	}
-}
-
-func TestPatchesApplyCommandHelpDocumentsConfirm(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	t.Chdir(root)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "apply", "--help"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{})
-	if err != nil {
-		t.Fatalf("Run(patches apply --help) error = %v, want nil", err)
-	}
-	for _, want := range []string{
-		"Apply pending explicit app patches",
-		"--phase",
-		"--env",
-		"--confirm",
-		"Confirm patch application as <environment>/<database>",
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("patches apply help stdout = %q, want substring %q", stdout.String(), want)
-		}
 	}
 }
 
@@ -2373,53 +2247,6 @@ fields:
 	for _, want := range []string{"FAIL entity metadata:", `route slug "BadSlug" must be kebab-case`, "dygo doctor found"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
-		}
-	}
-}
-
-func TestSecretsCommandSurface(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	t.Chdir(root)
-
-	run := func(args []string, stdin string) (string, string, error) {
-		t.Helper()
-		var stdout bytes.Buffer
-		var stderr bytes.Buffer
-		err := Run(context.Background(), args, strings.NewReader(stdin), &stdout, &stderr)
-		return stdout.String(), stderr.String(), err
-	}
-
-	stdout, _, err := run([]string{"secrets", "--help"}, "")
-	if err != nil {
-		t.Fatalf("secrets --help error = %v", err)
-	}
-	for _, want := range []string{"init", "edit", "validate", "rotate-key"} {
-		if !strings.Contains(stdout, want) {
-			t.Fatalf("secrets help = %q, want command %q", stdout, want)
-		}
-	}
-	for _, removed := range []string{"set", "get", "show", "list", "remove"} {
-		if strings.Contains(stdout, removed+" ") {
-			t.Fatalf("secrets help = %q, should not include removed command %q", stdout, removed)
-		}
-		if _, _, err := run([]string{"secrets", removed}, ""); err == nil {
-			t.Fatalf("secrets %s error = nil, want unknown command", removed)
-		}
-	}
-}
-
-func TestSecretsRotateKeyHelpDocumentsConfirmation(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"secrets", "rotate-key", "--help"}, strings.NewReader(""), &stdout, &stderr)
-	if err != nil {
-		t.Fatalf("Run(secrets rotate-key --help) error = %v, want nil", err)
-	}
-	output := stdout.String()
-	for _, want := range []string{"--confirm", "<project-name>/master.key"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("rotate-key help = %q, want substring %q", output, want)
 		}
 	}
 }

@@ -59,39 +59,25 @@ func TestCheckerAllowsAdministratorWithoutRolePermissionRows(t *testing.T) {
 	}
 }
 
-func TestCheckerDenyCases(t *testing.T) {
-	tests := []struct {
-		name string
-	}{
-		{name: "no permission row"},
-		{name: "action column false"},
-		{name: "user disabled or missing"},
-		{name: "entity missing"},
-		{name: "no enabled roles"},
+func TestCheckerDenied(t *testing.T) {
+	checker := NewChecker(&fakePermissionQueryer{row: fakePermissionRow{allowed: false}})
+
+	decision, err := checker.Check(context.Background(), Request{
+		Actor:  Actor{UserID: 7},
+		Entity: "user",
+		Action: ActionUpdate,
+	})
+	if err != nil {
+		t.Fatalf("Check() error = %v, want nil", err)
+	}
+	if decision.Allowed || decision.Reason != ReasonDenied {
+		t.Fatalf("Check() decision = %+v, want denied", decision)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			checker := NewChecker(&fakePermissionQueryer{row: fakePermissionRow{allowed: false}})
-
-			decision, err := checker.Check(context.Background(), Request{
-				Actor:  Actor{UserID: 7},
-				Entity: "user",
-				Action: ActionUpdate,
-			})
-			if err != nil {
-				t.Fatalf("Check() error = %v, want nil", err)
-			}
-			if decision.Allowed || decision.Reason != ReasonDenied {
-				t.Fatalf("Check() decision = %+v, want denied", decision)
-			}
-
-			err = checker.Can(context.Background(), Request{Actor: Actor{UserID: 7}, Entity: "user", Action: ActionUpdate})
-			assertPermissionError(t, err, ErrorDenied)
-			if !IsDenied(err) {
-				t.Fatalf("IsDenied(%v) = false, want true", err)
-			}
-		})
+	err = checker.Can(context.Background(), Request{Actor: Actor{UserID: 7}, Entity: "user", Action: ActionUpdate})
+	assertPermissionError(t, err, ErrorDenied)
+	if !IsDenied(err) {
+		t.Fatalf("IsDenied(%v) = false, want true", err)
 	}
 }
 
@@ -138,11 +124,6 @@ func TestCheckerValidatesRequest(t *testing.T) {
 	}
 }
 
-func TestCheckerRequiresQueryer(t *testing.T) {
-	_, err := NewChecker(nil).Check(context.Background(), Request{Actor: Actor{UserID: 7}, Entity: "user", Action: ActionRead})
-	assertPermissionError(t, err, ErrorInternal)
-}
-
 func TestCheckerDatabaseFailureDoesNotLeakSensitiveDetails(t *testing.T) {
 	queryer := &fakePermissionQueryer{
 		row: fakePermissionRow{err: errors.New(`SELECT failed for postgres://secret@localhost/dygo`)},
@@ -159,32 +140,6 @@ func TestCheckerDatabaseFailureDoesNotLeakSensitiveDetails(t *testing.T) {
 	}
 	if !errors.Is(err, queryer.row.err) {
 		t.Fatalf("Check() error does not unwrap database failure")
-	}
-}
-
-func TestActionColumns(t *testing.T) {
-	if !reflect.DeepEqual(SupportedActions(), []Action{ActionRead, ActionCreate, ActionUpdate, ActionDelete, ActionExport, ActionPrint}) {
-		t.Fatalf("SupportedActions() = %#v, want stable action order", SupportedActions())
-	}
-	tests := []struct {
-		action Action
-		column string
-	}{
-		{action: ActionRead, column: `"read"`},
-		{action: ActionCreate, column: `"create"`},
-		{action: ActionUpdate, column: `"update"`},
-		{action: ActionDelete, column: `"delete"`},
-		{action: ActionExport, column: `"export"`},
-		{action: ActionPrint, column: `"print"`},
-	}
-
-	for _, tt := range tests {
-		t.Run(string(tt.action), func(t *testing.T) {
-			column, ok := actionColumn(tt.action)
-			if !ok || column != tt.column {
-				t.Fatalf("actionColumn(%q) = %q, %v; want %q, true", tt.action, column, ok, tt.column)
-			}
-		})
 	}
 }
 

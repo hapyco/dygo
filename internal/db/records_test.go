@@ -1383,16 +1383,214 @@ func TestRecordStoreInvalidListFiltersAndSorts(t *testing.T) {
 	}
 }
 
+type testEntityMeta struct {
+	id           int64
+	name         string
+	key          string
+	slug         string
+	label        string
+	description  string
+	icon         string
+	isSingle     bool
+	isSystem     bool
+	isCollection bool
+	naming       []byte
+	app          string
+	appLabel     string
+}
+
+func (meta testEntityMeta) row() pgx.Row {
+	return newFakeRow(
+		meta.id,
+		meta.name,
+		meta.key,
+		meta.slug,
+		meta.label,
+		meta.description,
+		meta.icon,
+		meta.isSingle,
+		meta.isSystem,
+		meta.isCollection,
+		meta.naming,
+		meta.app,
+		meta.appLabel,
+	)
+}
+
+func userEntityMeta() testEntityMeta {
+	return testEntityMeta{
+		id:          10,
+		name:        "core.user",
+		key:         "user",
+		slug:        "user",
+		label:       "User",
+		description: "User identity",
+		icon:        "user",
+		naming:      []byte(`{"strategy":"format","format":"{email}"}`),
+		app:         "core",
+		appLabel:    "Core",
+	}
+}
+
+func leadEntityMeta() testEntityMeta {
+	return testEntityMeta{
+		id:          20,
+		name:        "crm.lead",
+		key:         "lead",
+		slug:        "lead",
+		label:       "Lead",
+		description: "Sales lead",
+		icon:        "contact",
+		naming:      []byte(`{"strategy":"random","length":16}`),
+		app:         "crm",
+		appLabel:    "CRM",
+	}
+}
+
+func templateEntityMeta() testEntityMeta {
+	return testEntityMeta{
+		id:          50,
+		name:        "support.ticket",
+		key:         "ticket",
+		slug:        "ticket",
+		label:       "Ticket",
+		description: "Support ticket",
+		icon:        "ticket",
+		naming:      []byte(`{"strategy":"format","format":"T-{status}-{code}"}`),
+		app:         "support",
+		appLabel:    "Support",
+	}
+}
+
+func eventEntityMeta() testEntityMeta {
+	return testEntityMeta{
+		id:          60,
+		name:        "core.event",
+		key:         "event",
+		slug:        "event",
+		label:       "Event",
+		description: "Calendar event",
+		icon:        "calendar",
+		naming:      []byte(`{"strategy":"manual","label":"Name"}`),
+		app:         "core",
+		appLabel:    "Core",
+	}
+}
+
+func singleSettingsEntityMeta() testEntityMeta {
+	return testEntityMeta{
+		id:          30,
+		name:        "sales.invoice-settings",
+		key:         "invoice-settings",
+		slug:        "invoice-settings",
+		label:       "Invoice Settings",
+		description: "Invoice defaults",
+		icon:        "settings",
+		isSingle:    true,
+		naming:      []byte(`{"strategy":"random","length":16}`),
+		app:         "sales",
+		appLabel:    "Sales",
+	}
+}
+
+func collectionEntityMeta() testEntityMeta {
+	return testEntityMeta{
+		id:           40,
+		name:         "sales.invoice-item",
+		key:          "invoice-item",
+		slug:         "invoice-item",
+		label:        "Invoice Item",
+		description:  "Invoice line item",
+		icon:         "list",
+		isCollection: true,
+		naming:       []byte(`{"strategy":"random","length":16}`),
+		app:          "sales",
+		appLabel:     "Sales",
+	}
+}
+
+func activityEntityMeta() testEntityMeta {
+	return testEntityMeta{
+		id:          1,
+		name:        "core.activity",
+		key:         "activity",
+		slug:        "activity",
+		label:       "Activity",
+		description: "Timeline entry",
+		icon:        "activity",
+		naming:      []byte(`{"strategy":"random","length":16}`),
+		app:         "core",
+		appLabel:    "Core",
+	}
+}
+
+func metadataFieldRow(name string, label string, fieldType string, required bool, unique bool, indexed bool, defaultValue []byte, check []byte, position int, options []byte) []any {
+	return []any{name, label, fieldType, required, unique, indexed, defaultValue, check, position, options}
+}
+
+func userFieldRows() [][]any {
+	return [][]any{
+		metadataFieldRow("email", "Email", "email", true, true, false, nil, nil, 1, nil),
+		metadataFieldRow("full-name", "Full Name", "text", true, false, false, nil, nil, 2, nil),
+		metadataFieldRow("password", "Password", "password", false, false, false, nil, nil, 3, nil),
+		metadataFieldRow("enabled", "Enabled", "boolean", false, false, true, []byte("true"), nil, 4, nil),
+	}
+}
+
+func leadFieldRows() [][]any {
+	return [][]any{
+		metadataFieldRow("status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New","Qualified"]}`)),
+		metadataFieldRow("contacts", "Contacts", "collection", false, false, false, nil, nil, 2, []byte(`{"entity":"lead-contact"}`)),
+	}
+}
+
+func templateFieldRows() [][]any {
+	return [][]any{
+		metadataFieldRow("code", "Code", "text", true, false, false, nil, nil, 1, nil),
+		metadataFieldRow("status", "Status", "select", true, false, false, nil, nil, 2, []byte(`{"values":["New","Closed"]}`)),
+	}
+}
+
+func eventFieldRows() [][]any {
+	return [][]any{
+		metadataFieldRow("starts-at", "Starts At", "datetime", true, false, false, nil, nil, 1, nil),
+	}
+}
+
+func singleSettingsFieldRows() [][]any {
+	return [][]any{
+		metadataFieldRow("default-due-days", "Default Due Days", "int", true, false, false, []byte("30"), nil, 1, nil),
+	}
+}
+
+func collectionFieldRows() [][]any {
+	return [][]any{
+		metadataFieldRow("item-code", "Item Code", "text", true, false, false, nil, nil, 1, nil),
+	}
+}
+
+func activityFieldRows() [][]any {
+	return [][]any{
+		metadataFieldRow("kind", "Kind", "select", true, false, false, nil, nil, 1, []byte(`{"values":["record","comment","workflow","job","email","attachment","auth","system"]}`)),
+		metadataFieldRow("operation", "Operation", "select", true, false, false, nil, nil, 2, []byte(`{"values":["create","update","delete","restore","comment","workflow-transition","job-completed","email-sent","attachment-added","login","logout","system"]}`)),
+		metadataFieldRow("status", "Status", "select", true, false, false, nil, nil, 3, []byte(`{"values":["success","failed"]}`)),
+		metadataFieldRow("entity", "Entity", "link", false, false, false, nil, nil, 4, []byte(`{"entity":"entity","foreign-key":false}`)),
+		metadataFieldRow("record-id", "Record ID", "bigint", false, false, false, nil, nil, 5, nil),
+		metadataFieldRow("actor", "Actor", "link", false, false, false, nil, nil, 6, []byte(`{"entity":"user","foreign-key":false}`)),
+		metadataFieldRow("title", "Title", "text", true, false, false, nil, nil, 7, nil),
+		metadataFieldRow("message", "Message", "long-text", false, false, false, nil, nil, 8, nil),
+		metadataFieldRow("changes", "Changes", "json", false, false, false, nil, nil, 9, nil),
+		metadataFieldRow("snapshot", "Snapshot", "json", false, false, false, nil, nil, 10, nil),
+		metadataFieldRow("details", "Details", "json", false, false, false, nil, nil, 11, nil),
+	}
+}
+
 func newUserRecordQueryer() *fakeRecordQueryer {
+	meta := userEntityMeta()
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, false, []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core"),
+		row: meta.row(),
 		rows: []pgx.Rows{
-			newFakeRows([][]any{
-				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
-				{"full-name", "Full Name", "text", true, false, false, nil, nil, 2, nil},
-				{"password", "Password", "password", false, false, false, nil, nil, 3, nil},
-				{"enabled", "Enabled", "boolean", false, false, true, []byte("true"), nil, 4, nil},
-			}),
+			newFakeRows(userFieldRows()),
 			newFakeRows(nil),
 			newFakeRows(nil),
 		},
@@ -1401,18 +1599,18 @@ func newUserRecordQueryer() *fakeRecordQueryer {
 
 func newSystemUserRecordQueryer() *fakeRecordQueryer {
 	queryer := newUserRecordQueryer()
-	queryer.row = newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, true, false, []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core")
+	meta := userEntityMeta()
+	meta.isSystem = true
+	queryer.row = meta.row()
 	return queryer
 }
 
 func newLeadRecordQueryer() *fakeRecordQueryer {
+	meta := leadEntityMeta()
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(20), "crm.lead", "lead", "lead", "Lead", "Sales lead", "contact", false, false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		row: meta.row(),
 		rows: []pgx.Rows{
-			newFakeRows([][]any{
-				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New","Qualified"]}`)},
-				{"contacts", "Contacts", "collection", false, false, false, nil, nil, 2, []byte(`{"entity":"lead-contact"}`)},
-			}),
+			newFakeRows(leadFieldRows()),
 			newFakeRows(nil),
 			newFakeRows(nil),
 		},
@@ -1420,13 +1618,11 @@ func newLeadRecordQueryer() *fakeRecordQueryer {
 }
 
 func newTemplateRecordQueryer() *fakeRecordQueryer {
+	meta := templateEntityMeta()
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(50), "support.ticket", "ticket", "ticket", "Ticket", "Support ticket", "ticket", false, false, false, []byte(`{"strategy":"format","format":"T-{status}-{code}"}`), "support", "Support"),
+		row: meta.row(),
 		rows: []pgx.Rows{
-			newFakeRows([][]any{
-				{"code", "Code", "text", true, false, false, nil, nil, 1, nil},
-				{"status", "Status", "select", true, false, false, nil, nil, 2, []byte(`{"values":["New","Closed"]}`)},
-			}),
+			newFakeRows(templateFieldRows()),
 			newFakeRows(nil),
 			newFakeRows(nil),
 		},
@@ -1434,12 +1630,11 @@ func newTemplateRecordQueryer() *fakeRecordQueryer {
 }
 
 func newEventRecordQueryer() *fakeRecordQueryer {
+	meta := eventEntityMeta()
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(60), "core.event", "event", "event", "Event", "Calendar event", "calendar", false, false, false, []byte(`{"strategy":"manual","label":"Name"}`), "core", "Core"),
+		row: meta.row(),
 		rows: []pgx.Rows{
-			newFakeRows([][]any{
-				{"starts-at", "Starts At", "datetime", true, false, false, nil, nil, 1, nil},
-			}),
+			newFakeRows(eventFieldRows()),
 			newFakeRows(nil),
 			newFakeRows(nil),
 		},
@@ -1448,12 +1643,11 @@ func newEventRecordQueryer() *fakeRecordQueryer {
 
 func newSingleSettingsRecordQueryer() *fakeRecordQueryer {
 	now := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
+	meta := singleSettingsEntityMeta()
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(30), "sales.invoice-settings", "invoice-settings", "invoice-settings", "Invoice Settings", "Invoice defaults", "settings", true, false, false, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
+		row: meta.row(),
 		rows: []pgx.Rows{
-			newFakeRows([][]any{
-				{"default-due-days", "Default Due Days", "int", true, false, false, []byte("30"), nil, 1, nil},
-			}),
+			newFakeRows(singleSettingsFieldRows()),
 			newFakeRows(nil),
 			newFakeRows(nil),
 			newFakeRows([][]any{
@@ -1465,17 +1659,18 @@ func newSingleSettingsRecordQueryer() *fakeRecordQueryer {
 
 func newSystemSingleSettingsRecordQueryer() *fakeRecordQueryer {
 	queryer := newSingleSettingsRecordQueryer()
-	queryer.row = newFakeRow(int64(30), "sales.invoice-settings", "invoice-settings", "invoice-settings", "Invoice Settings", "Invoice defaults", "settings", true, true, false, []byte(`{"strategy":"random","length":16}`), "sales", "Sales")
+	meta := singleSettingsEntityMeta()
+	meta.isSystem = true
+	queryer.row = meta.row()
 	return queryer
 }
 
 func newCollectionRecordQueryer() *fakeRecordQueryer {
+	meta := collectionEntityMeta()
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(40), "sales.invoice-item", "invoice-item", "invoice-item", "Invoice Item", "Invoice line item", "list", false, false, true, []byte(`{"strategy":"random","length":16}`), "sales", "Sales"),
+		row: meta.row(),
 		rows: []pgx.Rows{
-			newFakeRows([][]any{
-				{"item-code", "Item Code", "text", true, false, false, nil, nil, 1, nil},
-			}),
+			newFakeRows(collectionFieldRows()),
 			newFakeRows(nil),
 			newFakeRows(nil),
 		},
@@ -1483,8 +1678,9 @@ func newCollectionRecordQueryer() *fakeRecordQueryer {
 }
 
 func newActivityRecordQueryer() *fakeRecordQueryer {
+	meta := activityEntityMeta()
 	return &fakeRecordQueryer{
-		row: newFakeRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core"),
+		row: meta.row(),
 	}
 }
 
@@ -1654,7 +1850,7 @@ func executedSQLContaining(queryer *fakeRecordQueryer, fragment string) bool {
 }
 
 func fakeActivityEntityRow() pgx.Row {
-	return newFakeRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core")
+	return activityEntityMeta().row()
 }
 
 func isActivityMetadataQuery(sql string, args ...any) bool {
@@ -1670,19 +1866,7 @@ func fakeActivityMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
 	}
 	switch {
 	case strings.Contains(sql, `FROM "field"`):
-		return newFakeRows([][]any{
-			{"kind", "Kind", "select", true, false, false, nil, nil, 1, []byte(`{"values":["record","comment","workflow","job","email","attachment","auth","system"]}`)},
-			{"operation", "Operation", "select", true, false, false, nil, nil, 2, []byte(`{"values":["create","update","delete","restore","comment","workflow-transition","job-completed","email-sent","attachment-added","login","logout","system"]}`)},
-			{"status", "Status", "select", true, false, false, nil, nil, 3, []byte(`{"values":["success","failed"]}`)},
-			{"entity", "Entity", "link", false, false, false, nil, nil, 4, []byte(`{"entity":"entity","foreign-key":false}`)},
-			{"record-id", "Record ID", "bigint", false, false, false, nil, nil, 5, nil},
-			{"actor", "Actor", "link", false, false, false, nil, nil, 6, []byte(`{"entity":"user","foreign-key":false}`)},
-			{"title", "Title", "text", true, false, false, nil, nil, 7, nil},
-			{"message", "Message", "long-text", false, false, false, nil, nil, 8, nil},
-			{"changes", "Changes", "json", false, false, false, nil, nil, 9, nil},
-			{"snapshot", "Snapshot", "json", false, false, false, nil, nil, 10, nil},
-			{"details", "Details", "json", false, false, false, nil, nil, 11, nil},
-		}), true
+		return newFakeRows(activityFieldRows()), true
 	case strings.Contains(sql, `FROM "index"`), strings.Contains(sql, `FROM "constraint"`):
 		return newFakeRows(nil), true
 	default:

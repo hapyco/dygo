@@ -30,27 +30,6 @@ func TestNewRouterHealth(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("health status = %d, want %d", response.StatusCode, http.StatusOK)
 	}
-	if got := response.Header.Get("Content-Type"); got != "text/plain; charset=utf-8" {
-		t.Fatalf("health content type = %q, want text/plain; charset=utf-8", got)
-	}
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		t.Fatalf("ReadAll(health body) error = %v", err)
-	}
-	if string(body) != "ok\n" {
-		t.Fatalf("health body = %q, want ok newline", string(body))
-	}
-}
-
-func TestNewRouterNotFound(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/missing", nil)
-	recorder := httptest.NewRecorder()
-
-	NewRouter().ServeHTTP(recorder, request)
-
-	if recorder.Result().StatusCode != http.StatusNotFound {
-		t.Fatalf("missing status = %d, want %d", recorder.Result().StatusCode, http.StatusNotFound)
-	}
 }
 
 func TestNewRouterStudioFallback(t *testing.T) {

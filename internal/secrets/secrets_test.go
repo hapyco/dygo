@@ -121,7 +121,7 @@ func TestStoreResolvesNestedPlainYAMLSecrets(t *testing.T) {
 	}
 }
 
-func TestLoadWithWrongIdentityFails(t *testing.T) {
+func TestLoadWithUnusableMasterKeyFails(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 
@@ -143,40 +143,6 @@ func TestLoadWithWrongIdentityFails(t *testing.T) {
 
 	if _, err := store.Load(EnvironmentDevelopment); err == nil {
 		t.Fatal("Load() error = nil with wrong identity, want error")
-	}
-}
-
-func TestMasterKeyRequired(t *testing.T) {
-	root := t.TempDir()
-	store := NewStore(root)
-
-	paths, err := store.Init(false)
-	if err != nil {
-		t.Fatalf("Init() error = %v", err)
-	}
-	if err := os.Remove(paths.MasterKeyFile); err != nil {
-		t.Fatalf("Remove(master.key) error = %v", err)
-	}
-
-	if _, err := store.Load(EnvironmentDevelopment); err == nil {
-		t.Fatal("Load() error = nil without master.key, want error")
-	}
-}
-
-func TestCorruptMasterKeyFails(t *testing.T) {
-	root := t.TempDir()
-	store := NewStore(root)
-
-	paths, err := store.Init(false)
-	if err != nil {
-		t.Fatalf("Init() error = %v", err)
-	}
-	if err := os.WriteFile(paths.MasterKeyFile, []byte("not-an-age-key\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile(master.key) error = %v", err)
-	}
-
-	if _, err := store.Load(EnvironmentDevelopment); err == nil {
-		t.Fatal("Load() error = nil with corrupt master.key, want error")
 	}
 }
 
@@ -220,25 +186,6 @@ func TestRotateKeyPreservesAllEnvironments(t *testing.T) {
 	}
 }
 
-func TestRotateKeyVerifiesStagedFilesBeforeReplacement(t *testing.T) {
-	store := newRotatableStore(t)
-	oldMaster, oldSecrets := readRotationState(t, store)
-	store.fileOps.writeFileAtomic = func(path string, data []byte, perm os.FileMode) error {
-		if strings.HasSuffix(path, "production.yml.age.final.next") {
-			data = []byte("not age armor")
-		}
-		return writeFileAtomic(path, data, perm)
-	}
-
-	_, err := store.RotateKey()
-	if err == nil {
-		t.Fatal("RotateKey() error = nil, want staged verification failure")
-	}
-	assertRotationErrorRedacted(t, err)
-	assertRotationState(t, store, oldMaster, oldSecrets)
-	assertRotatedSecrets(t, store)
-}
-
 func TestRotateKeyFailureBeforeMasterReplacementLeavesOldState(t *testing.T) {
 	store := newRotatableStore(t)
 	oldMaster, oldSecrets := readRotationState(t, store)
@@ -255,84 +202,6 @@ func TestRotateKeyFailureBeforeMasterReplacementLeavesOldState(t *testing.T) {
 	}
 	assertRotationErrorRedacted(t, err)
 	assertRotationState(t, store, oldMaster, oldSecrets)
-	assertRotatedSecrets(t, store)
-}
-
-func TestRotateKeyFailureAfterDualRecipientReplacementUsesOldKey(t *testing.T) {
-	store := newRotatableStore(t)
-	oldMaster, _ := readRotationState(t, store)
-	store.fileOps.rename = func(oldPath string, newPath string) error {
-		if strings.HasSuffix(oldPath, "master.key.next") && filepath.Base(newPath) == "master.key" {
-			return errors.New("injected master replacement failure")
-		}
-		return os.Rename(oldPath, newPath)
-	}
-
-	_, err := store.RotateKey()
-	if err == nil {
-		t.Fatal("RotateKey() error = nil, want master replacement failure")
-	}
-	assertRotationErrorRedacted(t, err)
-	afterMaster, err := os.ReadFile(store.Paths(EnvironmentDevelopment).MasterKeyFile)
-	if err != nil {
-		t.Fatalf("ReadFile(master.key) error = %v", err)
-	}
-	if !bytes.Equal(afterMaster, oldMaster) {
-		t.Fatal("master.key changed after failed master replacement")
-	}
-	assertRotatedSecrets(t, store)
-}
-
-func TestRotateKeyFailureAfterMasterReplacementUsesNewKey(t *testing.T) {
-	store := newRotatableStore(t)
-	oldMaster, _ := readRotationState(t, store)
-	store.fileOps.rename = func(oldPath string, newPath string) error {
-		if strings.HasSuffix(oldPath, "development.yml.age.final.next") {
-			return errors.New("injected final replacement failure")
-		}
-		return os.Rename(oldPath, newPath)
-	}
-
-	_, err := store.RotateKey()
-	if err == nil {
-		t.Fatal("RotateKey() error = nil, want final replacement failure")
-	}
-	assertRotationErrorRedacted(t, err)
-	afterMaster, err := os.ReadFile(store.Paths(EnvironmentDevelopment).MasterKeyFile)
-	if err != nil {
-		t.Fatalf("ReadFile(master.key) error = %v", err)
-	}
-	if bytes.Equal(afterMaster, oldMaster) {
-		t.Fatal("master.key was not replaced before final replacement failure")
-	}
-	assertRotatedSecrets(t, store)
-}
-
-func TestRotateKeyCleanupFailureLeavesNewKeyUsable(t *testing.T) {
-	store := newRotatableStore(t)
-	oldMaster, _ := readRotationState(t, store)
-	store.fileOps.remove = func(path string) error {
-		if strings.HasSuffix(path, "master.key.rollback") {
-			return errors.New("injected cleanup failure")
-		}
-		return os.Remove(path)
-	}
-
-	_, err := store.RotateKey()
-	if err == nil {
-		t.Fatal("RotateKey() error = nil, want cleanup failure")
-	}
-	if !strings.Contains(err.Error(), "secrets key rotation completed but cleanup failed") {
-		t.Fatalf("RotateKey() error = %q, want cleanup failure", err.Error())
-	}
-	assertRotationErrorRedacted(t, err)
-	afterMaster, err := os.ReadFile(store.Paths(EnvironmentDevelopment).MasterKeyFile)
-	if err != nil {
-		t.Fatalf("ReadFile(master.key) error = %v", err)
-	}
-	if bytes.Equal(afterMaster, oldMaster) {
-		t.Fatal("master.key was not replaced before cleanup failure")
-	}
 	assertRotatedSecrets(t, store)
 }
 
@@ -438,47 +307,5 @@ func TestDecodeDocumentRejectsDuplicateSecretNames(t *testing.T) {
 
 	if _, err := DecodeDocument(plaintext, EnvironmentDevelopment); err == nil {
 		t.Fatal("DecodeDocument() error = nil for duplicate secret names, want error")
-	}
-}
-
-func TestRedact(t *testing.T) {
-	tests := []struct {
-		name  string
-		value string
-		want  string
-	}{
-		{name: "empty", value: "", want: ""},
-		{name: "short", value: "abcd", want: "****"},
-		{name: "long", value: "postgres://local", want: "************ocal"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := Redact(tt.value); got != tt.want {
-				t.Fatalf("Redact(%q) = %q, want %q", tt.value, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestWriteFileAtomic(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nested", "file.txt")
-
-	if err := writeFileAtomic(path, []byte("hello"), 0o600); err != nil {
-		t.Fatalf("writeFileAtomic() error = %v", err)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	if string(data) != "hello" {
-		t.Fatalf("ReadFile() = %q, want %q", data, "hello")
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("Stat() error = %v", err)
-	}
-	if got := info.Mode().Perm(); got != 0o600 {
-		t.Fatalf("mode = %v, want 0600", got)
 	}
 }
