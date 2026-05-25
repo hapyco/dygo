@@ -52,18 +52,20 @@ Current routes:
 /
 /:entity
 /:entity/new
-/:entity/:id
+/:entity/:name
 ```
 
 `/login` is public. The other routes require a valid Studio session.
 
 The `:entity` segment is the Entity slug, not the app name plus Entity key. It defaults to the Entity key and can be set with `route.slug` when two apps would otherwise collide.
 
+The `:name` segment is the Record system `name`.
+
 Route slug conflicts and reserved root slugs fail validation. dygo does not append numeric suffixes such as `contact-2`, because those URLs are unstable and unclear.
 
 Entity navigation icons come from optional Entity metadata `icon` values. Studio resolves Lucide names such as `box` or `shield-check`; missing or unknown names fall back to `box`.
 
-Record IDs are numeric in v1. Activity is shown inside the Record page instead of using a separate Studio URL.
+Activity is shown inside the Record page instead of using a separate Studio URL.
 
 ## Design Rule
 
