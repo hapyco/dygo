@@ -33,14 +33,18 @@ Source checked from `internal/cli` on 2026-05-25.
 ## Apps
 
 - `dygo app` - Groups dygo app commands.
-- `dygo app list` - Lists discovered dygo apps.
-- `dygo app validate` - Validates discovered dygo apps.
+- `dygo app list` - Lists discovered apps, versions, labels, and install locations.
+- `dygo app validate` - Validates app manifests, app paths, dependencies, and reserved app metadata.
 
 ## Entities
 
 - `dygo entity` - Groups dygo Entity commands.
-- `dygo entity list` - Lists discovered dygo Entities.
-- `dygo entity validate` - Validates discovered dygo Entities.
+- `dygo entity list` - Lists discovered normal, single, and collection Entities grouped by app.
+- `dygo entity validate` - Validates Entity metadata, collection metadata, route slugs, link targets, collection targets, field names, and hook file conventions.
+- `dygo entity show <app>/<entity>` - Prints resolved metadata for one Entity, including source path, kind, route slug, storage table, fields, links, collections, and naming.
+- `dygo entity graph` - Prints Entity link and collection relationships across discovered apps.
+- `dygo entity graph <app>` - Prints Entity relationships for one app.
+- `dygo entity graph <app>/<entity>` - Prints incoming and outgoing relationships for one Entity.
 
 ## Fixtures
 
@@ -94,9 +98,11 @@ Generators are non-interactive by default. They write when there are no conflict
 ## Routes
 
 - `dygo route` - Groups route registry inspection and validation commands.
-- `dygo route list` - Lists route owners, route kinds, and reserved paths.
-- `dygo route validate` - Validates route conflicts and reserved-route usage.
-- `dygo route resolve <path>` - Explains which route would handle a path.
+- `dygo route list` - Lists routeable Entities, effective slugs, owners, and reserved root slugs.
+- `dygo route validate` - Validates route slug conflicts, reserved root slugs, invalid slug syntax, and non-routeable collection usage.
+- `dygo route resolve <path>` - Explains which Studio, API, or Entity route would handle a path.
+- `dygo route resolve <method> <path>` - Explains which route, action, and permission a request would use.
+- `dygo route reserved` - Lists framework-reserved route slugs.
 
 ## Permissions
 
