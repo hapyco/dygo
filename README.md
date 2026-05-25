@@ -136,7 +136,7 @@ internal/db/       private PostgreSQL code
 apps/              first-party dygo apps such as core and Studio
 configs/           safe committed config files
 db/                generated schema snapshot
-docs/              project doctrine, thesis, and structure notes
+docs/              framework documentation
 ```
 
 ## Docs
@@ -161,7 +161,6 @@ docs/              project doctrine, thesis, and structure notes
 - [Encrypted Secrets](docs/secrets.md)
 - [Contributing](CONTRIBUTING.md)
 - [Documentation Strategy](docs/docs-strategy.md)
-- [Directory Structure](docs/dir-structure.md)
 
 ## Roadmap
 
