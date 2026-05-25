@@ -11,7 +11,7 @@ curl -fsSL https://dygo.dev/install | sh
 Until `dygo.dev/install` is wired, use the repository-hosted installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dygo-dev/dygo/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh | sh
 ```
 
 The installer places the managed binary in:
@@ -27,19 +27,19 @@ If that directory is not on `PATH`, the installer prints the shell profile line 
 Install a specific version:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dygo-dev/dygo/main/scripts/install.sh | DYGO_VERSION=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh | DYGO_VERSION=v0.1.0 sh
 ```
 
 Install somewhere else:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dygo-dev/dygo/main/scripts/install.sh | DYGO_INSTALL_DIR=/usr/local/bin sh
+curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh | DYGO_INSTALL_DIR=/usr/local/bin sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/dygo-dev/dygo/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.ps1 | iex
 ```
 
 ## Upgrades

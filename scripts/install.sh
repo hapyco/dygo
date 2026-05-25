@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-repo="dygo-dev/dygo"
+repo="hapyco/dygo"
 version="${DYGO_VERSION:-latest}"
 install_dir="${DYGO_INSTALL_DIR:-$HOME/.dygo/bin}"
 

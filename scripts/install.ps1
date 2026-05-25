@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$Repo = "dygo-dev/dygo"
+$Repo = "hapyco/dygo"
 $Version = if ($env:DYGO_VERSION) { $env:DYGO_VERSION } else { "latest" }
 $InstallDir = if ($env:DYGO_INSTALL_DIR) { $env:DYGO_INSTALL_DIR } else { Join-Path $HOME ".dygo\bin" }
 

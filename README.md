@@ -2,9 +2,9 @@
 
 [![Go](https://img.shields.io/badge/go-1.26.2-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-O%27Saasy-blue)](LICENSE)
-[![Status](https://img.shields.io/badge/status-early%20framework%20development-f2cc60)](https://github.com/dygo-dev/dygo/commits/develop)
+[![Status](https://img.shields.io/badge/status-early%20framework%20development-f2cc60)](https://github.com/hapyco/dygo/commits/develop)
 [![Contributions](https://img.shields.io/badge/contributions-paused-lightgrey)](CONTRIBUTING.md)
-[![Roadmap](https://img.shields.io/badge/roadmap-GitHub%20Projects-6f42c1)](https://github.com/orgs/dygo-dev/projects/2/views/1)
+[![Roadmap](https://img.shields.io/badge/roadmap-GitHub%20Projects-6f42c1)](https://github.com/orgs/hapyco/projects/3/views/1)
 
 dygo is a source-available framework for building serious business software in Go.
 
@@ -33,7 +33,7 @@ curl -fsSL https://dygo.dev/install | sh
 Until `dygo.dev/install` is wired, use:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dygo-dev/dygo/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh | sh
 ```
 
 ## Current CLI
@@ -166,6 +166,6 @@ docs/              framework documentation
 
 Roadmap work is tracked in GitHub Projects:
 
-- [dygo Roadmap](https://github.com/orgs/dygo-dev/projects/2/views/1)
+- [dygo Roadmap](https://github.com/orgs/hapyco/projects/3/views/1)
 
 Repository/project metadata for maintainers and agents lives in [configs/github.yml](configs/github.yml).

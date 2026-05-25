@@ -3,20 +3,20 @@
 # This file intentionally stores only public/non-secret identifiers.
 
 repository:
-  owner: dygo-dev
+  owner: hapyco
   name: dygo
-  full_name: dygo-dev/dygo
-  url: https://github.com/dygo-dev/dygo
+  full_name: hapyco/dygo
+  url: https://github.com/hapyco/dygo
 
 projects:
   roadmap:
-    title: Roadmap
-    owner: dygo-dev
+    title: Dygo 1.0
+    owner: hapyco
     owner_type: organization
-    number: 2
-    id: PVT_kwDOEL_VIc4BWf19
-    url: https://github.com/orgs/dygo-dev/projects/2
-    default_view_url: https://github.com/orgs/dygo-dev/projects/2/views/1
+    number: 3
+    id: PVT_kwDODcNlDM4BYvQG
+    url: https://github.com/orgs/hapyco/projects/3
+    default_view_url: https://github.com/orgs/hapyco/projects/3/views/1
     cli:
-      list_items: gh project item-list 2 --owner dygo-dev --format json --limit 50
-      add_issue: gh project item-add 2 --owner dygo-dev --url ISSUE_URL
+      list_items: gh project item-list 3 --owner hapyco --format json --limit 50
+      add_issue: gh project item-add 3 --owner hapyco --url ISSUE_URL
