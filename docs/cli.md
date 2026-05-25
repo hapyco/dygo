@@ -60,12 +60,27 @@ Source checked from `internal/cli` on 2026-05-25.
 
 ## Generate
 
-- `dygo generate` / `dygo g` - Groups source scaffolding commands.
-- `dygo generate app <app>` / `dygo g app <app>` - Generates a new app skeleton.
-- `dygo generate entity <app>/<entity>` / `dygo g entity <app>/<entity>` - Generates Entity metadata.
-- `dygo generate hook <app>/<entity>` / `dygo g hook <app>/<entity>` - Generates Entity hook scaffolding and project runner wiring.
-- `dygo generate fixture <app>/<entity>` / `dygo g fixture <app>/<entity>` - Generates fixture file skeletons for an Entity.
-- `dygo generate resource <app>/<entity>` / `dygo g resource <app>/<entity>` - Generates the normal app-owned Entity bundle.
+`dygo g` is an alias for `dygo generate`.
+
+- `dygo generate` - Groups source scaffolding commands.
+- `dygo generate app <app>` - Generates a new app skeleton.
+- `dygo generate entity <app>/<entity>` - Generates the standard Entity bundle.
+- `dygo generate collection <app>/<collection>` - Generates reusable collection row Entity metadata.
+- `dygo generate hook <app>/<entity>` - Adds Entity hook scaffolding and project runner wiring to an existing Entity.
+- `dygo generate fixture <app>/<entity>` - Adds a fixture skeleton to an existing Entity.
+
+Generated files are valid boilerplate, not empty placeholders. Generators do not overwrite custom files unless an explicit force flag is added later.
+
+Collection generators create metadata only. Collection rows do not get fixture skeletons, route metadata, standalone permissions, or hooks by default; parent Entity fixtures and hooks own collection row usage. The intended collection file convention is `entities/_collections/<collection>.yml`.
+
+- `dygo generate entity <app>/<entity> --dry-run` - Prints files that would be created or updated without writing.
+- `dygo generate entity <app>/<entity> --force` - Overwrites dygo-generated files only; custom files still fail.
+- `dygo generate entity <app>/<entity> --no-hook` - Skips hook scaffolding and runner wiring in the standard Entity bundle.
+- `dygo generate entity <app>/<entity> --no-fixture` - Skips fixture skeleton creation in the standard Entity bundle.
+- `dygo generate collection <app>/<collection> --dry-run` - Prints collection metadata files that would be created or updated without writing.
+- `dygo generate collection <app>/<collection> --force` - Overwrites dygo-generated collection metadata only; custom files still fail.
+
+Generators are non-interactive by default. They write when there are no conflicts, skip unchanged generated files, and fail on custom-file conflicts with a clear message.
 
 ## Routes
 
