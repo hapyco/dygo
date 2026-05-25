@@ -9,6 +9,7 @@ Source checked from `internal/cli` on 2026-05-25.
 - `dygo upgrade` - Upgrades the current dygo project to match the installed dygo binary.
 - `dygo version` - Prints the dygo version.
 - `dygo doctor` - Diagnoses the current dygo project.
+- `dygo setup` - Runs the first-run project setup flow, including Administrator bootstrap until the UI wizard owns it.
 - `dygo dev` - Runs the local development experience with backend, Studio dev server, proxying, and diagnostics.
 - `dygo serve` - Starts the dygo server.
 
@@ -28,10 +29,6 @@ Source checked from `internal/cli` on 2026-05-25.
 - `dygo db reset` - Prints the reset target, prompts interactively, then drops, creates, and migrates the configured PostgreSQL database.
 - `dygo db reset --yes` - Drops, creates, and migrates the configured PostgreSQL database without an interactive prompt.
 - `dygo db reset --dry-run` - Prints the reset target and planned steps without writing.
-
-## Setup
-
-- `dygo setup` - Runs the first-run project setup flow, including Administrator bootstrap until the UI wizard owns it.
 
 ## Metadata And Apps
 
@@ -56,15 +53,29 @@ Source checked from `internal/cli` on 2026-05-25.
 
 ## Hooks
 
-- `dygo hook` - Groups dygo hook commands.
-- `dygo hook generate <app>/<entity>` - Generates Entity hook scaffolding and project runner wiring.
+- `dygo hook` - Groups hook inspection and maintenance commands.
+- `dygo hook list` - Lists discovered hook packages, registered Entities, and supported lifecycle events.
+- `dygo hook validate` - Validates hook files, Entity references, duplicate hook IDs, generated registrar files, and runner wiring.
+- `dygo hook sync` - Updates generated project runner wiring for discovered app hook packages without creating a new hook file.
 
-## Proposed Route And Permission
+## Generate
+
+- `dygo generate` / `dygo g` - Groups source scaffolding commands.
+- `dygo generate app <app>` / `dygo g app <app>` - Generates a new app skeleton.
+- `dygo generate entity <app>/<entity>` / `dygo g entity <app>/<entity>` - Generates Entity metadata.
+- `dygo generate hook <app>/<entity>` / `dygo g hook <app>/<entity>` - Generates Entity hook scaffolding and project runner wiring.
+- `dygo generate fixture <app>/<entity>` / `dygo g fixture <app>/<entity>` - Generates fixture file skeletons for an Entity.
+- `dygo generate resource <app>/<entity>` / `dygo g resource <app>/<entity>` - Generates the normal app-owned Entity bundle.
+
+## Routes
 
 - `dygo route` - Groups route registry inspection and validation commands.
 - `dygo route list` - Lists route owners, route kinds, and reserved paths.
 - `dygo route validate` - Validates route conflicts and reserved-route usage.
 - `dygo route resolve <path>` - Explains which route would handle a path.
+
+## Permissions
+
 - `dygo permission` - Groups permission inspection and validation commands.
 - `dygo permission check` - Returns a concise allow or deny result for an action.
 - `dygo permission explain <entity> <action>` - Explains why an action is allowed or denied.
