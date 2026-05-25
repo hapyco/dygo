@@ -54,6 +54,7 @@ export type MetadataEntityMeta = MetadataEntity & {
   'system-fields': MetadataField[]
   indexes: unknown[]
   constraints: unknown[]
+  collections?: Record<string, MetadataEntityMeta>
 }
 
 export class MetadataApiError extends ApiClientError {

@@ -662,21 +662,49 @@ func TestBuildMetadataSchemaPlanReportsTypeDrift(t *testing.T) {
 	assertContains(t, plan.BlockerError().Error(), "column type is integer in database but metadata expects text")
 }
 
-func TestBuildMetadataSchemaPlanReportsChildTableUnsupported(t *testing.T) {
-	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{{
-		AppName: "crm",
-		Path:    "apps/crm/entities/lead.yml",
-		Entity: schema.Entity{
-			Name: "lead",
-			Fields: []schema.Field{
-				{Name: "contacts", Type: "collection", Options: entityOption("lead-contact")},
+func TestBuildMetadataSchemaPlanCreatesCollectionChildTable(t *testing.T) {
+	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{
+		{
+			AppName: "crm",
+			Path:    "apps/crm/entities/lead.yml",
+			Entity: schema.Entity{
+				Name: "lead",
+				Fields: []schema.Field{
+					{Name: "contacts", Type: "collection", Options: entityOption("lead-contact")},
+				},
 			},
 		},
-	}}, LiveSchema{Tables: map[string]liveTable{}})
+		{
+			AppName: "crm",
+			Path:    "apps/crm/entities/collections/lead-contact.yml",
+			Entity: schema.Entity{
+				Name:         "lead-contact",
+				IsCollection: true,
+				Fields: []schema.Field{
+					{Name: "email", Type: "email", Required: true},
+				},
+			},
+		},
+	}, LiveSchema{Tables: map[string]liveTable{}})
 	if err != nil {
 		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
 	}
-	assertContains(t, plan.BlockerError().Error(), "collection storage is not supported")
+	if plan.HasBlockers() {
+		t.Fatalf("BuildMetadataSchemaPlan() diagnostics = %v, want none", plan.Diagnostics)
+	}
+	sql := operationSQL(plan)
+	assertContains(t, sql, `CREATE TABLE "crm_lead_contact"`)
+	assertContains(t, sql, `"parent_entity_id" bigint NOT NULL`)
+	assertContains(t, sql, `"parent_record_id" bigint NOT NULL`)
+	assertContains(t, sql, `"parent_field_id" bigint NOT NULL`)
+	assertContains(t, sql, `"ordinal" bigint NOT NULL`)
+	assertContains(t, sql, `ALTER TABLE "crm_lead_contact" ADD CONSTRAINT "crm_lead_contact_parent_entity_id_fkey" FOREIGN KEY ("parent_entity_id") REFERENCES "entity"("id")`)
+	assertContains(t, sql, `ALTER TABLE "crm_lead_contact" ADD CONSTRAINT "crm_lead_contact_parent_field_id_fkey" FOREIGN KEY ("parent_field_id") REFERENCES "field"("id")`)
+	assertContains(t, sql, `ALTER TABLE "crm_lead_contact" ADD CONSTRAINT "crm_lead_contact_parent_ordinal_key" UNIQUE ("parent_entity_id", "parent_record_id", "parent_field_id", "ordinal") DEFERRABLE INITIALLY DEFERRED`)
+	assertContains(t, sql, `CREATE INDEX "crm_lead_contact_parent_lookup_idx" ON "crm_lead_contact" ("parent_entity_id", "parent_record_id", "parent_field_id")`)
+	if strings.Contains(sql, `ADD COLUMN "contacts"`) {
+		t.Fatalf("operation SQL = %q, want parent collection field to stay virtual", sql)
+	}
 }
 
 func TestBuildMetadataSchemaPlanScopesNonCoreTablesByApp(t *testing.T) {

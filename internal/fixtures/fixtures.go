@@ -434,6 +434,7 @@ func validateRecord(file LoadedFile, fields map[string]db.MetadataField, record 
 			return fmt.Errorf("%s:%d: unknown fixture field %q", file.Path, value.Line, name)
 		}
 		if !db.MetadataFieldStored(field) {
+			// TODO(collections): teach fixtures to upsert owned child rows through the parent Record payload.
 			return fmt.Errorf("%s:%d: fixture field %q uses unsupported collection storage", file.Path, value.Line, name)
 		}
 		if field.Type == "link" {

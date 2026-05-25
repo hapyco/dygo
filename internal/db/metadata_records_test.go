@@ -207,19 +207,19 @@ func TestBuildMetadataRecordsUsesEntityTableNamingFormat(t *testing.T) {
 	}
 }
 
-func TestBuildMetadataRecordsStoresNullSlugForCollectionEntities(t *testing.T) {
+func TestBuildMetadataRecordsStoresFrameworkOwnedCollectionMetadata(t *testing.T) {
 	records, err := buildMetadataRecords(metadataCatalog{
 		Apps: []manifest.LoadedApp{
 			{Manifest: manifest.Manifest{Name: "sales", Label: "Sales", Version: "0.1.0"}},
 		},
 		Entities: []catalog.LoadedEntity{
 			{
-				AppName:          "sales",
-				Path:             "apps/sales/entities/invoice/invoice-item.yml",
-				CollectionParent: "invoice",
+				AppName: "sales",
+				Path:    "apps/sales/entities/collections/invoice-item.yml",
 				Entity: schema.Entity{
-					Name:  "invoice-item",
-					Label: "Invoice Item",
+					Name:         "invoice-item",
+					Label:        "Invoice Item",
+					IsCollection: true,
 				},
 			},
 		},
@@ -232,6 +232,9 @@ func TestBuildMetadataRecordsStoresNullSlugForCollectionEntities(t *testing.T) {
 	}
 	if records.Entities[0].Slug != nil {
 		t.Fatalf("collection entity slug = %q, want nil", *records.Entities[0].Slug)
+	}
+	if records.Entities[0].Naming != nil {
+		t.Fatalf("collection entity naming metadata = %s, want nil", string(records.Entities[0].Naming))
 	}
 }
 

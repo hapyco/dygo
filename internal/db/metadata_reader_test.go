@@ -78,8 +78,8 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", true, true, false, []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
-				{"email", "Email", "email", true, true, true, nil, nil, 1, []byte(`{"entity":"user"}`)},
-				{"enabled", "Enabled", "boolean", false, false, true, []byte(`true`), []byte(`{"operator":"eq","value":true}`), 2, nil},
+				{int64(1), "email", "Email", "email", true, true, true, nil, nil, 1, []byte(`{"entity":"user"}`)},
+				{int64(2), "enabled", "Enabled", "boolean", false, false, true, []byte(`true`), []byte(`{"operator":"eq","value":true}`), 2, nil},
 			}),
 			newFakeRows([][]any{
 				{"by-enabled", []byte(`["enabled"]`), 1},
@@ -118,12 +118,49 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	}
 }
 
+func TestMetadataReaderEmbedsCollectionMetadata(t *testing.T) {
+	queryer := &fakeMetadataQueryer{
+		row: newFakeRow(int64(20), "crm.lead", "lead", "lead", "Lead", "Sales lead", "contact", false, false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
+		identityRows: map[string]pgx.Row{
+			"crm/lead-contact": newFakeRow(int64(21), "crm.lead-contact", "lead-contact", "", "Lead Contact", "Child row", "contact", false, false, true, nil, "crm", "CRM"),
+		},
+		rows: []pgx.Rows{
+			newFakeRows([][]any{
+				{int64(1), "status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New"]}`)},
+				{int64(2), "contacts", "Contacts", "collection", false, false, false, nil, nil, 2, []byte(`{"entity":"lead-contact"}`)},
+			}),
+			newFakeRows(nil),
+			newFakeRows(nil),
+			newFakeRows([][]any{
+				{int64(1), "email", "Email", "email", true, false, false, nil, nil, 1, nil},
+			}),
+			newFakeRows(nil),
+			newFakeRows(nil),
+		},
+	}
+
+	meta, err := NewMetadataReader(queryer).GetEntityMeta(context.Background(), "lead")
+	if err != nil {
+		t.Fatalf("GetEntityMeta(collection) error = %v, want nil", err)
+	}
+	child, ok := meta.Collections["contacts"]
+	if !ok {
+		t.Fatalf("GetEntityMeta(collection) collections = %#v, want contacts child metadata", meta.Collections)
+	}
+	if child.Key != "lead-contact" || !child.IsCollection || len(child.Fields) != 1 || child.Fields[0].Name != "email" {
+		t.Fatalf("embedded child metadata = %+v fields %+v, want lead-contact email field", child.MetadataEntity, child.Fields)
+	}
+	if child.Naming != nil {
+		t.Fatalf("embedded child naming = %s, want nil framework-owned naming metadata", string(child.Naming))
+	}
+}
+
 func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
 		row: newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
-				{"status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New"]}`)},
+				{int64(1), "status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New"]}`)},
 			}),
 			newFakeRows(nil),
 			newFakeRows(nil),
@@ -268,9 +305,10 @@ func TestMetadataReaderQueryFailure(t *testing.T) {
 }
 
 type fakeMetadataQueryer struct {
-	rows     []pgx.Rows
-	row      pgx.Row
-	queryErr error
+	rows         []pgx.Rows
+	row          pgx.Row
+	identityRows map[string]pgx.Row
+	queryErr     error
 
 	queries []string
 	args    [][]any
@@ -295,6 +333,12 @@ func (q *fakeMetadataQueryer) Query(_ context.Context, sql string, args ...any) 
 func (q *fakeMetadataQueryer) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 	q.rowSQL = append(q.rowSQL, sql)
 	q.rowArgs = append(q.rowArgs, args)
+	if len(args) == 2 {
+		key := fmt.Sprintf("%v/%v", args[0], args[1])
+		if row, ok := q.identityRows[key]; ok {
+			return row
+		}
+	}
 	if q.row == nil {
 		return fakeRow{err: pgx.ErrNoRows}
 	}

@@ -122,7 +122,29 @@ json
 
 `password` fields accept plaintext strings in create and update requests, hash them before storage, and are never returned in list or detail responses.
 
-`collection` is not writable through Record APIs yet.
+`collection` fields are parent-owned child row arrays. List endpoints do not include collection arrays, but detail, create, and update responses do.
+
+```json
+{
+  "data": {
+    "status": "New",
+    "contacts": [
+      {"id": 10, "name": "r4Z...", "email": "a@example.com", "full-name": "A Contact"}
+    ]
+  }
+}
+```
+
+Create inserts the parent Record first, then inserts collection rows in the submitted array order. Update treats a submitted collection field as the desired full child row set for that parent:
+
+- rows with `id` patch existing owned rows, so omitted child fields are left unchanged
+- rows without `id` insert new child rows
+- existing owned rows omitted from the submitted array are deleted
+- array order rewrites child row `ordinal` starting at `1`
+- omitting the collection field on update leaves it unchanged
+- `[]` clears optional collections
+
+Required collection fields must include at least one row on create and whenever submitted on update. dygo rejects more than `500` rows per collection field per parent Record. Direct normal Record endpoints for collection row Entities return `invalid_request`; collection rows are only accessed through the parent Record.
 
 ## Activity History
 
@@ -156,7 +178,7 @@ Activity items include `id`, `created-at`, `entity`, `record-id`, `kind`, `opera
 
 `PATCH` is dygo's update operation and only changes fields included in the request body. `PUT` is not part of v1.
 
-`DELETE` performs a hard delete in v1.
+`DELETE` performs a hard delete in v1. For parent Records with collection fields, dygo deletes owned collection rows in the same transaction before deleting the parent row.
 
 This layer requires authentication and checks Entity permissions through the single internal permission engine.
 

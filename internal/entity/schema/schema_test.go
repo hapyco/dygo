@@ -79,6 +79,179 @@ func TestLoadFile(t *testing.T) {
 	}
 }
 
+func TestDecodeCollectionEntityNaming(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		body         string
+		wantStrategy string
+		wantLength   int
+		wantError    string
+	}{
+		{
+			name: "omitted name uses framework random naming",
+			body: `
+label: Invoice Item
+fields:
+  - name: item-code
+    label: Item Code
+    type: text
+`,
+			wantStrategy: NamingStrategyRandom,
+			wantLength:   CollectionRowNameLength,
+		},
+		{
+			name: "explicit random rejected",
+			body: `
+label: Invoice Item
+name:
+  strategy: random
+fields:
+  - name: item-code
+    label: Item Code
+    type: text
+`,
+			wantError: "collection Entities do not support explicit name configuration",
+		},
+		{
+			name: "manual rejected",
+			body: `
+label: Invoice Item
+name:
+  strategy: manual
+fields:
+  - name: item-code
+    label: Item Code
+    type: text
+`,
+			wantError: "collection Entities do not support explicit name configuration",
+		},
+		{
+			name: "series rejected",
+			body: `
+label: Invoice Item
+name:
+  strategy: series
+  pattern: "ITEM-{####}"
+fields:
+  - name: item-code
+    label: Item Code
+    type: text
+`,
+			wantError: "collection Entities do not support explicit name configuration",
+		},
+		{
+			name: "format rejected",
+			body: `
+label: Invoice Item
+name:
+  strategy: format
+  format: "{item-code}"
+fields:
+  - name: item-code
+    label: Item Code
+    type: text
+    required: true
+`,
+			wantError: "collection Entities do not support explicit name configuration",
+		},
+		{
+			name: "nested collection rejected",
+			body: `
+label: Invoice Item
+fields:
+  - name: taxes
+    label: Taxes
+    type: collection
+    options:
+      entity: invoice-tax
+`,
+			wantError: "collection Entities cannot define collection fields in v1",
+		},
+		{
+			name: "ordinal field rejected",
+			body: `
+label: Invoice Item
+fields:
+  - name: ordinal
+    label: Ordinal
+    type: bigint
+`,
+			wantError: `collection field "ordinal" is reserved for framework collection row storage`,
+		},
+		{
+			name: "parent entity id field rejected",
+			body: `
+label: Invoice Item
+fields:
+  - name: parent-entity-id
+    label: Parent Entity ID
+    type: bigint
+`,
+			wantError: `collection field "parent-entity-id" is reserved for framework collection row storage`,
+		},
+		{
+			name: "parent record id field rejected",
+			body: `
+label: Invoice Item
+fields:
+  - name: parent-record-id
+    label: Parent Record ID
+    type: bigint
+`,
+			wantError: `collection field "parent-record-id" is reserved for framework collection row storage`,
+		},
+		{
+			name: "parent field id field rejected",
+			body: `
+label: Invoice Item
+fields:
+  - name: parent-field-id
+    label: Parent Field ID
+    type: bigint
+`,
+			wantError: `collection field "parent-field-id" is reserved for framework collection row storage`,
+		},
+		{
+			name: "position field allowed",
+			body: `
+label: Invoice Item
+fields:
+  - name: position
+    label: Position
+    type: text
+`,
+			wantStrategy: NamingStrategyRandom,
+			wantLength:   CollectionRowNameLength,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			entity, err := DecodeWithOptions([]byte(tt.body), fieldtype.DefaultRegistry(), DecodeOptions{IsCollection: true})
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("DecodeWithOptions() error = %v, want %q", err, tt.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DecodeWithOptions() error = %v, want nil", err)
+			}
+			if got := entity.EffectiveNaming(); got.Strategy != tt.wantStrategy {
+				t.Fatalf("EffectiveNaming().Strategy = %q, want %q", got.Strategy, tt.wantStrategy)
+			}
+			if got := entity.EffectiveNaming(); got.Length != tt.wantLength {
+				t.Fatalf("EffectiveNaming().Length = %d, want %d", got.Length, tt.wantLength)
+			}
+		})
+	}
+}
+
 func TestLoadFileRejectsInvalidEntityFilename(t *testing.T) {
 	t.Parallel()
 
