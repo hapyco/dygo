@@ -8,7 +8,7 @@ Source checked from `internal/cli` on 2026-05-25.
 - `dygo new <name>` - Creates a new dygo project skeleton.
 - `dygo upgrade` - Upgrades the current dygo project to match the installed dygo binary.
 - `dygo version` - Prints the dygo version.
-- `dygo doctor` - Diagnoses the current dygo project.
+- `dygo doctor` - Diagnoses project readiness: root/config, secrets, database connectivity, schema snapshot state, app and Entity metadata, route conflicts, fixture validity, hook wiring, generated project runner, Studio assets, and first-run setup state.
 - `dygo setup` - Runs the first-run project setup flow, including Administrator bootstrap until the UI wizard owns it.
 - `dygo dev` - Runs the local development experience with backend, Studio dev server, proxying, and diagnostics.
 - `dygo serve` - Starts the dygo server.
@@ -30,11 +30,14 @@ Source checked from `internal/cli` on 2026-05-25.
 - `dygo db reset --yes` - Drops, creates, and migrates the configured PostgreSQL database without an interactive prompt.
 - `dygo db reset --dry-run` - Prints the reset target and planned steps without writing.
 
-## Metadata And Apps
+## Apps
 
 - `dygo app` - Groups dygo app commands.
 - `dygo app list` - Lists discovered dygo apps.
 - `dygo app validate` - Validates discovered dygo apps.
+
+## Entities
+
 - `dygo entity` - Groups dygo Entity commands.
 - `dygo entity list` - Lists discovered dygo Entities.
 - `dygo entity validate` - Validates discovered dygo Entities.
@@ -54,9 +57,11 @@ Source checked from `internal/cli` on 2026-05-25.
 ## Hooks
 
 - `dygo hook` - Groups hook inspection and maintenance commands.
-- `dygo hook list` - Lists discovered hook packages, registered Entities, and supported lifecycle events.
-- `dygo hook validate` - Validates hook files, Entity references, duplicate hook IDs, generated registrar files, and runner wiring.
-- `dygo hook sync` - Updates generated project runner wiring for discovered app hook packages without creating a new hook file.
+- `dygo hook list` - Lists discovered hook packages, Entity hook files, runner wiring status, and compiled hook registrations when available.
+- `dygo hook validate` - Validates hook file conventions, Entity references, duplicate compiled hook IDs when available, generated registrars, and runner wiring.
+- `dygo hook sync` - Updates generated project runner wiring for discovered app hook packages without creating hook files.
+- `dygo hook sync --dry-run` - Prints runner wiring changes without writing.
+- `dygo hook sync --force` - Overwrites dygo-generated runner wiring only; custom runner files still fail.
 
 ## Generate
 
@@ -68,15 +73,19 @@ Source checked from `internal/cli` on 2026-05-25.
 - `dygo generate collection <app>/<collection>` - Generates reusable collection row Entity metadata.
 - `dygo generate hook <app>/<entity>` - Adds Entity hook scaffolding and project runner wiring to an existing Entity.
 - `dygo generate fixture <app>/<entity>` - Adds a fixture skeleton to an existing Entity.
+- `dygo generate test <app>/<entity>` - Adds Go test boilerplate for an existing Entity.
 
 Generated files are valid boilerplate, not empty placeholders. Generators do not overwrite custom files unless an explicit force flag is added later.
 
 Collection generators create metadata only. Collection rows do not get fixture skeletons, route metadata, standalone permissions, or hooks by default; parent Entity fixtures and hooks own collection row usage. The intended collection file convention is `entities/_collections/<collection>.yml`.
 
+`dygo generate entity` composes the narrower generators for the standard Entity bundle. In v1 it creates Entity metadata, hook scaffold, fixture skeleton, test boilerplate, and runner wiring unless skipped by flags.
+
 - `dygo generate entity <app>/<entity> --dry-run` - Prints files that would be created or updated without writing.
 - `dygo generate entity <app>/<entity> --force` - Overwrites dygo-generated files only; custom files still fail.
 - `dygo generate entity <app>/<entity> --no-hook` - Skips hook scaffolding and runner wiring in the standard Entity bundle.
 - `dygo generate entity <app>/<entity> --no-fixture` - Skips fixture skeleton creation in the standard Entity bundle.
+- `dygo generate entity <app>/<entity> --no-test` - Skips Go test boilerplate in the standard Entity bundle.
 - `dygo generate collection <app>/<collection> --dry-run` - Prints collection metadata files that would be created or updated without writing.
 - `dygo generate collection <app>/<collection> --force` - Overwrites dygo-generated collection metadata only; custom files still fail.
 
