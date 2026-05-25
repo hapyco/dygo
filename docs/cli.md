@@ -1,4 +1,4 @@
-# Current dygo CLI Surface
+# dygo CLI
 
 Source checked from `internal/cli` on 2026-05-25.
 

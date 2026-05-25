@@ -11,6 +11,7 @@ These docs live in the repository so they are versioned with code, reviewed in P
 - [The dygo Doctrine](doctrine.md) explains the beliefs behind the framework.
 - [Platform Thesis](platform-thesis.md) explains why dygo exists and what it should make possible.
 - [Installation](installation.md) explains release binaries, installer scripts, and `dygo upgrade`.
+- [CLI](cli.md) documents the current and proposed dygo command surface.
 - [Nomenclature](nomenclature.md) defines the core vocabulary used across the framework.
 - [App Model](app-model.md) explains built-in apps, business apps, and app install locations.
 - [App Manifest](app-manifest.md) defines the first `app.yml` schema.

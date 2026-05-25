@@ -36,43 +36,9 @@ Until `dygo.dev/install` is wired, use:
 curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh | sh
 ```
 
-## Current CLI
+## CLI
 
-```sh
-go run ./cmd/dygo
-go run ./cmd/dygo new my-company
-go run ./cmd/dygo upgrade
-go run ./cmd/dygo version
-go run ./cmd/dygo doctor
-go run ./cmd/dygo serve
-go run ./cmd/dygo serve --env staging
-go run ./cmd/dygo setup admin
-go run ./cmd/dygo db check
-go run ./cmd/dygo db create
-go run ./cmd/dygo db drop --confirm development/dygo
-go run ./cmd/dygo db prepare
-go run ./cmd/dygo db reset --confirm development/dygo
-go run ./cmd/dygo db schema dump
-go run ./cmd/dygo db schema check
-go run ./cmd/dygo migrate plan
-go run ./cmd/dygo patches plan --phase pre-sync
-go run ./cmd/dygo patches apply --phase pre-sync --confirm development/dygo
-go run ./cmd/dygo migrate
-go run ./cmd/dygo patches plan --phase post-sync
-go run ./cmd/dygo patches apply --phase post-sync --confirm development/dygo
-go run ./cmd/dygo fixtures apply
-go run ./cmd/dygo schema prune
-go run ./cmd/dygo schema prune --confirm development/dygo
-go run ./cmd/dygo apps list
-go run ./cmd/dygo apps validate
-go run ./cmd/dygo entities list
-go run ./cmd/dygo entities validate
-go run ./cmd/dygo hooks generate sales lead
-go run ./cmd/dygo secrets init
-go run ./cmd/dygo secrets edit
-go run ./cmd/dygo secrets validate
-go run ./cmd/dygo secrets rotate-key --confirm my-company/master.key
-```
+See [dygo CLI](docs/cli.md) for the current and proposed command surface.
 
 `go run ./cmd/dygo serve` starts dygo on `127.0.0.1:6790`. In this source checkout it also starts the Studio development asset server internally and proxies Studio through the same dygo origin.
 
@@ -143,6 +109,7 @@ docs/              framework documentation
 
 - [Documentation Index](docs/index.md)
 - [Installation](docs/installation.md)
+- [CLI](docs/cli.md)
 - [The dygo Doctrine](docs/doctrine.md)
 - [Platform Thesis](docs/platform-thesis.md)
 - [Nomenclature](docs/nomenclature.md)
