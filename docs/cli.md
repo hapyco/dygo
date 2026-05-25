@@ -31,8 +31,7 @@ Source checked from `internal/cli` on 2026-05-25.
 
 ## Setup
 
-- `dygo setup` - Groups runtime account setup commands.
-- `dygo setup admin` - Creates the first Administrator account.
+- `dygo setup` - Runs the first-run project setup flow, including Administrator bootstrap until the UI wizard owns it.
 
 ## Metadata And Apps
 
@@ -112,6 +111,7 @@ dygo upgrade
 - Replace `dygo migrate` with `dygo db migrate` - Metadata schema sync is a database operation and belongs under the database command group.
 - Replace `dygo migrate plan` with `dygo db migrate --dry-run` - Planning is the same migration workflow in preview mode, not a separate command group.
 - Remove `dygo db prepare` - It only combines `dygo db create` and metadata sync; the explicit flow is clearer.
+- Remove `dygo setup admin` - First-run setup should live behind `dygo setup`; the future path is a UI wizard rather than many setup subcommands.
 - Remove public `dygo db schema` commands - `dygo db migrate` and `dygo db prune` refresh `db/schema.sql`, and `dygo doctor` should report whether the schema snapshot is missing or out of date.
 - Remove public `dygo db schema dump` - Manual dumping can hide drift by making the snapshot match an unintended database state.
 - Remove public `dygo patch` commands - Patches are part of the `dygo db migrate` workflow. Add direct patch controls later only if debugging or recovery needs a lower-level expert command.
