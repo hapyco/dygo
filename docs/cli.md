@@ -98,10 +98,17 @@ Generators are non-interactive by default. They write when there are no conflict
 ## Secrets
 
 - `dygo secret` - Groups encrypted dygo secret commands.
-- `dygo secret init` - Initializes the root master key and encrypted secrets files.
-- `dygo secret edit` - Edits decrypted secrets in an editor and re-encrypts them.
-- `dygo secret validate` - Validates encrypted secrets and config references.
-- `dygo secret rotate-key --confirm <project-name>/master.key` - Rotates the root master key and re-encrypts all secrets.
+- `dygo secret init` - Initializes the root master key and encrypted environment secret files.
+- `dygo secret get <name>` - Prints one decrypted development secret value to stdout for scripts.
+- `dygo secret get <name> --env <environment>` - Prints one decrypted secret value for `development`, `staging`, or `production`.
+- `dygo secret edit` - Opens decrypted development secrets in an editor, then validates and re-encrypts them.
+- `dygo secret edit --env <environment>` - Opens decrypted secrets for `development`, `staging`, or `production`.
+- `dygo secret validate` - Validates development secrets and config references.
+- `dygo secret validate --env <environment>` - Validates encrypted secrets and config references for `development`, `staging`, or `production`.
+- `dygo secret rotate-key` - Prints the rotation plan, prompts interactively, then rotates `master.key` and re-encrypts all environment secret files.
+- `dygo secret rotate-key --yes` - Rotates `master.key` and re-encrypts all environment secret files without an interactive prompt.
+
+Secret names support root keys and dot-separated YAML paths, such as `DATABASE_URL` or `database.url`. `dygo secret get` prints only the raw value to stdout; errors and diagnostics go to stderr.
 
 ## Deferred Command Groups
 
