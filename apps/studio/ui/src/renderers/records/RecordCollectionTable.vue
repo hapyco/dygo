@@ -196,7 +196,7 @@ function isHiddenCollectionField(field: MetadataField): boolean {
     'parent_record_id',
     'parent-field-id',
     'parent_field_id',
-    'position',
+    'ordinal',
   ].includes(field.name)
 }
 </script>

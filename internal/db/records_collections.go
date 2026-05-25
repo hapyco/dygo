@@ -43,7 +43,7 @@ func (s RecordStore) loadRecordCollections(ctx context.Context, layout recordLay
 			quoteIdent(systemColumnParentEntityID),
 			quoteIdent(systemColumnParentRecordID),
 			quoteIdent(systemColumnParentFieldID),
-			quoteIdent(systemColumnPosition),
+			quoteIdent(systemColumnOrdinal),
 			quoteIdent(systemColumnID),
 		)
 		rows, err := s.queryer.Query(ctx, sql, layout.EntityID, parentID, collection.Field.ID)
@@ -181,7 +181,7 @@ func (s RecordStore) insertCollectionRow(ctx context.Context, collection recordC
 	parentEntityField := collectionSystemMutationField("parent-entity-id", systemColumnParentEntityID)
 	parentRecordField := collectionSystemMutationField("parent-record-id", systemColumnParentRecordID)
 	parentFieldField := collectionSystemMutationField("parent-field-id", systemColumnParentFieldID)
-	positionField := collectionSystemMutationField("position", systemColumnPosition)
+	ordinalField := collectionSystemMutationField("ordinal", systemColumnOrdinal)
 	for attempt := 0; attempt <= randomNameRetries; attempt++ {
 		mutation, err := s.createMutation(ctx, *collection.Layout, row.Input)
 		if err != nil {
@@ -196,9 +196,9 @@ func (s RecordStore) insertCollectionRow(ctx context.Context, collection recordC
 		mutation.Columns = append(mutation.Columns, systemColumnParentFieldID)
 		mutation.Placeholders = append(mutation.Placeholders, recordPlaceholder(len(mutation.Values)+1, parentFieldField))
 		mutation.Values = append(mutation.Values, collection.Field.ID)
-		mutation.Columns = append(mutation.Columns, systemColumnPosition)
-		mutation.Placeholders = append(mutation.Placeholders, recordPlaceholder(len(mutation.Values)+1, positionField))
-		mutation.Values = append(mutation.Values, row.Position)
+		mutation.Columns = append(mutation.Columns, systemColumnOrdinal)
+		mutation.Placeholders = append(mutation.Placeholders, recordPlaceholder(len(mutation.Values)+1, ordinalField))
+		mutation.Values = append(mutation.Values, row.Ordinal)
 
 		sql := insertRecordSQL(*collection.Layout, mutation, false)
 		if _, err := s.queryer.Exec(ctx, sql, mutation.Values...); err == nil {
@@ -214,7 +214,7 @@ func (s RecordStore) insertCollectionRow(ctx context.Context, collection recordC
 }
 
 func (s RecordStore) updateCollectionRow(ctx context.Context, collection recordCollection, parentID int64, row recordCollectionRowInput) error {
-	if err := collection.Layout.validateCreateInput(row.Input); err != nil {
+	if err := collection.Layout.validateUpdateFields(row.Input); err != nil {
 		return err
 	}
 	mutation, err := s.writeMutation(ctx, *collection.Layout, row.Input)
@@ -225,10 +225,10 @@ func (s RecordStore) updateCollectionRow(ctx context.Context, collection recordC
 	for i, column := range mutation.Columns {
 		setClauses = append(setClauses, fmt.Sprintf("%s = %s", quoteIdent(column), mutation.Placeholders[i]))
 	}
-	positionField := collectionSystemMutationField("position", systemColumnPosition)
+	ordinalField := collectionSystemMutationField("ordinal", systemColumnOrdinal)
 	args := append([]any(nil), mutation.Values...)
-	args = append(args, row.Position)
-	setClauses = append(setClauses, fmt.Sprintf("%s = %s", quoteIdent(systemColumnPosition), recordPlaceholder(len(args), positionField)))
+	args = append(args, row.Ordinal)
+	setClauses = append(setClauses, fmt.Sprintf("%s = %s", quoteIdent(systemColumnOrdinal), recordPlaceholder(len(args), ordinalField)))
 	setClauses = append(setClauses, fmt.Sprintf("%s = now()", quoteIdent(systemColumnUpdatedAt)))
 	args = append(args, row.ID, collection.ParentEntityID, parentID, collection.Field.ID)
 	sql := fmt.Sprintf(

@@ -137,10 +137,10 @@ json
 
 Create inserts the parent Record first, then inserts collection rows in the submitted array order. Update treats a submitted collection field as the desired full child row set for that parent:
 
-- rows with `id` update existing owned rows
+- rows with `id` patch existing owned rows, so omitted child fields are left unchanged
 - rows without `id` insert new child rows
 - existing owned rows omitted from the submitted array are deleted
-- array order writes child row `position` starting at `1`
+- array order rewrites child row `ordinal` starting at `1`
 - omitting the collection field on update leaves it unchanged
 - `[]` clears optional collections
 

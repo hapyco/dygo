@@ -789,7 +789,7 @@ func systemColumnsForEntity(entity catalog.LoadedEntity) []desiredColumn {
 			desiredColumn{Name: systemColumnParentEntityID, Type: "bigint", Required: true, Source: source},
 			desiredColumn{Name: systemColumnParentRecordID, Type: "bigint", Required: true, Source: source},
 			desiredColumn{Name: systemColumnParentFieldID, Type: "bigint", Required: true, Source: source},
-			desiredColumn{Name: systemColumnPosition, Type: "bigint", Required: true, Source: source},
+			desiredColumn{Name: systemColumnOrdinal, Type: "bigint", Required: true, Source: source},
 		)
 	}
 	return columns
@@ -819,8 +819,8 @@ func systemColumnDefinition(column desiredColumn) string {
 		return fmt.Sprintf("%s bigint NOT NULL", quoteIdent(systemColumnParentRecordID))
 	case systemColumnParentFieldID:
 		return fmt.Sprintf("%s bigint NOT NULL", quoteIdent(systemColumnParentFieldID))
-	case systemColumnPosition:
-		return fmt.Sprintf("%s bigint NOT NULL", quoteIdent(systemColumnPosition))
+	case systemColumnOrdinal:
+		return fmt.Sprintf("%s bigint NOT NULL", quoteIdent(systemColumnOrdinal))
 	default:
 		return fmt.Sprintf("%s %s", quoteIdent(column.Name), column.Type)
 	}
@@ -844,17 +844,17 @@ func collectionOwnershipConstraints(table string, entity catalog.LoadedEntity) [
 			Source:     source,
 		},
 		{
-			Name:       collectionParentPositionConstraintName(table),
+			Name:       collectionParentOrdinalConstraintName(table),
 			Type:       "unique",
-			Columns:    []string{systemColumnParentEntityID, systemColumnParentRecordID, systemColumnParentFieldID, systemColumnPosition},
-			Definition: fmt.Sprintf("UNIQUE (%s) DEFERRABLE INITIALLY DEFERRED", quoteIdentList([]string{systemColumnParentEntityID, systemColumnParentRecordID, systemColumnParentFieldID, systemColumnPosition})),
+			Columns:    []string{systemColumnParentEntityID, systemColumnParentRecordID, systemColumnParentFieldID, systemColumnOrdinal},
+			Definition: fmt.Sprintf("UNIQUE (%s) DEFERRABLE INITIALLY DEFERRED", quoteIdentList([]string{systemColumnParentEntityID, systemColumnParentRecordID, systemColumnParentFieldID, systemColumnOrdinal})),
 			Source:     source,
 		},
 	}
 }
 
-func collectionParentPositionConstraintName(table string) string {
-	return constraintName(table, "parent_position", "key")
+func collectionParentOrdinalConstraintName(table string) string {
+	return constraintName(table, "parent_ordinal", "key")
 }
 
 func collectionParentLookupIndexName(table string) string {

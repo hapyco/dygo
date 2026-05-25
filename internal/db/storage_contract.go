@@ -21,7 +21,7 @@ const (
 	systemColumnParentEntityID = "parent_entity_id"
 	systemColumnParentRecordID = "parent_record_id"
 	systemColumnParentFieldID  = "parent_field_id"
-	systemColumnPosition       = "position"
+	systemColumnOrdinal        = "ordinal"
 )
 
 type systemRecordField struct {

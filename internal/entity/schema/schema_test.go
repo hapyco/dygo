@@ -169,6 +169,62 @@ fields:
 `,
 			wantError: "collection Entities cannot define collection fields in v1",
 		},
+		{
+			name: "ordinal field rejected",
+			body: `
+label: Invoice Item
+fields:
+  - name: ordinal
+    label: Ordinal
+    type: bigint
+`,
+			wantError: `collection field "ordinal" is reserved for framework collection row storage`,
+		},
+		{
+			name: "parent entity id field rejected",
+			body: `
+label: Invoice Item
+fields:
+  - name: parent-entity-id
+    label: Parent Entity ID
+    type: bigint
+`,
+			wantError: `collection field "parent-entity-id" is reserved for framework collection row storage`,
+		},
+		{
+			name: "parent record id field rejected",
+			body: `
+label: Invoice Item
+fields:
+  - name: parent-record-id
+    label: Parent Record ID
+    type: bigint
+`,
+			wantError: `collection field "parent-record-id" is reserved for framework collection row storage`,
+		},
+		{
+			name: "parent field id field rejected",
+			body: `
+label: Invoice Item
+fields:
+  - name: parent-field-id
+    label: Parent Field ID
+    type: bigint
+`,
+			wantError: `collection field "parent-field-id" is reserved for framework collection row storage`,
+		},
+		{
+			name: "position field allowed",
+			body: `
+label: Invoice Item
+fields:
+  - name: position
+    label: Position
+    type: text
+`,
+			wantStrategy: NamingStrategyRandom,
+			wantLength:   CollectionRowNameLength,
+		},
 	}
 
 	for _, tt := range tests {

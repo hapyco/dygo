@@ -692,13 +692,13 @@ func TestRecordStoreCreateRecordWithCollectionRows(t *testing.T) {
 		t.Fatalf("CreateRecord(collection) child = %#v, want saved child row", contacts[0])
 	}
 	childSQL, childArgs := lastExecContaining(t, queryer, `INSERT INTO "crm_lead_contact"`)
-	for _, want := range []string{`"email"`, `"full_name"`, `"name"`, `"parent_entity_id"`, `"parent_record_id"`, `"parent_field_id"`, `"position"`} {
+	for _, want := range []string{`"email"`, `"full_name"`, `"name"`, `"parent_entity_id"`, `"parent_record_id"`, `"parent_field_id"`, `"ordinal"`} {
 		if !strings.Contains(childSQL, want) {
 			t.Fatalf("child insert SQL = %q, want %q", childSQL, want)
 		}
 	}
 	if tail := childArgs[len(childArgs)-4:]; !reflect.DeepEqual(tail, []any{int64(20), int64(7), int64(2), int64(1)}) {
-		t.Fatalf("child insert args = %#v, want parent entity 20, parent record 7, parent field 2, position 1", childArgs)
+		t.Fatalf("child insert args = %#v, want parent entity 20, parent record 7, parent field 2, ordinal 1", childArgs)
 	}
 }
 
@@ -843,20 +843,63 @@ func TestRecordStoreUpdateRecordWithCollectionRows(t *testing.T) {
 		t.Fatalf("child delete = %q %#v, want omitted row 11 deleted for parent entity 20 record 7 field 2", deleteSQL, deleteArgs)
 	}
 	updateSQL, updateArgs := lastExecContaining(t, queryer, `UPDATE "crm_lead_contact"`)
-	for _, want := range []string{`"email" = $1`, `"full_name" = $2`, `"position" = $3::bigint`, `WHERE "id" = $4 AND "parent_entity_id" = $5 AND "parent_record_id" = $6 AND "parent_field_id" = $7`} {
+	for _, want := range []string{`"email" = $1`, `"full_name" = $2`, `"ordinal" = $3::bigint`, `WHERE "id" = $4 AND "parent_entity_id" = $5 AND "parent_record_id" = $6 AND "parent_field_id" = $7`} {
 		if !strings.Contains(updateSQL, want) {
 			t.Fatalf("child update SQL = %q, want %q", updateSQL, want)
 		}
 	}
 	if !reflect.DeepEqual(updateArgs, []any{"updated@example.com", "Updated Contact", int64(1), int64(10), int64(20), int64(7), int64(2)}) {
-		t.Fatalf("child update args = %#v, want update row 10 at position 1 for parent entity 20 record 7 field 2", updateArgs)
+		t.Fatalf("child update args = %#v, want update row 10 at ordinal 1 for parent entity 20 record 7 field 2", updateArgs)
 	}
 	insertSQL, insertArgs := lastExecContaining(t, queryer, `INSERT INTO "crm_lead_contact"`)
-	if !strings.Contains(insertSQL, `"parent_entity_id", "parent_record_id", "parent_field_id", "position"`) {
+	if !strings.Contains(insertSQL, `"parent_entity_id", "parent_record_id", "parent_field_id", "ordinal"`) {
 		t.Fatalf("child insert SQL = %q, want collection ownership columns", insertSQL)
 	}
 	if tail := insertArgs[len(insertArgs)-4:]; !reflect.DeepEqual(tail, []any{int64(20), int64(7), int64(2), int64(2)}) {
-		t.Fatalf("child insert = %q %#v, want new row at position 2 for parent entity 20 record 7 field 2", insertSQL, insertArgs)
+		t.Fatalf("child insert = %q %#v, want new row at ordinal 2 for parent entity 20 record 7 field 2", insertSQL, insertArgs)
+	}
+}
+
+func TestRecordStoreUpdateCollectionRowAllowsRequiredWriteOnlyOmission(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newLeadRecordQueryer()
+	queryer.collectionFieldRows = [][]any{
+		metadataFieldRow("email", "Email", "email", true, false, false, nil, nil, 1, nil),
+		metadataFieldRow("access-token", "Access Token", "password", true, false, false, nil, nil, 2, nil),
+	}
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "New"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(10), "contact-10", now, now, "old@example.com"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(7), "lead-7", now, now, "Qualified"},
+	}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{{int64(10)}}))
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(10), "contact-10", now, now, "old@example.com"},
+	}))
+	queryer.execTags = []pgconn.CommandTag{
+		pgconn.NewCommandTag("UPDATE 1"),
+		pgconn.NewCommandTag("INSERT 1"),
+	}
+
+	_, err := NewRecordStore(queryer).UpdateRecord(context.Background(), "lead", 7, recordInput(map[string]string{
+		"status":   `"Qualified"`,
+		"contacts": `[{"id":10}]`,
+	}))
+	if err != nil {
+		t.Fatalf("UpdateRecord(collection existing patch) error = %v, want nil", err)
+	}
+	updateSQL, updateArgs := lastExecContaining(t, queryer, `UPDATE "crm_lead_contact"`)
+	for _, want := range []string{`"ordinal" = $1::bigint`, `"updated_at" = now()`, `WHERE "id" = $2 AND "parent_entity_id" = $3 AND "parent_record_id" = $4 AND "parent_field_id" = $5`} {
+		if !strings.Contains(updateSQL, want) {
+			t.Fatalf("child update SQL = %q, want %q", updateSQL, want)
+		}
+	}
+	if !reflect.DeepEqual(updateArgs, []any{int64(1), int64(10), int64(20), int64(7), int64(2)}) {
+		t.Fatalf("child update args = %#v, want reorder-only update row 10 at ordinal 1", updateArgs)
 	}
 }
 
@@ -1885,11 +1928,12 @@ func newActivityRecordQueryer() *fakeRecordQueryer {
 }
 
 type fakeRecordQueryer struct {
-	row       pgx.Row
-	rows      []pgx.Rows
-	queryErrs []error
-	execTags  []pgconn.CommandTag
-	execErrs  []error
+	row                 pgx.Row
+	rows                []pgx.Rows
+	queryErrs           []error
+	execTags            []pgconn.CommandTag
+	execErrs            []error
+	collectionFieldRows [][]any
 
 	queries []string
 	args    [][]any
@@ -1905,7 +1949,7 @@ func (q *fakeRecordQueryer) Query(_ context.Context, sql string, args ...any) (p
 	if rows, ok := fakeActivityMetadataRows(sql, args...); ok {
 		return rows, nil
 	}
-	if rows, ok := fakeCollectionMetadataRows(sql, args...); ok {
+	if rows, ok := q.fakeCollectionMetadataRows(sql, args...); ok {
 		return rows, nil
 	}
 	if len(q.queryErrs) > 0 {
@@ -2111,13 +2155,17 @@ func isLeadContactMetadataQuery(sql string, args ...any) bool {
 		args[1] == "lead-contact"
 }
 
-func fakeCollectionMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
+func (q *fakeRecordQueryer) fakeCollectionMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
 	if len(args) != 1 || args[0] != int64(21) {
 		return nil, false
 	}
 	switch {
 	case strings.Contains(sql, `FROM "field"`):
-		return newFakeRows(leadContactFieldRows()), true
+		rows := q.collectionFieldRows
+		if rows == nil {
+			rows = leadContactFieldRows()
+		}
+		return newFakeRows(rows), true
 	case strings.Contains(sql, `FROM "index"`), strings.Contains(sql, `FROM "constraint"`):
 		return newFakeRows(nil), true
 	default:

@@ -246,6 +246,9 @@ func (e Entity) Validate(registry fieldtype.Registry) error {
 	fieldTypes := map[string]fieldtype.Definition{}
 	for _, field := range e.Fields {
 		validateField(field, registry, seenFields, &problems)
+		if e.IsCollection && isCollectionSystemFieldName(field.Name) {
+			problems = append(problems, withLine(field.Line, fmt.Sprintf("collection field %q is reserved for framework collection row storage", field.Name)))
+		}
 		if e.IsCollection && field.Type == "collection" {
 			problems = append(problems, withLine(field.Line, "collection Entities cannot define collection fields in v1"))
 		}
@@ -311,6 +314,15 @@ func (e Entity) EffectiveNaming() Naming {
 // CollectionRowNaming returns the framework-owned naming plan for collection rows.
 func CollectionRowNaming() Naming {
 	return Naming{Strategy: NamingStrategyRandom, Length: CollectionRowNameLength}
+}
+
+func isCollectionSystemFieldName(name string) bool {
+	switch name {
+	case "ordinal", "parent-entity-id", "parent-record-id", "parent-field-id":
+		return true
+	default:
+		return false
+	}
 }
 
 func hasExplicitNaming(naming Naming) bool {

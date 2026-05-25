@@ -904,9 +904,9 @@ type recordCollection struct {
 }
 
 type recordCollectionRowInput struct {
-	ID       int64
-	Position int64
-	Input    RecordInput
+	ID      int64
+	Ordinal int64
+	Input   RecordInput
 }
 
 type recordMutation struct {
@@ -1375,10 +1375,14 @@ func (l recordLayout) collectionRowInputs(fieldName string, raw json.RawMessage,
 			}
 			seenIDs[rowID] = struct{}{}
 		}
-		if err := collection.Layout.validateCreateInput(input); err != nil {
+		if rowID > 0 {
+			if err := collection.Layout.validateUpdateFields(input); err != nil {
+				return nil, err
+			}
+		} else if err := collection.Layout.validateCreateInput(input); err != nil {
 			return nil, err
 		}
-		rows = append(rows, recordCollectionRowInput{ID: rowID, Position: int64(index + 1), Input: input})
+		rows = append(rows, recordCollectionRowInput{ID: rowID, Ordinal: int64(index + 1), Input: input})
 	}
 	return rows, nil
 }
@@ -1654,7 +1658,7 @@ func isCollectionRowSystemInput(name string) bool {
 		"parent-entity-id", systemColumnParentEntityID,
 		"parent-record-id", systemColumnParentRecordID,
 		"parent-field-id", systemColumnParentFieldID,
-		systemColumnPosition:
+		systemColumnOrdinal:
 		return true
 	default:
 		return false
