@@ -94,6 +94,35 @@ func TestStoreValidationFailures(t *testing.T) {
 	}
 }
 
+func TestStoreValidateChecksProjectConfigReferences(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	if _, err := store.Init(); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	config := filepath.Join(root, "dygo.yml")
+	if err := os.WriteFile(config, []byte("database:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
+	}
+
+	err := store.Validate(EnvironmentDevelopment)
+	if err == nil {
+		t.Fatal("Validate() error = nil for missing dygo.yml secret, want error")
+	}
+	for _, want := range []string{"dygo.yml", `missing secret "DATABASE_URL"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
+		}
+	}
+
+	if err := store.Set(EnvironmentDevelopment, "DATABASE_URL", "postgres://local"); err != nil {
+		t.Fatalf("Set(DATABASE_URL) error = %v", err)
+	}
+	if err := store.Validate(EnvironmentDevelopment); err != nil {
+		t.Fatalf("Validate() error = %v, want dygo.yml reference satisfied", err)
+	}
+}
+
 func TestStoreResolvesNestedPlainYAMLSecrets(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

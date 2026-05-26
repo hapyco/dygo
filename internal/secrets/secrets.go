@@ -396,8 +396,7 @@ func (s Store) Validate(env Environment) error {
 		return err
 	}
 
-	// TODO(secrets): include root dygo.yml config references once config and secrets share a small reference scanner.
-	references, err := FindManifestReferences(filepath.Join(s.root, filepath.FromSlash(shape.ConfigDir)))
+	references, err := FindProjectReferences(s.root)
 	if err != nil {
 		return err
 	}
@@ -583,6 +582,23 @@ type ManifestReference struct {
 	SecretName string
 }
 
+// FindProjectReferences scans root dygo.yml and config YAML files for secret references.
+func FindProjectReferences(root string) ([]ManifestReference, error) {
+	var references []ManifestReference
+	projectConfigReferences, err := FindManifestFileReferences(filepath.Join(root, filepath.FromSlash(shape.ProjectConfigFile)))
+	if err != nil {
+		return nil, err
+	}
+	references = append(references, projectConfigReferences...)
+
+	configReferences, err := FindManifestReferences(filepath.Join(root, filepath.FromSlash(shape.ConfigDir)))
+	if err != nil {
+		return nil, err
+	}
+	references = append(references, configReferences...)
+	return references, nil
+}
+
 // FindManifestReferences scans YAML configs for secret references.
 func FindManifestReferences(configRoot string) ([]ManifestReference, error) {
 	if !exists(configRoot) {
@@ -605,20 +621,34 @@ func FindManifestReferences(configRoot string) ([]ManifestReference, error) {
 			return nil
 		}
 
-		data, err := os.ReadFile(path)
+		fileReferences, err := FindManifestFileReferences(path)
 		if err != nil {
-			return fmt.Errorf("read config manifest %s: %w", path, err)
+			return err
 		}
-		var node yaml.Node
-		if err := yaml.Unmarshal(data, &node); err != nil {
-			return fmt.Errorf("parse config manifest %s: %w", path, err)
-		}
-		collectManifestReferences(path, &node, &references)
+		references = append(references, fileReferences...)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+	return references, nil
+}
+
+// FindManifestFileReferences scans one YAML manifest for secret references.
+func FindManifestFileReferences(path string) ([]ManifestReference, error) {
+	if !exists(path) {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config manifest %s: %w", path, err)
+	}
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return nil, fmt.Errorf("parse config manifest %s: %w", path, err)
+	}
+	var references []ManifestReference
+	collectManifestReferences(path, &node, &references)
 	return references, nil
 }
 
