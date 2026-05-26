@@ -4,14 +4,19 @@ Fixtures are app-owned seed Records.
 
 They are for roles, permissions, reference data, and other runtime defaults that should be versioned with an App.
 
-Run metadata sync before applying fixtures:
+Use the normal app-state workflow to sync metadata and apply fixtures:
 
 ```sh
 go run ./cmd/dygo db migrate
-go run ./cmd/dygo fixture apply
 ```
 
-Use another encrypted environment with `--env`:
+Use explicit fixture commands when authoring, debugging, or exporting fixture files. For example, validate fixture files without database writes:
+
+```sh
+go run ./cmd/dygo fixture validate
+```
+
+Apply fixtures directly to another encrypted environment with `--env`:
 
 ```sh
 go run ./cmd/dygo fixture apply --env staging
@@ -78,7 +83,9 @@ Core fixtures also do not grant `studio-member` generic `activity` Record access
 
 ## Apply Behavior
 
-`dygo fixture apply` discovers fixtures from all loaded Apps, validates metadata first, prints a plan, prompts, then applies records in deterministic order inside one transaction. Apply order is derived from link dependencies between fixture Entities, not from numeric filename prefixes.
+`dygo fixture validate` discovers fixtures from all loaded Apps and validates fixture files, match fields, link references, dependency cycles, and collection limitations without writing records.
+
+`dygo fixture apply` performs the same validation, prints a plan, prompts, then applies records in deterministic order inside one transaction. Apply order is derived from link dependencies between fixture Entities, not from numeric filename prefixes.
 
 For each fixture record, dygo finds an existing Record through `match`. If one exists, it updates it. If none exists, it creates it through the generic Record runtime.
 
