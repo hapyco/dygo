@@ -173,6 +173,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newEntityCommand(stdout))
 	root.AddCommand(newHookCommand(stdout))
 	root.AddCommand(newGenerateCommand(stdout))
+	root.AddCommand(newRouteCommand(stdout))
 	root.AddCommand(newSecretCommand(ctx, stdin, stdout, stderr))
 
 	return root, nil
