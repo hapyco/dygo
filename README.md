@@ -124,6 +124,7 @@ docs/              framework documentation
 - [Server](docs/server.md)
 - [Auth](docs/auth.md)
 - [Records](docs/records.md)
+- [App SDK](docs/sdk.md)
 - [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)
 - [Contributing](CONTRIBUTING.md)
