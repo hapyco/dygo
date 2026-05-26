@@ -29,24 +29,14 @@ func (defaultAdminSetupRunner) SetupAdmin(ctx context.Context, databaseURL strin
 }
 
 func newSetupCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, setup adminSetupRunner) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "setup",
-		Short: "Set up dygo runtime accounts",
-		Args:  cobra.NoArgs,
-	}
-	cmd.AddCommand(newSetupAdminCommand(ctx, stdin, stdout, stderr, setup))
-	return cmd
-}
-
-func newSetupAdminCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, setup adminSetupRunner) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
 	email := ""
 	fullName := ""
 	passwordStdin := false
 
 	cmd := &cobra.Command{
-		Use:   "admin",
-		Short: "Create the first Administrator account",
+		Use:   "setup",
+		Short: "Run first-run dygo project setup",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			env, _, databaseURL, err := databaseInputs(envName)
@@ -76,7 +66,7 @@ func newSetupAdminCommand(ctx context.Context, stdin io.Reader, stdout, stderr i
 				return fmt.Errorf("setup administrator account: %w", err)
 			}
 			if _, err := fmt.Fprintf(stdout, "administrator account ready: %s (%s)\n", user.Email, env); err != nil {
-				return fmt.Errorf("write setup admin output: %w", err)
+				return fmt.Errorf("write setup output: %w", err)
 			}
 			return nil
 		},

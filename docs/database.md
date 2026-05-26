@@ -73,13 +73,13 @@ go run ./cmd/dygo db prepare
 `db prepare` does not apply fixtures in v1. Apply seed Records explicitly after metadata sync:
 
 ```sh
-go run ./cmd/dygo fixtures apply
+go run ./cmd/dygo fixture apply
 ```
 
 After fixtures are applied, create the first Administrator account before opening Studio:
 
 ```sh
-go run ./cmd/dygo setup admin
+go run ./cmd/dygo setup
 ```
 
 Drop or reset the configured database only with explicit confirmation:

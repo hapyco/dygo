@@ -110,7 +110,7 @@ func TestSetupAdminCommand(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServicesAndSetup(context.Background(), []string{"setup", "admin", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
+	err := runWithServicesAndSetup(context.Background(), []string{"setup", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
 	if err != nil {
 		t.Fatalf("Run(setup admin) error = %v, want nil", err)
 	}
@@ -138,7 +138,7 @@ func TestSetupAdminCommandUsesSelectedEnvironment(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServicesAndSetup(context.Background(), []string{"setup", "admin", "--env", "staging", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
+	err := runWithServicesAndSetup(context.Background(), []string{"setup", "--env", "staging", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
 	if err != nil {
 		t.Fatalf("Run(setup admin --env staging) error = %v, want nil", err)
 	}
@@ -162,7 +162,7 @@ func TestSetupAdminCommandPromptsForMissingValues(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServicesAndSetup(context.Background(), []string{"setup", "admin"}, strings.NewReader("admin@example.com\nAdmin User\nsecret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
+	err := runWithServicesAndSetup(context.Background(), []string{"setup"}, strings.NewReader("admin@example.com\nAdmin User\nsecret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
 	if err != nil {
 		t.Fatalf("Run(setup admin prompts) error = %v, want nil", err)
 	}
@@ -186,7 +186,7 @@ func TestSetupAdminCommandRequiresDatabaseSecret(t *testing.T) {
 	fake := &fakeAdminSetupRunner{}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServicesAndSetup(context.Background(), []string{"setup", "admin", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
+	err := runWithServicesAndSetup(context.Background(), []string{"setup", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
 	if err == nil {
 		t.Fatal("Run(setup admin) error = nil, want missing secret error")
 	}
@@ -210,7 +210,7 @@ func TestSetupAdminCommandReturnsRunnerError(t *testing.T) {
 	fake := &fakeAdminSetupRunner{err: auth.Error{Code: auth.ErrorSchemaNotReady, Message: "auth schema is not ready; run dygo migrate"}}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServicesAndSetup(context.Background(), []string{"setup", "admin", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
+	err := runWithServicesAndSetup(context.Background(), []string{"setup", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
 	if err == nil {
 		t.Fatal("Run(setup admin) error = nil, want runner error")
 	}
