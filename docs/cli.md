@@ -6,12 +6,15 @@ This document describes the current and proposed dygo CLI surface for the CLI cl
 
 - `dygo` - Shows the root help for the metadata-driven dygo platform CLI.
 - `dygo new <name>` - Creates a new dygo project skeleton.
-- `dygo upgrade` - Upgrades the current dygo project to match the installed dygo binary.
+- `dygo upgrade` - Upgrades the current project files, assets, and dependencies to match the installed dygo binary.
 - `dygo version` - Prints the dygo version.
-- `dygo doctor` - Diagnoses project readiness: root/config, secrets, database connectivity, schema snapshot state, app and Entity metadata, route conflicts, fixture validity, hook wiring, generated project runner, Studio assets, and first-run setup state.
+- `dygo completion <shell>` - Generates shell completion scripts for bash, zsh, fish, or PowerShell.
+- `dygo doctor` - Diagnoses current project readiness.
 - `dygo setup` - Runs the first-run project setup flow, including Administrator bootstrap until the UI wizard owns it.
 - `dygo dev` - Runs the local development experience with backend, Studio dev server, proxying, and diagnostics.
 - `dygo serve` - Starts the dygo server.
+
+`dygo doctor` checks root/config, secrets, database connectivity, schema snapshot state, app and Entity metadata, route conflicts, fixture validity, hook wiring, generated project runner, Studio assets, and first-run setup state.
 
 ## Database
 
@@ -131,10 +134,12 @@ Permission commands default to `--env development` and read live Core permission
 
 Secret names support root keys and dot-separated YAML paths, such as `DATABASE_URL` or `database.url`. `dygo secret get` prints only the raw value to stdout; errors and diagnostics go to stderr.
 
-## Deferred Command Groups
+## Deferred CLI Surface
 
 - `dygo worker` - Defer until the durable job runtime is designed and implemented.
 - `dygo scheduler` - Defer until schedule metadata and recurring job runtime exist.
+- Global `--json` - Defer until dygo has a consistent output contract for command results, validation errors, dry-run plans, prompts, redaction, and streaming commands.
+- Smart shell completions - Defer until command structure is implemented; start with filesystem/static completions for `--env`, `<app>`, `<app>/<entity>`, hook events, and completion shells.
 
 ## Out Of Band Binary Updates
 
@@ -175,6 +180,7 @@ dygo upgrade
 - Remove `dygo upgrade --cli-only` - Binary updates are handled out of band through installer, package manager, or Go toolchain.
 - Remove `dygo upgrade --install-dir` - Install location belongs to the installer, not the project upgrade command.
 - Remove `dygo upgrade --project-only` - `dygo upgrade` is project-only by definition.
+- Remove `dygo secret init --force` - Key replacement belongs to `dygo secret rotate-key`; init should only create missing secret infrastructure.
 - Move `dygo serve --studio-dev-url` to `dygo dev` if the override is still needed - Studio/Vite proxying is local development orchestration, not runtime serving.
 
 ## Environment Safety Rule
