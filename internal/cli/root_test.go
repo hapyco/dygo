@@ -96,6 +96,128 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestCommandSurfaceRegistersTargetCommands(t *testing.T) {
+	commands := [][]string{
+		{"new"},
+		{"upgrade"},
+		{"version"},
+		{"completion"},
+		{"doctor"},
+		{"setup"},
+		{"dev"},
+		{"serve"},
+		{"db"},
+		{"db", "check"},
+		{"db", "create"},
+		{"db", "drop"},
+		{"db", "migrate"},
+		{"db", "prune"},
+		{"db", "reset"},
+		{"app"},
+		{"app", "list"},
+		{"app", "validate"},
+		{"entity"},
+		{"entity", "list"},
+		{"entity", "validate"},
+		{"entity", "show"},
+		{"entity", "graph"},
+		{"fixture"},
+		{"fixture", "apply"},
+		{"fixture", "validate"},
+		{"fixture", "export"},
+		{"hook"},
+		{"hook", "list"},
+		{"hook", "validate"},
+		{"hook", "sync"},
+		{"generate"},
+		{"generate", "app"},
+		{"generate", "entity"},
+		{"generate", "collection"},
+		{"generate", "hook"},
+		{"generate", "fixture"},
+		{"generate", "test"},
+		{"g"},
+		{"route"},
+		{"route", "list"},
+		{"route", "validate"},
+		{"route", "resolve"},
+		{"route", "reserved"},
+		{"permission"},
+		{"permission", "list"},
+		{"permission", "check"},
+		{"permission", "explain"},
+		{"secret"},
+		{"secret", "init"},
+		{"secret", "get"},
+		{"secret", "edit"},
+		{"secret", "validate"},
+		{"secret", "rotate-key"},
+	}
+
+	for _, command := range commands {
+		command := command
+		t.Run(strings.Join(command, " "), func(t *testing.T) {
+			root := t.TempDir()
+			writeCLIProjectRoot(t, root)
+			writeCLIConfig(t, root)
+			t.Chdir(root)
+
+			args := append([]string{}, command...)
+			args = append(args, "--help")
+
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if err := Run(context.Background(), args, strings.NewReader(""), &stdout, &stderr); err != nil {
+				t.Fatalf("Run(%v) error = %v, want help success", args, err)
+			}
+			if !strings.Contains(stdout.String(), "Usage:") {
+				t.Fatalf("Run(%v) stdout = %q, want help usage", args, stdout.String())
+			}
+		})
+	}
+}
+
+func TestCommandSurfaceRejectsRemovedPublicPaths(t *testing.T) {
+	commands := [][]string{
+		{"apps"},
+		{"entities"},
+		{"fixtures"},
+		{"hooks"},
+		{"secrets"},
+		{"migrate"},
+		{"migrate", "plan"},
+		{"patches"},
+		{"patch"},
+		{"schema"},
+		{"schema", "prune"},
+		{"db", "prepare"},
+		{"db", "schema"},
+		{"db", "schema", "dump"},
+		{"db", "schema", "check"},
+		{"setup", "admin"},
+		{"upgrade", "--cli-only"},
+		{"upgrade", "--project-only"},
+		{"upgrade", "--install-dir", "/tmp/dygo"},
+		{"serve", "--studio-dev-url", "http://127.0.0.1:6791"},
+	}
+
+	for _, command := range commands {
+		command := command
+		t.Run(strings.Join(command, " "), func(t *testing.T) {
+			root := t.TempDir()
+			writeCLIProjectRoot(t, root)
+			writeCLIConfig(t, root)
+			t.Chdir(root)
+
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if err := Run(context.Background(), command, strings.NewReader(""), &stdout, &stderr); err == nil {
+				t.Fatalf("Run(%v) error = nil, want removed command failure", command)
+			}
+		})
+	}
+}
+
 func TestSetupCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
