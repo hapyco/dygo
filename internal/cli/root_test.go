@@ -1612,6 +1612,21 @@ fields:
     options:
       entity: company
 `)
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "_collections", "lead-contact.yml"), `
+label: Lead Contact
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	writeCLIEntity(t, cliEntityPath(root, "sales", "settings"), `
+label: Settings
+is-single: true
+fields:
+  - name: timezone
+    label: Timezone
+    type: text
+`)
 
 	t.Chdir(filepath.Join(root, "apps", "sales", "entities"))
 
@@ -1622,7 +1637,7 @@ fields:
 		t.Fatalf("Run(entity list) error = %v, want nil", err)
 	}
 
-	want := "core\n  (no entities)\nsales\n  - company\n  - lead\n"
+	want := "core\n  (no entities)\nsales\n  - company (normal)\n  - lead (normal)\n  - lead-contact (collection)\n  - settings (single)\n"
 	if stdout.String() != want {
 		t.Fatalf("entity list stdout = %q, want %q", stdout.String(), want)
 	}
@@ -2591,7 +2606,8 @@ func writeCLIEntity(t *testing.T, path string, body string) {
 
 	body = strings.TrimSpace(body)
 	isCollection := strings.Contains(filepath.ToSlash(path), "/_collections/")
-	if !isCollection && !strings.Contains(body, "\nname:") && !strings.HasPrefix(body, "name:") {
+	isSingle := strings.Contains(body, "\nis-single: true") || strings.HasPrefix(body, "is-single: true")
+	if !isCollection && !isSingle && !strings.Contains(body, "\nname:") && !strings.HasPrefix(body, "name:") {
 		if strings.Contains(body, "\nroute:") {
 			body = strings.Replace(body, "\nroute:", "\nname:\n  strategy: random\nroute:", 1)
 		} else {

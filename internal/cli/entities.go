@@ -78,7 +78,7 @@ func newEntitiesListCommand(stdout io.Writer) *cobra.Command {
 				}
 
 				for _, entity := range appEntities {
-					if _, err := fmt.Fprintf(stdout, "  - %s\n", entity.Entity.Name); err != nil {
+					if _, err := fmt.Fprintf(stdout, "  - %s (%s)\n", entity.Entity.Name, entityKind(entity)); err != nil {
 						return fmt.Errorf("write entity name: %w", err)
 					}
 				}
