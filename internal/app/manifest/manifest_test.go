@@ -44,9 +44,6 @@ label: CRM
 version: 0.1.0
 paths:
   entities: metadata/entities
-  permissions: metadata/permissions
-  hooks: hooks
-  fixtures: data/fixtures
   patches: data/patches
   docs: docs
   assets: assets
@@ -59,8 +56,32 @@ paths:
 	if app.Paths.Entities != "metadata/entities" {
 		t.Fatalf("LoadFile().Paths.Entities = %q, want explicit path", app.Paths.Entities)
 	}
-	if app.Paths.Permissions != "metadata/permissions" {
-		t.Fatalf("LoadFile().Paths.Permissions = %q, want explicit path", app.Paths.Permissions)
+	if app.Paths.Patches != "data/patches" {
+		t.Fatalf("LoadFile().Paths.Patches = %q, want explicit path", app.Paths.Patches)
+	}
+}
+
+func TestLoadFileRejectsOldAppLevelEntityOwnedPaths(t *testing.T) {
+	t.Parallel()
+
+	path := writeManifest(t, t.TempDir(), "app.yml", `
+name: dygo-crm
+label: CRM
+version: 0.1.0
+paths:
+  hooks: hooks
+  fixtures: fixtures
+  permissions: permissions
+`)
+
+	_, err := LoadFile(path)
+	if err == nil {
+		t.Fatal("LoadFile() error = nil, want old app-level path fields rejected")
+	}
+	for _, want := range []string{`field hooks not found`, `field fixtures not found`, `field permissions not found`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("LoadFile() error = %q, want substring %q", err.Error(), want)
+		}
 	}
 }
 
