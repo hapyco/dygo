@@ -118,6 +118,63 @@ func TestValidateRejectsDuplicateSimpleAndFolderParentForms(t *testing.T) {
 	}
 }
 
+func TestValidateLoadsCanonicalEntityBundle(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	entityPath := filepath.Join(app.Dir, "entities", "lead", "entity.yml")
+	writeEntity(t, entityPath, "lead")
+	writeFile(t, filepath.Join(app.Dir, "entities", "lead", "fixtures.yml"), "records: []")
+	writeFile(t, filepath.Join(app.Dir, "entities", "lead", "permissions.yml"), "rules: []")
+	writeFile(t, filepath.Join(app.Dir, "entities", "lead", "views.yml"), "views: []")
+
+	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	if got := entityKeys(entities); strings.Join(got, ",") != "sales/lead" {
+		t.Fatalf("Validate() entities = %#v, want canonical lead bundle", got)
+	}
+	if entities[0].Path != entityPath {
+		t.Fatalf("LoadedEntity.Path = %q, want %q", entities[0].Path, entityPath)
+	}
+}
+
+func TestValidateRejectsDuplicateFlatAndCanonicalEntityBundle(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead", "entity.yml"), "lead")
+
+	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want duplicate entity error")
+	}
+	if !strings.Contains(err.Error(), `Entity "lead" is defined twice. Use either entities/lead.yml or entities/lead/entity.yml.`) {
+		t.Fatalf("Validate() error = %q, want duplicate canonical context", err.Error())
+	}
+}
+
+func TestValidateRejectsDuplicateLegacyAndCanonicalEntityBundle(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead", "lead.yml"), "lead")
+	writeEntity(t, filepath.Join(app.Dir, "entities", "lead", "entity.yml"), "lead")
+
+	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want duplicate entity error")
+	}
+	if !strings.Contains(err.Error(), `Entity "lead" is defined twice. Use either entities/lead/entity.yml or entities/lead/lead.yml.`) {
+		t.Fatalf("Validate() error = %q, want duplicate legacy/canonical context", err.Error())
+	}
+}
+
 func TestValidateAllowsDuplicateEntityNamesAcrossAppsWithUniqueRouteSlugs(t *testing.T) {
 	t.Parallel()
 
@@ -442,6 +499,70 @@ fields:
 	}
 	if entities[1].RouteSlug() != "" || entities[1].HasRouteSlug() {
 		t.Fatalf("invoice-item route slug = %q routeable = %v, want no public route slug", entities[1].RouteSlug(), entities[1].HasRouteSlug())
+	}
+}
+
+func TestValidateLoadsCanonicalCollectionEntityFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "entity.yml"), `
+label: Invoice
+name:
+  strategy: random
+fields:
+  - name: items
+    label: Items
+    type: collection
+    options:
+      entity: invoice-item
+`)
+	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "_collections", "invoice-item.yml"), "invoice-item")
+
+	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	if got := entityKeys(entities); strings.Join(got, ",") != "sales/invoice,sales/invoice-item" {
+		t.Fatalf("Validate() entities = %#v, want canonical invoice and collection", got)
+	}
+	if !entities[1].IsCollection() {
+		t.Fatalf("invoice-item IsCollection = %v, want collection", entities[1].IsCollection())
+	}
+}
+
+func TestValidateLoadsCanonicalCollectionEntityBundles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "entity.yml"), `
+label: Invoice
+name:
+  strategy: random
+fields:
+  - name: items
+    label: Items
+    type: collection
+    options:
+      entity: invoice-item
+`)
+	entityPath := filepath.Join(app.Dir, "entities", "_collections", "invoice-item", "entity.yml")
+	writeCollectionEntity(t, entityPath, "invoice-item")
+
+	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	if got := entityKeys(entities); strings.Join(got, ",") != "sales/invoice,sales/invoice-item" {
+		t.Fatalf("Validate() entities = %#v, want canonical invoice and collection bundle", got)
+	}
+	if entities[1].Path != entityPath {
+		t.Fatalf("LoadedEntity.Path = %q, want %q", entities[1].Path, entityPath)
+	}
+	if !entities[1].IsCollection() {
+		t.Fatalf("invoice-item IsCollection = %v, want collection", entities[1].IsCollection())
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/hapyco/dygo/internal/entity/fieldtype"
 	"github.com/hapyco/dygo/internal/entity/schema"
 	"github.com/hapyco/dygo/internal/reserved"
+	"github.com/hapyco/dygo/internal/shape"
 )
 
 // LoadedEntity is one Entity loaded from an owning app.
@@ -112,26 +113,13 @@ func (c Catalog) discoverApp(app manifest.LoadedApp) ([]LoadedEntity, error) {
 	var entities []LoadedEntity
 	rootFiles := map[string]string{}
 	for _, entry := range entries {
-		path := filepath.Join(entitiesDir, entry.Name())
 		if entry.IsDir() {
-			if entry.Name() == "collections" {
-				discovered, err := c.discoverCollectionFolder(app, path)
-				if err != nil {
-					return nil, err
-				}
-				entities = append(entities, discovered...)
-				continue
-			}
-			discovered, err := c.discoverEntityFolder(app, entitiesDir, entry.Name(), rootFiles)
-			if err != nil {
-				return nil, err
-			}
-			entities = append(entities, discovered...)
 			continue
 		}
 		if filepath.Ext(entry.Name()) != ".yml" {
 			continue
 		}
+		path := filepath.Join(entitiesDir, entry.Name())
 		info, err := entry.Info()
 		if err != nil {
 			return nil, fmt.Errorf("stat entity for app %q from %s: %w", app.Manifest.Name, path, err)
@@ -147,19 +135,39 @@ func (c Catalog) discoverApp(app manifest.LoadedApp) ([]LoadedEntity, error) {
 		entities = append(entities, entity)
 	}
 
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(entitiesDir, entry.Name())
+		if isCollectionDir(entry.Name()) {
+			discovered, err := c.discoverCollectionFolder(app, path, entry.Name() == shape.CollectionDir)
+			if err != nil {
+				return nil, err
+			}
+			entities = append(entities, discovered...)
+			continue
+		}
+		discovered, err := c.discoverEntityFolder(app, entitiesDir, entry.Name(), rootFiles)
+		if err != nil {
+			return nil, err
+		}
+		entities = append(entities, discovered...)
+	}
+
 	return entities, nil
 }
 
 func (c Catalog) discoverEntityFolder(app manifest.LoadedApp, entitiesDir string, folderName string, rootFiles map[string]string) ([]LoadedEntity, error) {
 	folderPath := filepath.Join(entitiesDir, folderName)
-	parentPath := filepath.Join(folderPath, folderName+".yml")
 	entries, err := os.ReadDir(folderPath)
 	if err != nil {
 		return nil, fmt.Errorf("read entity folder for app %q from %s: %w", app.Manifest.Name, folderPath, err)
 	}
 
-	hasEntityFiles := false
-	hasParent := false
+	var entityPath string
+	var entityName string
+	hasYAML := false
 	var entities []LoadedEntity
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
@@ -172,32 +180,41 @@ func (c Catalog) discoverEntityFolder(app manifest.LoadedApp, entitiesDir string
 		if !info.Mode().IsRegular() {
 			continue
 		}
-		hasEntityFiles = true
-		name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		path := filepath.Join(folderPath, entry.Name())
-		if name == folderName {
-			hasParent = true
-			if rootPath, ok := rootFiles[name]; ok {
-				return nil, fmt.Errorf("Entity %q is defined twice. Use either %s or %s.", name, appRelativePath(app.Dir, rootPath), appRelativePath(app.Dir, path))
-			}
-			entity, err := c.loadEntityFile(app, path, false)
-			if err != nil {
-				return nil, err
-			}
-			entities = append(entities, entity)
+		if isEntityBundleMetadataFile(entry.Name()) {
 			continue
 		}
-		return nil, fmt.Errorf("%s is not a valid Entity folder file; collection Entities must be defined under %s", appRelativePath(app.Dir, path), appRelativePath(app.Dir, filepath.Join(entitiesDir, "collections")))
+		hasYAML = true
+		path := filepath.Join(folderPath, entry.Name())
+		name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		if entry.Name() != shape.EntityMetadataFile && name != folderName {
+			return nil, fmt.Errorf("%s is not a valid Entity bundle file; Entity metadata must be %s", appRelativePath(app.Dir, path), appRelativePath(app.Dir, filepath.Join(folderPath, shape.EntityMetadataFile)))
+		}
+		if entityPath != "" {
+			return nil, fmt.Errorf("Entity %q is defined twice. Use either %s or %s.", folderName, appRelativePath(app.Dir, entityPath), appRelativePath(app.Dir, path))
+		}
+		entityPath = path
+		entityName = folderName
 	}
 
-	if hasEntityFiles && !hasParent {
-		return nil, fmt.Errorf("%s requires parent Entity file %s", appRelativePath(app.Dir, folderPath), appRelativePath(app.Dir, parentPath))
+	if entityPath == "" {
+		if hasYAML {
+			return nil, fmt.Errorf("%s requires Entity metadata file %s", appRelativePath(app.Dir, folderPath), appRelativePath(app.Dir, filepath.Join(folderPath, shape.EntityMetadataFile)))
+		}
+		return entities, nil
 	}
+	if rootPath, ok := rootFiles[entityName]; ok {
+		return nil, fmt.Errorf("Entity %q is defined twice. Use either %s or %s.", entityName, appRelativePath(app.Dir, rootPath), appRelativePath(app.Dir, entityPath))
+	}
+	entity, err := c.loadEntityFile(app, entityPath, false)
+	if err != nil {
+		return nil, err
+	}
+	entities = append(entities, entity)
 
 	return entities, nil
 }
 
-func (c Catalog) discoverCollectionFolder(app manifest.LoadedApp, folderPath string) ([]LoadedEntity, error) {
+func (c Catalog) discoverCollectionFolder(app manifest.LoadedApp, folderPath string, allowFolderBundles bool) ([]LoadedEntity, error) {
 	entries, err := os.ReadDir(folderPath)
 	if err != nil {
 		return nil, fmt.Errorf("read collection entities for app %q from %s: %w", app.Manifest.Name, folderPath, err)
@@ -207,7 +224,16 @@ func (c Catalog) discoverCollectionFolder(app manifest.LoadedApp, folderPath str
 	for _, entry := range entries {
 		path := filepath.Join(folderPath, entry.Name())
 		if entry.IsDir() {
-			return nil, fmt.Errorf("%s is not supported; collection Entities must be top-level YAML files in %s", appRelativePath(app.Dir, path), appRelativePath(app.Dir, folderPath))
+			if !allowFolderBundles {
+				return nil, fmt.Errorf("%s is not supported; collection Entities must be top-level YAML files in %s", appRelativePath(app.Dir, path), appRelativePath(app.Dir, folderPath))
+			}
+			entityPath := filepath.Join(path, shape.EntityMetadataFile)
+			entity, err := c.loadEntityFile(app, entityPath, true)
+			if err != nil {
+				return nil, err
+			}
+			entities = append(entities, entity)
+			continue
 		}
 		if filepath.Ext(entry.Name()) != ".yml" {
 			continue
@@ -226,6 +252,19 @@ func (c Catalog) discoverCollectionFolder(app manifest.LoadedApp, folderPath str
 		entities = append(entities, entity)
 	}
 	return entities, nil
+}
+
+func isCollectionDir(name string) bool {
+	return name == shape.CollectionDir || name == "collections"
+}
+
+func isEntityBundleMetadataFile(name string) bool {
+	switch name {
+	case shape.EntityFixturesFile, shape.EntityPermissionsFile, shape.EntityViewsFile:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c Catalog) loadEntityFile(app manifest.LoadedApp, path string, isCollection bool) (LoadedEntity, error) {
