@@ -27,6 +27,25 @@ type Result struct {
 	Updated int
 }
 
+// Plan previews discovered fixture files before a runtime write.
+type Plan struct {
+	Files []LoadedFile
+}
+
+// FileCount returns the number of fixture files in the plan.
+func (p Plan) FileCount() int {
+	return len(p.Files)
+}
+
+// RecordCount returns the number of records in the plan.
+func (p Plan) RecordCount() int {
+	count := 0
+	for _, file := range p.Files {
+		count += len(file.Fixture.Records)
+	}
+	return count
+}
+
 // Runner applies discovered fixture files.
 type Runner struct {
 	recordHooks *db.RecordHookRegistry
@@ -85,15 +104,11 @@ func NewRunnerWithHooks(recordHooks *db.RecordHookRegistry) Runner {
 
 // Apply discovers and applies all app-owned fixtures in one transaction.
 func (r Runner) Apply(ctx context.Context, root string, databaseURL string) (Result, error) {
-	apps, err := project.LoadApps(root)
-	if err != nil {
-		return Result{}, fmt.Errorf("validate apps for fixtures: %w", err)
-	}
-	files, err := Discover(apps)
+	plan, err := r.Plan(ctx, root)
 	if err != nil {
 		return Result{}, err
 	}
-	if len(files) == 0 {
+	if len(plan.Files) == 0 {
 		return Result{}, nil
 	}
 
@@ -113,7 +128,7 @@ func (r Runner) Apply(ctx context.Context, root string, databaseURL string) (Res
 		metadata: db.NewMetadataReader(tx),
 		records:  newFixtureRecordStore(tx, r.recordHooks),
 	}
-	result, err := ApplyFiles(ctx, store, files)
+	result, err := ApplyFiles(ctx, store, plan.Files)
 	if err != nil {
 		return Result{}, err
 	}
@@ -121,6 +136,22 @@ func (r Runner) Apply(ctx context.Context, root string, databaseURL string) (Res
 		return Result{}, fmt.Errorf("commit fixtures transaction: %w", err)
 	}
 	return result, nil
+}
+
+// Plan discovers app-owned fixtures and validates their file-level shape without writing records.
+func (r Runner) Plan(ctx context.Context, root string) (Plan, error) {
+	if err := ctx.Err(); err != nil {
+		return Plan{}, fmt.Errorf("plan fixtures: %w", err)
+	}
+	apps, err := project.LoadApps(root)
+	if err != nil {
+		return Plan{}, fmt.Errorf("validate apps for fixtures: %w", err)
+	}
+	files, err := Discover(apps)
+	if err != nil {
+		return Plan{}, err
+	}
+	return Plan{Files: files}, nil
 }
 
 func newFixtureRecordStore(queryer db.RecordQueryer, recordHooks *db.RecordHookRegistry) db.RecordStore {

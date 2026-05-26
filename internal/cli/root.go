@@ -33,6 +33,7 @@ type adminSetupRunner interface {
 	SetupAdmin(context.Context, string, auth.SetupAdminInput) (auth.User, error)
 }
 type fixtureRunner interface {
+	Plan(context.Context, string) (fixtures.Plan, error)
 	Apply(context.Context, string, string) (fixtures.Result, error)
 }
 type databaseRunner interface {
@@ -173,7 +174,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newPatchesCommand(ctx, stdout, sync))
 	root.AddCommand(newSchemaCommand(ctx, stdout, sync))
 	root.AddCommand(newSetupCommand(ctx, stdin, stdout, stderr, setup))
-	root.AddCommand(newFixturesCommand(ctx, stdout, fixture))
+	root.AddCommand(newFixtureCommand(ctx, stdin, stdout, stderr, fixture))
 	root.AddCommand(newAppsCommand(stdout))
 	root.AddCommand(newEntitiesCommand(stdout))
 	root.AddCommand(newHooksCommand(stdout))
@@ -196,6 +197,13 @@ func (r defaultFixtureRunner) Apply(ctx context.Context, root string, databaseUR
 		return fixtures.NewRunnerWithHooks(r.recordHooks).Apply(ctx, root, databaseURL)
 	}
 	return fixtures.NewRunner().Apply(ctx, root, databaseURL)
+}
+
+func (r defaultFixtureRunner) Plan(ctx context.Context, root string) (fixtures.Plan, error) {
+	if r.recordHooks != nil {
+		return fixtures.NewRunnerWithHooks(r.recordHooks).Plan(ctx, root)
+	}
+	return fixtures.NewRunner().Plan(ctx, root)
 }
 
 func (r checkBackedDatabaseRunner) Check(ctx context.Context, databaseURL string) error {

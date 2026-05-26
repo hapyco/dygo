@@ -176,7 +176,7 @@ func checkRuntimeReadiness(ctx context.Context, root string) []doctorResult {
 	databaseURL, err := doctorDatabaseURL(root, env)
 	if err != nil {
 		return []doctorResult{
-			{Status: doctorFail, Name: "runtime database", Detail: fmt.Sprintf("%v; run dygo secrets edit", err)},
+			{Status: doctorFail, Name: "runtime database", Detail: fmt.Sprintf("%v; run dygo secret edit", err)},
 			{Status: doctorSkip, Name: "core fixtures", Detail: "runtime database is not ready"},
 			{Status: doctorSkip, Name: "administrator account", Detail: "runtime database is not ready"},
 		}
@@ -185,7 +185,7 @@ func checkRuntimeReadiness(ctx context.Context, root string) []doctorResult {
 	pool, err := openDoctorRuntimePool(ctx, databaseURL)
 	if err != nil {
 		return []doctorResult{
-			{Status: doctorFail, Name: "runtime database", Detail: fmt.Sprintf("%v; run dygo db prepare", err)},
+			{Status: doctorFail, Name: "runtime database", Detail: fmt.Sprintf("%v; run dygo db migrate", err)},
 			{Status: doctorSkip, Name: "core fixtures", Detail: "runtime database is not ready"},
 			{Status: doctorSkip, Name: "administrator account", Detail: "runtime database is not ready"},
 		}
