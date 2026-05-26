@@ -101,22 +101,6 @@ fields:
 	}
 }
 
-func TestValidateRejectsFlatEntityFiles(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
-
-	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
-	if err == nil {
-		t.Fatal("Validate() error = nil, want flat entity path error")
-	}
-	if !strings.Contains(err.Error(), `entities/lead.yml is not supported; Entity metadata must live at entities/lead/entity.yml`) {
-		t.Fatalf("Validate() error = %q, want flat entity path context", err.Error())
-	}
-}
-
 func TestValidateLoadsCanonicalEntityBundle(t *testing.T) {
 	t.Parallel()
 
@@ -560,24 +544,6 @@ fields:
 	}
 	if !entities[1].IsCollection() {
 		t.Fatalf("invoice-item IsCollection = %v, want collection", entities[1].IsCollection())
-	}
-}
-
-func TestValidateRejectsCollectionsDirectory(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, entityPath(app, "invoice"), "invoice")
-	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "collections", "invoice-item.yml"), "invoice-item")
-
-	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
-	if err == nil {
-		t.Fatal("Validate() error = nil, want collections directory error")
-	}
-	want := "entities/collections is not supported; collection Entity metadata must live under entities/_collections"
-	if !strings.Contains(err.Error(), want) {
-		t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 	}
 }
 

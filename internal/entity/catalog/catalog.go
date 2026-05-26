@@ -114,13 +114,7 @@ func (c Catalog) discoverApp(app manifest.LoadedApp) ([]LoadedEntity, error) {
 	for _, entry := range entries {
 		path := filepath.Join(entitiesDir, entry.Name())
 		if !entry.IsDir() {
-			if filepath.Ext(entry.Name()) == ".yml" {
-				return nil, fmt.Errorf("%s is not supported; Entity metadata must live at %s", appRelativePath(app.Dir, path), appRelativePath(app.Dir, filepath.Join(entitiesDir, strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())), shape.EntityMetadataFile)))
-			}
 			continue
-		}
-		if entry.Name() == "collections" {
-			return nil, fmt.Errorf("%s is not supported; collection Entity metadata must live under %s", appRelativePath(app.Dir, path), appRelativePath(app.Dir, filepath.Join(entitiesDir, shape.CollectionDir)))
 		}
 		if entry.Name() == shape.CollectionDir {
 			discovered, err := c.discoverCollectionFolder(app, path)
