@@ -7,6 +7,10 @@ This document describes the current and proposed dygo CLI surface for the CLI cl
 - `dygo` - Shows the root help for the metadata-driven dygo platform CLI.
 - `dygo new <name>` - Creates a new dygo project skeleton.
 - `dygo upgrade` - Upgrades the current project files, assets, and dependencies to match the installed dygo binary.
+- `dygo upgrade --check` - Checks whether the current project needs an upgrade without planning or writing changes.
+- `dygo upgrade --to <version>` - Plans or applies a project upgrade to a specific dygo version.
+- `dygo upgrade --dry-run` - Prints the project upgrade plan without writing or prompting.
+- `dygo upgrade --yes` - Applies the project upgrade without an interactive prompt.
 - `dygo version` - Prints the dygo version.
 - `dygo completion <shell>` - Generates shell completion scripts for bash, zsh, fish, or PowerShell.
 - `dygo doctor` - Diagnoses current project readiness.
