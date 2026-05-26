@@ -265,19 +265,19 @@ func installStudioCache(root string, options Options, dep dygoDependency) (bool,
 
 func writeProjectFiles(root string, name string, label string, modulePath string, dep dygoDependency) error {
 	dirs := []string{
-		"apps/" + name + "/entities",
-		"apps/" + name + "/entities/" + shape.CollectionDir,
-		"apps/" + name + "/jobs",
-		"apps/" + name + "/pages",
-		"apps/" + name + "/reports",
+		shape.AppEntitiesPath(name),
+		shape.AppCollectionDirPath(name),
+		shape.AppJobsPath(name),
+		shape.AppPagesPath(name),
+		shape.AppReportsPath(name),
 		shape.ConfigSecretsDir,
-		"db",
-		"docs",
-		".dygo/apps/studio",
-		".dygo/files",
-		".dygo/logs",
-		".dygo/tmp",
-		".dygo/secrets",
+		shape.DatabaseDir,
+		shape.DocsDir,
+		shape.LocalStudioAppDir,
+		shape.LocalFilesDir,
+		shape.LocalLogsDir,
+		shape.LocalTempDir,
+		shape.LocalSecretsDir,
 	}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(dir)), 0o755); err != nil {
@@ -290,15 +290,16 @@ func writeProjectFiles(root string, name string, label string, modulePath string
 		return err
 	}
 	files := map[string]string{
-		".gitignore":                  gitignoreSource(),
-		"README.md":                   readmeSource(label),
-		project.MarkerFile:            configSource(name),
-		"go.mod":                      goModSource(modulePath, dep),
-		"cmd/dygo/main.go":            runner,
-		"db/schema.sql":               schemaSource(),
-		"docs/index.md":               docsIndexSource(label),
-		"apps/" + name + "/app.yml":   appManifestSource(name, label),
-		"apps/" + name + "/roles.yml": "roles: []\n",
+		".gitignore":                 gitignoreSource(),
+		"README.md":                  readmeSource(label),
+		project.MarkerFile:           configSource(name),
+		"go.mod":                     goModSource(modulePath, dep),
+		"cmd/dygo/main.go":           runner,
+		shape.SchemaSnapshot:         schemaSource(),
+		"docs/index.md":              docsIndexSource(label),
+		shape.AppManifestPath(name):  appManifestSource(name, label),
+		shape.AppRolesPath(name):     "roles: []\n",
+		shape.AppSchedulesPath(name): schedulesSource(),
 	}
 	for path, source := range files {
 		if err := writeProjectFile(root, path, []byte(source), 0o644); err != nil {
@@ -437,6 +438,10 @@ Do not commit `+"`.dygo/secrets/master.key`"+`.
 
 func docsIndexSource(label string) string {
 	return "# " + label + " Docs\n"
+}
+
+func schedulesSource() string {
+	return "schedules: []\n"
 }
 
 func schemaSource() string {

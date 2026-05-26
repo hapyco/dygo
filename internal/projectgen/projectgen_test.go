@@ -43,6 +43,7 @@ func TestGenerateCreatesProjectSkeletonAndSecrets(t *testing.T) {
 		"apps/my-company/entities",
 		"apps/my-company/entities/_collections",
 		"apps/my-company/jobs",
+		"apps/my-company/jobs/_schedules.yml",
 		"apps/my-company/pages",
 		"apps/my-company/reports",
 		"apps/my-company/roles.yml",

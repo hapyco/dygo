@@ -289,7 +289,7 @@ func runnerResultStatus(result hookgen.Result) string {
 }
 
 func writeGenerateHookDryRun(stdout io.Writer, root string, target shape.AppRef) error {
-	hookPath := filepath.Join(root, "apps", target.App, "entities", target.Name, "hooks.go")
+	hookPath := filepath.Join(root, shape.AppDir(target.App), shape.EntityHooksPath(target.Name))
 	runnerPath := filepath.Join(root, "cmd", "dygo", "main.go")
 	if _, err := fmt.Fprintf(stdout, "hook: %s (would create)\n", relToHooksRoot(root, hookPath)); err != nil {
 		return fmt.Errorf("write generate output: %w", err)

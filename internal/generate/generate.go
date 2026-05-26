@@ -59,14 +59,15 @@ func App(options Options, appName string) (Plan, error) {
 	}
 	data := templateData{App: appName, Name: appName, Label: labelForName(appName)}
 	return writeScaffold(options, []string{
-		filepath.ToSlash(filepath.Join(shape.AppDir(appName), shape.AppEntitiesDir)),
-		filepath.ToSlash(filepath.Join(shape.AppDir(appName), shape.AppEntitiesDir, shape.CollectionDir)),
-		filepath.ToSlash(filepath.Join(shape.AppDir(appName), shape.AppJobsDir)),
-		filepath.ToSlash(filepath.Join(shape.AppDir(appName), shape.AppPagesDir)),
-		filepath.ToSlash(filepath.Join(shape.AppDir(appName), shape.AppReportsDir)),
+		shape.AppEntitiesPath(appName),
+		shape.AppCollectionDirPath(appName),
+		shape.AppJobsPath(appName),
+		shape.AppPagesPath(appName),
+		shape.AppReportsPath(appName),
 	}, []fileSpec{
 		{Path: shape.AppManifestPath(appName), Mode: 0o644, Template: "app.yml.tmpl", Data: data},
-		{Path: filepath.ToSlash(filepath.Join(shape.AppDir(appName), shape.AppRolesFile)), Mode: 0o644, Template: "roles.yml.tmpl", Data: data},
+		{Path: shape.AppRolesPath(appName), Mode: 0o644, Template: "roles.yml.tmpl", Data: data},
+		{Path: shape.AppSchedulesPath(appName), Mode: 0o644, Template: "schedules.yml.tmpl", Data: data},
 	})
 }
 
@@ -96,7 +97,7 @@ func Entity(options Options, ref shape.AppRef, includeFixture bool, includeTest 
 func Collection(options Options, ref shape.AppRef) (Plan, error) {
 	data := templateData{App: ref.App, Name: ref.Name, Label: labelForName(ref.Name), Collection: ref.Name}
 	return writeScaffold(options, []string{
-		filepath.ToSlash(filepath.Join(shape.AppDir(ref.App), shape.AppEntitiesDir, shape.CollectionDir)),
+		shape.AppCollectionDirPath(ref.App),
 	}, []fileSpec{
 		{Path: filepath.ToSlash(filepath.Join(shape.AppDir(ref.App), shape.CollectionMetadataPath(ref.Name))), Mode: 0o644, Template: "collection.yml.tmpl", Data: data},
 	})
