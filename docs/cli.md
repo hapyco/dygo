@@ -1,6 +1,6 @@
 # dygo CLI
 
-This document describes the current and proposed dygo CLI surface for the CLI cleanup work. This is a target CLI surface; commands may be implemented incrementally during CLI cleanup.
+This document describes the dygo CLI surface after the CLI cleanup work. Deferred commands and future extensions are listed separately.
 
 ## Root
 

@@ -38,7 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh
 
 ## CLI
 
-See [dygo CLI](docs/cli.md) for the current and proposed command surface.
+See [dygo CLI](docs/cli.md) for the command surface.
 
 `go run ./cmd/dygo dev` starts dygo on `127.0.0.1:6790` for local development. In this source checkout it also starts the Studio development asset server internally and proxies Studio through the same dygo origin.
 
