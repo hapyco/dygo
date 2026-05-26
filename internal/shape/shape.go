@@ -67,6 +67,18 @@ func ParseAppRef(value string) (AppRef, error) {
 	return AppRef{App: parts[0], Name: parts[1]}, nil
 }
 
+// ValidateMetadataName verifies one kebab-case metadata identifier.
+func ValidateMetadataName(kind string, value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("%s is required", kind)
+	}
+	if !metadataNamePattern.MatchString(value) {
+		return fmt.Errorf("%s %q must be kebab-case", kind, value)
+	}
+	return nil
+}
+
 // AppDir returns the project-relative directory for an app.
 func AppDir(app string) string {
 	return filepath.ToSlash(filepath.Join(AppsDir, app))
