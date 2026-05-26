@@ -126,7 +126,7 @@ func (m Migrator) CheckSchemaSnapshot(ctx context.Context, root string, database
 	current, err := os.ReadFile(schemaPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%w: %s; run dygo db schema dump", ErrSchemaSnapshotMissing, SchemaPath)
+			return fmt.Errorf("%w: %s; run dygo doctor", ErrSchemaSnapshotMissing, SchemaPath)
 		}
 		return fmt.Errorf("read schema snapshot: %w", err)
 	}
@@ -145,7 +145,7 @@ func (m Migrator) CheckSchemaSnapshot(ctx context.Context, root string, database
 		return fmt.Errorf("read generated schema snapshot: %w", err)
 	}
 	if !bytes.Equal(current, fresh) {
-		return fmt.Errorf("%w: %s; run dygo db schema dump", ErrSchemaSnapshotOutOfDate, SchemaPath)
+		return fmt.Errorf("%w: %s; run dygo doctor", ErrSchemaSnapshotOutOfDate, SchemaPath)
 	}
 	return nil
 }

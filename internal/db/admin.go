@@ -81,35 +81,6 @@ func (m Manager) Drop(ctx context.Context, databaseURL string) (DatabaseResult, 
 	return DatabaseResult{Name: target.Name, Changed: true}, nil
 }
 
-// Prepare creates the database if needed and syncs metadata schema.
-func (m Manager) Prepare(ctx context.Context, root string, databaseURL string) (SchemaSyncResult, error) {
-	if _, err := m.Create(ctx, databaseURL); err != nil {
-		return SchemaSyncResult{}, err
-	}
-	return m.Migrator.Sync(ctx, root, databaseURL)
-}
-
-// Reset drops, recreates, and syncs the configured database.
-func (m Manager) Reset(ctx context.Context, root string, databaseURL string) (SchemaSyncResult, error) {
-	if _, err := m.Drop(ctx, databaseURL); err != nil {
-		return SchemaSyncResult{}, err
-	}
-	if _, err := m.Create(ctx, databaseURL); err != nil {
-		return SchemaSyncResult{}, err
-	}
-	return m.Migrator.Sync(ctx, root, databaseURL)
-}
-
-// SchemaDump writes db/schema.sql from the live database.
-func (m Manager) SchemaDump(ctx context.Context, root string, databaseURL string) error {
-	return m.Migrator.DumpSchema(ctx, root, databaseURL)
-}
-
-// SchemaCheck verifies db/schema.sql matches the live database schema dump.
-func (m Manager) SchemaCheck(ctx context.Context, root string, databaseURL string) error {
-	return m.Migrator.CheckSchemaSnapshot(ctx, root, databaseURL)
-}
-
 // DatabaseTarget is the database named by a PostgreSQL URL plus a maintenance URL.
 type DatabaseTarget struct {
 	Name           string

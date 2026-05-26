@@ -51,7 +51,7 @@ func TestMigratorCheckSchemaSnapshotMissing(t *testing.T) {
 	if !errors.Is(err, ErrSchemaSnapshotMissing) {
 		t.Fatalf("CheckSchemaSnapshot() error = %v, want ErrSchemaSnapshotMissing", err)
 	}
-	if !strings.Contains(err.Error(), "schema snapshot is missing: db/schema.sql; run dygo db schema dump") {
+	if !strings.Contains(err.Error(), "schema snapshot is missing: db/schema.sql; run dygo doctor") {
 		t.Fatalf("CheckSchemaSnapshot() error = %q, want missing snapshot command", err.Error())
 	}
 	if snapshotter.calls != 0 {
@@ -68,7 +68,7 @@ func TestMigratorCheckSchemaSnapshotOutOfDate(t *testing.T) {
 	if !errors.Is(err, ErrSchemaSnapshotOutOfDate) {
 		t.Fatalf("CheckSchemaSnapshot() error = %v, want ErrSchemaSnapshotOutOfDate", err)
 	}
-	if !strings.Contains(err.Error(), "schema snapshot is out of date: db/schema.sql; run dygo db schema dump") {
+	if !strings.Contains(err.Error(), "schema snapshot is out of date: db/schema.sql; run dygo doctor") {
 		t.Fatalf("CheckSchemaSnapshot() error = %q, want out-of-date command", err.Error())
 	}
 	if got := readTestSchemaSnapshot(t, root); got != "old schema\n" {

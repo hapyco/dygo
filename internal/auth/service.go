@@ -354,7 +354,7 @@ func classifyAuthDBError(message string, err error) error {
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "42P01", "42703":
-			return authError(ErrorSchemaNotReady, "auth schema is not ready; run dygo migrate", nil, err)
+			return authError(ErrorSchemaNotReady, "auth schema is not ready; run dygo db migrate", nil, err)
 		}
 	}
 	return authError(ErrorInternal, message+" failed", nil, err)

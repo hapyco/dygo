@@ -40,10 +40,6 @@ type databaseRunner interface {
 	Check(context.Context, string) error
 	Create(context.Context, string) (db.DatabaseResult, error)
 	Drop(context.Context, string) (db.DatabaseResult, error)
-	Prepare(context.Context, string, string) (db.SchemaSyncResult, error)
-	Reset(context.Context, string, string) (db.SchemaSyncResult, error)
-	SchemaCheck(context.Context, string, string) error
-	SchemaDump(context.Context, string, string) error
 }
 type schemaSyncRunner interface {
 	ApplyPatches(context.Context, string, string, string, string) (db.PatchApplyResult, error)
@@ -170,10 +166,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newDoctorCommand(ctx, stdout))
 	root.AddCommand(newDevCommand(ctx, stdout, stderr, serve, recordHooks))
 	root.AddCommand(newServeCommand(ctx, stdout, stderr, serve, recordHooks))
-	root.AddCommand(newDBCommand(ctx, stdout, database))
-	root.AddCommand(newMigrateCommand(ctx, stdout, sync))
-	root.AddCommand(newPatchesCommand(ctx, stdout, sync))
-	root.AddCommand(newSchemaCommand(ctx, stdout, sync))
+	root.AddCommand(newDBCommand(ctx, stdin, stdout, stderr, database, sync, fixture))
 	root.AddCommand(newSetupCommand(ctx, stdin, stdout, stderr, setup))
 	root.AddCommand(newFixtureCommand(ctx, stdin, stdout, stderr, fixture))
 	root.AddCommand(newAppCommand(stdout))
@@ -220,22 +213,6 @@ func (r checkBackedDatabaseRunner) Create(ctx context.Context, databaseURL strin
 
 func (r checkBackedDatabaseRunner) Drop(ctx context.Context, databaseURL string) (db.DatabaseResult, error) {
 	return r.manager.Drop(ctx, databaseURL)
-}
-
-func (r checkBackedDatabaseRunner) Prepare(ctx context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
-	return r.manager.Prepare(ctx, root, databaseURL)
-}
-
-func (r checkBackedDatabaseRunner) Reset(ctx context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
-	return r.manager.Reset(ctx, root, databaseURL)
-}
-
-func (r checkBackedDatabaseRunner) SchemaDump(ctx context.Context, root string, databaseURL string) error {
-	return r.manager.SchemaDump(ctx, root, databaseURL)
-}
-
-func (r checkBackedDatabaseRunner) SchemaCheck(ctx context.Context, root string, databaseURL string) error {
-	return r.manager.SchemaCheck(ctx, root, databaseURL)
 }
 
 func newVersionCommand(stdout io.Writer) *cobra.Command {

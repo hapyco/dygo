@@ -4,13 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/hapyco/dygo/internal/auth"
 	"github.com/hapyco/dygo/internal/db"
@@ -207,7 +205,7 @@ func TestSetupAdminCommandReturnsRunnerError(t *testing.T) {
 	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
 	t.Chdir(root)
 
-	fake := &fakeAdminSetupRunner{err: auth.Error{Code: auth.ErrorSchemaNotReady, Message: "auth schema is not ready; run dygo migrate"}}
+	fake := &fakeAdminSetupRunner{err: auth.Error{Code: auth.ErrorSchemaNotReady, Message: "auth schema is not ready; run dygo db migrate"}}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	err := runWithServicesAndSetup(context.Background(), []string{"setup", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
@@ -824,7 +822,7 @@ func TestDBCreateCommandAlreadyExists(t *testing.T) {
 	}
 }
 
-func TestDBDropCommandRequiresConfirm(t *testing.T) {
+func TestDBDropCommandPromptsBeforeDrop(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -832,76 +830,40 @@ func TestDBDropCommandRequiresConfirm(t *testing.T) {
 	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
 	t.Chdir(root)
 
-	fake := &fakeDatabaseRunner{}
+	fake := &fakeDatabaseRunner{dropResult: db.DatabaseResult{Name: "dygo", Changed: true}}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "drop"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
-	if err == nil {
-		t.Fatal("Run(db drop) error = nil, want confirmation error")
-	}
-	if !strings.Contains(err.Error(), "db drop requires --confirm development/dygo") {
-		t.Fatalf("Run(db drop) error = %q, want confirmation context", err.Error())
-	}
-	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
-		t.Fatalf("Run(db drop) error = %q, want redacted database URL", err.Error())
-	}
-	if fake.calls != 0 {
-		t.Fatalf("database runner calls = %d, want 0", fake.calls)
-	}
-}
-
-func TestDBDropCommandRejectsWrongConfirm(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeDatabaseRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "drop", "--env", "staging", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
-	if err == nil {
-		t.Fatal("Run(db drop) error = nil, want confirmation error")
-	}
-	if !strings.Contains(err.Error(), "db drop requires --confirm staging/dygo_staging") {
-		t.Fatalf("Run(db drop) error = %q, want confirmation context", err.Error())
-	}
-	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
-		t.Fatalf("Run(db drop) error = %q, want redacted database URL", err.Error())
-	}
-	if fake.calls != 0 {
-		t.Fatalf("database runner calls = %d, want 0", fake.calls)
-	}
-}
-
-func TestDBDropCommand(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeDatabaseRunner{
-		dropResult: db.DatabaseResult{Name: "dygo_staging", Changed: true},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "drop", "--confirm", "staging/dygo_staging", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
+	err := runWithServices(context.Background(), []string{"db", "drop"}, strings.NewReader("\n"), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
 	if err != nil {
-		t.Fatalf("Run(db drop) error = %v, want nil", err)
+		t.Fatalf("Run(db drop cancel) error = %v, want nil", err)
 	}
-	if stdout.String() != "database dropped: dygo_staging (staging)\n" {
-		t.Fatalf("db drop stdout = %q, want dropped output", stdout.String())
+	if fake.calls != 0 {
+		t.Fatalf("database runner calls = %d, want 0 after declined prompt", fake.calls)
+	}
+	for _, want := range []string{"db drop plan (development)", "database: dygo", "database drop cancelled"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("db drop stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if !strings.Contains(stderr.String(), "Drop database? [y/N] ") {
+		t.Fatalf("db drop stderr = %q, want prompt", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = runWithServices(context.Background(), []string{"db", "drop", "--yes"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
+	if err != nil {
+		t.Fatalf("Run(db drop --yes) error = %v, want nil", err)
 	}
 	if fake.operation != "drop" || fake.databaseURL != databaseURL {
-		t.Fatalf("database runner = operation %q URL %q, want drop and URL", fake.operation, fake.databaseURL)
+		t.Fatalf("database runner = operation %q URL %q, want drop/%q", fake.operation, fake.databaseURL, databaseURL)
+	}
+	if !strings.Contains(stdout.String(), "database dropped: dygo (development)") {
+		t.Fatalf("db drop stdout = %q, want applied output", stdout.String())
 	}
 }
 
-func TestDBPrepareCommand(t *testing.T) {
+func TestDBMigrateDryRunPlansFullWorkflow(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -909,902 +871,129 @@ func TestDBPrepareCommand(t *testing.T) {
 	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
 	t.Chdir(root)
 
-	fake := &fakeDatabaseRunner{
-		prepareResult: db.SchemaSyncResult{Apps: 2, Entities: 8, Fields: 34},
+	fakeSync := &fakeSchemaSyncRunner{
+		patchPlan: db.PatchPlan{Pending: []db.PlannedPatch{{AppName: "sales", PatchID: "001"}}},
+		plan:      db.SchemaPlan{Operations: []db.SchemaOperation{{Description: "create table"}}},
 	}
+	fakeFixture := &fakeFixtureRunner{plan: fixturePlan(2, 5)}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "prepare"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--dry-run"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
 	if err != nil {
-		t.Fatalf("Run(db prepare) error = %v, want nil", err)
+		t.Fatalf("Run(db migrate --dry-run) error = %v, want nil", err)
 	}
-	if stdout.String() != "database prepared: synced 2 apps, 8 entities, 34 fields (development)\n" {
-		t.Fatalf("db prepare stdout = %q, want prepare output", stdout.String())
+	for _, want := range []string{"db migrate plan (development)", "pre-sync patches: 1 pending", "schema safe operations: 1", "fixtures: 2 files, 5 records"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("db migrate dry-run stdout = %q, want substring %q", stdout.String(), want)
+		}
 	}
-	if fake.operation != "prepare" || fake.root != root || fake.databaseURL != databaseURL {
-		t.Fatalf("database runner = operation %q root %q URL %q, want prepare/root/URL", fake.operation, fake.root, fake.databaseURL)
+	if fakeSync.patchPlanCalls != 2 || fakeSync.planCalls != 1 || fakeSync.calls != 0 || fakeFixture.planCalls != 1 || fakeFixture.calls != 0 {
+		t.Fatalf("plan/apply calls = patchPlan %d plan %d sync %d fixturePlan %d fixtureApply %d, want dry-run only", fakeSync.patchPlanCalls, fakeSync.planCalls, fakeSync.calls, fakeFixture.planCalls, fakeFixture.calls)
 	}
 }
 
-func TestDBResetCommandRequiresConfirm(t *testing.T) {
+func TestDBMigrateYesAppliesFullWorkflow(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fakeSync := &fakeSchemaSyncRunner{
+		patchApplyResult: db.PatchApplyResult{Applied: []db.PatchRun{{AppName: "sales", PatchID: "001"}}},
+		result:           db.SchemaSyncResult{Apps: 2, Entities: 8, Fields: 34, Operations: 3},
+	}
+	fakeFixture := &fakeFixtureRunner{
+		plan:   fixturePlan(1, 2),
+		result: fixtures.Result{Created: 1, Updated: 1},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--yes"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
+	if err != nil {
+		t.Fatalf("Run(db migrate --yes) error = %v, want nil", err)
+	}
+	for _, want := range []string{"db migrate plan (development)", "database migrated (development)", "metadata synced: 2 apps, 8 entities, 34 fields, 3 schema operations", "fixture records: 1 created, 1 updated", "schema snapshot: refreshed"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("db migrate stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if fakeSync.patchApplyCalls != 2 || fakeSync.calls != 1 || fakeFixture.calls != 1 {
+		t.Fatalf("apply calls = patch %d sync %d fixture %d, want full workflow", fakeSync.patchApplyCalls, fakeSync.calls, fakeFixture.calls)
+	}
+}
+
+func TestDBResetDryRunPrintsSteps(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
 	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
 	t.Chdir(root)
 
-	fake := &fakeDatabaseRunner{}
+	fakeDB := &fakeDatabaseRunner{}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "reset"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
-	if err == nil {
-		t.Fatal("Run(db reset) error = nil, want confirmation error")
-	}
-	if !strings.Contains(err.Error(), "db reset requires --confirm development/dygo") {
-		t.Fatalf("Run(db reset) error = %q, want confirmation context", err.Error())
-	}
-	if strings.Contains(err.Error(), "secret-password") {
-		t.Fatalf("Run(db reset) error = %q, want redacted database URL", err.Error())
-	}
-	if fake.calls != 0 {
-		t.Fatalf("database runner calls = %d, want 0", fake.calls)
-	}
-}
-
-func TestDBResetCommand(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user@localhost:5432/dygo")
-	t.Chdir(root)
-
-	fake := &fakeDatabaseRunner{
-		resetResult: db.SchemaSyncResult{Apps: 2, Entities: 8, Fields: 34},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "reset", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "reset", "--dry-run"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fakeDB, &fakeSchemaSyncRunner{}, &fakeAdminSetupRunner{}, &fakeFixtureRunner{})
 	if err != nil {
-		t.Fatalf("Run(db reset) error = %v, want nil", err)
+		t.Fatalf("Run(db reset --dry-run) error = %v, want nil", err)
 	}
-	if stdout.String() != "database reset: synced 2 apps, 8 entities, 34 fields (development)\n" {
-		t.Fatalf("db reset stdout = %q, want reset output", stdout.String())
-	}
-}
-
-func TestDBSchemaDumpCommand(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeDatabaseRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "schema", "dump"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
-	if err != nil {
-		t.Fatalf("Run(db schema dump) error = %v, want nil", err)
-	}
-	if stdout.String() != "schema dumped to db/schema.sql (development)\n" {
-		t.Fatalf("db schema dump stdout = %q, want dump output", stdout.String())
-	}
-	if fake.operation != "schema-dump" || fake.root != root || fake.databaseURL != databaseURL {
-		t.Fatalf("database runner = operation %q root %q URL %q, want schema dump/root/URL", fake.operation, fake.root, fake.databaseURL)
-	}
-}
-
-func TestDBSchemaCheckCommandDefaultsToDevelopment(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeDatabaseRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "schema", "check"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
-	if err != nil {
-		t.Fatalf("Run(db schema check) error = %v, want nil", err)
-	}
-	if stdout.String() != "schema snapshot is current: db/schema.sql (development)\n" {
-		t.Fatalf("db schema check stdout = %q, want current output", stdout.String())
-	}
-	if fake.operation != "schema-check" || fake.root != root || fake.databaseURL != databaseURL {
-		t.Fatalf("database runner = operation %q root %q URL %q, want schema check/root/URL", fake.operation, fake.root, fake.databaseURL)
-	}
-}
-
-func TestDBSchemaCheckCommandUsesEnvironment(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeDatabaseRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "schema", "check", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
-	if err != nil {
-		t.Fatalf("Run(db schema check --env staging) error = %v, want nil", err)
-	}
-	if stdout.String() != "schema snapshot is current: db/schema.sql (staging)\n" {
-		t.Fatalf("db schema check stdout = %q, want current output", stdout.String())
-	}
-	if fake.operation != "schema-check" || fake.root != root || fake.databaseURL != databaseURL {
-		t.Fatalf("database runner = operation %q root %q URL %q, want schema check/root/URL", fake.operation, fake.root, fake.databaseURL)
-	}
-}
-
-func TestDBSchemaCheckCommandReportsDriftWithoutLeakingURL(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeDatabaseRunner{schemaCheckErr: fmt.Errorf("%w: db/schema.sql; run dygo db schema dump: %s", db.ErrSchemaSnapshotOutOfDate, databaseURL)}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"db", "schema", "check"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fake, &fakeSchemaSyncRunner{})
-	if err == nil {
-		t.Fatal("Run(db schema check) error = nil, want drift error")
-	}
-	if !strings.Contains(err.Error(), "schema snapshot is out of date: db/schema.sql; run dygo db schema dump") {
-		t.Fatalf("Run(db schema check) error = %q, want drift context", err.Error())
-	}
-	if strings.Contains(err.Error(), "secret-password") || strings.Contains(err.Error(), databaseURL) {
-		t.Fatalf("Run(db schema check) error = %q, want redacted database URL", err.Error())
-	}
-}
-
-func TestMigrateCommandDefaultsToDevelopment(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
-		result: db.SchemaSyncResult{Apps: 2, Entities: 8, Fields: 34, Operations: 2},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(migrate) error = %v, want nil", err)
-	}
-	if stdout.String() != "metadata synced: 2 apps, 8 entities, 34 fields, 2 schema operations (development)\n" {
-		t.Fatalf("migrate stdout = %q, want synced output", stdout.String())
-	}
-	if fake.root != root {
-		t.Fatalf("schema sync root = %q, want %q", fake.root, root)
-	}
-	if fake.databaseURL != databaseURL {
-		t.Fatalf("schema sync database URL = %q, want %q", fake.databaseURL, databaseURL)
-	}
-}
-
-func TestMigrateCommandUsesEnvironment(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
-		result: db.SchemaSyncResult{Apps: 1, Entities: 3, Fields: 9},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(migrate --env staging) error = %v, want nil", err)
-	}
-	if stdout.String() != "metadata synced: 1 app, 3 entities, 9 fields, 0 schema operations (staging)\n" {
-		t.Fatalf("migrate stdout = %q, want synced output", stdout.String())
-	}
-	if fake.databaseURL != databaseURL {
-		t.Fatalf("schema sync database URL = %q, want %q", fake.databaseURL, databaseURL)
-	}
-}
-
-func TestMigratePlanCommandDefaultsToDevelopment(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
-		plan: db.SchemaPlan{
-			Entities: 8,
-			Fields:   40,
-			Operations: []db.SchemaOperation{
-				{Description: "add column users.email"},
-			},
-		},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate", "plan"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(migrate plan) error = %v, want nil", err)
-	}
-	for _, want := range []string{
-		"metadata schema plan (development)\n",
-		"safe operations: 1\n",
-		"unsafe diagnostics: 0\n",
-		"unsupported diagnostics: 0\n",
-		"- add column users.email\n",
-	} {
+	for _, want := range []string{"db reset plan (development)", "database: dygo", "steps: drop, create, migrate"} {
 		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("migrate plan stdout = %q, want substring %q", stdout.String(), want)
+			t.Fatalf("db reset dry-run stdout = %q, want substring %q", stdout.String(), want)
 		}
 	}
-	if fake.planRoot != root {
-		t.Fatalf("schema plan root = %q, want %q", fake.planRoot, root)
-	}
-	if fake.planDatabaseURL != databaseURL {
-		t.Fatalf("schema plan database URL = %q, want %q", fake.planDatabaseURL, databaseURL)
+	if fakeDB.calls != 0 {
+		t.Fatalf("database runner calls = %d, want dry-run only", fakeDB.calls)
 	}
 }
 
-func TestMigratePlanCommandUsesEnvironmentAndReportsBlockers(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
-		plan: db.SchemaPlan{
-			Diagnostics: []db.SchemaDiagnostic{
-				{Classification: db.SchemaDiagnosticUnsafe, Table: "users", Column: "legacy", Message: "column exists in database but not metadata"},
-			},
-		},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate", "plan", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(migrate plan --env staging) error = %v, want nil", err)
-	}
-	for _, want := range []string{
-		"metadata schema plan (staging)\n",
-		"safe operations: 0\n",
-		"unsafe diagnostics: 1\n",
-		"unsupported diagnostics: 0\n",
-		"- unsafe: users.legacy: column exists in database but not metadata\n",
-		"resolve blockers with metadata changes or explicit app patches; see docs/patches.md\n",
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("migrate plan stdout = %q, want substring %q", stdout.String(), want)
-		}
-	}
-	if fake.planDatabaseURL != databaseURL {
-		t.Fatalf("schema plan database URL = %q, want %q", fake.planDatabaseURL, databaseURL)
-	}
-}
-
-func TestMigrateCommandRequiresSecret(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	store := secrets.NewStore(root)
-	if _, err := store.Init(); err != nil {
-		t.Fatalf("Init(secrets) error = %v", err)
-	}
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"migrate"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(migrate) error = nil, want missing secret error")
-	}
-	for _, want := range []string{`read database secret "DATABASE_URL" for development`, `secret "DATABASE_URL" is not defined`} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Run(migrate) error = %q, want substring %q", err.Error(), want)
-		}
-	}
-	if fake.calls != 0 {
-		t.Fatalf("schema sync runner calls = %d, want 0", fake.calls)
-	}
-}
-
-func TestPatchesPlanCommandRequiresPhaseBeforeRunner(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "plan"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(patches plan) error = nil, want missing phase error")
-	}
-	if !strings.Contains(err.Error(), "patches plan requires --phase pre-sync or post-sync") {
-		t.Fatalf("Run(patches plan) error = %q, want phase error", err.Error())
-	}
-	if fake.patchPlanCalls != 0 {
-		t.Fatalf("patch plan calls = %d, want 0", fake.patchPlanCalls)
-	}
-}
-
-func TestPatchesPlanCommandRejectsInvalidPhaseBeforeRunner(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "plan", "--phase", "during-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(patches plan --phase during-sync) error = nil, want invalid phase error")
-	}
-	if !strings.Contains(err.Error(), "patches plan --phase must be pre-sync or post-sync") {
-		t.Fatalf("Run(patches plan --phase during-sync) error = %q, want phase error", err.Error())
-	}
-	if fake.patchPlanCalls != 0 {
-		t.Fatalf("patch plan calls = %d, want 0", fake.patchPlanCalls)
-	}
-}
-
-func TestPatchesPlanCommandPrintsNoPatches(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{patchPlan: db.PatchPlan{Phase: db.PatchPhasePreSync}}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "plan", "--phase", "pre-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(patches plan) error = %v, want nil", err)
-	}
-	if stdout.String() != "no patches for pre-sync (development)\n" {
-		t.Fatalf("patches plan stdout = %q, want no patches output", stdout.String())
-	}
-	if fake.patchPlanRoot != root || fake.patchPlanDatabaseURL != databaseURL || fake.patchPlanPhase != db.PatchPhasePreSync {
-		t.Fatalf("patch plan call = root %q url %q phase %q, want %q %q %q", fake.patchPlanRoot, fake.patchPlanDatabaseURL, fake.patchPlanPhase, root, databaseURL, db.PatchPhasePreSync)
-	}
-	if fake.calls != 0 || fake.planCalls != 0 || fake.pruneCalls != 0 || fake.prunePlanCalls != 0 {
-		t.Fatalf("patches plan called non-patch runners: sync=%d plan=%d prune=%d prunePlan=%d", fake.calls, fake.planCalls, fake.pruneCalls, fake.prunePlanCalls)
-	}
-}
-
-func TestPatchesPlanCommandUsesEnvironment(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{patchPlan: db.PatchPlan{Phase: db.PatchPhasePostSync}}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "plan", "--env", "staging", "--phase", "post-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(patches plan --env staging) error = %v, want nil", err)
-	}
-	if stdout.String() != "no patches for post-sync (staging)\n" {
-		t.Fatalf("patches plan stdout = %q, want staging output", stdout.String())
-	}
-	if fake.patchPlanDatabaseURL != databaseURL || fake.patchPlanPhase != db.PatchPhasePostSync {
-		t.Fatalf("patch plan call url/phase = %q/%q, want %q/%q", fake.patchPlanDatabaseURL, fake.patchPlanPhase, databaseURL, db.PatchPhasePostSync)
-	}
-}
-
-func TestPatchesPlanCommandPrintsPendingSQL(t *testing.T) {
+func TestDBPruneDryRunPlansSchemaCleanup(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
 	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
 	t.Chdir(root)
 
-	fake := &fakeSchemaSyncRunner{
-		patchPlan: db.PatchPlan{
-			Phase: db.PatchPhasePreSync,
-			Pending: []db.PlannedPatch{{
-				AppName:         "sales",
-				PatchID:         "0001_rename_email",
-				AppRelativePath: "patches/0001_rename_email.yml",
-				Description:     "Rename legacy customer email column.",
-				Operations: []db.PatchOperation{{
-					Type:        db.PatchOperationRenameField,
-					Description: "rename column sales_customer.customer_email to email",
-					SQL:         `ALTER TABLE "sales_customer" RENAME COLUMN "customer_email" TO "email"`,
-				}},
-			}},
-		},
-	}
+	fakeSync := &fakeSchemaSyncRunner{prunePlan: db.SchemaPrunePlan{Operations: []db.SchemaPruneOperation{{Description: "drop column"}}}}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "plan", "--phase", "pre-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	err := runWithServices(context.Background(), []string{"db", "prune", "--dry-run"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fakeSync)
 	if err != nil {
-		t.Fatalf("Run(patches plan) error = %v, want nil", err)
+		t.Fatalf("Run(db prune --dry-run) error = %v, want nil", err)
 	}
-	for _, want := range []string{
-		"patches plan (development, pre-sync)\n",
-		"pending patches: 1\n",
-		"applied patches: 0\n",
-		"- sales/0001_rename_email patches/0001_rename_email.yml\n",
-		"Rename legacy customer email column.\n",
-		`  - rename-field: rename column sales_customer.customer_email to email`,
-		`      ALTER TABLE "sales_customer" RENAME COLUMN "customer_email" TO "email"`,
-	} {
+	for _, want := range []string{"schema prune plan (development)", "destructive operations: 1", "rerun with --yes to apply"} {
 		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("patches plan stdout = %q, want substring %q", stdout.String(), want)
+			t.Fatalf("db prune dry-run stdout = %q, want substring %q", stdout.String(), want)
 		}
+	}
+	if fakeSync.prunePlanCalls != 1 || fakeSync.pruneCalls != 0 {
+		t.Fatalf("prune calls = plan %d apply %d, want dry-run only", fakeSync.prunePlanCalls, fakeSync.pruneCalls)
 	}
 }
 
-func TestPatchesPlanCommandPrintsAppliedPatches(t *testing.T) {
+func TestDBPruneYesAppliesSchemaCleanup(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
 	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
 	t.Chdir(root)
 
-	appliedAt := time.Date(2026, 5, 15, 10, 30, 0, 0, time.UTC)
-	fake := &fakeSchemaSyncRunner{
-		patchPlan: db.PatchPlan{
-			Phase: db.PatchPhasePreSync,
-			Applied: []db.AppliedPatch{{
-				AppName:         "sales",
-				PatchID:         "0000_previous",
-				AppRelativePath: "patches/0000_previous.yml",
-				Run: db.PatchRun{
-					AppliedAt:   appliedAt,
-					DygoVersion: "dev",
-				},
-			}},
-		},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "plan", "--phase", "pre-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(patches plan) error = %v, want nil", err)
-	}
-	for _, want := range []string{
-		"pending patches: 0\n",
-		"applied patches: 1\n",
-		"- sales/0000_previous patches/0000_previous.yml applied 2026-05-15T10:30:00Z dygo dev\n",
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("patches plan stdout = %q, want substring %q", stdout.String(), want)
-		}
-	}
-}
-
-func TestPatchesPlanCommandReportsChecksumMismatch(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
-		patchPlanErr: db.PatchRunChecksumMismatchError{
-			AppName:         "sales",
-			PatchID:         "0001_rename_email",
-			AppliedChecksum: "old",
-			CurrentChecksum: "new",
-		},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "plan", "--phase", "pre-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(patches plan) error = nil, want checksum mismatch error")
-	}
-	for _, want := range []string{"plan patches", "patch run sales/0001_rename_email checksum mismatch"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Run(patches plan) error = %q, want substring %q", err.Error(), want)
-		}
-	}
-	if fake.patchPlanCalls != 1 {
-		t.Fatalf("patch plan calls = %d, want 1", fake.patchPlanCalls)
-	}
-}
-
-func TestPatchesApplyCommandRequiresPhaseBeforeRunner(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "apply", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(patches apply) error = nil, want missing phase error")
-	}
-	if !strings.Contains(err.Error(), "patches apply requires --phase pre-sync or post-sync") {
-		t.Fatalf("Run(patches apply) error = %q, want phase error", err.Error())
-	}
-	if fake.patchApplyCalls != 0 {
-		t.Fatalf("patch apply calls = %d, want 0", fake.patchApplyCalls)
-	}
-}
-
-func TestPatchesApplyCommandRejectsInvalidPhaseBeforeRunner(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "apply", "--phase", "during-sync", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(patches apply --phase during-sync) error = nil, want invalid phase error")
-	}
-	if !strings.Contains(err.Error(), "patches apply --phase must be pre-sync or post-sync") {
-		t.Fatalf("Run(patches apply --phase during-sync) error = %q, want phase error", err.Error())
-	}
-	if fake.patchApplyCalls != 0 {
-		t.Fatalf("patch apply calls = %d, want 0", fake.patchApplyCalls)
-	}
-}
-
-func TestPatchesApplyCommandRequiresConfirm(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "apply", "--phase", "pre-sync"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(patches apply) error = nil, want confirmation error")
-	}
-	if !strings.Contains(err.Error(), "patches apply requires --confirm development/dygo") {
-		t.Fatalf("Run(patches apply) error = %q, want confirmation context", err.Error())
-	}
-	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
-		t.Fatalf("Run(patches apply) error = %q, want redacted database URL", err.Error())
-	}
-	if fake.patchApplyCalls != 0 {
-		t.Fatalf("patch apply calls = %d, want 0", fake.patchApplyCalls)
-	}
-}
-
-func TestPatchesApplyCommandRejectsWrongConfirm(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "apply", "--env", "staging", "--phase", "pre-sync", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(patches apply wrong confirm) error = nil, want confirmation error")
-	}
-	if !strings.Contains(err.Error(), "patches apply requires --confirm staging/dygo_staging") {
-		t.Fatalf("Run(patches apply wrong confirm) error = %q, want confirmation context", err.Error())
-	}
-	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
-		t.Fatalf("Run(patches apply wrong confirm) error = %q, want redacted database URL", err.Error())
-	}
-	if fake.patchApplyCalls != 0 {
-		t.Fatalf("patch apply calls = %d, want 0", fake.patchApplyCalls)
-	}
-}
-
-func TestPatchesApplyCommandCallsRunnerWithConfirmation(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
-		patchApplyResult: db.PatchApplyResult{Phase: db.PatchPhasePreSync},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "apply", "--phase", "pre-sync", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(patches apply) error = %v, want nil", err)
-	}
-	if stdout.String() != "no patches to apply for pre-sync (development)\n" {
-		t.Fatalf("patches apply stdout = %q, want no-op output", stdout.String())
-	}
-	if fake.patchApplyRoot != root || fake.patchApplyDatabaseURL != databaseURL || fake.patchApplyPhase != db.PatchPhasePreSync || fake.patchApplyDygoVersion != "dev" {
-		t.Fatalf("patch apply call = root %q url %q phase %q version %q, want %q %q %q dev", fake.patchApplyRoot, fake.patchApplyDatabaseURL, fake.patchApplyPhase, fake.patchApplyDygoVersion, root, databaseURL, db.PatchPhasePreSync)
-	}
-}
-
-func TestPatchesApplyCommandPrintsAppliedPatches(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
-		patchApplyResult: db.PatchApplyResult{
-			Phase: db.PatchPhasePostSync,
-			Applied: []db.PatchRun{
-				{AppName: "sales", PatchID: "0001_backfill"},
-				{AppName: "support", PatchID: "0002_cleanup"},
-			},
-		},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "apply", "--phase", "post-sync", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(patches apply) error = %v, want nil", err)
-	}
-	for _, want := range []string{
-		"patches applied: 2 patches (development, post-sync)\n",
-		"- sales/0001_backfill\n",
-		"- support/0002_cleanup\n",
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("patches apply stdout = %q, want substring %q", stdout.String(), want)
-		}
-	}
-}
-
-func TestPatchesApplyCommandRedactsRunnerErrors(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{patchApplyErr: errors.New("postgres://user:secret-password@localhost:5432/dygo failed")}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"patches", "apply", "--phase", "pre-sync", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(patches apply) error = nil, want runner error")
-	}
-	if !strings.Contains(err.Error(), "apply patches") {
-		t.Fatalf("Run(patches apply) error = %q, want apply context", err.Error())
-	}
-	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
-		t.Fatalf("Run(patches apply) error = %q, want redacted database URL", err.Error())
-	}
-}
-
-func TestSchemaPruneCommandPreviewsDestructivePlan(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
-		prunePlan: db.SchemaPrunePlan{
-			Operations: []db.SchemaPruneOperation{
-				{Description: "drop column lead.legacy"},
-				{Description: "drop table old_import"},
-			},
-		},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"schema", "prune"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(schema prune) error = %v, want nil", err)
-	}
-	for _, want := range []string{
-		"schema prune plan (development)\n",
-		"destructive operations: 2\n",
-		"- drop column lead.legacy\n",
-		"- drop table old_import\n",
-		"rerun with --confirm development/dygo to apply\n",
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("schema prune stdout = %q, want substring %q", stdout.String(), want)
-		}
-	}
-	if fake.prunePlanCalls != 1 || fake.pruneCalls != 0 {
-		t.Fatalf("schema prune calls = plan %d apply %d, want preview only", fake.prunePlanCalls, fake.pruneCalls)
-	}
-	if fake.prunePlanRoot != root || fake.prunePlanDatabaseURL != databaseURL {
-		t.Fatalf("schema prune plan inputs = root %q URL %q, want root %q URL %q", fake.prunePlanRoot, fake.prunePlanDatabaseURL, root, databaseURL)
-	}
-}
-
-func TestSchemaPruneCommandConfirmAppliesPlan(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
-		pruneResult: db.SchemaPruneResult{Operations: 2},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"schema", "prune", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(schema prune --confirm) error = %v, want nil", err)
-	}
-	if stdout.String() != "schema pruned: 2 destructive operations (development)\n" {
-		t.Fatalf("schema prune stdout = %q, want applied output", stdout.String())
-	}
-	if fake.pruneCalls != 1 || fake.prunePlanCalls != 0 {
-		t.Fatalf("schema prune calls = apply %d plan %d, want force apply only", fake.pruneCalls, fake.prunePlanCalls)
-	}
-	if fake.pruneRoot != root || fake.pruneDatabaseURL != databaseURL {
-		t.Fatalf("schema prune inputs = root %q URL %q, want root %q URL %q", fake.pruneRoot, fake.pruneDatabaseURL, root, databaseURL)
-	}
-}
-
-func TestSchemaPruneCommandRejectsWrongConfirm(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"schema", "prune", "--confirm", "wrong"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(schema prune --confirm wrong) error = nil, want confirmation error")
-	}
-	if !strings.Contains(err.Error(), "schema prune requires --confirm development/dygo") {
-		t.Fatalf("schema prune error = %q, want confirmation context", err.Error())
-	}
-	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
-		t.Fatalf("schema prune error = %q, want redacted database URL", err.Error())
-	}
-	if fake.pruneCalls != 0 || fake.prunePlanCalls != 0 {
-		t.Fatalf("schema prune calls = apply %d plan %d, want none", fake.pruneCalls, fake.prunePlanCalls)
-	}
-}
-
-func TestSchemaPruneCommandProductionConfirm(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://production-user:secret-password@localhost:5432/dygo_prod"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentProduction, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
+	fakeSync := &fakeSchemaSyncRunner{
+		prunePlan:   db.SchemaPrunePlan{Operations: []db.SchemaPruneOperation{{Description: "drop column"}}},
 		pruneResult: db.SchemaPruneResult{Operations: 1},
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"schema", "prune", "--env", "production", "--confirm", "production/dygo_prod"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
+	err := runWithServices(context.Background(), []string{"db", "prune", "--yes"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fakeSync)
 	if err != nil {
-		t.Fatalf("Run(schema prune --env production --confirm) error = %v, want nil", err)
+		t.Fatalf("Run(db prune --yes) error = %v, want nil", err)
 	}
-	if stdout.String() != "schema pruned: 1 destructive operation (production)\n" {
-		t.Fatalf("schema prune stdout = %q, want production output", stdout.String())
+	if !strings.Contains(stdout.String(), "schema pruned: 1 destructive operation (development)") {
+		t.Fatalf("db prune stdout = %q, want applied output", stdout.String())
 	}
-	if fake.pruneRoot != root || fake.pruneDatabaseURL != databaseURL {
-		t.Fatalf("schema prune inputs = root %q URL %q, want root %q URL %q", fake.pruneRoot, fake.pruneDatabaseURL, root, databaseURL)
-	}
-}
-
-func TestSchemaPruneCommandUsesEnvironment(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"schema", "prune", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(schema prune --env staging) error = %v, want nil", err)
-	}
-	if stdout.String() != "no schema objects to prune (staging)\n" {
-		t.Fatalf("schema prune stdout = %q, want no-op staging output", stdout.String())
-	}
-	if fake.prunePlanDatabaseURL != databaseURL {
-		t.Fatalf("schema prune database URL = %q, want %q", fake.prunePlanDatabaseURL, databaseURL)
-	}
-}
-
-func TestSchemaPruneCommandReportsBlockers(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{
-		prunePlan: db.SchemaPrunePlan{
-			Operations: []db.SchemaPruneOperation{
-				{Description: "drop column lead.legacy"},
-			},
-			Diagnostics: []db.SchemaDiagnostic{
-				{Classification: db.SchemaDiagnosticUnsafe, Table: "lead", Column: "amount", Message: "column type differs"},
-			},
-		},
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"schema", "prune"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err == nil {
-		t.Fatal("Run(schema prune) error = nil, want blocker error")
-	}
-	for _, want := range []string{
-		"schema prune plan (development)\n",
-		"destructive operations: 1\n",
-		"blockers: 1\n",
-		"- drop column lead.legacy\n",
-		"- unsafe: lead.amount: column type differs\n",
-		db.SchemaPruneBlockerHelp,
-	} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("schema prune stdout = %q, want substring %q", stdout.String(), want)
-		}
-	}
-	if !strings.Contains(err.Error(), "schema prune plan has 1 blocker") {
-		t.Fatalf("schema prune error = %q, want blocker context", err.Error())
-	}
-}
-
-func TestSchemaPruneConfirmNoopOutput(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fake := &fakeSchemaSyncRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServices(context.Background(), []string{"schema", "prune", "--confirm", "development/dygo"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fake)
-	if err != nil {
-		t.Fatalf("Run(schema prune --confirm) error = %v, want nil", err)
-	}
-	if stdout.String() != "no schema objects to prune (development)\n" {
-		t.Fatalf("schema prune stdout = %q, want no-op output", stdout.String())
+	if fakeSync.prunePlanCalls != 1 || fakeSync.pruneCalls != 1 {
+		t.Fatalf("prune calls = plan %d apply %d, want plan and apply", fakeSync.prunePlanCalls, fakeSync.pruneCalls)
 	}
 }
 
@@ -2972,21 +2161,15 @@ func fixturePlan(fileCount int, recordCount int) fixtures.Plan {
 }
 
 type fakeDatabaseRunner struct {
-	checkErr       error
-	createResult   db.DatabaseResult
-	createErr      error
-	dropResult     db.DatabaseResult
-	dropErr        error
-	prepareResult  db.SchemaSyncResult
-	prepareErr     error
-	resetResult    db.SchemaSyncResult
-	resetErr       error
-	schemaCheckErr error
-	schemaDumpErr  error
-	operation      string
-	root           string
-	databaseURL    string
-	calls          int
+	checkErr     error
+	createResult db.DatabaseResult
+	createErr    error
+	dropResult   db.DatabaseResult
+	dropErr      error
+	operation    string
+	root         string
+	databaseURL  string
+	calls        int
 }
 
 func (r *fakeDatabaseRunner) Check(_ context.Context, databaseURL string) error {
@@ -3008,38 +2191,6 @@ func (r *fakeDatabaseRunner) Drop(_ context.Context, databaseURL string) (db.Dat
 	r.operation = "drop"
 	r.databaseURL = databaseURL
 	return r.dropResult, r.dropErr
-}
-
-func (r *fakeDatabaseRunner) Prepare(_ context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
-	r.calls++
-	r.operation = "prepare"
-	r.root = root
-	r.databaseURL = databaseURL
-	return r.prepareResult, r.prepareErr
-}
-
-func (r *fakeDatabaseRunner) Reset(_ context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
-	r.calls++
-	r.operation = "reset"
-	r.root = root
-	r.databaseURL = databaseURL
-	return r.resetResult, r.resetErr
-}
-
-func (r *fakeDatabaseRunner) SchemaDump(_ context.Context, root string, databaseURL string) error {
-	r.calls++
-	r.operation = "schema-dump"
-	r.root = root
-	r.databaseURL = databaseURL
-	return r.schemaDumpErr
-}
-
-func (r *fakeDatabaseRunner) SchemaCheck(_ context.Context, root string, databaseURL string) error {
-	r.calls++
-	r.operation = "schema-check"
-	r.root = root
-	r.databaseURL = databaseURL
-	return r.schemaCheckErr
 }
 
 type fakeSchemaSyncRunner struct {
