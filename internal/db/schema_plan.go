@@ -865,7 +865,13 @@ func tableName(entity catalog.LoadedEntity) (string, error) {
 	if strings.TrimSpace(entity.Entity.Name) == "" {
 		return "", fmt.Errorf("name is required")
 	}
-	return entityTableName(entity.AppName, entity.Entity.Name), nil
+	return EntityStorageTableName(entity.AppName, entity.Entity.Name), nil
+}
+
+// EntityStorageTableName returns the PostgreSQL table name dygo derives from an app-owned Entity identity.
+// CLI and diagnostics should use this instead of reimplementing storage naming.
+func EntityStorageTableName(appName string, entityName string) string {
+	return entityTableName(appName, entityName)
 }
 
 func entityTableName(appName string, entityName string) string {

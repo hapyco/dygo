@@ -1660,7 +1660,7 @@ fields:
 	if err != nil {
 		t.Fatalf("Run(entity show sales/lead) error = %v, want nil", err)
 	}
-	want := "entity: sales/lead\nkind: normal\npath: apps/sales/entities/lead/entity.yml\nroute: /lead\nnaming: random\nfields:\n  - company: link -> sales/company\n  - notes: text\n"
+	want := "entity: sales/lead\nkind: normal\npath: apps/sales/entities/lead/entity.yml\nroute: /lead\nstorage: sales_lead\nnaming: random\nfields:\n  - company: link -> sales/company\n  - notes: text\n"
 	if stdout.String() != want {
 		t.Fatalf("entity show stdout = %q, want %q", stdout.String(), want)
 	}

@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/entity/catalog"
 	"github.com/hapyco/dygo/internal/project"
 	"github.com/hapyco/dygo/internal/shape"
@@ -154,6 +155,9 @@ func writeEntityShow(stdout io.Writer, entity catalog.LoadedEntity) error {
 			return fmt.Errorf("write entity show output: %w", err)
 		}
 	} else if _, err := fmt.Fprintln(stdout, "route: (none)"); err != nil {
+		return fmt.Errorf("write entity show output: %w", err)
+	}
+	if _, err := fmt.Fprintf(stdout, "storage: %s\n", db.EntityStorageTableName(entity.AppName, entity.Entity.Name)); err != nil {
 		return fmt.Errorf("write entity show output: %w", err)
 	}
 	if _, err := fmt.Fprintf(stdout, "naming: %s\n", entity.Entity.EffectiveNaming().Strategy); err != nil {
