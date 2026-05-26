@@ -2,9 +2,9 @@
 
 dygo uses Entity metadata as the normal source for database shape.
 
-`dygo migrate` is intentionally additive. It can create missing metadata tables, add safe columns, and add missing metadata indexes or constraints. It does not guess destructive intent.
+`dygo db migrate` is intentionally additive around metadata shape. It can create missing metadata tables, add safe columns, and add missing metadata indexes or constraints. It does not guess destructive intent.
 
-Explicit patches are the escape hatch for changes that metadata cannot infer safely. `dygo schema prune` is the separate command for intentionally dropping metadata-orphaned database objects after review.
+Explicit patches are the escape hatch for changes that metadata cannot infer safely. `dygo db prune` is the separate command for intentionally dropping metadata-orphaned database objects after review.
 
 This document describes the v1 patch runner.
 
@@ -14,7 +14,7 @@ Metadata declares the desired current shape.
 
 Patches explain unsafe transitions.
 
-When the schema planner sees drift that could destroy data, rename data, reinterpret data, or fail against existing Records, it blocks `dygo migrate`. The app owner must write an explicit patch before the metadata-only path can continue.
+When the schema planner sees drift that could destroy data, rename data, reinterpret data, or fail against existing Records, it blocks `dygo db migrate`. The app owner must write an explicit patch before the metadata-only path can continue.
 
 This keeps the framework dogfooding its metadata model while still giving builders a controlled way to handle real production changes.
 
@@ -83,17 +83,14 @@ Use `post-sync` when the patch needs the new metadata-backed shape, for example:
 - create app data that depends on new tables
 - repair data after additive schema sync made the new columns available
 
-v1 keeps patch execution explicit. `dygo migrate` does not run patches automatically.
+`dygo db migrate` runs pending `pre-sync` patches, applies metadata schema sync, then runs pending `post-sync` patches as one app-state workflow.
 
 Recommended workflow:
 
 ```sh
-dygo migrate plan
-dygo patches plan --phase pre-sync
-dygo patches apply --phase pre-sync --confirm development/dygo
-dygo migrate
-dygo patches plan --phase post-sync
-dygo patches apply --phase post-sync --confirm development/dygo
+dygo db migrate --dry-run
+dygo db migrate
+dygo db migrate --yes
 ```
 
 ## Structured Operations
@@ -174,7 +171,7 @@ operations:
     field: legacy-status
 ```
 
-Use `drop-field` only after the patch has archived, copied, or intentionally abandoned the old data. Plain metadata-orphaned cleanup should usually use `dygo schema prune` instead.
+Use `drop-field` only after the patch has archived, copied, or intentionally abandoned the old data. Plain metadata-orphaned cleanup should usually use `dygo db prune` instead.
 
 ### Change Field Type
 
@@ -210,7 +207,7 @@ Rules for SQL operations:
 - The statement runs inside the patch transaction.
 - Transaction control such as `BEGIN`, `COMMIT`, and `ROLLBACK` is rejected.
 - Database-level operations such as `CREATE DATABASE`, `DROP DATABASE`, and `ALTER SYSTEM` are rejected.
-- The statement is printed in `dygo patches plan`.
+- The statement is printed in `dygo db migrate --dry-run`.
 - The patch checksum changes if the SQL text changes.
 
 SQL exists for real production needs, but it is a reviewed escape hatch, not the normal patch API.
@@ -257,18 +254,17 @@ The ledger records successful patches. Failed patches are reported by the comman
 
 ## CLI Shape
 
-v1 patch commands:
+Patch execution is owned by `dygo db migrate`:
 
 ```sh
-dygo patches plan --phase pre-sync
-dygo patches apply --phase pre-sync --confirm development/dygo
-dygo patches plan --phase post-sync
-dygo patches apply --phase post-sync --confirm development/dygo
+dygo db migrate --dry-run
+dygo db migrate
+dygo db migrate --yes
 ```
 
-All commands default to `development` and support `--env staging` or `--env production`.
+All database commands default to `development` and support `--env staging` or `--env production`.
 
-`dygo patches plan`:
+`dygo db migrate --dry-run`:
 
 - discover patch files
 - validate schema and ordering
@@ -278,12 +274,12 @@ All commands default to `development` and support `--env staging` or `--env prod
 - fail on duplicate ids or checksum mismatches
 - perform no database writes
 
-`dygo patches apply`:
+`dygo db migrate`:
 
-- require `--phase`
-- require typed confirmation using `<environment>/<database-name>`
+- print the full migration plan
+- prompt interactively unless `--yes` is passed
 - refuse checksum mismatches
-- run only pending patches for that phase
+- run pending patches in `pre-sync` and `post-sync` phases
 - stop at the first failed patch
 - print the applied patch ids
 
@@ -304,20 +300,20 @@ Use a patch when the change cannot be proven safe from metadata alone.
 
 ## Planner Diagnostics
 
-`dygo migrate plan` should remain the first command to run before applying schema changes. When it reports a blocker, use the diagnostic kind to decide the next action.
+`dygo db migrate --dry-run` should remain the first command to run before applying schema changes. When it reports a blocker, use the diagnostic kind to decide the next action.
 
 | Diagnostic kind | Meaning | Expected action |
 |---|---|---|
-| `extra-column` | The database has a column that Entity metadata no longer declares. | Use `dygo schema prune` for an intentional drop, write a patch to archive/rename/backfill first, or restore the field in metadata. |
-| `extra-table` | The database has a table that no loaded Entity declares. | Use `dygo schema prune` for an intentional drop, move unmanaged tables outside dygo's managed schema, or restore the Entity metadata. |
+| `extra-column` | The database has a column that Entity metadata no longer declares. | Use `dygo db prune` for an intentional drop, write a patch to archive/rename/backfill first, or restore the field in metadata. |
+| `extra-table` | The database has a table that no loaded Entity declares. | Use `dygo db prune` for an intentional drop, move unmanaged tables outside dygo's managed schema, or restore the Entity metadata. |
 | `column-type-drift` | The database column type differs from metadata. | Write a patch to cast/backfill safely, then update metadata. |
 | `column-required-drift` | Database nullability differs from metadata. | Backfill or relax data intentionally, then rerun metadata sync. |
 | `missing-required-column` | Metadata requires a new column without a safe default. | Add a safe default or write a patch that creates/backfills the column first. |
 | `index-definition-drift` | An existing index name differs from metadata intent. | Write a patch to drop/recreate or rename the index intentionally. |
 | `constraint-type-drift` | An existing constraint name has a different constraint type. | Write a patch to replace the constraint intentionally. |
 | `constraint-definition-drift` | An existing constraint name has different columns or rules. | Write a patch to replace or rename the constraint intentionally. |
-| `extra-index` | The database has a non-constraint index that metadata no longer declares. | Use `dygo schema prune` for an intentional drop, or restore the index in metadata. |
-| `extra-constraint` | The database has a constraint that metadata no longer declares. | Use `dygo schema prune` for an intentional drop, or restore the constraint in metadata. |
+| `extra-index` | The database has a non-constraint index that metadata no longer declares. | Use `dygo db prune` for an intentional drop, or restore the index in metadata. |
+| `extra-constraint` | The database has a constraint that metadata no longer declares. | Use `dygo db prune` for an intentional drop, or restore the constraint in metadata. |
 | `unsupported-field-storage` | Metadata uses a field type whose storage is not implemented yet. | Wait for storage support or change metadata to supported field types. |
 
 ## Boundaries
@@ -326,9 +322,9 @@ Patches do not bring back SQL migration folders.
 
 Patches do not create a generic `migrations` table.
 
-`dygo migrate` does not guess renames, drops, type changes, or destructive cleanup.
+`dygo db migrate` does not guess renames, drops, type changes, or destructive cleanup.
 
-`dygo schema prune` removes metadata-orphaned tables, columns, indexes, and constraints from dygo's managed schema only after an explicit preview. Metadata is the source of truth for that schema; patch-created permanent objects must either become metadata or live outside the managed schema. Prune does not guess renames, backfill data, convert types, run patches, or use `CASCADE`.
+`dygo db prune` removes metadata-orphaned tables, columns, indexes, and constraints from dygo's managed schema only after an explicit preview. Metadata is the source of truth for that schema; patch-created permanent objects must either become metadata or live outside the managed schema. Prune does not guess renames, backfill data, convert types, run patches, or use `CASCADE`.
 
 Patch execution tracking is Core app metadata or records. That tracking describes app lifecycle work, not a separate framework migration system.
 
@@ -340,6 +336,5 @@ Implemented v1 slices:
 - add patch discovery and YAML validation
 - add structured operation planners
 - add SQL escape hatch validation
-- add `dygo patches plan`
-- add `dygo patches apply`
+- fold patch planning and application into `dygo db migrate`
 - add docs and tests for pre-sync and post-sync workflows

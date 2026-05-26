@@ -189,10 +189,10 @@ Agentic development is not an excuse for messy systems. It is a reason to make t
 A new builder should be able to understand the basic dygo loop quickly:
 
 ```sh
-dygo app new crm
-dygo generate entity Lead
-dygo migrate
-dygo serve
+dygo generate app crm
+dygo generate entity crm/lead
+dygo db migrate
+dygo dev
 ```
 
 The exact commands may evolve, but the feeling should not.

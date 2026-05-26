@@ -2,7 +2,7 @@
 
 Entities define business object structure in dygo.
 
-The Entity catalog loads Entity files from discovered apps. During `dygo migrate` and `dygo db prepare`, dygo uses this metadata to create or update PostgreSQL tables. Core is not a separate schema path; Core tables come from `apps/core/entities/` the same way business app tables come from their Entity files.
+The Entity catalog loads Entity files from discovered apps. During `dygo db migrate`, dygo uses this metadata to create or update PostgreSQL tables. Core is not a separate schema path; Core tables come from `apps/core/entities/` the same way business app tables come from their Entity files.
 
 Entity metadata is still the contract layer. The generic Record API reads persisted metadata and uses it to operate saved Records and parent-owned collection rows. Permission enforcement, Studio views, and richer runtime behavior are handled by later framework layers.
 
@@ -68,7 +68,7 @@ constraints:
 
 Entity identity comes from the file path. Top-level `name` configures Record system names; it does not define Entity identity.
 
-The simple form `entities/<entity>.yml` defines Entity `<entity>`. The folder form `entities/<entity>/<entity>.yml` defines the same parent Entity. Both forms are equivalent, but an app cannot define both for the same Entity.
+Normal Entity metadata lives at `entities/<entity>/entity.yml`. The parent folder defines the Entity key.
 
 Entity keys, field names, and field type names use kebab-case.
 
@@ -80,7 +80,7 @@ dygo uses singular Entity keys only. There is no separate required metadata for 
 
 `is-single: true` marks an Entity as a singleton settings/config surface. Single Entities have exactly one framework-owned Record whose system `name` is the Entity key. dygo seeds that Record during metadata sync, Studio opens the form directly instead of a list, and normal create/delete/list operations are not used.
 
-Single Entities cannot define explicit `name` configuration; dygo owns the singleton Record name. Every required stored field on a Single Entity must define a non-null default so `dygo migrate` can seed the row deterministically.
+Single Entities cannot define explicit `name` configuration; dygo owns the singleton Record name. Every required stored field on a Single Entity must define a non-null default so `dygo db migrate` can seed the row deterministically.
 
 Single Entities cannot be targets of `link` or `collection` fields because there is no meaningful Record selection. A Single Entity may still contain link fields to normal Entities.
 
@@ -110,14 +110,18 @@ When dygo needs a SQL table name from Entity metadata, Core tables keep their hi
 
 ## Collection Entities
 
-Collection row Entities live in the app's `entities/collections/` folder. Root `entities/*.yml` files and self-named Entity folders define normal Entities. Top-level YAML files under `entities/collections/` define collection row Entities.
+Collection row Entities live in the app's `entities/_collections/` folder. Normal Entity folders under `entities/<entity>/` define routeable or Single Entities.
 
 ```txt
 entities/
-  invoice.yml
-  collections/
+  invoice/
+    entity.yml
+    fixtures.yml
+    hooks.go
+  _collections/
     invoice-item.yml
-    invoice-tax.yml
+    invoice-tax/
+      entity.yml
 ```
 
 A parent declares usage with a `type: collection` field:
@@ -131,7 +135,7 @@ fields:
       entity: invoice-item
 ```
 
-Collection row Entities do not use `kind: collection`. The `entities/collections/` path marks them as collection row Entities, and the filename still defines the Entity key. dygo does not automatically prefix collection Entity keys.
+Collection row Entities do not use `kind: collection`. The `entities/_collections/` path marks them as collection row Entities, and the file or folder name still defines the Entity key. dygo does not automatically prefix collection Entity keys.
 
 Collection fields may reference same-app or cross-app collection Entities. Same-app references can omit `options.app`; cross-app references must set it:
 
@@ -260,7 +264,7 @@ Supported field check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`,
 
 Check fields must be DB-backed scalar fields. `password`, `collection`, `json`, `attachment`, and `link` checks are not supported in v1.
 
-During `dygo migrate`, normal Entity name metadata is upserted into the Core `entity` table. Collection row Entities omit naming metadata because their row names are framework-owned. Field metadata is upserted into the Core `field` table with field-name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
+During `dygo db migrate`, normal Entity name metadata is upserted into the Core `entity` table. Collection row Entities omit naming metadata because their row names are framework-owned. Field metadata is upserted into the Core `field` table with field-name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
 
 Type-specific settings live under `options`.
 
@@ -319,7 +323,7 @@ Entity files belong to an app's manifest-defined `entities` directory. By defaul
 entities
 ```
 
-dygo loads root `*.yml` files, one-level Entity folders, and top-level collection Entity files under `entities/collections/`. Missing `entities` directories are allowed for apps that do not define Entities yet.
+dygo loads normal Entity bundles from `entities/<entity>/entity.yml` and collection Entity metadata from `entities/_collections/<collection>.yml` or `entities/_collections/<collection>/entity.yml`. Missing `entities` directories are allowed for apps that do not define Entities yet.
 
 Entity identities are unique per app across normal and collection Entities. An app cannot define both a normal `invoice` Entity and an `invoice` collection Entity. Two different apps may use the same Entity key when their route slugs are unique.
 
@@ -328,13 +332,13 @@ Moving a file without changing its basename does not move data because Entity id
 Validate discovered Entity metadata from the current project:
 
 ```sh
-go run ./cmd/dygo entities list
-go run ./cmd/dygo entities validate
+go run ./cmd/dygo entity list
+go run ./cmd/dygo entity validate
 ```
 
-`entities list` prints a tree grouped by app name.
+`entity list` prints a tree grouped by app name.
 
-`entities validate` checks Entity syntax, path-derived names, field types, duplicate app-owned Entity identities, duplicate route slugs, `link` or `collection` targets, and top-level `hooks/<entity>.go` filenames for each app.
+`entity validate` checks Entity syntax, path-derived names, field types, duplicate app-owned Entity identities, duplicate route slugs, `link` or `collection` targets, and Entity-bundle hook conventions.
 
 Both commands discover the dygo project root before loading apps, so they can be run from nested directories inside a project.
 

@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh
 
 See [dygo CLI](docs/cli.md) for the current and proposed command surface.
 
-`go run ./cmd/dygo serve` starts dygo on `127.0.0.1:6790`. In this source checkout it also starts the Studio development asset server internally and proxies Studio through the same dygo origin.
+`go run ./cmd/dygo dev` starts dygo on `127.0.0.1:6790` for local development. In this source checkout it also starts the Studio development asset server internally and proxies Studio through the same dygo origin.
 
 The default server address is:
 
@@ -74,7 +74,7 @@ Metadata and Record APIs require an authenticated Studio session. Metadata visib
 
 Scoped Record Activity is read through the target Record route and checked against the target Entity's `read` permission.
 
-Project-aware commands discover the dygo root by walking upward from the current directory. Generated projects use `dygo.yml` as the root marker; the framework repository is also recognized during development.
+Project-aware commands discover the dygo root by walking upward from the current directory. Generated projects use `dygo.yml` as the root marker and runtime config file; the framework repository is also recognized during development.
 
 `dygo new <name>` creates a project with one app under `apps/`, a project-local `cmd/dygo` runner, encrypted secrets, a development `DATABASE_URL` secret, and cached Studio UI assets when the running dygo build has them. It does not create a database, run schema sync, apply fixtures, or create the first Administrator; run the printed first-run commands before opening Studio.
 
@@ -100,7 +100,8 @@ internal/cli/      private CLI implementation
 internal/config/   private config defaults and loading code
 internal/db/       private PostgreSQL code
 apps/              first-party dygo apps such as core and Studio
-configs/           safe committed config files
+config/            committed project support files
+.dygo/             generated local state, cached apps, logs, temp files, and local secret keys
 db/                generated schema snapshot
 docs/              framework documentation
 ```

@@ -62,20 +62,16 @@ A basic business app should stay small:
 dygo-crm/
   app.yml
   entities/
-    lead.yml
-    deal.yml
-    company.yml
-  permissions/
-    lead.permissions.yml
-    deal.permissions.yml
-    company.permissions.yml
-  hooks/
-    lead.go
-    deal.go
-    company.go
-  fixtures/
-    roles.yml
-    lead-statuses.yml
+    lead/
+      entity.yml
+      fixtures.yml
+      hooks.go
+      permissions.yml
+    deal/
+      entity.yml
+      hooks.go
+    company/
+      entity.yml
   patches/
     0001_seed_default_pipeline.yml
   assets/
@@ -94,11 +90,11 @@ Entity metadata uses singular keys only. Studio record URLs use `route.slug`, de
 
 Every Record also has a system `name` generated from Entity `name` metadata. Apps can choose manual names, random names, format names, or series names. The numeric `id` remains dygo's internal primary key.
 
-Hooks are app-owned Go code under the app's manifest-defined `hooks` directory. A file such as `hooks/lead.go` belongs to Entity `lead`. dygo validates this filename convention, but the code must still be compiled into a project runner through `pkg/sdk/runtime`; dygo does not dynamically load Go source files.
+Hooks are app-owned Go code inside Entity bundles. A file such as `entities/lead/hooks.go` belongs to Entity `lead`. dygo validates this convention, but the code must still be compiled into a project runner through `pkg/sdk/runtime`; dygo does not dynamically load Go source files.
 
 Patches are app-owned lifecycle changes for unsafe transitions that metadata cannot infer, such as renames, drops, destructive type changes, and data backfills. See [Explicit Patches](patches.md) for the v1 runner workflow.
 
-Fixtures are app-owned seed Records for roles, permissions, and reference data. They live under the app's manifest-defined `fixtures` directory, with each fixture file named after its Entity, and are applied explicitly with `dygo fixtures apply`. See [Fixtures](fixtures.md) for the v1 file shape.
+Fixtures are app-owned seed Records for roles, permissions, and reference data. They live inside Entity bundles as `entities/<entity>/fixtures.yml` and can be applied explicitly with `dygo fixture apply`. See [Fixtures](fixtures.md) for the v1 file shape.
 
 ## Install Locations
 
@@ -108,7 +104,7 @@ Generated project `apps/` contains business apps owned by the project.
 
 Generated project `.dygo/apps/` contains framework-managed cached apps.
 
-Generated project `var/` contains runtime-generated data.
+Generated project `.dygo/` contains runtime-generated local state, cached apps, logs, temp files, and local secret keys.
 
 ## Hierarchy
 

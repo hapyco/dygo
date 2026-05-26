@@ -2,7 +2,7 @@
 
 dygo includes JSON Schemas for the YAML files that define apps, Entities, fixtures, and project config.
 
-These schemas help editors and agents suggest valid keys and catch obvious shape mistakes while writing metadata. They are not the runtime source of truth. The Go validators behind `dygo apps validate`, `dygo entities validate`, fixture apply, and config loading remain authoritative.
+These schemas help editors and agents suggest valid keys and catch obvious shape mistakes while writing metadata. They are not the runtime source of truth. The Go validators behind `dygo app validate`, `dygo entity validate`, fixture apply, and config loading remain authoritative.
 
 ## Files
 
@@ -10,17 +10,18 @@ These schemas help editors and agents suggest valid keys and catch obvious shape
 schemas/app.schema.json       app.yml manifests
 schemas/entity.schema.json    Entity metadata
 schemas/fixture.schema.json   app-owned fixtures
-schemas/config.schema.json    configs/dygo.yaml
+schemas/config.schema.json    dygo.yml
 ```
 
 The repository also includes `.vscode/settings.json` with YAML schema mappings for the standard dygo paths:
 
 ```txt
 apps/*/app.yml
-apps/*/entities/*.yml
-apps/*/entities/*/*.yml
-apps/*/fixtures/*.yml
-configs/dygo.yaml
+apps/*/entities/*/entity.yml
+apps/*/entities/_collections/*.yml
+apps/*/entities/_collections/*/entity.yml
+apps/*/entities/*/fixtures.yml
+dygo.yml
 ```
 
 The same mappings include `.dygo/apps/*/...` for cached app metadata.
@@ -36,7 +37,7 @@ The schemas cover the fixed metadata envelope and common enums such as built-in 
 Use editor feedback for fast authoring, then run dygo validation before trusting metadata:
 
 ```sh
-go run ./cmd/dygo apps validate
-go run ./cmd/dygo entities validate
-go run ./cmd/dygo fixtures apply
+go run ./cmd/dygo app validate
+go run ./cmd/dygo entity validate
+go run ./cmd/dygo fixture validate
 ```

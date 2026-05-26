@@ -38,7 +38,7 @@ Use `dygo dev --studio-dev-url` only when the Studio asset server is already run
 go run ./cmd/dygo dev --studio-dev-url http://127.0.0.1:6791
 ```
 
-The server opens and pings PostgreSQL before it starts listening. It does not run `dygo migrate` automatically; run metadata sync before serving runtime metadata.
+The server opens and pings PostgreSQL before it starts listening. It does not run `dygo db migrate` automatically; run metadata sync before serving runtime metadata.
 
 ## Health
 
@@ -111,7 +111,7 @@ PATCH  /api/v1/records/{entity}/{id}
 DELETE /api/v1/records/{entity}/{id}
 ```
 
-Record APIs read persisted Core metadata to map Entity slugs, Field names, and storage columns. `{entity}` is the slug, defaulting to the file-derived Entity key. Run `dygo migrate` before serving Records so metadata tables and Entity storage tables are in sync.
+Record APIs read persisted Core metadata to map Entity slugs, Field names, and storage columns. `{entity}` is the slug, defaulting to the file-derived Entity key. Run `dygo db migrate` before serving Records so metadata tables and Entity storage tables are in sync.
 
 `GET /api/v1/records/{entity}/name/{name}` returns one Record by system `name`; URL-encode `{name}` as a path segment.
 
