@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"text/tabwriter"
 
 	"github.com/hapyco/dygo/internal/project"
@@ -47,11 +48,11 @@ func newAppsListCommand(stdout io.Writer) *cobra.Command {
 			}
 
 			table := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-			if _, err := fmt.Fprintln(table, "NAME\tVERSION\tLABEL"); err != nil {
+			if _, err := fmt.Fprintln(table, "NAME\tVERSION\tLABEL\tPATH"); err != nil {
 				return fmt.Errorf("write apps header: %w", err)
 			}
 			for _, app := range apps {
-				if _, err := fmt.Fprintf(table, "%s\t%s\t%s\n", app.Manifest.Name, app.Manifest.Version, app.Manifest.Label); err != nil {
+				if _, err := fmt.Fprintf(table, "%s\t%s\t%s\t%s\n", app.Manifest.Name, app.Manifest.Version, app.Manifest.Label, filepath.ToSlash(relToWorkingRoot(app.Dir))); err != nil {
 					return fmt.Errorf("write app row: %w", err)
 				}
 			}

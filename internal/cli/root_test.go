@@ -1240,7 +1240,7 @@ func TestAppListCommand(t *testing.T) {
 	}
 
 	output := stdout.String()
-	for _, want := range []string{"NAME", "VERSION", "LABEL", "core", "Core", "sales", "Sales", "0.1.0"} {
+	for _, want := range []string{"NAME", "VERSION", "LABEL", "PATH", "core", "Core", ".dygo/apps/core", "sales", "Sales", "apps/sales", "0.1.0"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("app list stdout = %q, want substring %q", output, want)
 		}
