@@ -823,40 +823,6 @@ func TestValidateAcceptsHookFilesMatchingEntityNames(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsLegacyAppLevelHookFiles(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, entityPath(app, "lead"), "lead")
-	hookPath := filepath.Join(app.Dir, "hooks", "customer.go")
-	writeFile(t, hookPath, "package hooks")
-
-	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
-	if err == nil {
-		t.Fatal("Validate() error = nil, want legacy hook path error")
-	}
-	for _, want := range []string{hookPath, `app "sales"`, "app-level hook files are not supported", "entities/<entity>/hooks.go"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
-		}
-	}
-}
-
-func TestValidateIgnoresManifestHookPath(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{Hooks: "metadata/hooks"})
-	writeEntity(t, entityPath(app, "lead"), "lead")
-	writeFile(t, filepath.Join(app.Dir, "metadata", "hooks", "lead.go"), "package hooks")
-
-	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
-	if err != nil {
-		t.Fatalf("Validate() error = %v, want manifest hook path ignored", err)
-	}
-}
-
 func loadedApp(root string, dirName string, name string, paths manifest.Paths) manifest.LoadedApp {
 	dir := filepath.Join(root, dirName)
 	return manifest.LoadedApp{

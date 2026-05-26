@@ -93,23 +93,6 @@ func TestGenerateHookCommandWrapsGeneratorErrors(t *testing.T) {
 	}
 }
 
-func TestOldHooksGenerateCommandIsRemoved(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIGoModule(t, root, "example.com/acme")
-	t.Chdir(root)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"hooks", "generate", "sales", "lead"}, strings.NewReader(""), &stdout, &stderr)
-	if err == nil {
-		t.Fatal("Run(hooks generate) error = nil, want old command removed")
-	}
-	if !strings.Contains(err.Error(), "unknown command") {
-		t.Fatalf("Run(hooks generate) error = %q, want unknown command", err.Error())
-	}
-}
-
 func TestHookListAndValidateCommands(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)

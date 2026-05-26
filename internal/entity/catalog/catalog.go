@@ -354,32 +354,6 @@ func validateHookFiles(apps []manifest.LoadedApp, entities []LoadedEntity, probl
 		}
 	}
 
-	for _, app := range apps {
-		hooksDir := filepath.Join(app.Dir, "hooks")
-		entries, err := os.ReadDir(hooksDir)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return fmt.Errorf("read hooks for app %q from %s: %w", app.Manifest.Name, hooksDir, err)
-		}
-		for _, entry := range entries {
-			if entry.IsDir() || filepath.Ext(entry.Name()) != ".go" {
-				continue
-			}
-			info, err := entry.Info()
-			if err != nil {
-				return fmt.Errorf("stat hook for app %q from %s: %w", app.Manifest.Name, filepath.Join(hooksDir, entry.Name()), err)
-			}
-			if !info.Mode().IsRegular() {
-				continue
-			}
-			if strings.HasSuffix(entry.Name(), "_test.go") {
-				continue
-			}
-			*problems = append(*problems, oldHookPathDiagnostic(app, filepath.Join(hooksDir, entry.Name())))
-		}
-	}
 	return nil
 }
 
@@ -485,10 +459,6 @@ func fieldDiagnostic(entity LoadedEntity, field schema.Field, message string) st
 
 func hookDiagnostic(appName string, path string, message string) string {
 	return fmt.Sprintf("%s: app %q hook file %s", location(path, 0), appName, message)
-}
-
-func oldHookPathDiagnostic(app manifest.LoadedApp, path string) string {
-	return fmt.Sprintf("%s: app %q app-level hook files are not supported; move hooks to entities/<entity>/%s", location(path, 0), app.Manifest.Name, shape.EntityHooksFile)
 }
 
 func location(path string, line int) string {

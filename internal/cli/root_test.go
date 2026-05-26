@@ -1605,36 +1605,6 @@ fields:
 	}
 }
 
-func TestEntityValidateCommandRejectsUnknownHookEntityFile(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	t.Chdir(root)
-
-	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	writeCLIEntity(t, cliEntityPath(root, "sales", "lead"), `
-label: Lead
-fields:
-  - name: title
-    label: Title
-    type: text
-`)
-	hookPath := filepath.Join(root, "apps", "sales", "hooks", "customer.go")
-	writeCLIEntity(t, hookPath, "package hooks")
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"entity", "validate"}, strings.NewReader(""), &stdout, &stderr)
-	if err == nil {
-		t.Fatal("Run(entity validate) error = nil, want legacy hook path error")
-	}
-	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "hooks", "customer.go"))
-	for _, want := range []string{wantPath, `app "sales"`, "app-level hook files are not supported", "entities/<entity>/hooks.go"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
-		}
-	}
-}
-
 func TestDoctorReportsEntityMetadataFailureForInvalidRouteSlug(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
