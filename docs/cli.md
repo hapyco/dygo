@@ -86,7 +86,7 @@ This document describes the current and proposed dygo CLI surface for the CLI cl
 - `dygo generate fixture <app>/<entity>` - Adds a fixture skeleton to an existing Entity.
 - `dygo generate test <app>/<entity>` - Adds Go test boilerplate for an existing Entity.
 
-Generated files are valid boilerplate, not empty placeholders. Generators do not overwrite custom files unless an explicit force flag is added later.
+Generated files are valid boilerplate, not empty placeholders. Generators do not overwrite custom files. `--force` overwrites dygo-generated files only.
 
 Collection generators create metadata only. Collection rows do not get fixture skeletons, route metadata, standalone permissions, or hooks by default; parent Entity fixtures and hooks own collection row usage. The intended collection file convention is `entities/_collections/<collection>.yml`.
 
@@ -97,8 +97,16 @@ Collection generators create metadata only. Collection rows do not get fixture s
 - `dygo generate entity <app>/<entity> --no-hook` - Skips hook scaffolding and runner wiring in the standard Entity bundle.
 - `dygo generate entity <app>/<entity> --no-fixture` - Skips fixture skeleton creation in the standard Entity bundle.
 - `dygo generate entity <app>/<entity> --no-test` - Skips Go test boilerplate in the standard Entity bundle.
+- `dygo generate app <app> --dry-run` - Prints app skeleton files that would be created or updated without writing.
+- `dygo generate app <app> --force` - Overwrites dygo-generated app skeleton files only; custom files still fail.
 - `dygo generate collection <app>/<collection> --dry-run` - Prints collection metadata files that would be created or updated without writing.
 - `dygo generate collection <app>/<collection> --force` - Overwrites dygo-generated collection metadata only; custom files still fail.
+- `dygo generate hook <app>/<entity> --dry-run` - Prints hook scaffold and runner wiring changes without writing.
+- `dygo generate hook <app>/<entity> --force` - Overwrites dygo-generated hook scaffolding only; custom hook files still fail.
+- `dygo generate fixture <app>/<entity> --dry-run` - Prints fixture skeleton files that would be created or updated without writing.
+- `dygo generate fixture <app>/<entity> --force` - Overwrites dygo-generated fixture skeletons only; custom files still fail.
+- `dygo generate test <app>/<entity> --dry-run` - Prints Go test files that would be created or updated without writing.
+- `dygo generate test <app>/<entity> --force` - Overwrites dygo-generated Go test files only; custom files still fail.
 
 Generators are non-interactive by default. They write when there are no conflicts, skip unchanged generated files, and fail on custom-file conflicts with a clear message.
 

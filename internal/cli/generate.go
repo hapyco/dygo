@@ -98,7 +98,12 @@ func newGenerateEntityCommand(stdout io.Writer) *cobra.Command {
 			}
 			// TODO(scaffold): make Entity bundle and hook runner writes atomic once
 			// hook planning moves into internal/generate.
-			result, err := hookgen.Generate(root, target.App, target.Name)
+			result, err := hookgen.GenerateWithOptions(hookgen.GenerateOptions{
+				Root:       root,
+				AppName:    target.App,
+				EntityName: target.Name,
+				Force:      force,
+			})
 			if err != nil {
 				return fmt.Errorf("generate hook: %w", err)
 			}
@@ -144,7 +149,10 @@ func newGenerateCollectionCommand(stdout io.Writer) *cobra.Command {
 }
 
 func newGenerateHookCommand(stdout io.Writer) *cobra.Command {
-	return &cobra.Command{
+	var dryRun bool
+	var force bool
+
+	cmd := &cobra.Command{
 		Use:   "hook <app>/<entity>",
 		Short: "Generate Entity hook scaffold and runner wiring",
 		Args:  cobra.ExactArgs(1),
@@ -157,7 +165,13 @@ func newGenerateHookCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := hookgen.Generate(root, target.App, target.Name)
+			result, err := hookgen.GenerateWithOptions(hookgen.GenerateOptions{
+				Root:       root,
+				AppName:    target.App,
+				EntityName: target.Name,
+				DryRun:     dryRun,
+				Force:      force,
+			})
 			if err != nil {
 				return fmt.Errorf("generate hook: %w", err)
 			}
@@ -167,6 +181,8 @@ func newGenerateHookCommand(stdout io.Writer) *cobra.Command {
 			return writeGenerateHookResult(stdout, root, result)
 		},
 	}
+	addScaffoldWriteFlags(cmd, &dryRun, &force)
+	return cmd
 }
 
 func newGenerateFixtureCommand(stdout io.Writer) *cobra.Command {
@@ -249,13 +265,27 @@ func writeGeneratePlan(stdout io.Writer, title string, plan scaffold.Plan) error
 }
 
 func writeGenerateHookResult(stdout io.Writer, root string, result hookgen.Result) error {
-	if _, err := fmt.Fprintf(stdout, "hook: %s (%s)\n", relToHooksRoot(root, result.HookFile), createdStatus(result.HookFileCreated)); err != nil {
+	if _, err := fmt.Fprintf(stdout, "hook: %s (%s)\n", relToHooksRoot(root, result.HookFile), hookFileResultStatus(result)); err != nil {
 		return fmt.Errorf("write generate output: %w", err)
 	}
-	if _, err := fmt.Fprintf(stdout, "runner: %s (%s)\n", relToHooksRoot(root, result.RunnerFile), writtenStatus(result.RunnerFileWritten)); err != nil {
+	if _, err := fmt.Fprintf(stdout, "runner: %s (%s)\n", relToHooksRoot(root, result.RunnerFile), runnerResultStatus(result)); err != nil {
 		return fmt.Errorf("write generate output: %w", err)
 	}
 	return nil
+}
+
+func hookFileResultStatus(result hookgen.Result) string {
+	if result.HookFileStatus != "" {
+		return result.HookFileStatus
+	}
+	return createdStatus(result.HookFileCreated)
+}
+
+func runnerResultStatus(result hookgen.Result) string {
+	if result.RunnerFileStatus != "" {
+		return result.RunnerFileStatus
+	}
+	return writtenStatus(result.RunnerFileWritten)
 }
 
 func writeGenerateHookDryRun(stdout io.Writer, root string, target shape.AppRef) error {

@@ -28,7 +28,7 @@ func TestGenerateEntityCreatesStandardBundle(t *testing.T) {
 		"file: apps/sales/entities/lead/fixtures.yml (created)",
 		"file: apps/sales/entities/lead/hooks_test.go (created)",
 		"hook: apps/sales/entities/lead/hooks.go (created)",
-		"runner: cmd/dygo/main.go (updated)",
+		"runner: cmd/dygo/main.go (created)",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("generate entity stdout = %q, want substring %q", stdout.String(), want)

@@ -32,6 +32,9 @@ type Result struct {
 	HookFile   string
 	RunnerFile string
 
+	HookFileStatus   string
+	RunnerFileStatus string
+
 	HookFileCreated   bool
 	RunnerFileWritten bool
 }
@@ -58,11 +61,25 @@ type RunnerUpdate struct {
 	Source     []byte
 }
 
+// GenerateOptions controls Entity hook scaffold generation.
+type GenerateOptions struct {
+	Root       string
+	AppName    string
+	EntityName string
+	DryRun     bool
+	Force      bool
+}
+
 // Generate creates an Entity hook scaffold and updates generated runner wiring.
 func Generate(root string, appName string, entityName string) (Result, error) {
-	root = filepath.Clean(root)
-	appName = strings.TrimSpace(appName)
-	entityName = strings.TrimSpace(entityName)
+	return GenerateWithOptions(GenerateOptions{Root: root, AppName: appName, EntityName: entityName})
+}
+
+// GenerateWithOptions creates or previews an Entity hook scaffold and runner wiring.
+func GenerateWithOptions(options GenerateOptions) (Result, error) {
+	root := filepath.Clean(options.Root)
+	appName := strings.TrimSpace(options.AppName)
+	entityName := strings.TrimSpace(options.EntityName)
 	if appName == "" {
 		return Result{}, fmt.Errorf("app name is required")
 	}
@@ -130,23 +147,35 @@ func Generate(root string, appName string, entityName string) (Result, error) {
 		return Result{}, err
 	}
 
+	hookStatus, err := hookFileStatus(hookFile, hookSource, options)
+	if err != nil {
+		return Result{}, err
+	}
+	runnerStatus, err := generatedFileStatus(runnerFile, runnerSource, options.DryRun)
+	if err != nil {
+		return Result{}, err
+	}
 	result := Result{
-		AppName:    appName,
-		Entity:     entityName,
-		HookFile:   hookFile,
-		RunnerFile: runnerFile,
+		AppName:          appName,
+		Entity:           entityName,
+		HookFile:         hookFile,
+		RunnerFile:       runnerFile,
+		HookFileStatus:   hookStatus,
+		RunnerFileStatus: runnerStatus,
+		HookFileCreated:  hookStatus == "created",
+		RunnerFileWritten: runnerStatus == "created" ||
+			runnerStatus == "updated",
+	}
+	if options.DryRun {
+		return result, nil
 	}
 	if err := os.MkdirAll(entityDir, 0o755); err != nil {
 		return Result{}, fmt.Errorf("create Entity directory %s: %w", entityDir, err)
 	}
-	if _, err := os.Stat(hookFile); err != nil {
-		if !os.IsNotExist(err) {
-			return Result{}, fmt.Errorf("stat hook file %s: %w", hookFile, err)
-		}
+	if hookStatus == "created" || hookStatus == "updated" {
 		if err := os.WriteFile(hookFile, hookSource, 0o644); err != nil {
 			return Result{}, fmt.Errorf("write hook file %s: %w", hookFile, err)
 		}
-		result.HookFileCreated = true
 	}
 	if err := os.MkdirAll(filepath.Dir(runnerFile), 0o755); err != nil {
 		return Result{}, fmt.Errorf("create runner directory %s: %w", filepath.Dir(runnerFile), err)
@@ -156,6 +185,9 @@ func Generate(root string, appName string, entityName string) (Result, error) {
 		return Result{}, err
 	}
 	result.RunnerFileWritten = written
+	if result.RunnerFileStatus == "" {
+		result.RunnerFileStatus = writeStatus(written)
+	}
 	return result, nil
 }
 
@@ -371,6 +403,56 @@ func preflightGeneratedFile(path string, manualSnippet string) error {
 	return nil
 }
 
+func hookFileStatus(path string, source []byte, options GenerateOptions) (string, error) {
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if options.DryRun {
+				return "would create", nil
+			}
+			return "created", nil
+		}
+		return "", fmt.Errorf("read hook file %s: %w", path, err)
+	}
+	if bytes.Equal(existing, source) {
+		return "unchanged", nil
+	}
+	generated := bytes.Contains(existing, []byte(generatedHeader))
+	if !generated {
+		if options.Force {
+			return "", fmt.Errorf("%s exists and is not dygo-generated", path)
+		}
+		return "existing", nil
+	}
+	if !options.Force {
+		return "", fmt.Errorf("%s already exists with dygo-generated content; rerun with --force to overwrite", path)
+	}
+	if options.DryRun {
+		return "would update", nil
+	}
+	return "updated", nil
+}
+
+func generatedFileStatus(path string, source []byte, dryRun bool) (string, error) {
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if dryRun {
+				return "would create", nil
+			}
+			return "created", nil
+		}
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	if bytes.Equal(existing, source) {
+		return "unchanged", nil
+	}
+	if dryRun {
+		return "would update", nil
+	}
+	return "updated", nil
+}
+
 func isGeneratedFile(path string) (bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -501,7 +583,9 @@ func assignImportAliases(hookFiles []HookFile) {
 
 func renderEntityHookSource(appName string, entityName string) ([]byte, error) {
 	name := exportedIdentifier(entityName)
-	source := fmt.Sprintf(`package hooks
+	source := fmt.Sprintf(`%[8]s
+
+package hooks
 
 import (
 	"context"
@@ -540,7 +624,7 @@ func beforeUpdate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
 func afterUpdate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
 	return nil
 }
-`, name, appName, entityName, entityName+"-before-create", entityName+"-after-create", entityName+"-before-update", entityName+"-after-update")
+`, name, appName, entityName, entityName+"-before-create", entityName+"-after-create", entityName+"-before-update", entityName+"-after-update", generatedHeader)
 	return formatGoSource([]byte(source))
 }
 
@@ -604,6 +688,13 @@ func writeFileIfChanged(path string, data []byte) (bool, error) {
 		return false, fmt.Errorf("write %s: %w", path, err)
 	}
 	return true, nil
+}
+
+func writeStatus(written bool) string {
+	if written {
+		return "updated"
+	}
+	return "unchanged"
 }
 
 func runnerManualSnippet(root string, modulePath string, appName string, entityName string, entityDir string) string {
