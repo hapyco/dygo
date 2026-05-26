@@ -102,6 +102,8 @@ Collection generators create metadata only. Collection rows do not get fixture s
 
 Generators are non-interactive by default. They write when there are no conflicts, skip unchanged generated files, and fail on custom-file conflicts with a clear message.
 
+Generator boilerplate should live as embedded templates under `internal/generate/templates/`. The dygo binary should embed these templates at build time instead of reading template files from disk at runtime.
+
 ## Routes
 
 - `dygo route` - Groups route registry inspection and validation commands.

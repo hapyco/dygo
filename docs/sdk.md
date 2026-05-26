@@ -3,9 +3,22 @@
 The App SDK is the public Go package app code can compile against.
 
 ```txt
-pkg/sdk/     - Public app-facing Go API
-internal/    - Private framework implementation
+pkg/dygo/     - Future public app-facing Go API
+pkg/sdk/      - Current public app-facing Go API
+internal/     - Private framework implementation
 ```
+
+`pkg/dygo` is the intended public package name. It keeps app code readable without import aliases:
+
+```go
+import "github.com/hapyco/dygo/pkg/dygo"
+
+func BeforeCreate(ctx context.Context, hook dygo.RecordHook) error {
+	return nil
+}
+```
+
+This document is named `sdk.md` for now because it defines the app developer SDK sprint. The public concept can be called the Go API in user-facing docs. HTTP API documentation should live separately.
 
 Use the App SDK from:
 
@@ -21,7 +34,7 @@ patches      - Future app migrations
 ## SDK Vs API
 
 ```txt
-App SDK  - Go code imported by dygo apps
+Go API   - Go code imported by dygo apps
 HTTP API - Network API used by clients
 ```
 
