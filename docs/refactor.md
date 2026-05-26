@@ -54,19 +54,19 @@ Known mismatches against the target:
 
 - Keep this as one PR, but implement in reviewable commits by layer.
 - Add central shape constants before changing many packages. Avoid scattering strings like `entities`, `_collections`, `entity.yml`, `fixtures.yml`, `hooks.go`, `dygo.yml`, and `config/secrets`.
-- Prefer compatibility readers while migrating first-party metadata, but make generated output canonical.
+- Do not keep compatibility readers for unreleased shapes; remove old readers and old public command paths as the final shape lands.
 - Do not add global `--json` or smart completions in this PR. They are deferred in `docs/cli.md`.
 - Do not implement worker or scheduler runtimes in this PR. They are deferred in `docs/cli.md`.
 - Keep command output plain ASCII and stable for humans and agents.
 - Use Cobra `RunE`, explicit `Args`, injected stdio, and project root discovery patterns already used in `internal/cli`.
 
-## Compatibility Policy For This PR
+## Breaking-Change Policy For This PR
 
 - Generated output must use the canonical shape from `docs/dir.md`.
 - Public docs must describe only the canonical shape.
 - First-party metadata should be migrated to canonical paths in this PR.
-- Compatibility readers may remain for old generated projects if they are small, tested, and clearly not used by generators.
-- If canonical and legacy files both define the same app-owned object, validation must fail with a clear duplicate-definition error.
+- Old generated-project layouts and old public command paths should be removed instead of preserved.
+- If old path forms are encountered, validation should fail with a clear final-shape error instead of loading them.
 
 ## Phase 1 - Centralize Target Shape
 
@@ -119,7 +119,7 @@ TODO:
 
 - Implement `dygo.yml` as both root marker and project config source.
 - Move runtime config loading from `configs/dygo.yaml` to root `dygo.yml`.
-- Keep a tested compatibility read for legacy `configs/dygo.yaml`, but generated output must write root `dygo.yml`.
+- Remove `configs/dygo.yaml` loading; generated output and the framework repo must use root `dygo.yml`.
 - Update `config.FilePath` and `config.Load` in `internal/config/config.go`.
 - Update `projectgen.Generate` to write the canonical target tree from `docs/dir.md`.
 - Replace generated `configs/` and `var/` paths with `config/` and `.dygo/` paths.
@@ -157,10 +157,7 @@ TODO:
   - `entities/_collections/<collection>.yml`
   - `entities/_collections/<collection>/entity.yml`
 - Update path-derived naming so `entity.yml` derives the Entity name from the parent folder.
-- Implement compatibility behavior:
-  - keep old flat files readable only for migration safety.
-  - generate and document only the new bundle shape.
-  - fail clearly if both old and new canonical files define the same app-owned Entity identity.
+- Remove old flat Entity readers; direct `entities/*.yml`, `entities/<entity>/<entity>.yml`, and `entities/collections/` paths should fail with final-shape guidance.
 - Migrate first-party Core metadata under `apps/core/entities/` to canonical bundle paths.
 - Update catalog validation messages to mention `_collections` and `entity.yml`.
 - Update tests in `internal/entity/catalog/` and `internal/entity/schema/`.
@@ -182,10 +179,7 @@ TODO:
 
 - Keep the existing fixture apply engine, but update discovery to find canonical Entity-bundle fixtures:
   - `apps/<app>/entities/<entity>/fixtures.yml`
-- Implement compatibility behavior for current app-level fixture files:
-  - read old `fixtures/<entity>.yml` as a tested legacy path.
-  - generate and export only `entities/<entity>/fixtures.yml`.
-  - fail clearly if both legacy and Entity-bundle fixtures exist for the same app/entity.
+- Remove app-level fixture discovery; generate, export, and load fixtures only from `entities/<entity>/fixtures.yml`.
 - Add `dygo fixture` singular command group.
 - Add `dygo fixture validate`.
 - Add `dygo fixture apply`.
@@ -525,7 +519,7 @@ TODO:
   - `entities/<entity>/entity.yml`
   - `_collections/<collection>.yml`
   - `_collections/<collection>/entity.yml`
-  - duplicate old/new definitions.
+  - rejection of old flat Entity and `entities/collections/` paths.
 - Add fixture discovery tests for Entity-bundle fixtures.
 - Add generator dry-run, force, and conflict tests.
 - Add interactive write tests for `--yes` and `--dry-run` behavior.
