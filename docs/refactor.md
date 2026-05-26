@@ -19,9 +19,9 @@ The PR should implement the committed target direction, not reopen naming decisi
 - Runtime/database writes follow the interactive, `--yes`, and `--dry-run` rules in `docs/cli.md`.
 - Tests cover command registration, target directory discovery, generated project output, and important write-safety behavior.
 
-## Current State Snapshot
+## Starting State Snapshot
 
-Already useful and should be reused:
+Useful foundations identified before implementation:
 
 - Root command construction: `internal/cli/root.go`.
 - Project root discovery with `dygo.yml`: `internal/project/root.go`.
@@ -35,7 +35,7 @@ Already useful and should be reused:
 - Secrets store supports nested dot-path reads internally: `internal/secrets/secrets.go`.
 - Upgrade project runtime exists, but still includes binary self-upgrade concerns: `internal/upgrade/`.
 
-Known mismatches against the target:
+Initial mismatches this PR set out to resolve:
 
 - CLI still registers old root-level or plural commands: `migrate`, `patches`, `schema`, `apps`, `entities`, `fixtures`, `hooks`, and `secrets`.
 - `dygo db prepare`, `dygo db schema check`, and `dygo db schema dump` still exist publicly.
