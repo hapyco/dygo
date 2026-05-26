@@ -16,6 +16,7 @@ import (
 	"github.com/hapyco/dygo/internal/app/manifest"
 	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
@@ -129,38 +130,15 @@ func newFixtureRecordStore(queryer db.RecordQueryer, recordHooks *db.RecordHookR
 	return db.NewRecordStore(queryer)
 }
 
-// Discover loads fixture files from each app's configured fixtures path.
+// Discover loads fixture files from each app's canonical Entity bundles and legacy fixtures path.
 func Discover(apps []manifest.LoadedApp) ([]LoadedFile, error) {
 	var files []LoadedFile
 	for _, app := range apps {
-		fixturesDir := filepath.Join(app.Dir, app.Manifest.Paths.Fixtures)
-		entries, err := os.ReadDir(fixturesDir)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
+		appFiles, err := discoverAppFixtures(app)
 		if err != nil {
-			return nil, fmt.Errorf("read fixtures for app %q: %w", app.Manifest.Name, err)
+			return nil, err
 		}
-		for _, entry := range entries {
-			if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
-				continue
-			}
-			path := filepath.Join(fixturesDir, entry.Name())
-			fixture, err := LoadFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", path, err)
-			}
-			expectedEntity := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-			if fixture.Entity != expectedEntity {
-				return nil, fmt.Errorf("%s: fixture entity %q must match file name %q", path, fixture.Entity, expectedEntity)
-			}
-			files = append(files, LoadedFile{
-				AppName: app.Manifest.Name,
-				AppDir:  app.Dir,
-				Path:    path,
-				Fixture: fixture,
-			})
-		}
+		files = append(files, appFiles...)
 	}
 	sort.SliceStable(files, func(i, j int) bool {
 		if files[i].AppName == files[j].AppName {
@@ -169,6 +147,138 @@ func Discover(apps []manifest.LoadedApp) ([]LoadedFile, error) {
 		return files[i].AppName < files[j].AppName
 	})
 	return files, nil
+}
+
+func discoverAppFixtures(app manifest.LoadedApp) ([]LoadedFile, error) {
+	var files []LoadedFile
+	seen := map[string]LoadedFile{}
+	addFile := func(file LoadedFile) error {
+		key := file.Fixture.Entity
+		if previous, ok := seen[key]; ok {
+			return fmt.Errorf("fixture for app %q entity %q is defined twice. Use either %s or %s.", app.Manifest.Name, key, appRelativePath(app.Dir, previous.Path), appRelativePath(app.Dir, file.Path))
+		}
+		seen[key] = file
+		files = append(files, file)
+		return nil
+	}
+
+	canonical, err := discoverEntityBundleFixtures(app)
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range canonical {
+		if err := addFile(file); err != nil {
+			return nil, err
+		}
+	}
+
+	legacy, err := discoverLegacyFixtureFiles(app)
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range legacy {
+		if err := addFile(file); err != nil {
+			return nil, err
+		}
+	}
+
+	return files, nil
+}
+
+func discoverEntityBundleFixtures(app manifest.LoadedApp) ([]LoadedFile, error) {
+	entitiesDir := filepath.Join(app.Dir, filepath.FromSlash(app.Manifest.Paths.WithDefaults().Entities))
+	entries, err := os.ReadDir(entitiesDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read entities for fixture discovery in app %q: %w", app.Manifest.Name, err)
+	}
+
+	var files []LoadedFile
+	for _, entry := range entries {
+		if !entry.IsDir() || isFixtureCollectionDir(entry.Name()) {
+			continue
+		}
+		path := filepath.Join(entitiesDir, entry.Name(), shape.EntityFixturesFile)
+		info, err := os.Stat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("stat fixture for app %q from %s: %w", app.Manifest.Name, path, err)
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		file, err := loadDiscoveredFixture(app, path, entry.Name(), "Entity bundle")
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+	return files, nil
+}
+
+func discoverLegacyFixtureFiles(app manifest.LoadedApp) ([]LoadedFile, error) {
+	fixturesDir := filepath.Join(app.Dir, filepath.FromSlash(app.Manifest.Paths.WithDefaults().Fixtures))
+	entries, err := os.ReadDir(fixturesDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read fixtures for app %q: %w", app.Manifest.Name, err)
+	}
+
+	var files []LoadedFile
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
+			continue
+		}
+		path := filepath.Join(fixturesDir, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("stat fixture for app %q from %s: %w", app.Manifest.Name, path, err)
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		expectedEntity := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		file, err := loadDiscoveredFixture(app, path, expectedEntity, "file name")
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+	return files, nil
+}
+
+func loadDiscoveredFixture(app manifest.LoadedApp, path string, expectedEntity string, expectedSource string) (LoadedFile, error) {
+	fixture, err := LoadFile(path)
+	if err != nil {
+		return LoadedFile{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if fixture.Entity != expectedEntity {
+		return LoadedFile{}, fmt.Errorf("%s: fixture entity %q must match %s %q", path, fixture.Entity, expectedSource, expectedEntity)
+	}
+	return LoadedFile{
+		AppName: app.Manifest.Name,
+		AppDir:  app.Dir,
+		Path:    path,
+		Fixture: fixture,
+	}, nil
+}
+
+func isFixtureCollectionDir(name string) bool {
+	return name == shape.CollectionDir || name == "collections"
+}
+
+func appRelativePath(appDir string, path string) string {
+	relative, err := filepath.Rel(appDir, path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	return filepath.ToSlash(relative)
 }
 
 // LoadFile loads one fixture file.
