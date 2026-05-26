@@ -829,7 +829,7 @@ func entityNameFromPath(path string) (string, error) {
 	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	if name == "entity" {
 		parent := filepath.Base(filepath.Dir(path))
-		if parent != "" && parent != "." && parent != "entities" && parent != "collections" && parent != "_collections" {
+		if parent != "" && parent != "." && parent != "entities" && parent != "_collections" {
 			name = parent
 		}
 	}

@@ -14,7 +14,7 @@ func TestHooksGenerateCommandCreatesScaffold(t *testing.T) {
 	writeCLIProjectRoot(t, root)
 	writeCLIGoModule(t, root, "example.com/acme")
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "lead"), `
 label: Lead
 fields:
   - name: title

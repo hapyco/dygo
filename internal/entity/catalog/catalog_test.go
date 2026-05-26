@@ -15,7 +15,7 @@ func TestValidateLoadsEntitiesFromManifestPath(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{Entities: "metadata/entities"})
-	entityPath := filepath.Join(app.Dir, "metadata", "entities", "lead.yml")
+	entityPath := filepath.Join(app.Dir, "metadata", "entities", "lead", "entity.yml")
 	writeEntity(t, entityPath, "lead")
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
@@ -61,9 +61,9 @@ func TestValidateReturnsDeterministicOrdering(t *testing.T) {
 	root := t.TempDir()
 	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
 	core := loadedApp(root, "core", "core", manifest.Paths{})
-	writeEntity(t, filepath.Join(sales.Dir, "entities", "lead.yml"), "lead")
-	writeEntity(t, filepath.Join(sales.Dir, "entities", "company.yml"), "company")
-	writeEntity(t, filepath.Join(core.Dir, "entities", "user.yml"), "user")
+	writeEntity(t, entityPath(sales, "lead"), "lead")
+	writeEntity(t, entityPath(sales, "company"), "company")
+	writeEntity(t, entityPath(core, "user"), "user")
 
 	entities, err := New([]manifest.LoadedApp{sales, core}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -82,7 +82,7 @@ func TestValidateRejectsInvalidEntityWithAppAndPathContext(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	badPath := filepath.Join(app.Dir, "entities", "bad.yml")
+	badPath := entityPath(app, "bad")
 	writeFile(t, badPath, `
 fields:
   - name: title
@@ -101,20 +101,19 @@ fields:
 	}
 }
 
-func TestValidateRejectsDuplicateSimpleAndFolderParentForms(t *testing.T) {
+func TestValidateRejectsFlatEntityFiles(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
 	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead", "lead.yml"), "lead")
 
 	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err == nil {
-		t.Fatal("Validate() error = nil, want duplicate entity error")
+		t.Fatal("Validate() error = nil, want flat entity path error")
 	}
-	if !strings.Contains(err.Error(), `Entity "lead" is defined twice. Use either entities/lead.yml or entities/lead/lead.yml.`) {
-		t.Fatalf("Validate() error = %q, want duplicate parent context", err.Error())
+	if !strings.Contains(err.Error(), `entities/lead.yml is not supported; Entity metadata must live at entities/lead/entity.yml`) {
+		t.Fatalf("Validate() error = %q, want flat entity path context", err.Error())
 	}
 }
 
@@ -141,37 +140,35 @@ func TestValidateLoadsCanonicalEntityBundle(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsDuplicateFlatAndCanonicalEntityBundle(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead", "entity.yml"), "lead")
-
-	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
-	if err == nil {
-		t.Fatal("Validate() error = nil, want duplicate entity error")
-	}
-	if !strings.Contains(err.Error(), `Entity "lead" is defined twice. Use either entities/lead.yml or entities/lead/entity.yml.`) {
-		t.Fatalf("Validate() error = %q, want duplicate canonical context", err.Error())
-	}
-}
-
-func TestValidateRejectsDuplicateLegacyAndCanonicalEntityBundle(t *testing.T) {
+func TestValidateRejectsInvalidEntityBundleFile(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
 	writeEntity(t, filepath.Join(app.Dir, "entities", "lead", "lead.yml"), "lead")
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead", "entity.yml"), "lead")
 
 	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err == nil {
-		t.Fatal("Validate() error = nil, want duplicate entity error")
+		t.Fatal("Validate() error = nil, want invalid bundle file error")
 	}
-	if !strings.Contains(err.Error(), `Entity "lead" is defined twice. Use either entities/lead/entity.yml or entities/lead/lead.yml.`) {
-		t.Fatalf("Validate() error = %q, want duplicate legacy/canonical context", err.Error())
+	if !strings.Contains(err.Error(), `entities/lead/lead.yml is not a valid Entity bundle file; Entity metadata must be entities/lead/entity.yml`) {
+		t.Fatalf("Validate() error = %q, want invalid bundle file context", err.Error())
+	}
+}
+
+func TestValidateRejectsBundleFilesWithoutEntityMetadata(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeFile(t, filepath.Join(app.Dir, "entities", "lead", "fixtures.yml"), "records: []")
+
+	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want missing entity metadata error")
+	}
+	if !strings.Contains(err.Error(), `entities/lead requires Entity metadata file entities/lead/entity.yml`) {
+		t.Fatalf("Validate() error = %q, want missing entity metadata context", err.Error())
 	}
 }
 
@@ -181,8 +178,8 @@ func TestValidateAllowsDuplicateEntityNamesAcrossAppsWithUniqueRouteSlugs(t *tes
 	root := t.TempDir()
 	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
 	support := loadedApp(root, "support", "support", manifest.Paths{})
-	writeEntity(t, filepath.Join(sales.Dir, "entities", "customer.yml"), "customer")
-	writeEntityWithRoute(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer", "support-customer")
+	writeEntity(t, entityPath(sales, "customer"), "customer")
+	writeEntityWithRoute(t, entityPath(support, "customer"), "customer", "support-customer")
 
 	entities, err := New([]manifest.LoadedApp{sales, support}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -199,8 +196,8 @@ func TestValidateRejectsDuplicateRouteSlugsAcrossApps(t *testing.T) {
 	root := t.TempDir()
 	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
 	support := loadedApp(root, "support", "support", manifest.Paths{})
-	writeEntity(t, filepath.Join(sales.Dir, "entities", "customer.yml"), "customer")
-	supportPath := filepath.Join(support.Dir, "entities", "customer.yml")
+	writeEntity(t, entityPath(sales, "customer"), "customer")
+	supportPath := entityPath(support, "customer")
 	writeEntity(t, supportPath, "customer")
 
 	_, err := New([]manifest.LoadedApp{sales, support}, fieldtype.DefaultRegistry()).Validate()
@@ -220,7 +217,7 @@ func TestValidateAllowsCurrentNonReservedRootSlugs(t *testing.T) {
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
 	for _, name := range []string{"settings", "spaces", "pages", "reports", "new"} {
-		writeEntity(t, filepath.Join(app.Dir, "entities", name+".yml"), name)
+		writeEntity(t, entityPath(app, name), name)
 	}
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
@@ -254,7 +251,7 @@ func TestValidateRejectsReservedRootRouteSlugs(t *testing.T) {
 
 			root := t.TempDir()
 			app := loadedApp(root, "sales", "sales", manifest.Paths{})
-			entityPath := filepath.Join(app.Dir, "entities", tt.entityName+".yml")
+			entityPath := entityPath(app, tt.entityName)
 			if tt.routeSlug == "" {
 				writeEntity(t, entityPath, tt.entityName)
 			} else {
@@ -279,8 +276,8 @@ func TestValidateAcceptsResolvedFieldTargets(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "company.yml"), "company")
-	writeFile(t, filepath.Join(app.Dir, "entities", "lead.yml"), `
+	writeEntity(t, entityPath(app, "company"), "company")
+	writeFile(t, entityPath(app, "lead"), `
 label: Lead
 name:
   strategy: random
@@ -296,7 +293,7 @@ fields:
     options:
       entity: lead-contact
 `)
-	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "collections", "lead-contact.yml"), "lead-contact")
+	writeCollectionEntity(t, collectionPath(app, "lead-contact"), "lead-contact")
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -321,7 +318,7 @@ func TestValidateRejectsSingleEntityFieldTargets(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeFile(t, filepath.Join(app.Dir, "entities", "invoice-settings.yml"), `
+	writeFile(t, entityPath(app, "invoice-settings"), `
 label: Invoice Settings
 is-single: true
 fields:
@@ -331,7 +328,7 @@ fields:
     required: true
     default: 30
 `)
-	entityPath := filepath.Join(app.Dir, "entities", "invoice.yml")
+	entityPath := entityPath(app, "invoice")
 	writeFile(t, entityPath, `
 label: Invoice
 name:
@@ -360,8 +357,8 @@ func TestValidateAllowsSingleEntityToLinkToNormalEntity(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "customer.yml"), "customer")
-	writeFile(t, filepath.Join(app.Dir, "entities", "invoice-settings.yml"), `
+	writeEntity(t, entityPath(app, "customer"), "customer")
+	writeFile(t, entityPath(app, "invoice-settings"), `
 label: Invoice Settings
 is-single: true
 fields:
@@ -382,7 +379,7 @@ func TestValidateRejectsMissingFieldTarget(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	entityPath := filepath.Join(app.Dir, "entities", "lead.yml")
+	entityPath := entityPath(app, "lead")
 	writeFile(t, entityPath, `
 label: Lead
 name:
@@ -412,9 +409,9 @@ func TestValidateResolvesSameAppFieldTargetBeforeGlobalNames(t *testing.T) {
 	root := t.TempDir()
 	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
 	support := loadedApp(root, "support", "support", manifest.Paths{})
-	writeEntity(t, filepath.Join(sales.Dir, "entities", "customer.yml"), "customer")
-	writeEntityWithRoute(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer", "support-customer")
-	entityPath := filepath.Join(sales.Dir, "entities", "lead.yml")
+	writeEntity(t, entityPath(sales, "customer"), "customer")
+	writeEntityWithRoute(t, entityPath(support, "customer"), "customer", "support-customer")
+	entityPath := entityPath(sales, "lead")
 	writeFile(t, entityPath, `
 label: Lead
 name:
@@ -440,9 +437,9 @@ func TestValidateRejectsAmbiguousFieldTargetAcrossApps(t *testing.T) {
 	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
 	support := loadedApp(root, "support", "support", manifest.Paths{})
 	billing := loadedApp(root, "billing", "billing", manifest.Paths{})
-	writeEntityWithRoute(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer", "support-customer")
-	writeEntityWithRoute(t, filepath.Join(billing.Dir, "entities", "customer.yml"), "customer", "billing-customer")
-	entityPath := filepath.Join(sales.Dir, "entities", "lead.yml")
+	writeEntityWithRoute(t, entityPath(support, "customer"), "customer", "support-customer")
+	writeEntityWithRoute(t, entityPath(billing, "customer"), "customer", "billing-customer")
+	entityPath := entityPath(sales, "lead")
 	writeFile(t, entityPath, `
 label: Lead
 name:
@@ -471,7 +468,7 @@ func TestValidateLoadsCollectionEntitiesFromCollectionsFolder(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeFile(t, filepath.Join(app.Dir, "entities", "invoice.yml"), `
+	writeFile(t, entityPath(app, "invoice"), `
 label: Invoice
 name:
   strategy: random
@@ -482,7 +479,7 @@ fields:
     options:
       entity: invoice-item
 `)
-	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "collections", "invoice-item.yml"), "invoice-item")
+	writeCollectionEntity(t, collectionPath(app, "invoice-item"), "invoice-item")
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -566,19 +563,19 @@ fields:
 	}
 }
 
-func TestValidateRejectsNestedCollectionEntityFolders(t *testing.T) {
+func TestValidateRejectsCollectionsDirectory(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "invoice.yml"), "invoice")
-	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "collections", "invoice", "invoice-item.yml"), "invoice-item")
+	writeEntity(t, entityPath(app, "invoice"), "invoice")
+	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "collections", "invoice-item.yml"), "invoice-item")
 
 	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err == nil {
-		t.Fatal("Validate() error = nil, want nested collection folder error")
+		t.Fatal("Validate() error = nil, want collections directory error")
 	}
-	want := "entities/collections/invoice is not supported; collection Entities must be top-level YAML files in entities/collections"
+	want := "entities/collections is not supported; collection Entity metadata must live under entities/_collections"
 	if !strings.Contains(err.Error(), want) {
 		t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 	}
@@ -589,7 +586,7 @@ func TestValidateRejectsCollectionEntityRouteSlug(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeFile(t, filepath.Join(app.Dir, "entities", "invoice.yml"), `
+	writeFile(t, entityPath(app, "invoice"), `
 label: Invoice
 name:
   strategy: random
@@ -600,7 +597,7 @@ fields:
     options:
       entity: invoice-item
 `)
-	writeFile(t, filepath.Join(app.Dir, "entities", "collections", "invoice-item.yml"), `
+	writeFile(t, collectionPath(app, "invoice-item"), `
 label: Invoice Item
 route:
   slug: invoice-item
@@ -625,8 +622,8 @@ func TestValidateIgnoresCollectionEntitiesForRouteSlugUniqueness(t *testing.T) {
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
 	support := loadedApp(root, "support", "support", manifest.Paths{})
-	writeEntity(t, filepath.Join(support.Dir, "entities", "customer.yml"), "customer")
-	writeFile(t, filepath.Join(app.Dir, "entities", "invoice.yml"), `
+	writeEntity(t, entityPath(support, "customer"), "customer")
+	writeFile(t, entityPath(app, "invoice"), `
 label: Invoice
 name:
   strategy: random
@@ -637,7 +634,7 @@ fields:
     options:
       entity: customer
 `)
-	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "collections", "customer.yml"), "customer")
+	writeCollectionEntity(t, collectionPath(app, "customer"), "customer")
 
 	entities, err := New([]manifest.LoadedApp{app, support}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -653,8 +650,8 @@ func TestValidateAllowsUnusedCollectionEntity(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "invoice.yml"), "invoice")
-	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "collections", "invoice-item.yml"), "invoice-item")
+	writeEntity(t, entityPath(app, "invoice"), "invoice")
+	writeCollectionEntity(t, collectionPath(app, "invoice-item"), "invoice-item")
 
 	if _, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate(); err != nil {
 		t.Fatalf("Validate() error = %v, want nil", err)
@@ -666,7 +663,7 @@ func TestValidateAllowsCollectionEntityReferencedMoreThanOnce(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeFile(t, filepath.Join(app.Dir, "entities", "invoice.yml"), `
+	writeFile(t, entityPath(app, "invoice"), `
 label: Invoice
 name:
   strategy: random
@@ -682,7 +679,7 @@ fields:
     options:
       entity: invoice-item
 `)
-	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "collections", "invoice-item.yml"), "invoice-item")
+	writeCollectionEntity(t, collectionPath(app, "invoice-item"), "invoice-item")
 
 	if _, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate(); err != nil {
 		t.Fatalf("Validate() error = %v, want nil", err)
@@ -694,7 +691,7 @@ func TestValidateRejectsLinksToCollectionEntities(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeFile(t, filepath.Join(app.Dir, "entities", "invoice.yml"), `
+	writeFile(t, entityPath(app, "invoice"), `
 label: Invoice
 name:
   strategy: random
@@ -710,7 +707,7 @@ fields:
     options:
       entity: invoice-item
 `)
-	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "collections", "invoice-item.yml"), "invoice-item")
+	writeCollectionEntity(t, collectionPath(app, "invoice-item"), "invoice-item")
 
 	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err == nil {
@@ -727,8 +724,8 @@ func TestValidateAllowsCrossAppCollectionTargets(t *testing.T) {
 	root := t.TempDir()
 	sales := loadedApp(root, "sales", "sales", manifest.Paths{})
 	crm := loadedApp(root, "crm", "crm", manifest.Paths{})
-	writeCollectionEntity(t, filepath.Join(crm.Dir, "entities", "collections", "contact-row.yml"), "contact-row")
-	writeFile(t, filepath.Join(sales.Dir, "entities", "invoice.yml"), `
+	writeCollectionEntity(t, collectionPath(crm, "contact-row"), "contact-row")
+	writeFile(t, entityPath(sales, "invoice"), `
 label: Invoice
 name:
   strategy: random
@@ -751,8 +748,8 @@ func TestValidateRejectsCollectionFieldsTargetingNormalEntities(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "invoice-item.yml"), "invoice-item")
-	writeFile(t, filepath.Join(app.Dir, "entities", "invoice.yml"), `
+	writeEntity(t, entityPath(app, "invoice-item"), "invoice-item")
+	writeFile(t, entityPath(app, "invoice"), `
 label: Invoice
 name:
   strategy: random
@@ -778,8 +775,8 @@ func TestValidateRejectsDuplicateNormalAndCollectionEntityNamesInSameApp(t *test
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "invoice.yml"), "invoice")
-	writeCollectionEntity(t, filepath.Join(app.Dir, "entities", "collections", "invoice.yml"), "invoice")
+	writeEntity(t, entityPath(app, "invoice"), "invoice")
+	writeCollectionEntity(t, collectionPath(app, "invoice"), "invoice")
 
 	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err == nil {
@@ -795,7 +792,7 @@ func TestDiscoverIgnoresNonYAMLFilesAndNestedDirectories(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
+	writeEntity(t, entityPath(app, "lead"), "lead")
 	writeFile(t, filepath.Join(app.Dir, "entities", "ignored.yaml"), "not: valid: yaml")
 	writeFile(t, filepath.Join(app.Dir, "entities", "notes.txt"), "not an entity")
 	writeEntity(t, filepath.Join(app.Dir, "entities", "nested", "deeper", "bad.yml"), "bad")
@@ -814,7 +811,7 @@ func TestValidateAcceptsHookFilesMatchingEntityNames(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
+	writeEntity(t, entityPath(app, "lead"), "lead")
 	writeFile(t, filepath.Join(app.Dir, "hooks", "lead.go"), "package hooks")
 	writeFile(t, filepath.Join(app.Dir, "hooks", "register.go"), "package hooks")
 	writeFile(t, filepath.Join(app.Dir, "hooks", "lead_test.go"), "package hooks")
@@ -835,7 +832,7 @@ func TestValidateRejectsHookFilesWithoutMatchingEntityNames(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
+	writeEntity(t, entityPath(app, "lead"), "lead")
 	hookPath := filepath.Join(app.Dir, "hooks", "customer.go")
 	writeFile(t, hookPath, "package hooks")
 
@@ -855,7 +852,7 @@ func TestValidateReadsHookFilesFromManifestPath(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{Hooks: "metadata/hooks"})
-	writeEntity(t, filepath.Join(app.Dir, "entities", "lead.yml"), "lead")
+	writeEntity(t, entityPath(app, "lead"), "lead")
 	writeFile(t, filepath.Join(app.Dir, "metadata", "hooks", "lead.go"), "package hooks")
 
 	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
@@ -890,6 +887,14 @@ fields:
     label: Title
     type: text
 `)
+}
+
+func entityPath(app manifest.LoadedApp, name string) string {
+	return filepath.Join(app.Dir, "entities", name, "entity.yml")
+}
+
+func collectionPath(app manifest.LoadedApp, name string) string {
+	return filepath.Join(app.Dir, "entities", "_collections", name+".yml")
 }
 
 func writeCollectionEntity(t *testing.T, path string, name string) {

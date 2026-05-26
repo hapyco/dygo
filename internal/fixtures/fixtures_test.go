@@ -13,43 +13,6 @@ import (
 	"github.com/hapyco/dygo/internal/db"
 )
 
-func TestDiscoverLoadsAppFixtureFiles(t *testing.T) {
-	root := t.TempDir()
-	appDir := filepath.Join(root, "apps", "core")
-	fixturesDir := filepath.Join(appDir, "fixtures")
-	if err := os.MkdirAll(filepath.Join(fixturesDir, "nested"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(fixtures) error = %v", err)
-	}
-	writeFixtureFile(t, filepath.Join(fixturesDir, "role.yml"), `
-entity: role
-match: [name]
-records:
-  - name: system-manager
-    label: System Manager
-`)
-	writeFixtureFile(t, filepath.Join(fixturesDir, "notes.txt"), `ignored`)
-	writeFixtureFile(t, filepath.Join(fixturesDir, "nested", "ignored.yml"), `
-entity: role
-match: [name]
-records:
-  - name: nested
-`)
-
-	files, err := Discover([]manifest.LoadedApp{{
-		Dir: appDir,
-		Manifest: manifest.Manifest{
-			Name:  "core",
-			Paths: manifest.DefaultPaths(),
-		},
-	}})
-	if err != nil {
-		t.Fatalf("Discover() error = %v, want nil", err)
-	}
-	if len(files) != 1 || files[0].AppName != "core" || files[0].Fixture.Entity != "role" {
-		t.Fatalf("Discover() files = %+v, want one core role fixture", files)
-	}
-}
-
 func TestDiscoverLoadsEntityBundleFixtureFiles(t *testing.T) {
 	root := t.TempDir()
 	appDir := filepath.Join(root, "apps", "core")
@@ -111,45 +74,10 @@ records:
 	}
 }
 
-func TestDiscoverRejectsDuplicateLegacyAndEntityBundleFixtures(t *testing.T) {
+func TestDiscoverRequiresEntityNamedBundleFixtureFiles(t *testing.T) {
 	root := t.TempDir()
 	appDir := filepath.Join(root, "apps", "core")
-	writeFixtureFile(t, filepath.Join(appDir, "entities", "role", "fixtures.yml"), `
-entity: role
-match: [name]
-records:
-  - name: system-manager
-`)
-	writeFixtureFile(t, filepath.Join(appDir, "fixtures", "role.yml"), `
-entity: role
-match: [name]
-records:
-  - name: sales-user
-`)
-
-	_, err := Discover([]manifest.LoadedApp{{
-		Dir: appDir,
-		Manifest: manifest.Manifest{
-			Name:  "core",
-			Paths: manifest.DefaultPaths(),
-		},
-	}})
-	if err == nil {
-		t.Fatal("Discover() error = nil, want duplicate fixture error")
-	}
-	if !strings.Contains(err.Error(), `fixture for app "core" entity "role" is defined twice. Use either entities/role/fixtures.yml or fixtures/role.yml.`) {
-		t.Fatalf("Discover() error = %q, want duplicate fixture context", err.Error())
-	}
-}
-
-func TestDiscoverRequiresEntityNamedFixtureFiles(t *testing.T) {
-	root := t.TempDir()
-	appDir := filepath.Join(root, "apps", "core")
-	fixturesDir := filepath.Join(appDir, "fixtures")
-	if err := os.MkdirAll(fixturesDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(fixtures) error = %v", err)
-	}
-	writeFixtureFile(t, filepath.Join(fixturesDir, "roles.yml"), `
+	writeFixtureFile(t, filepath.Join(appDir, "entities", "roles", "fixtures.yml"), `
 entity: role
 match: [name]
 records:
@@ -164,14 +92,14 @@ records:
 		},
 	}})
 	if err == nil {
-		t.Fatal("Discover() error = nil, want file/entity mismatch error")
+		t.Fatal("Discover() error = nil, want Entity bundle mismatch error")
 	}
-	if !strings.Contains(err.Error(), `fixture entity "role" must match file name "roles"`) {
-		t.Fatalf("Discover() error = %q, want entity/file mismatch", err.Error())
+	if !strings.Contains(err.Error(), `fixture entity "role" must match Entity bundle "roles"`) {
+		t.Fatalf("Discover() error = %q, want Entity bundle mismatch", err.Error())
 	}
 }
 
-func TestDiscoverAllowsMissingFixtureDirectory(t *testing.T) {
+func TestDiscoverAllowsMissingEntitiesDirectory(t *testing.T) {
 	root := t.TempDir()
 	appDir := filepath.Join(root, "apps", "core")
 	if err := os.MkdirAll(appDir, 0o755); err != nil {

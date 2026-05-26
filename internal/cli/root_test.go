@@ -1940,7 +1940,7 @@ func TestDoctorCommand(t *testing.T) {
 	writeCLIConfig(t, root)
 	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "company"), `
 label: Company
 fields:
   - name: title
@@ -2084,14 +2084,14 @@ func TestEntityValidateCommand(t *testing.T) {
 	t.Chdir(root)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "company"), `
 label: Company
 fields:
   - name: title
     label: Title
     type: text
 `)
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "lead"), `
 label: Lead
 fields:
   - name: company
@@ -2118,14 +2118,14 @@ func TestEntityListCommand(t *testing.T) {
 
 	writeCLIApp(t, filepath.Join(root, "apps", "core"), "core")
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "company"), `
 label: Company
 fields:
   - name: title
     label: Title
     type: text
 `)
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "lead"), `
 label: Lead
 fields:
   - name: company
@@ -2241,7 +2241,7 @@ func TestEntityValidateCommandRejectsInvalidTargets(t *testing.T) {
 	t.Chdir(root)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	entityPath := filepath.Join(root, "apps", "sales", "entities", "lead.yml")
+	entityPath := cliEntityPath(root, "sales", "lead")
 	writeCLIEntity(t, entityPath, `
 label: Lead
 fields:
@@ -2258,7 +2258,7 @@ fields:
 	if err == nil {
 		t.Fatal("Run(entity validate) error = nil, want missing target error")
 	}
-	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "lead.yml")) + ":5"
+	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "lead", "entity.yml")) + ":5"
 	for _, want := range []string{wantPath, `field "company"`, `unknown entity target "company"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
@@ -2273,14 +2273,14 @@ func TestEntityValidateCommandRejectsDuplicateRouteSlugsAcrossApps(t *testing.T)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
 	writeCLIApp(t, filepath.Join(root, "apps", "support"), "support")
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "customer.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "customer"), `
 label: Customer
 fields:
   - name: title
     label: Title
     type: text
 `)
-	duplicatePath := filepath.Join(root, "apps", "support", "entities", "customer.yml")
+	duplicatePath := cliEntityPath(root, "support", "customer")
 	writeCLIEntity(t, duplicatePath, `
 label: Customer
 fields:
@@ -2295,7 +2295,7 @@ fields:
 	if err == nil {
 		t.Fatal("Run(entity validate) error = nil, want duplicate entity error")
 	}
-	wantPath := filepath.ToSlash(filepath.Join("apps", "support", "entities", "customer.yml")) + ":1"
+	wantPath := filepath.ToSlash(filepath.Join("apps", "support", "entities", "customer", "entity.yml")) + ":1"
 	for _, want := range []string{wantPath, `app "support"`, `entity "customer"`, `route slug "customer" conflicts`, `set route.slug`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
@@ -2309,7 +2309,7 @@ func TestEntityValidateCommandRejectsReservedRootSlugs(t *testing.T) {
 	t.Chdir(root)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	entityPath := filepath.Join(root, "apps", "sales", "entities", "login.yml")
+	entityPath := cliEntityPath(root, "sales", "login")
 	writeCLIEntity(t, entityPath, `
 label: Login
 fields:
@@ -2324,7 +2324,7 @@ fields:
 	if err == nil {
 		t.Fatal("Run(entity validate) error = nil, want reserved slug error")
 	}
-	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "login.yml")) + ":1"
+	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "login", "entity.yml")) + ":1"
 	for _, want := range []string{wantPath, `app "sales"`, `entity "login"`, `reserved root route slug "login"`, `set route.slug`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
@@ -2338,7 +2338,7 @@ func TestEntityValidateCommandRejectsUnknownHookEntityFile(t *testing.T) {
 	t.Chdir(root)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "lead"), `
 label: Lead
 fields:
   - name: title
@@ -2369,7 +2369,7 @@ func TestDoctorReportsEntityMetadataFailureForInvalidRouteSlug(t *testing.T) {
 	t.Chdir(root)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "api.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "api"), `
 label: API
 route:
   slug: BadSlug
@@ -3151,6 +3151,10 @@ func writeCLIEntity(t *testing.T, path string, body string) {
 	if err := os.WriteFile(path, []byte(body+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
+}
+
+func cliEntityPath(root string, app string, entity string) string {
+	return filepath.Join(root, "apps", app, "entities", entity, "entity.yml")
 }
 
 func writeEditorScript(t *testing.T, root string, body string) string {
