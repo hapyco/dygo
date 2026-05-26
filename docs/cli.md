@@ -1,6 +1,6 @@
 # dygo CLI
 
-Source checked from `internal/cli` on 2026-05-25.
+This document describes the current and proposed dygo CLI surface for the CLI cleanup work. This is a target CLI surface; commands may be implemented incrementally during CLI cleanup.
 
 ## Root
 
@@ -135,8 +135,6 @@ Secret names support root keys and dot-separated YAML paths, such as `DATABASE_U
 
 - `dygo worker` - Defer until the durable job runtime is designed and implemented.
 - `dygo scheduler` - Defer until schedule metadata and recurring job runtime exist.
-- `dygo site` - Defer until site and tenant lifecycle storage/config are designed.
-- `dygo generate` - Defer until project and metadata conventions settle enough for stable scaffolding.
 
 ## Out Of Band Binary Updates
 
@@ -169,6 +167,10 @@ dygo upgrade
 - Remove public `dygo db schema` commands - `dygo db migrate` and `dygo db prune` refresh `db/schema.sql`, and `dygo doctor` should report whether the schema snapshot is missing or out of date.
 - Remove public `dygo db schema dump` - Manual dumping can hide drift by making the snapshot match an unintended database state.
 - Remove public `dygo patch` commands - Patches are part of the `dygo db migrate` workflow. Add direct patch controls later only if debugging or recovery needs a lower-level expert command.
+- Replace plural command groups with singular command groups - `dygo apps` becomes `dygo app`, `dygo entities` becomes `dygo entity`, `dygo fixtures` becomes `dygo fixture`, `dygo hooks` becomes `dygo hook`, and `dygo secrets` becomes `dygo secret`.
+- Replace `dygo hooks generate <app> <entity>` with `dygo generate hook <app>/<entity>` - Source scaffolding belongs under `dygo generate`, and app/entity targets use slash identity.
+- Use `dygo generate` as the home for source scaffolding - Avoid per-resource `generate` subcommands such as `dygo hook generate`.
+- Do not add `dygo generate resource` - `dygo generate entity` owns the standard Entity bundle.
 - Keep explicit `dygo fixture` commands - `dygo db migrate` applies fixtures during the normal app-state workflow, while `dygo fixture apply`, `validate`, and `export` support app-author tooling and debugging.
 - Remove `dygo upgrade --cli-only` - Binary updates are handled out of band through installer, package manager, or Go toolchain.
 - Remove `dygo upgrade --install-dir` - Install location belongs to the installer, not the project upgrade command.
@@ -178,9 +180,10 @@ dygo upgrade
 ## Environment Safety Rule
 
 - `--env` defaults to `development`.
-- Write commands print the plan and prompt interactively by default when the action benefits from review.
-- `--yes` skips the interactive prompt for agents, scripts, and CI.
-- `--dry-run` prints the same plan and exits without writing or prompting.
+- Runtime and database write commands print the plan and prompt interactively by default when the action benefits from review.
+- `--yes` skips runtime write prompts for agents, scripts, and CI.
+- `--dry-run` prints the same runtime write plan and exits without writing or prompting.
+- Generator and scaffold writes are non-interactive by default: they write when there are no conflicts, support `--dry-run` for previews, support `--force` for dygo-generated files only, and fail on custom-file conflicts.
 - Destructive commands can run in `development`.
 - Protected environments such as `staging` and `production` block destructive commands unless `--force` is passed.
 - Read-only commands such as `--dry-run`, `check`, and validation commands never need `--force`.
