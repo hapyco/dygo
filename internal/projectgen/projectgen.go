@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode"
 
+	scaffold "github.com/hapyco/dygo/internal/generate"
 	"github.com/hapyco/dygo/internal/project"
 	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/hapyco/dygo/internal/shape"
@@ -265,11 +266,6 @@ func installStudioCache(root string, options Options, dep dygoDependency) (bool,
 
 func writeProjectFiles(root string, name string, label string, modulePath string, dep dygoDependency) error {
 	dirs := []string{
-		shape.AppEntitiesPath(name),
-		shape.AppCollectionDirPath(name),
-		shape.AppJobsPath(name),
-		shape.AppPagesPath(name),
-		shape.AppReportsPath(name),
 		shape.ConfigSecretsDir,
 		shape.DatabaseDir,
 		shape.DocsDir,
@@ -290,21 +286,21 @@ func writeProjectFiles(root string, name string, label string, modulePath string
 		return err
 	}
 	files := map[string]string{
-		".gitignore":                 gitignoreSource(),
-		"README.md":                  readmeSource(label),
-		project.MarkerFile:           configSource(name),
-		"go.mod":                     goModSource(modulePath, dep),
-		"cmd/dygo/main.go":           runner,
-		shape.SchemaSnapshot:         schemaSource(),
-		"docs/index.md":              docsIndexSource(label),
-		shape.AppManifestPath(name):  appManifestSource(name, label),
-		shape.AppRolesPath(name):     "roles: []\n",
-		shape.AppSchedulesPath(name): schedulesSource(),
+		".gitignore":         gitignoreSource(),
+		"README.md":          readmeSource(label),
+		project.MarkerFile:   configSource(name),
+		"go.mod":             goModSource(modulePath, dep),
+		"cmd/dygo/main.go":   runner,
+		shape.SchemaSnapshot: schemaSource(),
+		"docs/index.md":      docsIndexSource(label),
 	}
 	for path, source := range files {
 		if err := writeProjectFile(root, path, []byte(source), 0o644); err != nil {
 			return err
 		}
+	}
+	if _, err := scaffold.App(scaffold.Options{Root: root}, name); err != nil {
+		return fmt.Errorf("generate default app skeleton: %w", err)
 	}
 	return nil
 }
@@ -373,14 +369,6 @@ func main() {
 	return string(formatted), nil
 }
 
-func appManifestSource(name string, label string) string {
-	return fmt.Sprintf(`name: %s
-label: %s
-version: 0.1.0
-description: %s app.
-`, name, label, label)
-}
-
 func configSource(name string) string {
 	return fmt.Sprintf(`name: %s
 server:
@@ -438,10 +426,6 @@ Do not commit `+"`.dygo/secrets/master.key`"+`.
 
 func docsIndexSource(label string) string {
 	return "# " + label + " Docs\n"
-}
-
-func schedulesSource() string {
-	return "schedules: []\n"
 }
 
 func schemaSource() string {
