@@ -82,7 +82,7 @@ func ParseEnvironment(value string) (Environment, error) {
 	}
 }
 
-// SupportedEnvironments returns the environments managed by dygo secrets.
+// SupportedEnvironments returns the environments managed by dygo secret.
 func SupportedEnvironments() []Environment {
 	return []Environment{
 		EnvironmentDevelopment,

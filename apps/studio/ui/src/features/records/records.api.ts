@@ -90,7 +90,7 @@ function recordErrorMessage(payload: ApiErrorEnvelope): string {
     case 'not_found':
       return payload.error.message ?? 'Studio could not find this record list.'
     case 'schema_not_ready':
-      return 'Record metadata is not ready yet. Run dygo migrate, then try again.'
+      return 'Record metadata is not ready yet. Run dygo db migrate, then try again.'
     default:
       return payload.error?.message ?? 'Studio could not load records.'
   }

@@ -97,7 +97,7 @@ function metadataErrorMessage(payload: ApiErrorEnvelope): string {
     case 'not_found':
       return payload.error.message ?? 'Studio could not find this entity.'
     case 'schema_not_ready':
-      return 'Studio metadata is not ready yet. Run dygo migrate, then try again.'
+      return 'Studio metadata is not ready yet. Run dygo db migrate, then try again.'
     default:
       return payload.error?.message ?? 'Studio could not load metadata.'
   }

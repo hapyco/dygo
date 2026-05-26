@@ -96,7 +96,7 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestSetupAdminCommand(t *testing.T) {
+func TestSetupCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -111,20 +111,20 @@ func TestSetupAdminCommand(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runWithServicesAndSetup(context.Background(), []string{"setup", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
 	if err != nil {
-		t.Fatalf("Run(setup admin) error = %v, want nil", err)
+		t.Fatalf("Run(setup) error = %v, want nil", err)
 	}
 	if stdout.String() != "administrator account ready: admin@example.com (development)\n" {
-		t.Fatalf("setup admin stdout = %q, want ready output", stdout.String())
+		t.Fatalf("setup stdout = %q, want ready output", stdout.String())
 	}
 	if fake.databaseURL != databaseURL {
-		t.Fatalf("setup admin database URL = %q, want %q", fake.databaseURL, databaseURL)
+		t.Fatalf("setup database URL = %q, want %q", fake.databaseURL, databaseURL)
 	}
 	if fake.input.Email != "admin@example.com" || fake.input.FullName != "Admin User" || fake.input.Password != "secret" {
-		t.Fatalf("setup admin input = %+v, want flag/stdin values", fake.input)
+		t.Fatalf("setup input = %+v, want flag/stdin values", fake.input)
 	}
 }
 
-func TestSetupAdminCommandUsesSelectedEnvironment(t *testing.T) {
+func TestSetupCommandUsesSelectedEnvironment(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -139,17 +139,17 @@ func TestSetupAdminCommandUsesSelectedEnvironment(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runWithServicesAndSetup(context.Background(), []string{"setup", "--env", "staging", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
 	if err != nil {
-		t.Fatalf("Run(setup admin --env staging) error = %v, want nil", err)
+		t.Fatalf("Run(setup --env staging) error = %v, want nil", err)
 	}
 	if stdout.String() != "administrator account ready: admin@example.com (staging)\n" {
-		t.Fatalf("setup admin stdout = %q, want staging output", stdout.String())
+		t.Fatalf("setup stdout = %q, want staging output", stdout.String())
 	}
 	if fake.databaseURL != databaseURL {
-		t.Fatalf("setup admin database URL = %q, want %q", fake.databaseURL, databaseURL)
+		t.Fatalf("setup database URL = %q, want %q", fake.databaseURL, databaseURL)
 	}
 }
 
-func TestSetupAdminCommandPromptsForMissingValues(t *testing.T) {
+func TestSetupCommandPromptsForMissingValues(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -163,19 +163,19 @@ func TestSetupAdminCommandPromptsForMissingValues(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runWithServicesAndSetup(context.Background(), []string{"setup"}, strings.NewReader("admin@example.com\nAdmin User\nsecret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
 	if err != nil {
-		t.Fatalf("Run(setup admin prompts) error = %v, want nil", err)
+		t.Fatalf("Run(setup prompts) error = %v, want nil", err)
 	}
 	for _, want := range []string{"Admin email:", "Admin full name:", "Admin password:"} {
 		if !strings.Contains(stderr.String(), want) {
-			t.Fatalf("setup admin stderr = %q, want prompt %q", stderr.String(), want)
+			t.Fatalf("setup stderr = %q, want prompt %q", stderr.String(), want)
 		}
 	}
 	if fake.input.Password != "secret" {
-		t.Fatalf("setup admin password = %q, want stdin password", fake.input.Password)
+		t.Fatalf("setup password = %q, want stdin password", fake.input.Password)
 	}
 }
 
-func TestSetupAdminCommandRequiresDatabaseSecret(t *testing.T) {
+func TestSetupCommandRequiresDatabaseSecret(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -187,11 +187,11 @@ func TestSetupAdminCommandRequiresDatabaseSecret(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runWithServicesAndSetup(context.Background(), []string{"setup", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
 	if err == nil {
-		t.Fatal("Run(setup admin) error = nil, want missing secret error")
+		t.Fatal("Run(setup) error = nil, want missing secret error")
 	}
 	for _, want := range []string{`read database secret "DATABASE_URL" for development`, `secret "DATABASE_URL" is not defined`} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Run(setup admin) error = %q, want substring %q", err.Error(), want)
+			t.Fatalf("Run(setup) error = %q, want substring %q", err.Error(), want)
 		}
 	}
 	if fake.calls != 0 {
@@ -199,7 +199,7 @@ func TestSetupAdminCommandRequiresDatabaseSecret(t *testing.T) {
 	}
 }
 
-func TestSetupAdminCommandReturnsRunnerError(t *testing.T) {
+func TestSetupCommandReturnsRunnerError(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -211,11 +211,11 @@ func TestSetupAdminCommandReturnsRunnerError(t *testing.T) {
 	var stderr bytes.Buffer
 	err := runWithServicesAndSetup(context.Background(), []string{"setup", "--email", "admin@example.com", "--full-name", "Admin User", "--password-stdin"}, strings.NewReader("secret\n"), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, fake)
 	if err == nil {
-		t.Fatal("Run(setup admin) error = nil, want runner error")
+		t.Fatal("Run(setup) error = nil, want runner error")
 	}
 	for _, want := range []string{"setup administrator account", "auth schema is not ready"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Run(setup admin) error = %q, want substring %q", err.Error(), want)
+			t.Fatalf("Run(setup) error = %q, want substring %q", err.Error(), want)
 		}
 	}
 }

@@ -66,7 +66,7 @@ Known mismatches against the target:
 - Public docs must describe only the canonical shape.
 - First-party metadata should be migrated to canonical paths in this PR.
 - Old generated-project layouts and old public command paths should be removed instead of preserved.
-- If old path forms are encountered, validation should fail with a clear final-shape error instead of loading them.
+- Old path forms should not be loaded or preserved. Do not add legacy-specific rejection code for shapes that never shipped; generic final-shape errors are enough when a canonical bundle is malformed.
 
 ## Phase 1 - Centralize Target Shape
 
@@ -157,7 +157,8 @@ TODO:
   - `entities/_collections/<collection>.yml`
   - `entities/_collections/<collection>/entity.yml`
 - Update path-derived naming so `entity.yml` derives the Entity name from the parent folder.
-- Remove old flat Entity readers; direct `entities/*.yml`, `entities/<entity>/<entity>.yml`, and `entities/collections/` paths should fail with final-shape guidance.
+- Remove old flat Entity readers; direct `entities/*.yml`, `entities/<entity>/<entity>.yml`, and `entities/collections/` paths should not be discovered.
+- Do not add legacy-specific rejection checks for old Entity paths; treat canonical Entity bundles as the only supported shape.
 - Migrate first-party Core metadata under `apps/core/entities/` to canonical bundle paths.
 - Update catalog validation messages to mention `_collections` and `entity.yml`.
 - Update tests in `internal/entity/catalog/` and `internal/entity/schema/`.
@@ -519,7 +520,7 @@ TODO:
   - `entities/<entity>/entity.yml`
   - `_collections/<collection>.yml`
   - `_collections/<collection>/entity.yml`
-  - rejection of old flat Entity and `entities/collections/` paths.
+  - malformed canonical bundles.
 - Add fixture discovery tests for Entity-bundle fixtures.
 - Add generator dry-run, force, and conflict tests.
 - Add interactive write tests for `--yes` and `--dry-run` behavior.
