@@ -47,6 +47,21 @@ func PlanProject(root string, targetVersion string) (ProjectResult, error) {
 	}, nil
 }
 
+// CheckProject compares the current project dependency with a target dygo release.
+func CheckProject(root string, targetVersion string) (ProjectResult, error) {
+	root = filepath.Clean(root)
+	current, err := ReadProjectVersion(root)
+	if err != nil {
+		return ProjectResult{}, err
+	}
+	return ProjectResult{
+		Root:           root,
+		CurrentVersion: current,
+		TargetVersion:  targetVersion,
+		WouldUpdate:    current != targetVersion,
+	}, nil
+}
+
 // UpgradeProject updates the current project dependency and dygo-managed files.
 func UpgradeProject(ctx context.Context, options ProjectOptions) (ProjectResult, error) {
 	if ctx == nil {

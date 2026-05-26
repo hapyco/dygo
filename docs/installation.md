@@ -44,13 +44,13 @@ irm https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.ps1 | iex
 
 ## Upgrades
 
-Upgrade the managed CLI:
+Update the dygo binary out of band with the installer:
 
 ```sh
-dygo upgrade
+curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh | sh
 ```
 
-Inside a generated dygo project, `dygo upgrade` also updates the project `go.mod` dygo dependency, dygo-managed generated runner files, and the cached Studio UI assets when the release binary includes them. Project upgrades refuse dirty git worktrees.
+Inside a generated dygo project, `dygo upgrade` updates the project `go.mod` dygo dependency, dygo-managed generated runner files, and the cached Studio UI assets when the installed dygo binary includes them. Project upgrades refuse dirty git worktrees.
 
 Useful upgrade modes:
 
@@ -58,6 +58,5 @@ Useful upgrade modes:
 dygo upgrade --check
 dygo upgrade --dry-run
 dygo upgrade --to v0.1.0
-dygo upgrade --cli-only
-dygo upgrade --project-only
+dygo upgrade --yes
 ```

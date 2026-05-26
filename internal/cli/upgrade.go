@@ -15,24 +15,19 @@ import (
 var runUpgrade = upgrade.Run
 
 func newUpgradeCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
-	options := upgrade.Options{InstallDir: upgrade.DefaultInstallDir}
+	var options upgrade.Options
 
 	cmd := &cobra.Command{
 		Use:   "upgrade",
-		Short: "Upgrade dygo CLI and the current project",
+		Short: "Upgrade the current dygo project",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if options.CLIOnly && options.ProjectOnly {
-				return fmt.Errorf("--cli-only and --project-only cannot be used together")
-			}
 			wd, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("detect working directory: %w", err)
 			}
-			executable, _ := os.Executable()
 			options.CurrentVersion = currentVersion()
 			options.WorkingDir = wd
-			options.ExecutablePath = executable
 			options.Confirm = streamConfirmer(stdin, stderr)
 
 			result, err := runUpgrade(ctx, options)
@@ -55,11 +50,8 @@ func newUpgradeCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 
 	cmd.Flags().BoolVar(&options.Check, "check", false, "Check available upgrades without writing files")
 	cmd.Flags().StringVar(&options.TargetVersion, "to", "", "Upgrade to a specific dygo version")
-	cmd.Flags().BoolVar(&options.CLIOnly, "cli-only", false, "Only upgrade the dygo CLI binary")
-	cmd.Flags().BoolVar(&options.ProjectOnly, "project-only", false, "Only upgrade the current dygo project")
 	cmd.Flags().BoolVar(&options.DryRun, "dry-run", false, "Show planned upgrade work without writing files")
 	cmd.Flags().BoolVar(&options.Yes, "yes", false, "Skip interactive upgrade confirmations")
-	cmd.Flags().StringVar(&options.InstallDir, "install-dir", options.InstallDir, "Directory for the managed dygo binary")
 
 	return cmd
 }
