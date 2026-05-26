@@ -44,22 +44,22 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name:       "prints no apps message",
-			args:       []string{"apps", "list"},
+			args:       []string{"app", "list"},
 			wantStdout: "No apps found.",
 		},
 		{
 			name:       "validates empty app set",
-			args:       []string{"apps", "validate"},
+			args:       []string{"app", "validate"},
 			wantStdout: "0 apps are valid",
 		},
 		{
 			name:       "validates empty entity set",
-			args:       []string{"entities", "validate"},
+			args:       []string{"entity", "validate"},
 			wantStdout: "0 entities are valid",
 		},
 		{
 			name:       "prints no apps message for entity list",
-			args:       []string{"entities", "list"},
+			args:       []string{"entity", "list"},
 			wantStdout: "No apps found.",
 		},
 		{
@@ -1816,7 +1816,7 @@ func TestSchemaPruneConfirmNoopOutput(t *testing.T) {
 	}
 }
 
-func TestAppsListCommand(t *testing.T) {
+func TestAppListCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
@@ -1841,20 +1841,20 @@ func TestAppsListCommand(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"apps", "list"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"app", "list"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
-		t.Fatalf("Run(apps list) error = %v, want nil", err)
+		t.Fatalf("Run(app list) error = %v, want nil", err)
 	}
 
 	output := stdout.String()
 	for _, want := range []string{"NAME", "VERSION", "LABEL", "core", "Core", "sales", "Sales", "0.1.0"} {
 		if !strings.Contains(output, want) {
-			t.Fatalf("apps list stdout = %q, want substring %q", output, want)
+			t.Fatalf("app list stdout = %q, want substring %q", output, want)
 		}
 	}
 }
 
-func TestAppsValidateCommand(t *testing.T) {
+func TestAppValidateCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
@@ -1879,16 +1879,16 @@ func TestAppsValidateCommand(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"apps", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"app", "validate"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
-		t.Fatalf("Run(apps validate) error = %v, want nil", err)
+		t.Fatalf("Run(app validate) error = %v, want nil", err)
 	}
 	if stdout.String() != "2 apps are valid\n" {
-		t.Fatalf("apps validate stdout = %q, want success count", stdout.String())
+		t.Fatalf("app validate stdout = %q, want success count", stdout.String())
 	}
 }
 
-func TestAppsValidateCommandRejectsInvalidAppSet(t *testing.T) {
+func TestAppValidateCommandRejectsInvalidAppSet(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
@@ -1904,27 +1904,27 @@ func TestAppsValidateCommandRejectsInvalidAppSet(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"apps", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"app", "validate"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil {
-		t.Fatal("Run(apps validate) error = nil, want missing dependency error")
+		t.Fatal("Run(app validate) error = nil, want missing dependency error")
 	}
 	if !strings.Contains(err.Error(), "unknown app") {
-		t.Fatalf("Run(apps validate) error = %q, want unknown app", err.Error())
+		t.Fatalf("Run(app validate) error = %q, want unknown app", err.Error())
 	}
 }
 
-func TestAppsValidateCommandRejectsMissingProjectRoot(t *testing.T) {
+func TestAppValidateCommandRejectsMissingProjectRoot(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"apps", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"app", "validate"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil {
-		t.Fatal("Run(apps validate) error = nil, want missing project root error")
+		t.Fatal("Run(app validate) error = nil, want missing project root error")
 	}
 	if !strings.Contains(err.Error(), "no dygo project root found") {
-		t.Fatalf("Run(apps validate) error = %q, want missing project root", err.Error())
+		t.Fatalf("Run(app validate) error = %q, want missing project root", err.Error())
 	}
 }
 
@@ -2078,7 +2078,7 @@ database:
 	}
 }
 
-func TestEntitiesValidateCommand(t *testing.T) {
+func TestEntityValidateCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
@@ -2103,16 +2103,16 @@ fields:
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"entities", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"entity", "validate"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
-		t.Fatalf("Run(entities validate) error = %v, want nil", err)
+		t.Fatalf("Run(entity validate) error = %v, want nil", err)
 	}
 	if stdout.String() != "2 entities are valid\n" {
-		t.Fatalf("entities validate stdout = %q, want success count", stdout.String())
+		t.Fatalf("entity validate stdout = %q, want success count", stdout.String())
 	}
 }
 
-func TestEntitiesListCommand(t *testing.T) {
+func TestEntityListCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 
@@ -2139,18 +2139,103 @@ fields:
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"entities", "list"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"entity", "list"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
-		t.Fatalf("Run(entities list) error = %v, want nil", err)
+		t.Fatalf("Run(entity list) error = %v, want nil", err)
 	}
 
 	want := "core\n  (no entities)\nsales\n  - company\n  - lead\n"
 	if stdout.String() != want {
-		t.Fatalf("entities list stdout = %q, want %q", stdout.String(), want)
+		t.Fatalf("entity list stdout = %q, want %q", stdout.String(), want)
 	}
 }
 
-func TestEntitiesValidateCommandRejectsInvalidTargets(t *testing.T) {
+func TestEntityShowCommand(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company", "entity.yml"), `
+label: Company
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead", "entity.yml"), `
+label: Lead
+fields:
+  - name: company
+    label: Company
+    type: link
+    options:
+      entity: company
+  - name: notes
+    label: Notes
+    type: text
+`)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"entity", "show", "sales/lead"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(entity show sales/lead) error = %v, want nil", err)
+	}
+	want := "entity: sales/lead\nkind: normal\npath: apps/sales/entities/lead/entity.yml\nroute: /lead\nnaming: random\nfields:\n  - company: link -> sales/company\n  - notes: text\n"
+	if stdout.String() != want {
+		t.Fatalf("entity show stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestEntityGraphCommand(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company", "entity.yml"), `
+label: Company
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead", "entity.yml"), `
+label: Lead
+fields:
+  - name: company
+    label: Company
+    type: link
+    options:
+      entity: company
+  - name: contacts
+    label: Contacts
+    type: collection
+    options:
+      entity: lead-contact
+`)
+	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "_collections", "lead-contact.yml"), `
+label: Lead Contact
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"entity", "graph", "sales/lead"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(entity graph sales/lead) error = %v, want nil", err)
+	}
+	want := "sales/lead (normal)\n  -> link company -> sales/company\n  -> collection contacts -> sales/lead-contact\n"
+	if stdout.String() != want {
+		t.Fatalf("entity graph stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestEntityValidateCommandRejectsInvalidTargets(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
@@ -2169,19 +2254,19 @@ fields:
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"entities", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"entity", "validate"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil {
-		t.Fatal("Run(entities validate) error = nil, want missing target error")
+		t.Fatal("Run(entity validate) error = nil, want missing target error")
 	}
 	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "lead.yml")) + ":5"
 	for _, want := range []string{wantPath, `field "company"`, `unknown entity target "company"`} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
+			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
 		}
 	}
 }
 
-func TestEntitiesValidateCommandRejectsDuplicateRouteSlugsAcrossApps(t *testing.T) {
+func TestEntityValidateCommandRejectsDuplicateRouteSlugsAcrossApps(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
@@ -2206,19 +2291,19 @@ fields:
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"entities", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"entity", "validate"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil {
-		t.Fatal("Run(entities validate) error = nil, want duplicate entity error")
+		t.Fatal("Run(entity validate) error = nil, want duplicate entity error")
 	}
 	wantPath := filepath.ToSlash(filepath.Join("apps", "support", "entities", "customer.yml")) + ":1"
 	for _, want := range []string{wantPath, `app "support"`, `entity "customer"`, `route slug "customer" conflicts`, `set route.slug`} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
+			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
 		}
 	}
 }
 
-func TestEntitiesValidateCommandRejectsReservedRootSlugs(t *testing.T) {
+func TestEntityValidateCommandRejectsReservedRootSlugs(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
@@ -2235,19 +2320,19 @@ fields:
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"entities", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"entity", "validate"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil {
-		t.Fatal("Run(entities validate) error = nil, want reserved slug error")
+		t.Fatal("Run(entity validate) error = nil, want reserved slug error")
 	}
 	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "login.yml")) + ":1"
 	for _, want := range []string{wantPath, `app "sales"`, `entity "login"`, `reserved root route slug "login"`, `set route.slug`} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
+			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
 		}
 	}
 }
 
-func TestEntitiesValidateCommandRejectsUnknownHookEntityFile(t *testing.T) {
+func TestEntityValidateCommandRejectsUnknownHookEntityFile(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	t.Chdir(root)
@@ -2265,14 +2350,14 @@ fields:
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"entities", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"entity", "validate"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil {
-		t.Fatal("Run(entities validate) error = nil, want hook entity error")
+		t.Fatal("Run(entity validate) error = nil, want hook entity error")
 	}
 	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "hooks", "customer.go"))
 	for _, want := range []string{wantPath, `app "sales"`, `hook file "customer"`, "known Entity name"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("Run(entities validate) error = %q, want substring %q", err.Error(), want)
+			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
 		}
 	}
 }
@@ -3052,7 +3137,8 @@ func writeCLIEntity(t *testing.T, path string, body string) {
 	t.Helper()
 
 	body = strings.TrimSpace(body)
-	if !strings.Contains(body, "\nname:") && !strings.HasPrefix(body, "name:") {
+	isCollection := strings.Contains(filepath.ToSlash(path), "/_collections/")
+	if !isCollection && !strings.Contains(body, "\nname:") && !strings.HasPrefix(body, "name:") {
 		if strings.Contains(body, "\nroute:") {
 			body = strings.Replace(body, "\nroute:", "\nname:\n  strategy: random\nroute:", 1)
 		} else {

@@ -9,9 +9,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newAppsCommand(stdout io.Writer) *cobra.Command {
+func newAppCommand(stdout io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "apps",
+		Use:   "app",
 		Short: "Manage dygo apps",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
