@@ -5,7 +5,7 @@
 The server address comes from:
 
 ```txt
-configs/dygo.yaml
+dygo.yml
 ```
 
 The default address is:
@@ -14,17 +14,17 @@ The default address is:
 127.0.0.1:6790
 ```
 
-`dygo serve` loads the development database credentials by default:
+`dygo dev` loads the development database credentials by default and starts the local development experience:
 
 ```sh
-go run ./cmd/dygo serve
+go run ./cmd/dygo dev
 ```
 
-In a source checkout with `apps/studio/ui/package.json`, the same command also starts Studio's development asset server internally and proxies Studio pages through dygo. The browser-facing address stays `http://127.0.0.1:6790/`, so Studio and `/api/v1/...` share one origin during development.
+In a source checkout with `apps/studio/ui/package.json`, `dygo dev` starts Studio's development asset server internally and proxies Studio pages through dygo. The browser-facing address stays `http://127.0.0.1:6790/`, so Studio and `/api/v1/...` share one origin during development.
 
 Generated projects serve Studio from `.dygo/apps/studio/ui/dist` when that cache exists. Release builds also include bundled Studio assets, and `dygo new` / `dygo upgrade` refresh the generated-project cache when the running dygo binary has those assets.
 
-If no Studio dev server, generated-project cache, or bundled release assets are available, `dygo serve` exits before listening instead of serving an API-only site.
+`dygo serve` starts the runtime server and uses generated-project or bundled Studio assets. If no generated-project cache or bundled release assets are available, `dygo serve` exits before listening instead of serving an API-only site.
 
 Use another encrypted environment with `--env`:
 
@@ -32,10 +32,10 @@ Use another encrypted environment with `--env`:
 go run ./cmd/dygo serve --env staging
 ```
 
-Use `--studio-dev-url` only when the Studio asset server is already running somewhere else:
+Use `dygo dev --studio-dev-url` only when the Studio asset server is already running somewhere else:
 
 ```sh
-go run ./cmd/dygo serve --studio-dev-url http://127.0.0.1:6791
+go run ./cmd/dygo dev --studio-dev-url http://127.0.0.1:6791
 ```
 
 The server opens and pings PostgreSQL before it starts listening. It does not run `dygo migrate` automatically; run metadata sync before serving runtime metadata.
@@ -157,8 +157,8 @@ Administrator users are allowed by the engine before flat role permissions are c
 
 Stop the server with `Ctrl-C`.
 
-The CLI listens for interrupt and termination signals, asks the HTTP server to shut down cleanly, and stops the auto-started Studio dev server when one was started by `dygo serve`.
+The CLI listens for interrupt and termination signals, asks the HTTP server to shut down cleanly, and stops the auto-started Studio dev server when one was started by `dygo dev`.
 
 ## Boundaries
 
-The current server includes health, session auth, read-only metadata APIs, generic Record CRUD APIs with parent-owned collection rows, Entity permission enforcement for Records, a development proxy for Studio, and static serving for generated-project or bundled Studio assets. The server does not include per-Entity controllers, row-level sharing rules, workflow hooks, or audit logging yet.
+The current server includes health, session auth, read-only metadata APIs, generic Record CRUD APIs with parent-owned collection rows, Entity permission enforcement for Records, static serving for generated-project or bundled Studio assets, and a development proxy for Studio when run through `dygo dev`. The server does not include per-Entity controllers, row-level sharing rules, workflow hooks, or audit logging yet.

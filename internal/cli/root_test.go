@@ -470,7 +470,7 @@ func TestRunWithOptionsPassesRecordHooksToServe(t *testing.T) {
 	}
 }
 
-func TestServeCommandConfiguresStudioDevProxy(t *testing.T) {
+func TestDevCommandConfiguresStudioDevProxy(t *testing.T) {
 	previousStarter := startStudioDevServer
 	startStudioDevServer = func(context.Context, string, io.Writer, io.Writer) (string, studioDevStop, error) {
 		return "", nil, errors.New("auto Studio starter should not run when --studio-dev-url is provided")
@@ -489,7 +489,7 @@ func TestServeCommandConfiguresStudioDevProxy(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	var gotOptions server.Options
-	err := run(context.Background(), []string{"serve", "--studio-dev-url", "http://127.0.0.1:6791"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, options server.Options) error {
+	err := run(context.Background(), []string{"dev", "--studio-dev-url", "http://127.0.0.1:6791"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, options server.Options) error {
 		gotOptions = options
 		if options.OnReady != nil {
 			return options.OnReady(options.Address)
@@ -497,14 +497,14 @@ func TestServeCommandConfiguresStudioDevProxy(t *testing.T) {
 		return nil
 	}, noopDatabaseChecker)
 	if err != nil {
-		t.Fatalf("Run(serve --studio-dev-url) error = %v, want nil", err)
+		t.Fatalf("Run(dev --studio-dev-url) error = %v, want nil", err)
 	}
 	if gotOptions.Studio == nil {
-		t.Fatal("serve Studio handler = nil, want dev proxy handler")
+		t.Fatal("dev Studio handler = nil, want dev proxy handler")
 	}
 }
 
-func TestServeCommandAutoStartsStudioDevServer(t *testing.T) {
+func TestDevCommandAutoStartsStudioDevServer(t *testing.T) {
 	previousStarter := startStudioDevServer
 	started := 0
 	stopped := 0
@@ -531,7 +531,7 @@ func TestServeCommandAutoStartsStudioDevServer(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	var gotOptions server.Options
-	err := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, options server.Options) error {
+	err := run(context.Background(), []string{"dev"}, strings.NewReader(""), &stdout, &stderr, func(_ context.Context, options server.Options) error {
 		gotOptions = options
 		if options.OnReady != nil {
 			return options.OnReady(options.Address)
@@ -539,7 +539,7 @@ func TestServeCommandAutoStartsStudioDevServer(t *testing.T) {
 		return nil
 	}, noopDatabaseChecker)
 	if err != nil {
-		t.Fatalf("Run(serve) error = %v, want nil", err)
+		t.Fatalf("Run(dev) error = %v, want nil", err)
 	}
 	if started != 1 {
 		t.Fatalf("Studio starter calls = %d, want 1", started)
@@ -551,10 +551,10 @@ func TestServeCommandAutoStartsStudioDevServer(t *testing.T) {
 		t.Fatalf("Studio starter root = %q, want %q", gotRoot, root)
 	}
 	if gotOptions.Studio == nil {
-		t.Fatal("serve Studio handler = nil, want auto dev proxy handler")
+		t.Fatal("dev Studio handler = nil, want auto dev proxy handler")
 	}
-	if !strings.Contains(stdout.String(), "dygo serving on 127.0.0.1:6790") {
-		t.Fatalf("serve stdout = %q, want ready output", stdout.String())
+	if !strings.Contains(stdout.String(), "dygo dev serving on 127.0.0.1:6790") {
+		t.Fatalf("dev stdout = %q, want ready output", stdout.String())
 	}
 }
 
@@ -641,14 +641,6 @@ func TestServeCommandFailsWhenStudioAssetsAreUnavailable(t *testing.T) {
 	})
 	defer restoreEmbedded()
 
-	previousStarter := startStudioDevServer
-	startStudioDevServer = func(context.Context, string, io.Writer, io.Writer) (string, studioDevStop, error) {
-		return "", nil, nil
-	}
-	defer func() {
-		startStudioDevServer = previousStarter
-	}()
-
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "dygo.yml"), []byte("name: test\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
@@ -667,7 +659,7 @@ func TestServeCommandFailsWhenStudioAssetsAreUnavailable(t *testing.T) {
 	if err == nil {
 		t.Fatal("Run(serve) error = nil, want missing Studio assets error")
 	}
-	for _, want := range []string{"resolve Studio UI", "Studio UI assets are unavailable", ".dygo/apps/studio/ui/dist", "--studio-dev-url"} {
+	for _, want := range []string{"resolve Studio UI", "Studio UI assets are unavailable", ".dygo/apps/studio/ui/dist", "dygo dev"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(serve) error = %q, want substring %q", err.Error(), want)
 		}

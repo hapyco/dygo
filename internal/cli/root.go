@@ -168,6 +168,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newUpgradeCommand(ctx, stdin, stdout, stderr))
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDoctorCommand(ctx, stdout))
+	root.AddCommand(newDevCommand(ctx, stdout, stderr, serve, recordHooks))
 	root.AddCommand(newServeCommand(ctx, stdout, stderr, serve, recordHooks))
 	root.AddCommand(newDBCommand(ctx, stdout, database))
 	root.AddCommand(newMigrateCommand(ctx, stdout, sync))
@@ -253,65 +254,31 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 
 func newServeCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRunner, recordHooks *db.RecordHookRegistry) *cobra.Command {
 	envName := "development"
-	studioDevURL := ""
 
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the dygo server",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			_, root, databaseURL, err := databaseInputs(envName)
-			if err != nil {
-				return err
-			}
-			cfg, err := config.Load(root)
-			if err != nil {
-				return fmt.Errorf("load config: %w", err)
-			}
-			studioURL := studioDevURL
-			var stopStudio studioDevStop
-			if studioURL == "" {
-				var err error
-				studioURL, stopStudio, err = startStudioDevServer(ctx, root, stdout, stderr)
-				if err != nil {
-					return err
-				}
-			}
-			if stopStudio != nil {
-				defer func() {
-					_ = stopStudio()
-				}()
-			}
-			var studioHandler http.Handler
-			if studioURL != "" {
-				handler, err := server.NewStudioDevProxy(studioURL)
-				if err != nil {
-					return err
-				}
-				studioHandler = handler
-			} else {
-				handler, _, err := studio.HandlerForProject(root)
-				if err != nil {
-					return fmt.Errorf("resolve Studio UI: %w", err)
-				}
-				studioHandler = handler
-			}
-			address := cfg.Server.Address()
-			if err := serve(ctx, server.Options{
-				Address:     address,
-				DatabaseURL: databaseURL,
-				RecordHooks: recordHooks,
-				Studio:      studioHandler,
-				OnReady: func(address string) error {
-					if _, err := fmt.Fprintf(stdout, "dygo serving on %s\n", address); err != nil {
-						return fmt.Errorf("write serve output: %w", err)
-					}
-					return nil
-				},
-			}); err != nil {
-				return fmt.Errorf("serve dygo: %w", err)
-			}
-			return nil
+			return runServerCommand(ctx, stdout, stderr, serve, recordHooks, envName, false, "")
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+
+	return cmd
+}
+
+func newDevCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRunner, recordHooks *db.RecordHookRegistry) *cobra.Command {
+	envName := "development"
+	studioDevURL := ""
+
+	cmd := &cobra.Command{
+		Use:   "dev",
+		Short: "Run the local dygo development server",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runServerCommand(ctx, stdout, stderr, serve, recordHooks, envName, true, studioDevURL)
 		},
 	}
 
@@ -319,6 +286,77 @@ func newServeCommand(ctx context.Context, stdout, stderr io.Writer, serve serveR
 	cmd.Flags().StringVar(&studioDevURL, "studio-dev-url", studioDevURL, "Proxy Studio UI requests to a frontend dev server")
 
 	return cmd
+}
+
+func runServerCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRunner, recordHooks *db.RecordHookRegistry, envName string, devMode bool, studioDevURL string) error {
+	_, root, databaseURL, err := databaseInputs(envName)
+	if err != nil {
+		return err
+	}
+	cfg, err := config.Load(root)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	studioHandler, stopStudio, err := studioHandlerForCommand(ctx, root, stdout, stderr, devMode, studioDevURL)
+	if err != nil {
+		return err
+	}
+	if stopStudio != nil {
+		defer func() {
+			_ = stopStudio()
+		}()
+	}
+	readyPrefix := "dygo serving"
+	if devMode {
+		readyPrefix = "dygo dev serving"
+	}
+	address := cfg.Server.Address()
+	if err := serve(ctx, server.Options{
+		Address:     address,
+		DatabaseURL: databaseURL,
+		RecordHooks: recordHooks,
+		Studio:      studioHandler,
+		OnReady: func(address string) error {
+			if _, err := fmt.Fprintf(stdout, "%s on %s\n", readyPrefix, address); err != nil {
+				return fmt.Errorf("write serve output: %w", err)
+			}
+			return nil
+		},
+	}); err != nil {
+		return fmt.Errorf("serve dygo: %w", err)
+	}
+	return nil
+}
+
+func studioHandlerForCommand(ctx context.Context, root string, stdout, stderr io.Writer, devMode bool, studioDevURL string) (http.Handler, studioDevStop, error) {
+	if !devMode {
+		handler, _, err := studio.HandlerForProject(root)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve Studio UI: %w", err)
+		}
+		return handler, nil, nil
+	}
+	studioURL := studioDevURL
+	var stopStudio studioDevStop
+	if studioURL == "" {
+		var err error
+		studioURL, stopStudio, err = startStudioDevServer(ctx, root, stdout, stderr)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if studioURL == "" {
+		handler, _, err := studio.HandlerForProject(root)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve Studio UI: %w", err)
+		}
+		return handler, nil, nil
+	}
+	handler, err := server.NewStudioDevProxy(studioURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	return handler, stopStudio, nil
 }
 
 func startStudioDevServerProcess(ctx context.Context, root string, _ io.Writer, stderr io.Writer) (string, studioDevStop, error) {

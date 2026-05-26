@@ -93,7 +93,7 @@ func TestHandlerForProjectFailsWhenAssetsUnavailable(t *testing.T) {
 	if err == nil {
 		t.Fatal("HandlerForProject() error = nil, want missing assets error")
 	}
-	for _, want := range []string{"Studio UI assets are unavailable", ProjectCachePath(root), "--studio-dev-url"} {
+	for _, want := range []string{"Studio UI assets are unavailable", ProjectCachePath(root), "dygo dev"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error = %q, want substring %q", err.Error(), want)
 		}

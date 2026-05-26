@@ -17,12 +17,12 @@ Feature code should use Dygo UI components from `ui/src/design/`. Reka UI is use
 Studio should be opened through the dygo server port:
 
 ```sh
-go run ./cmd/dygo serve
+go run ./cmd/dygo dev
 ```
 
-When the source checkout contains `apps/studio/ui/package.json`, `dygo serve` starts Studio's development asset server internally and proxies it through dygo's configured server address, normally `http://127.0.0.1:6790/`.
+When the source checkout contains `apps/studio/ui/package.json`, `dygo dev` starts Studio's development asset server internally and proxies it through dygo's configured server address, normally `http://127.0.0.1:6790/`.
 
-Use `--studio-dev-url` only when you want to run the Studio asset server yourself. `Ctrl-C` stops the dygo server and the auto-started Studio dev server together.
+Use `dygo dev --studio-dev-url` only when you want to run the Studio asset server yourself. `Ctrl-C` stops the dygo server and the auto-started Studio dev server together.
 
 ## Routes
 
