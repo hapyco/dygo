@@ -337,16 +337,25 @@ func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
 }
 
 func validateHookFiles(apps []manifest.LoadedApp, entities []LoadedEntity, problems *[]string) error {
-	entitiesByApp := map[string]map[string]struct{}{}
 	for _, entity := range entities {
-		if entitiesByApp[entity.AppName] == nil {
-			entitiesByApp[entity.AppName] = map[string]struct{}{}
+		if entity.IsCollection() {
+			continue
 		}
-		entitiesByApp[entity.AppName][entity.Entity.Name] = struct{}{}
+		hookPath := filepath.Join(filepath.Dir(entity.Path), shape.EntityHooksFile)
+		info, err := os.Stat(hookPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("stat hook file for app %q Entity %q from %s: %w", entity.AppName, entity.Entity.Name, hookPath, err)
+		}
+		if info.IsDir() || !info.Mode().IsRegular() {
+			*problems = append(*problems, hookDiagnostic(entity.AppName, hookPath, "must be a regular file"))
+		}
 	}
 
 	for _, app := range apps {
-		hooksDir := filepath.Join(app.Dir, filepath.FromSlash(app.Manifest.Paths.WithDefaults().Hooks))
+		hooksDir := filepath.Join(app.Dir, "hooks")
 		entries, err := os.ReadDir(hooksDir)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -365,14 +374,10 @@ func validateHookFiles(apps []manifest.LoadedApp, entities []LoadedEntity, probl
 			if !info.Mode().IsRegular() {
 				continue
 			}
-			if entry.Name() == "register.go" || strings.HasSuffix(entry.Name(), "_test.go") {
+			if strings.HasSuffix(entry.Name(), "_test.go") {
 				continue
 			}
-			entityName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-			if _, ok := entitiesByApp[app.Manifest.Name][entityName]; ok {
-				continue
-			}
-			*problems = append(*problems, hookDiagnostic(app, filepath.Join(hooksDir, entry.Name()), entityName))
+			*problems = append(*problems, oldHookPathDiagnostic(app, filepath.Join(hooksDir, entry.Name())))
 		}
 	}
 	return nil
@@ -478,8 +483,12 @@ func fieldDiagnostic(entity LoadedEntity, field schema.Field, message string) st
 	return fmt.Sprintf("%s: app %q entity %q field %q: %s", location(entity.Path, line), entity.AppName, entity.Entity.Name, fieldName, message)
 }
 
-func hookDiagnostic(app manifest.LoadedApp, path string, entityName string) string {
-	return fmt.Sprintf("%s: app %q hook file %q does not match a known Entity name in the same app", location(path, 0), app.Manifest.Name, entityName)
+func hookDiagnostic(appName string, path string, message string) string {
+	return fmt.Sprintf("%s: app %q hook file %s", location(path, 0), appName, message)
+}
+
+func oldHookPathDiagnostic(app manifest.LoadedApp, path string) string {
+	return fmt.Sprintf("%s: app %q app-level hook files are not supported; move hooks to entities/<entity>/%s", location(path, 0), app.Manifest.Name, shape.EntityHooksFile)
 }
 
 func location(path string, line int) string {

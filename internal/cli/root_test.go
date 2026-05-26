@@ -1533,10 +1533,10 @@ fields:
 	var stderr bytes.Buffer
 	err := Run(context.Background(), []string{"entity", "validate"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil {
-		t.Fatal("Run(entity validate) error = nil, want hook entity error")
+		t.Fatal("Run(entity validate) error = nil, want legacy hook path error")
 	}
 	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "hooks", "customer.go"))
-	for _, want := range []string{wantPath, `app "sales"`, `hook file "customer"`, "known Entity name"} {
+	for _, want := range []string{wantPath, `app "sales"`, "app-level hook files are not supported", "entities/<entity>/hooks.go"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
 		}

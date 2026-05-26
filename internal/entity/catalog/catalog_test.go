@@ -812,11 +812,7 @@ func TestValidateAcceptsHookFilesMatchingEntityNames(t *testing.T) {
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
 	writeEntity(t, entityPath(app, "lead"), "lead")
-	writeFile(t, filepath.Join(app.Dir, "hooks", "lead.go"), "package hooks")
-	writeFile(t, filepath.Join(app.Dir, "hooks", "register.go"), "package hooks")
-	writeFile(t, filepath.Join(app.Dir, "hooks", "lead_test.go"), "package hooks")
-	writeFile(t, filepath.Join(app.Dir, "hooks", "notes.txt"), "not go")
-	writeFile(t, filepath.Join(app.Dir, "hooks", "nested", "customer.go"), "package hooks")
+	writeFile(t, filepath.Join(app.Dir, "entities", "lead", "hooks.go"), "package hooks")
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
@@ -827,7 +823,7 @@ func TestValidateAcceptsHookFilesMatchingEntityNames(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsHookFilesWithoutMatchingEntityNames(t *testing.T) {
+func TestValidateRejectsLegacyAppLevelHookFiles(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -838,16 +834,16 @@ func TestValidateRejectsHookFilesWithoutMatchingEntityNames(t *testing.T) {
 
 	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err == nil {
-		t.Fatal("Validate() error = nil, want hook filename error")
+		t.Fatal("Validate() error = nil, want legacy hook path error")
 	}
-	for _, want := range []string{hookPath, `app "sales"`, `hook file "customer"`, "known Entity name"} {
+	for _, want := range []string{hookPath, `app "sales"`, "app-level hook files are not supported", "entities/<entity>/hooks.go"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
 		}
 	}
 }
 
-func TestValidateReadsHookFilesFromManifestPath(t *testing.T) {
+func TestValidateIgnoresManifestHookPath(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -857,7 +853,7 @@ func TestValidateReadsHookFilesFromManifestPath(t *testing.T) {
 
 	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
 	if err != nil {
-		t.Fatalf("Validate() error = %v, want nil", err)
+		t.Fatalf("Validate() error = %v, want manifest hook path ignored", err)
 	}
 }
 
