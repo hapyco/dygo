@@ -95,7 +95,7 @@ func isFrameworkRoot(dir string) (bool, error) {
 		return false, nil
 	}
 
-	for _, path := range []string{"apps", "configs"} {
+	for _, path := range []string{shape.AppsDir, filepath.Join("internal", "cli")} {
 		info, err := os.Stat(filepath.Join(dir, path))
 		if err != nil {
 			if os.IsNotExist(err) {

@@ -45,7 +45,7 @@ func TestDiscoverRootAcceptsFileStartPath(t *testing.T) {
 func TestDiscoverRootFindsFrameworkRepositoryRoot(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "go.mod"), "module github.com/hapyco/dygo\n")
-	for _, dir := range []string{"apps", "configs", filepath.Join("internal", "cli")} {
+	for _, dir := range []string{"apps", filepath.Join("internal", "cli")} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%s) error = %v", dir, err)
 		}
@@ -60,6 +60,24 @@ func TestDiscoverRootFindsFrameworkRepositoryRoot(t *testing.T) {
 	}
 	if discovered.Marker != "framework-repo" {
 		t.Fatalf("DiscoverRoot(framework).Marker = %q, want framework-repo", discovered.Marker)
+	}
+}
+
+func TestDiscoverRootDoesNotUseConfigsAsFrameworkSignal(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "go.mod"), "module github.com/hapyco/dygo\n")
+	for _, dir := range []string{"apps", "configs"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", dir, err)
+		}
+	}
+
+	_, err := DiscoverRoot(filepath.Join(root, "configs"))
+	if err == nil {
+		t.Fatal("DiscoverRoot() error = nil, want missing root because configs is not a project shape signal")
+	}
+	if !strings.Contains(err.Error(), "no dygo project root found") {
+		t.Fatalf("DiscoverRoot() error = %q, want missing root", err.Error())
 	}
 }
 
