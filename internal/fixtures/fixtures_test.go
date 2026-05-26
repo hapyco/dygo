@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,10 @@ import (
 
 	"github.com/hapyco/dygo/internal/app/manifest"
 	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/entity/catalog"
+	"github.com/hapyco/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/shape"
 )
 
 func TestDiscoverLoadsEntityBundleFixtureFiles(t *testing.T) {
@@ -96,6 +101,93 @@ records:
 	}
 	if !strings.Contains(err.Error(), `fixture entity "role" must match Entity bundle "roles"`) {
 		t.Fatalf("Discover() error = %q, want Entity bundle mismatch", err.Error())
+	}
+}
+
+func TestPlanExportReportsUnresolvedLinksWithoutIncludeLinks(t *testing.T) {
+	root := t.TempDir()
+	store := fixtureExportStore()
+	metadata := fixtureExportMetadata(root)
+
+	plan, err := PlanExport(context.Background(), store, metadata, shape.AppRef{App: "crm", Name: "lead"}, false)
+	if err != nil {
+		t.Fatalf("PlanExport() error = %v, want nil", err)
+	}
+	if plan.FileCount() != 1 || plan.RecordCount() != 1 {
+		t.Fatalf("PlanExport() counts = %d files %d records, want 1/1", plan.FileCount(), plan.RecordCount())
+	}
+	if len(plan.UnresolvedLinks) != 1 {
+		t.Fatalf("PlanExport() unresolved links = %d, want 1", len(plan.UnresolvedLinks))
+	}
+	link := plan.UnresolvedLinks[0]
+	if link.SourceApp != "crm" || link.SourceEntity != "lead" || link.SourceRecord != "lead-one" || link.Field != "owner" || link.TargetApp != "core" || link.TargetEntity != "user" || link.TargetRecord != "admin" {
+		t.Fatalf("PlanExport() unresolved link = %+v, want crm/lead owner -> core/user admin", link)
+	}
+	content := string(plan.Files[0].Content)
+	for _, want := range []string{
+		"entity: lead",
+		"match:",
+		"- name",
+		"name: lead-one",
+		"title: Lead One",
+		"owner:",
+		"name: admin",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("export content = %q, want substring %q", content, want)
+		}
+	}
+	if plan.Files[0].ProjectPath != "apps/crm/entities/lead/fixtures.yml" {
+		t.Fatalf("PlanExport() path = %q, want canonical Entity fixture path", plan.Files[0].ProjectPath)
+	}
+}
+
+func TestPlanExportIncludesLinkedRecords(t *testing.T) {
+	root := t.TempDir()
+	store := fixtureExportStore()
+	metadata := fixtureExportMetadata(root)
+
+	plan, err := PlanExport(context.Background(), store, metadata, shape.AppRef{App: "crm", Name: "lead"}, true)
+	if err != nil {
+		t.Fatalf("PlanExport(include links) error = %v, want nil", err)
+	}
+	if plan.FileCount() != 2 || plan.RecordCount() != 2 {
+		t.Fatalf("PlanExport(include links) counts = %d files %d records, want 2/2", plan.FileCount(), plan.RecordCount())
+	}
+	if len(plan.UnresolvedLinks) != 0 {
+		t.Fatalf("PlanExport(include links) unresolved links = %+v, want none", plan.UnresolvedLinks)
+	}
+	if plan.Files[0].ProjectPath != "apps/crm/entities/lead/fixtures.yml" || plan.Files[1].ProjectPath != "apps/core/entities/user/fixtures.yml" {
+		t.Fatalf("PlanExport(include links) files = %q, %q; want target first then dependency", plan.Files[0].ProjectPath, plan.Files[1].ProjectPath)
+	}
+	if !strings.Contains(string(plan.Files[1].Content), "full-name: Admin User") {
+		t.Fatalf("dependency fixture content = %q, want user record", string(plan.Files[1].Content))
+	}
+}
+
+func TestWriteExportPlanWritesFixtureFiles(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "apps", "crm", "entities", "lead", "fixtures.yml")
+	plan := ExportPlan{Files: []ExportFile{{
+		Path:        path,
+		ProjectPath: "apps/crm/entities/lead/fixtures.yml",
+		Records:     []db.Record{{"name": "lead-one"}},
+		Content:     []byte("entity: lead\nmatch: [name]\nrecords:\n  - name: lead-one\n"),
+	}}}
+
+	result, err := WriteExportPlan(plan)
+	if err != nil {
+		t.Fatalf("WriteExportPlan() error = %v, want nil", err)
+	}
+	if result.FilesWritten != 1 || result.RecordsWritten != 1 {
+		t.Fatalf("WriteExportPlan() = %+v, want 1 file 1 record", result)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(exported fixture) error = %v, want nil", err)
+	}
+	if string(data) != string(plan.Files[0].Content) {
+		t.Fatalf("exported fixture = %q, want %q", string(data), string(plan.Files[0].Content))
 	}
 }
 
@@ -476,6 +568,53 @@ func (s *fakeStore) GetEntityMeta(_ context.Context, entity string) (db.Metadata
 	return meta, nil
 }
 
+func (s *fakeStore) GetEntityMetaByIdentity(_ context.Context, appName string, entity string) (db.MetadataEntityMeta, error) {
+	meta, ok := s.metadata[entity]
+	if !ok {
+		return db.MetadataEntityMeta{}, db.MetadataNotFoundError{Kind: "entity", Name: appName + "/" + entity}
+	}
+	meta.App.Name = appName
+	meta.Key = entity
+	if meta.Name == "" {
+		meta.Name = entity
+	}
+	return meta, nil
+}
+
+func (s *fakeStore) ListRecordsByIdentity(_ context.Context, _ string, entity string, params db.RecordListParams) (db.RecordListResult, error) {
+	records := append([]db.Record(nil), s.records[entity]...)
+	if len(params.Filters) > 0 {
+		filtered := []db.Record{}
+		for _, record := range records {
+			matched := true
+			for _, filter := range params.Filters {
+				if fmt.Sprint(record[filter.Field]) != filter.Value {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				filtered = append(filtered, record)
+			}
+		}
+		records = filtered
+	}
+	limit := params.Limit
+	if limit == 0 || limit > len(records) {
+		limit = len(records)
+	}
+	offset := params.Offset
+	if offset > len(records) {
+		offset = len(records)
+	}
+	end := offset + limit
+	if end > len(records) {
+		end = len(records)
+	}
+	page := append([]db.Record(nil), records[offset:end]...)
+	return db.RecordListResult{Records: page, Limit: limit, Offset: offset, Count: len(page), Total: len(records)}, nil
+}
+
 func (s *fakeStore) FindRecord(_ context.Context, entity string, match db.RecordInput) (db.Record, error) {
 	var found []db.Record
 	for _, record := range s.records[entity] {
@@ -566,4 +705,62 @@ func rawValue(raw json.RawMessage) any {
 		return int64(number)
 	}
 	return value
+}
+
+func fixtureExportStore() *fakeStore {
+	store := newFakeStore()
+	store.metadata["lead"] = db.MetadataEntityMeta{
+		MetadataEntity: db.MetadataEntity{
+			Name: "lead",
+			Key:  "lead",
+			App:  db.MetadataAppRef{Name: "crm"},
+		},
+		Fields: []db.MetadataField{
+			{Name: "title", Type: "text", Required: true},
+			{Name: "owner", Type: "link", Options: json.RawMessage(`{"app":"core","entity":"user"}`)},
+		},
+	}
+	store.metadata["user"] = db.MetadataEntityMeta{
+		MetadataEntity: db.MetadataEntity{
+			Name: "user",
+			Key:  "user",
+			App:  db.MetadataAppRef{Name: "core"},
+		},
+		Fields: []db.MetadataField{
+			{Name: "full-name", Type: "text", Required: true},
+		},
+	}
+	store.records["lead"] = []db.Record{{
+		"id":    int64(1),
+		"name":  "lead-one",
+		"title": "Lead One",
+		"owner": "admin",
+	}}
+	store.records["user"] = []db.Record{{
+		"id":        int64(10),
+		"name":      "admin",
+		"full-name": "Admin User",
+	}}
+	return store
+}
+
+func fixtureExportMetadata(root string) project.Metadata {
+	crmDir := filepath.Join(root, "apps", "crm")
+	coreDir := filepath.Join(root, "apps", "core")
+	return project.Metadata{
+		Entities: []catalog.LoadedEntity{
+			{
+				AppName: "crm",
+				AppDir:  crmDir,
+				Path:    filepath.Join(crmDir, "entities", "lead", "entity.yml"),
+				Entity:  schema.Entity{Name: "lead", Label: "Lead", Fields: []schema.Field{{Name: "title", Label: "Title", Type: "text"}}},
+			},
+			{
+				AppName: "core",
+				AppDir:  coreDir,
+				Path:    filepath.Join(coreDir, "entities", "user", "entity.yml"),
+				Entity:  schema.Entity{Name: "user", Label: "User", Fields: []schema.Field{{Name: "full-name", Label: "Full Name", Type: "text"}}},
+			},
+		},
+	}
 }

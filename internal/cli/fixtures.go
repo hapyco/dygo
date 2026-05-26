@@ -7,6 +7,7 @@ import (
 
 	"github.com/hapyco/dygo/internal/fixtures"
 	"github.com/hapyco/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/shape"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +22,68 @@ func newFixtureCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 	}
 
 	cmd.AddCommand(newFixtureApplyCommand(ctx, stdin, stdout, stderr, runner))
+	cmd.AddCommand(newFixtureExportCommand(ctx, stdin, stdout, stderr, runner))
 	cmd.AddCommand(newFixtureValidateCommand(ctx, stdout, runner))
+
+	return cmd
+}
+
+func newFixtureExportCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, runner fixtureRunner) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+	yes := false
+	dryRun := false
+	includeLinks := false
+
+	cmd := &cobra.Command{
+		Use:   "export <app>/<entity>",
+		Short: "Export live records into app-owned fixture files",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			target, err := shape.ParseAppRef(args[0])
+			if err != nil {
+				return err
+			}
+			env, root, databaseURL, err := databaseInputs(envName)
+			if err != nil {
+				return err
+			}
+			plan, err := runner.ExportPlan(ctx, root, databaseURL, target, includeLinks)
+			if err != nil {
+				return fmt.Errorf("plan fixture export: %w", err)
+			}
+			if err := writeFixtureExportPlan(stdout, env, plan); err != nil {
+				return err
+			}
+			if dryRun {
+				if _, err := fmt.Fprintln(stdout, "dry-run: no fixture files will be written"); err != nil {
+					return fmt.Errorf("write fixture export dry-run output: %w", err)
+				}
+				return nil
+			}
+			if !yes {
+				ok, err := confirm(stdin, stderr, "Export fixture records? [y/N] ")
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return fmt.Errorf("fixture export canceled")
+				}
+			}
+			result, err := runner.WriteExportPlan(ctx, plan)
+			if err != nil {
+				return fmt.Errorf("export fixture records: %w", err)
+			}
+			if _, err := fmt.Fprintf(stdout, "fixtures exported: %d files, %d records (%s)\n", result.FilesWritten, result.RecordsWritten, env); err != nil {
+				return fmt.Errorf("write fixtures export output: %w", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+	cmd.Flags().BoolVar(&yes, "yes", yes, "Export fixtures without an interactive prompt")
+	cmd.Flags().BoolVar(&includeLinks, "include-links", includeLinks, "Export linked fixture dependencies")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", dryRun, "Print the fixture export plan without writing files")
 
 	return cmd
 }
@@ -121,6 +183,32 @@ func writeFixturePlan(stdout io.Writer, title string, env secrets.Environment, p
 	}
 	if _, err := fmt.Fprintf(stdout, "records: %d\n", plan.RecordCount()); err != nil {
 		return fmt.Errorf("write fixture plan output: %w", err)
+	}
+	return nil
+}
+
+func writeFixtureExportPlan(stdout io.Writer, env secrets.Environment, plan fixtures.ExportPlan) error {
+	if _, err := fmt.Fprintf(stdout, "fixture export plan (%s)\n", env); err != nil {
+		return fmt.Errorf("write fixture export plan output: %w", err)
+	}
+	if _, err := fmt.Fprintf(stdout, "files: %d\n", plan.FileCount()); err != nil {
+		return fmt.Errorf("write fixture export plan output: %w", err)
+	}
+	if _, err := fmt.Fprintf(stdout, "records: %d\n", plan.RecordCount()); err != nil {
+		return fmt.Errorf("write fixture export plan output: %w", err)
+	}
+	if _, err := fmt.Fprintf(stdout, "unresolved links: %d\n", len(plan.UnresolvedLinks)); err != nil {
+		return fmt.Errorf("write fixture export plan output: %w", err)
+	}
+	for _, file := range plan.Files {
+		if _, err := fmt.Fprintf(stdout, "file: %s (%d records)\n", file.ProjectPath, len(file.Records)); err != nil {
+			return fmt.Errorf("write fixture export plan output: %w", err)
+		}
+	}
+	for _, link := range plan.UnresolvedLinks {
+		if _, err := fmt.Fprintf(stdout, "unresolved link: %s/%s %q field %q -> %s/%s %q (%s)\n", link.SourceApp, link.SourceEntity, link.SourceRecord, link.Field, link.TargetApp, link.TargetEntity, link.TargetRecord, link.Reason); err != nil {
+			return fmt.Errorf("write fixture export plan output: %w", err)
+		}
 	}
 	return nil
 }

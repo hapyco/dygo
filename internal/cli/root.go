@@ -19,6 +19,7 @@ import (
 	"github.com/hapyco/dygo/internal/fixtures"
 	recordhooks "github.com/hapyco/dygo/internal/hooks"
 	"github.com/hapyco/dygo/internal/server"
+	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/studio"
 	"github.com/hapyco/dygo/pkg/sdk"
 	"github.com/spf13/cobra"
@@ -35,6 +36,8 @@ type adminSetupRunner interface {
 type fixtureRunner interface {
 	Plan(context.Context, string) (fixtures.Plan, error)
 	Apply(context.Context, string, string) (fixtures.Result, error)
+	ExportPlan(context.Context, string, string, shape.AppRef, bool) (fixtures.ExportPlan, error)
+	WriteExportPlan(context.Context, fixtures.ExportPlan) (fixtures.ExportResult, error)
 }
 type databaseRunner interface {
 	Check(context.Context, string) error
@@ -204,6 +207,17 @@ func (r defaultFixtureRunner) Plan(ctx context.Context, root string) (fixtures.P
 		return fixtures.NewRunnerWithHooks(r.recordHooks).Plan(ctx, root)
 	}
 	return fixtures.NewRunner().Plan(ctx, root)
+}
+
+func (r defaultFixtureRunner) ExportPlan(ctx context.Context, root string, databaseURL string, target shape.AppRef, includeLinks bool) (fixtures.ExportPlan, error) {
+	return fixtures.NewRunner().ExportPlan(ctx, root, databaseURL, target, includeLinks)
+}
+
+func (r defaultFixtureRunner) WriteExportPlan(ctx context.Context, plan fixtures.ExportPlan) (fixtures.ExportResult, error) {
+	if err := ctx.Err(); err != nil {
+		return fixtures.ExportResult{}, fmt.Errorf("write fixture export plan: %w", err)
+	}
+	return fixtures.WriteExportPlan(plan)
 }
 
 func (r checkBackedDatabaseRunner) Check(ctx context.Context, databaseURL string) error {

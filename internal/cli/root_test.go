@@ -16,6 +16,7 @@ import (
 	recordhooks "github.com/hapyco/dygo/internal/hooks"
 	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/hapyco/dygo/internal/server"
+	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/studio"
 	"github.com/hapyco/dygo/pkg/sdk"
 	"github.com/jackc/pgx/v5"
@@ -342,6 +343,94 @@ func TestFixtureApplyCommandReturnsRunnerError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "apply fixture records: invalid fixtures") {
 		t.Fatalf("Run(fixture apply) error = %q, want apply context", err.Error())
+	}
+}
+
+func TestFixtureExportDryRunPrintsPlanWithoutWriting(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeFixtureRunner{
+		exportPlan: fixtures.ExportPlan{
+			Files: []fixtures.ExportFile{{
+				ProjectPath: "apps/crm/entities/lead/fixtures.yml",
+				Records:     []db.Record{{"name": "lead-one"}, {"name": "lead-two"}},
+			}},
+			UnresolvedLinks: []fixtures.ExportLink{{
+				SourceApp:    "crm",
+				SourceEntity: "lead",
+				SourceRecord: "lead-one",
+				Field:        "owner",
+				TargetApp:    "core",
+				TargetEntity: "user",
+				TargetRecord: "admin",
+				Reason:       "target record is not included in this export",
+			}},
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"fixture", "export", "crm/lead", "--dry-run"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, &fakeAdminSetupRunner{}, fake)
+	if err != nil {
+		t.Fatalf("Run(fixture export --dry-run) error = %v, want nil", err)
+	}
+	wantStdout := "fixture export plan (development)\nfiles: 1\nrecords: 2\nunresolved links: 1\nfile: apps/crm/entities/lead/fixtures.yml (2 records)\nunresolved link: crm/lead \"lead-one\" field \"owner\" -> core/user \"admin\" (target record is not included in this export)\ndry-run: no fixture files will be written\n"
+	if stdout.String() != wantStdout {
+		t.Fatalf("fixture export stdout = %q, want %q", stdout.String(), wantStdout)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("fixture export stderr = %q, want empty", stderr.String())
+	}
+	if fake.exportPlanCalls != 1 || fake.exportCalls != 0 {
+		t.Fatalf("fixture export calls = plan %d write %d, want 1/0", fake.exportPlanCalls, fake.exportCalls)
+	}
+	if fake.root != root || fake.databaseURL != databaseURL || fake.exportTarget != (shape.AppRef{App: "crm", Name: "lead"}) {
+		t.Fatalf("fixture export inputs = root %q url %q target %+v, want %q %q crm/lead", fake.root, fake.databaseURL, fake.exportTarget, root, databaseURL)
+	}
+}
+
+func TestFixtureExportYesWritesPlannedFiles(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://staging-user:secret-password@localhost:5432/dygo_staging"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentStaging, databaseURL)
+	t.Chdir(root)
+
+	fake := &fakeFixtureRunner{
+		exportPlan: fixtures.ExportPlan{
+			Files: []fixtures.ExportFile{{
+				ProjectPath: "apps/crm/entities/lead/fixtures.yml",
+				Records:     []db.Record{{"name": "lead-one"}},
+			}},
+		},
+		exportResult: fixtures.ExportResult{FilesWritten: 1, RecordsWritten: 1},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"fixture", "export", "crm/lead", "--env", "staging", "--yes", "--include-links"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, &fakeAdminSetupRunner{}, fake)
+	if err != nil {
+		t.Fatalf("Run(fixture export --yes) error = %v, want nil", err)
+	}
+	wantStdout := "fixture export plan (staging)\nfiles: 1\nrecords: 1\nunresolved links: 0\nfile: apps/crm/entities/lead/fixtures.yml (1 records)\nfixtures exported: 1 files, 1 records (staging)\n"
+	if stdout.String() != wantStdout {
+		t.Fatalf("fixture export stdout = %q, want %q", stdout.String(), wantStdout)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("fixture export stderr = %q, want empty", stderr.String())
+	}
+	if fake.exportPlanCalls != 1 || fake.exportCalls != 1 {
+		t.Fatalf("fixture export calls = plan %d write %d, want 1/1", fake.exportPlanCalls, fake.exportCalls)
+	}
+	if !fake.includeLinks {
+		t.Fatal("fixture export includeLinks = false, want true")
+	}
+	if fake.databaseURL != databaseURL {
+		t.Fatalf("fixture export database URL = %q, want %q", fake.databaseURL, databaseURL)
 	}
 }
 
@@ -2128,14 +2217,22 @@ func (r *fakeAdminSetupRunner) SetupAdmin(_ context.Context, databaseURL string,
 }
 
 type fakeFixtureRunner struct {
-	result      fixtures.Result
-	plan        fixtures.Plan
-	planErr     error
-	err         error
-	root        string
-	databaseURL string
-	planCalls   int
-	calls       int
+	result          fixtures.Result
+	plan            fixtures.Plan
+	exportPlan      fixtures.ExportPlan
+	exportResult    fixtures.ExportResult
+	planErr         error
+	exportPlanErr   error
+	err             error
+	exportErr       error
+	root            string
+	databaseURL     string
+	exportTarget    shape.AppRef
+	includeLinks    bool
+	planCalls       int
+	calls           int
+	exportPlanCalls int
+	exportCalls     int
 }
 
 func (r *fakeFixtureRunner) Plan(_ context.Context, root string) (fixtures.Plan, error) {
@@ -2149,6 +2246,21 @@ func (r *fakeFixtureRunner) Apply(_ context.Context, root string, databaseURL st
 	r.root = root
 	r.databaseURL = databaseURL
 	return r.result, r.err
+}
+
+func (r *fakeFixtureRunner) ExportPlan(_ context.Context, root string, databaseURL string, target shape.AppRef, includeLinks bool) (fixtures.ExportPlan, error) {
+	r.exportPlanCalls++
+	r.root = root
+	r.databaseURL = databaseURL
+	r.exportTarget = target
+	r.includeLinks = includeLinks
+	return r.exportPlan, r.exportPlanErr
+}
+
+func (r *fakeFixtureRunner) WriteExportPlan(_ context.Context, plan fixtures.ExportPlan) (fixtures.ExportResult, error) {
+	r.exportCalls++
+	r.exportPlan = plan
+	return r.exportResult, r.exportErr
 }
 
 func fixturePlan(fileCount int, recordCount int) fixtures.Plan {
