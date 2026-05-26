@@ -18,6 +18,7 @@ import (
 	"github.com/hapyco/dygo/internal/health"
 	"github.com/hapyco/dygo/internal/hookgen"
 	"github.com/hapyco/dygo/internal/project"
+	routeplan "github.com/hapyco/dygo/internal/routes"
 	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/studio"
@@ -176,7 +177,7 @@ func checkRouteRegistry(entities []catalog.LoadedEntity) doctorResult {
 	return doctorResult{
 		Status: doctorPass,
 		Name:   "route registry",
-		Detail: fmt.Sprintf("%d routeable entities, %d reserved slugs", len(routeEntries(entities)), len(catalog.ReservedRootRouteSlugs())),
+		Detail: fmt.Sprintf("%d routeable entities, %d reserved slugs", len(routeplan.Entries(entities)), len(routeplan.ReservedSlugs())),
 	}
 }
 

@@ -78,7 +78,7 @@ func newEntitiesListCommand(stdout io.Writer) *cobra.Command {
 				}
 
 				for _, entity := range appEntities {
-					if _, err := fmt.Fprintf(stdout, "  - %s (%s)\n", entity.Entity.Name, entityKind(entity)); err != nil {
+					if _, err := fmt.Fprintf(stdout, "  - %s (%s)\n", entity.Entity.Name, entity.Kind()); err != nil {
 						return fmt.Errorf("write entity name: %w", err)
 					}
 				}
@@ -144,7 +144,7 @@ func writeEntityShow(stdout io.Writer, entity catalog.LoadedEntity) error {
 	if _, err := fmt.Fprintf(stdout, "entity: %s/%s\n", entity.AppName, entity.Entity.Name); err != nil {
 		return fmt.Errorf("write entity show output: %w", err)
 	}
-	if _, err := fmt.Fprintf(stdout, "kind: %s\n", entityKind(entity)); err != nil {
+	if _, err := fmt.Fprintf(stdout, "kind: %s\n", entity.Kind()); err != nil {
 		return fmt.Errorf("write entity show output: %w", err)
 	}
 	if _, err := fmt.Fprintf(stdout, "path: %s\n", relToWorkingRoot(entity.Path)); err != nil {
@@ -196,7 +196,7 @@ func writeEntityGraph(stdout io.Writer, entities []catalog.LoadedEntity, relatio
 		return nil
 	}
 	for _, entity := range entities {
-		if _, err := fmt.Fprintf(stdout, "%s/%s (%s)\n", entity.AppName, entity.Entity.Name, entityKind(entity)); err != nil {
+		if _, err := fmt.Fprintf(stdout, "%s/%s (%s)\n", entity.AppName, entity.Entity.Name, entity.Kind()); err != nil {
 			return fmt.Errorf("write entity graph output: %w", err)
 		}
 		wroteRelation := false
@@ -288,17 +288,6 @@ func entityRelations(entities []catalog.LoadedEntity) []entityRelation {
 		}
 	}
 	return relations
-}
-
-func entityKind(entity catalog.LoadedEntity) string {
-	switch {
-	case entity.IsCollection():
-		return "collection"
-	case entity.Entity.IsSingle:
-		return "single"
-	default:
-		return "normal"
-	}
 }
 
 func newEntitiesValidateCommand(stdout io.Writer) *cobra.Command {

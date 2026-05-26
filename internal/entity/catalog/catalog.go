@@ -46,6 +46,18 @@ func (e LoadedEntity) IsCollection() bool {
 	return e.Entity.IsCollection
 }
 
+// Kind returns the public Entity category used in CLI and diagnostics.
+func (e LoadedEntity) Kind() string {
+	switch {
+	case e.IsCollection():
+		return "collection"
+	case e.Entity.IsSingle:
+		return "single"
+	default:
+		return "normal"
+	}
+}
+
 // EntityKey returns a stable key for an app-owned Entity identity.
 func EntityKey(appName string, entityName string) string {
 	return appName + "\x00" + entityName

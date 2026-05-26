@@ -5,22 +5,13 @@ import (
 	"io"
 	"net/http"
 	"path"
-	"sort"
 	"strings"
 
-	"github.com/hapyco/dygo/internal/entity/catalog"
 	"github.com/hapyco/dygo/internal/permissions"
 	"github.com/hapyco/dygo/internal/project"
+	routeplan "github.com/hapyco/dygo/internal/routes"
 	"github.com/spf13/cobra"
 )
-
-type routeEntry struct {
-	Slug       string
-	AppName    string
-	EntityName string
-	Kind       string
-	Path       string
-}
 
 func newRouteCommand(stdout io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
@@ -54,12 +45,12 @@ func newRouteListCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			for _, route := range routeEntries(metadata.Entities) {
+			for _, route := range routeplan.Entries(metadata.Entities) {
 				if _, err := fmt.Fprintf(stdout, "/%s %s %s/%s %s\n", route.Slug, route.Kind, route.AppName, route.EntityName, relToWorkingRoot(route.Path)); err != nil {
 					return fmt.Errorf("write route list output: %w", err)
 				}
 			}
-			if _, err := fmt.Fprintln(stdout, "reserved: "+strings.Join(prefixedReservedSlugs(), ", ")); err != nil {
+			if _, err := fmt.Fprintln(stdout, "reserved: "+strings.Join(routeplan.PrefixedReservedSlugs(), ", ")); err != nil {
 				return fmt.Errorf("write route list output: %w", err)
 			}
 			return nil
@@ -81,7 +72,7 @@ func newRouteValidateCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("validate routes: %w", err)
 			}
-			if _, err := fmt.Fprintf(stdout, "routes are valid: %d routeable entities, %d reserved slugs\n", len(routeEntries(metadata.Entities)), len(catalog.ReservedRootRouteSlugs())); err != nil {
+			if _, err := fmt.Fprintf(stdout, "routes are valid: %d routeable entities, %d reserved slugs\n", len(routeplan.Entries(metadata.Entities)), len(routeplan.ReservedSlugs())); err != nil {
 				return fmt.Errorf("write route validate output: %w", err)
 			}
 			return nil
@@ -121,7 +112,7 @@ func newRouteResolveCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return writeRouteResolution(stdout, method, normalized, routeEntries(metadata.Entities))
+			return writeRouteResolution(stdout, method, normalized, routeplan.Entries(metadata.Entities))
 		},
 	}
 }
@@ -132,7 +123,7 @@ func newRouteReservedCommand(stdout io.Writer) *cobra.Command {
 		Short: "List framework-reserved route slugs",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			for _, slug := range prefixedReservedSlugs() {
+			for _, slug := range routeplan.PrefixedReservedSlugs() {
 				if _, err := fmt.Fprintln(stdout, slug); err != nil {
 					return fmt.Errorf("write reserved route output: %w", err)
 				}
@@ -140,34 +131,6 @@ func newRouteReservedCommand(stdout io.Writer) *cobra.Command {
 			return nil
 		},
 	}
-}
-
-func routeEntries(entities []catalog.LoadedEntity) []routeEntry {
-	routes := make([]routeEntry, 0, len(entities))
-	for _, entity := range entities {
-		if !entity.HasRouteSlug() {
-			continue
-		}
-		routes = append(routes, routeEntry{
-			Slug:       entity.RouteSlug(),
-			AppName:    entity.AppName,
-			EntityName: entity.Entity.Name,
-			Kind:       entityKind(entity),
-			Path:       entity.Path,
-		})
-	}
-	sort.SliceStable(routes, func(i, j int) bool {
-		return routes[i].Slug < routes[j].Slug
-	})
-	return routes
-}
-
-func prefixedReservedSlugs() []string {
-	slugs := catalog.ReservedRootRouteSlugs()
-	for index := range slugs {
-		slugs[index] = "/" + slugs[index]
-	}
-	return slugs
 }
 
 func normalizeResolvePath(value string) (string, error) {
@@ -185,7 +148,7 @@ func normalizeResolvePath(value string) (string, error) {
 	return clean, nil
 }
 
-func writeRouteResolution(stdout io.Writer, method string, requestPath string, routes []routeEntry) error {
+func writeRouteResolution(stdout io.Writer, method string, requestPath string, routes []routeplan.Entry) error {
 	if _, err := fmt.Fprintf(stdout, "path: %s\n", requestPath); err != nil {
 		return fmt.Errorf("write route resolve output: %w", err)
 	}
@@ -206,13 +169,13 @@ func writeRouteResolution(stdout io.Writer, method string, requestPath string, r
 			return writeEntityRoute(stdout, "entity route", route, "")
 		}
 	}
-	if len(parts) >= 1 && isReservedRouteSlug(parts[0]) {
+	if len(parts) >= 1 && routeplan.IsReservedSlug(parts[0]) {
 		return writeStaticRoute(stdout, "studio", "framework-reserved Studio route")
 	}
 	return writeStaticRoute(stdout, "studio", "Studio fallback")
 }
 
-func writeAPIResolution(stdout io.Writer, method string, parts []string, routes []routeEntry) error {
+func writeAPIResolution(stdout io.Writer, method string, parts []string, routes []routeplan.Entry) error {
 	if len(parts) >= 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "records" {
 		route, ok := findRouteBySlug(routes, parts[3])
 		if !ok {
@@ -239,7 +202,7 @@ func writeAPIResolution(stdout io.Writer, method string, parts []string, routes 
 	return writeStaticRoute(stdout, "api", "framework API route")
 }
 
-func writeEntityRoute(stdout io.Writer, handler string, route routeEntry, action string) error {
+func writeEntityRoute(stdout io.Writer, handler string, route routeplan.Entry, action string) error {
 	if _, err := fmt.Fprintf(stdout, "handler: %s\n", handler); err != nil {
 		return fmt.Errorf("write route resolve output: %w", err)
 	}
@@ -267,22 +230,13 @@ func writeStaticRoute(stdout io.Writer, handler string, detail string) error {
 	return nil
 }
 
-func findRouteBySlug(routes []routeEntry, slug string) (routeEntry, bool) {
+func findRouteBySlug(routes []routeplan.Entry, slug string) (routeplan.Entry, bool) {
 	for _, route := range routes {
 		if route.Slug == slug {
 			return route, true
 		}
 	}
-	return routeEntry{}, false
-}
-
-func isReservedRouteSlug(slug string) bool {
-	for _, reserved := range catalog.ReservedRootRouteSlugs() {
-		if slug == reserved {
-			return true
-		}
-	}
-	return false
+	return routeplan.Entry{}, false
 }
 
 func recordAction(method string, _ []string) string {
