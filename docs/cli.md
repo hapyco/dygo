@@ -149,7 +149,7 @@ Secret names support root keys and dot-separated YAML paths, such as `DATABASE_U
 
 - `curl -fsSL https://dygo.dev/install | sh` - Installs or updates the dygo binary outside the workspace CLI.
 - `brew upgrade dygo` - Future package-manager-owned binary update path.
-- `go install github.com/dygo-dev/dygo/cmd/dygo@latest` - Future Go toolchain-owned binary update path if dygo supports it.
+- `go install github.com/hapyco/dygo/cmd/dygo@latest` - Future Go toolchain-owned binary update path if dygo supports it.
 
 Normal update flow:
 

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	appregistry "github.com/dygo-dev/dygo/internal/app/registry"
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	appregistry "github.com/hapyco/dygo/internal/app/registry"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
 )
 
 func TestRepositoryEntitiesValidate(t *testing.T) {

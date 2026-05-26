@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/auth"
-	"github.com/dygo-dev/dygo/internal/db"
-	"github.com/dygo-dev/dygo/internal/fixtures"
-	recordhooks "github.com/dygo-dev/dygo/internal/hooks"
-	"github.com/dygo-dev/dygo/internal/secrets"
-	"github.com/dygo-dev/dygo/internal/server"
-	"github.com/dygo-dev/dygo/internal/studio"
-	"github.com/dygo-dev/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/internal/auth"
+	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/fixtures"
+	recordhooks "github.com/hapyco/dygo/internal/hooks"
+	"github.com/hapyco/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/server"
+	"github.com/hapyco/dygo/internal/studio"
+	"github.com/hapyco/dygo/pkg/sdk"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -2570,7 +2570,7 @@ func TestSecretsRotateKeyFrameworkRootConfirmationFallback(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "configs"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(configs) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/dygo-dev/dygo\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/hapyco/dygo\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(go.mod) error = %v", err)
 	}
 	store := secrets.NewStore(root)

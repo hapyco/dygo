@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
-	"github.com/dygo-dev/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/entity/schema"
 )
 
 func TestCoreSelectValuesMatchEntityMetadata(t *testing.T) {

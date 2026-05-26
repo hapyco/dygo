@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/entity/schema"
 )
 
 func (s RecordStore) deleteRecordCollections(ctx context.Context, layout recordLayout, parentID int64) error {

@@ -9,12 +9,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/app/manifest"
-	"github.com/dygo-dev/dygo/internal/config"
-	"github.com/dygo-dev/dygo/internal/db"
-	"github.com/dygo-dev/dygo/internal/health"
-	"github.com/dygo-dev/dygo/internal/project"
-	"github.com/dygo-dev/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/app/manifest"
+	"github.com/hapyco/dygo/internal/config"
+	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/health"
+	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 )

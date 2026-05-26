@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
 	"github.com/jackc/pgx/v5"
 )
 

@@ -160,7 +160,7 @@ func TestGeneratePreservesExistingEntityHookFile(t *testing.T) {
 	writeTestEntity(t, root, "sales", "lead")
 	existing := `package hooks
 
-import "github.com/dygo-dev/dygo/pkg/sdk"
+import "github.com/hapyco/dygo/pkg/sdk"
 
 func registerLeadHooks(registry sdk.RecordHookRegistry) error {
 	return nil
@@ -210,9 +210,9 @@ func TestGenerateOutputCompilesInProject(t *testing.T) {
 
 go 1.26.2
 
-require github.com/dygo-dev/dygo v0.0.0
+require github.com/hapyco/dygo v0.0.0
 
-replace github.com/dygo-dev/dygo => `+filepath.ToSlash(repoRoot)+`
+replace github.com/hapyco/dygo => `+filepath.ToSlash(repoRoot)+`
 `)
 	copyTestFile(t, filepath.Join(repoRoot, "go.sum"), filepath.Join(root, "go.sum"))
 	writeTestApp(t, root, "sales", "")

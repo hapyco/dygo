@@ -34,7 +34,7 @@ Project runner integration
 ```
 
 ```go
-import "github.com/dygo-dev/dygo/pkg/sdk"
+import "github.com/hapyco/dygo/pkg/sdk"
 ```
 
 ## Record Access

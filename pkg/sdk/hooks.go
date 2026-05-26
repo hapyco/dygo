@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/dygo-dev/dygo/internal/corevalues"
-	"github.com/dygo-dev/dygo/internal/hookevents"
+	"github.com/hapyco/dygo/internal/corevalues"
+	"github.com/hapyco/dygo/internal/hookevents"
 )
 
 // RecordHookEvent names a Record lifecycle hook phase.

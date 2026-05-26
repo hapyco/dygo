@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/db"
-	"github.com/dygo-dev/dygo/internal/hookevents"
-	"github.com/dygo-dev/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/hookevents"
+	"github.com/hapyco/dygo/pkg/sdk"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )

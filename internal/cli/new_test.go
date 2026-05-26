@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/secrets"
 )
 
 func TestNewProjectCommandCreatesProject(t *testing.T) {
@@ -115,7 +115,7 @@ func writeCLIFrameworkRootForNew(t *testing.T, root string) {
 	if err := os.MkdirAll(filepath.Join(root, "configs"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(configs) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/dygo-dev/dygo\n\ngo 1.26.2\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/hapyco/dygo\n\ngo 1.26.2\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(go.mod) error = %v", err)
 	}
 	writeCLIFrameworkFileForNew(t, filepath.Join(root, "apps", "studio", "ui", "dist", "index.html"), "<html>studio</html>")

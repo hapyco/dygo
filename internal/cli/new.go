@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dygo-dev/dygo/internal/projectgen"
+	"github.com/hapyco/dygo/internal/projectgen"
 	"github.com/spf13/cobra"
 )
 

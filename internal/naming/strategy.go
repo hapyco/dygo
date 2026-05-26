@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/entity/schema"
 )
 
 var seriesTokenPattern = regexp.MustCompile(`\{(YY|YYYY|MM|#+)\}`)

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/corevalues"
+	"github.com/hapyco/dygo/internal/corevalues"
 	"github.com/jackc/pgx/v5"
 )
 

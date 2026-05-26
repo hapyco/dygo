@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/dygo-dev/dygo/internal/app/manifest"
+	"github.com/hapyco/dygo/internal/app/manifest"
 )
 
 var defaultRoots = []string{filepath.Join(".dygo", "apps"), "apps"}

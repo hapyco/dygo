@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
 )
 
 // MetadataFieldsByName indexes Entity fields by metadata name.

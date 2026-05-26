@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/entity/catalog"
+	"github.com/hapyco/dygo/internal/entity/catalog"
 )
 
 func TestBuildSchemaPrunePlanPlansExtraObjects(t *testing.T) {

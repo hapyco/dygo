@@ -1,4 +1,4 @@
-module github.com/dygo-dev/dygo
+module github.com/hapyco/dygo
 
 go 1.26.2
 

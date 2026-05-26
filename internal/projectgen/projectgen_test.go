@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/app/manifest"
-	"github.com/dygo-dev/dygo/internal/config"
-	"github.com/dygo-dev/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/app/manifest"
+	"github.com/hapyco/dygo/internal/config"
+	"github.com/hapyco/dygo/internal/secrets"
 )
 
 func TestGenerateCreatesProjectSkeletonAndSecrets(t *testing.T) {
@@ -149,8 +149,8 @@ func TestGenerateDefaultsModuleToName(t *testing.T) {
 	}
 	goMod := readFile(t, filepath.Join(parent, "acme-ops", "go.mod"))
 	assertContains(t, goMod, "module acme-ops")
-	assertContains(t, goMod, "require github.com/dygo-dev/dygo v0.0.0")
-	assertContains(t, goMod, "replace github.com/dygo-dev/dygo => "+filepath.ToSlash(repositoryRoot(t)))
+	assertContains(t, goMod, "require github.com/hapyco/dygo v0.0.0")
+	assertContains(t, goMod, "replace github.com/hapyco/dygo => "+filepath.ToSlash(repositoryRoot(t)))
 }
 
 func TestGenerateUsesReleaseDygoVersionWithoutLocalReplace(t *testing.T) {
@@ -166,8 +166,8 @@ func TestGenerateUsesReleaseDygoVersionWithoutLocalReplace(t *testing.T) {
 		t.Fatalf("Generate() error = %v, want nil", err)
 	}
 	goMod := readFile(t, filepath.Join(parent, "release-app", "go.mod"))
-	assertContains(t, goMod, "require github.com/dygo-dev/dygo v1.2.3")
-	if strings.Contains(goMod, "replace github.com/dygo-dev/dygo") {
+	assertContains(t, goMod, "require github.com/hapyco/dygo v1.2.3")
+	if strings.Contains(goMod, "replace github.com/hapyco/dygo") {
 		t.Fatalf("go.mod = %q, want release dependency without local replace", goMod)
 	}
 }

@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/corevalues"
-	"github.com/dygo-dev/dygo/internal/entity/catalog"
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
-	"github.com/dygo-dev/dygo/internal/entity/schema"
-	namegen "github.com/dygo-dev/dygo/internal/naming"
+	"github.com/hapyco/dygo/internal/corevalues"
+	"github.com/hapyco/dygo/internal/entity/catalog"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/entity/schema"
+	namegen "github.com/hapyco/dygo/internal/naming"
 	"github.com/jackc/pgx/v5"
 	"gopkg.in/yaml.v3"
 )

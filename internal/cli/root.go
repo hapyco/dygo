@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/auth"
-	"github.com/dygo-dev/dygo/internal/config"
-	"github.com/dygo-dev/dygo/internal/db"
-	"github.com/dygo-dev/dygo/internal/fixtures"
-	recordhooks "github.com/dygo-dev/dygo/internal/hooks"
-	"github.com/dygo-dev/dygo/internal/server"
-	"github.com/dygo-dev/dygo/internal/studio"
-	"github.com/dygo-dev/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/internal/auth"
+	"github.com/hapyco/dygo/internal/config"
+	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/fixtures"
+	recordhooks "github.com/hapyco/dygo/internal/hooks"
+	"github.com/hapyco/dygo/internal/server"
+	"github.com/hapyco/dygo/internal/studio"
+	"github.com/hapyco/dygo/pkg/sdk"
 	"github.com/spf13/cobra"
 )
 

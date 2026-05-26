@@ -8,9 +8,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/auth"
-	"github.com/dygo-dev/dygo/internal/db"
-	"github.com/dygo-dev/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/auth"
+	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

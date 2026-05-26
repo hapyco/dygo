@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/app/manifest"
-	"github.com/dygo-dev/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/app/manifest"
+	"github.com/hapyco/dygo/internal/db"
 )
 
 func TestDiscoverLoadsAppFixtureFiles(t *testing.T) {

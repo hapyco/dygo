@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/upgrade"
+	"github.com/hapyco/dygo/internal/upgrade"
 )
 
 func TestUpgradeCommandRunsUpgrade(t *testing.T) {

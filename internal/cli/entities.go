@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/dygo-dev/dygo/internal/entity/catalog"
-	"github.com/dygo-dev/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/entity/catalog"
+	"github.com/hapyco/dygo/internal/project"
 	"github.com/spf13/cobra"
 )
 

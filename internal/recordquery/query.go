@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/reserved"
+	"github.com/hapyco/dygo/internal/reserved"
 )
 
 const (

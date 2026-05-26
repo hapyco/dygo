@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/hookgen"
-	"github.com/dygo-dev/dygo/internal/studio"
+	"github.com/hapyco/dygo/internal/hookgen"
+	"github.com/hapyco/dygo/internal/studio"
 )
 
 // ProjectOptions configures a project upgrade.

@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/project"
-	"github.com/dygo-dev/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/dygo-dev/dygo/internal/db"
-	"github.com/dygo-dev/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/spf13/cobra"
 )
 

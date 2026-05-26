@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/sdk"
 )
 
 func TestRunAppliesRecordHookRegistrars(t *testing.T) {

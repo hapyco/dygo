@@ -14,7 +14,7 @@ import (
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
-	"github.com/dygo-dev/dygo/internal/yamlmeta"
+	"github.com/hapyco/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
 

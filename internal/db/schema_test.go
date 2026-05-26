@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/entity/catalog"
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
-	"github.com/dygo-dev/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/entity/catalog"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/entity/schema"
 	"gopkg.in/yaml.v3"
 )
 

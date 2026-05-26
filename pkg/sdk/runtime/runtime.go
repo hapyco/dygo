@@ -5,8 +5,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/dygo-dev/dygo/internal/cli"
-	"github.com/dygo-dev/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/internal/cli"
+	"github.com/hapyco/dygo/pkg/sdk"
 )
 
 // Options configures the compiled dygo runtime.

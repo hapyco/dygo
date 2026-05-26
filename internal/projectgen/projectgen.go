@@ -12,13 +12,13 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/dygo-dev/dygo/internal/project"
-	"github.com/dygo-dev/dygo/internal/secrets"
-	"github.com/dygo-dev/dygo/internal/studio"
+	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/studio"
 )
 
 const (
-	dygoModulePath  = "github.com/dygo-dev/dygo"
+	dygoModulePath  = "github.com/hapyco/dygo"
 	defaultGo       = "1.26.2"
 	developmentPort = 6790
 
@@ -359,7 +359,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	dygoruntime "github.com/dygo-dev/dygo/pkg/sdk/runtime"
+	dygoruntime "github.com/hapyco/dygo/pkg/sdk/runtime"
 )
 
 func main() {

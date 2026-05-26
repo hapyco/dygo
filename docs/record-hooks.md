@@ -53,7 +53,7 @@ The hooks package exposes one `Register` function:
 ```go
 package hooks
 
-import "github.com/dygo-dev/dygo/pkg/sdk"
+import "github.com/hapyco/dygo/pkg/sdk"
 
 func Register(registry sdk.RecordHookRegistry) error {
 	if err := registerLeadHooks(registry); err != nil {
@@ -73,7 +73,7 @@ package hooks
 import (
 	"context"
 
-	"github.com/dygo-dev/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/sdk"
 )
 
 func registerLeadHooks(registry sdk.RecordHookRegistry) error {
@@ -98,8 +98,8 @@ import (
 	"syscall"
 
 	crmhooks "example.com/my-project/apps/crm/hooks"
-	"github.com/dygo-dev/dygo/pkg/sdk"
-	dygoruntime "github.com/dygo-dev/dygo/pkg/sdk/runtime"
+	"github.com/hapyco/dygo/pkg/sdk"
+	dygoruntime "github.com/hapyco/dygo/pkg/sdk/runtime"
 )
 
 func main() {

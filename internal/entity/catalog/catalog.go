@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/app/manifest"
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
-	"github.com/dygo-dev/dygo/internal/entity/schema"
-	"github.com/dygo-dev/dygo/internal/reserved"
+	"github.com/hapyco/dygo/internal/app/manifest"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/reserved"
 )
 
 // LoadedEntity is one Entity loaded from an owning app.

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/app/manifest"
+	"github.com/hapyco/dygo/internal/app/manifest"
 )
 
 func TestDiscoverUsesDefaultRoots(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/dygo-dev/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/project"
 	"github.com/spf13/cobra"
 )
 

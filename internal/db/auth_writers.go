@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/auth"
+	"github.com/hapyco/dygo/internal/auth"
 )
 
 // AuthSessionWriter persists login sessions through the framework system writer.

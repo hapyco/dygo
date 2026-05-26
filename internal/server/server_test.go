@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/auth"
-	"github.com/dygo-dev/dygo/internal/db"
-	"github.com/dygo-dev/dygo/internal/permissions"
+	"github.com/hapyco/dygo/internal/auth"
+	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/permissions"
 )
 
 func TestNewRouterHealth(t *testing.T) {

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/entity/catalog"
-	"github.com/dygo-dev/dygo/internal/entity/schema"
-	"github.com/dygo-dev/dygo/internal/patches"
+	"github.com/hapyco/dygo/internal/entity/catalog"
+	"github.com/hapyco/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/patches"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )

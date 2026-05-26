@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/app/manifest"
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/app/manifest"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
 )
 
 func TestValidateLoadsEntitiesFromManifestPath(t *testing.T) {

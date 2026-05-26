@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/auth"
-	"github.com/dygo-dev/dygo/internal/db"
-	"github.com/dygo-dev/dygo/internal/permissions"
-	"github.com/dygo-dev/dygo/internal/recordquery"
+	"github.com/hapyco/dygo/internal/auth"
+	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/permissions"
+	"github.com/hapyco/dygo/internal/recordquery"
 	"github.com/go-chi/chi/v5"
 )
 

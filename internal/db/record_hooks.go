@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/hookevents"
+	"github.com/hapyco/dygo/internal/hookevents"
 )
 
 // RecordHookEvent names a Record lifecycle hook phase.

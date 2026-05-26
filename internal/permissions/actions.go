@@ -3,7 +3,7 @@ package permissions
 import (
 	"fmt"
 
-	"github.com/dygo-dev/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/db"
 )
 
 type actionSpec struct {

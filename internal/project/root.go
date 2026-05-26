@@ -12,7 +12,7 @@ const (
 	// MarkerFile is the canonical root marker for generated dygo projects.
 	MarkerFile = "dygo.yml"
 
-	frameworkModule = "github.com/dygo-dev/dygo"
+	frameworkModule = "github.com/hapyco/dygo"
 )
 
 // Root describes a discovered dygo project or framework repository root.

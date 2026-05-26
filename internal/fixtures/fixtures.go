@@ -13,10 +13,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/app/manifest"
-	"github.com/dygo-dev/dygo/internal/db"
-	"github.com/dygo-dev/dygo/internal/project"
-	"github.com/dygo-dev/dygo/internal/yamlmeta"
+	"github.com/hapyco/dygo/internal/app/manifest"
+	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
 

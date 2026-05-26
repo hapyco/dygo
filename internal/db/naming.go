@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
-	"github.com/dygo-dev/dygo/internal/entity/schema"
-	namegen "github.com/dygo-dev/dygo/internal/naming"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/entity/schema"
+	namegen "github.com/hapyco/dygo/internal/naming"
 )
 
 type recordNaming struct {

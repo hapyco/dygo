@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/dygo-dev/dygo/internal/cli"
+	"github.com/hapyco/dygo/internal/cli"
 )
 
 func main() {

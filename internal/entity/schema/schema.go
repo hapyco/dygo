@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
-	"github.com/dygo-dev/dygo/internal/reserved"
-	"github.com/dygo-dev/dygo/internal/yamlmeta"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/reserved"
+	"github.com/hapyco/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
 

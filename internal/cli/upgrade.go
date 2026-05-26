@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/upgrade"
+	"github.com/hapyco/dygo/internal/upgrade"
 	"github.com/spf13/cobra"
 )
 

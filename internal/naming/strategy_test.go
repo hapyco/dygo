@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/entity/schema"
 )
 
 func TestGenerateNameStrategies(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dygo-dev/dygo/internal/auth"
-	"github.com/dygo-dev/dygo/internal/corevalues"
+	"github.com/hapyco/dygo/internal/auth"
+	"github.com/hapyco/dygo/internal/corevalues"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )

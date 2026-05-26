@@ -5,7 +5,7 @@ import (
 	"io"
 	"path/filepath"
 
-	"github.com/dygo-dev/dygo/internal/hookgen"
+	"github.com/hapyco/dygo/internal/hookgen"
 	"github.com/spf13/cobra"
 )
 

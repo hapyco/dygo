@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/entity/catalog"
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
-	entityschema "github.com/dygo-dev/dygo/internal/entity/schema"
-	"github.com/dygo-dev/dygo/internal/patches"
+	"github.com/hapyco/dygo/internal/entity/catalog"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
+	entityschema "github.com/hapyco/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/patches"
 )
 
 func TestSchemasAreValidJSON(t *testing.T) {

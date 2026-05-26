@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
 )
 
 func TestDecode(t *testing.T) {

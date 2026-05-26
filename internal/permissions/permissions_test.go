@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dygo-dev/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/db"
 	"github.com/jackc/pgx/v5"
 )
 

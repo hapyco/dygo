@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/yamlmeta"
+	"github.com/hapyco/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
 

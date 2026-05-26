@@ -10,12 +10,12 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/project"
 )
 
 const (
-	ModulePath        = "github.com/dygo-dev/dygo"
-	DefaultAPIBaseURL = "https://api.github.com/repos/dygo-dev/dygo"
+	ModulePath        = "github.com/hapyco/dygo"
+	DefaultAPIBaseURL = "https://api.github.com/repos/hapyco/dygo"
 	DefaultInstallDir = "~/.dygo/bin"
 )
 

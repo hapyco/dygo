@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dygo-dev/dygo/internal/secrets"
-	"github.com/dygo-dev/dygo/internal/yamlmeta"
+	"github.com/hapyco/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
 

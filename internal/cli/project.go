@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dygo-dev/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/project"
 )
 
 func workingRootPath() (string, error) {
