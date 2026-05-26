@@ -14,6 +14,7 @@ import (
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
+	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
@@ -107,9 +108,9 @@ func ValidateSecretName(name string) error {
 func (s Store) Paths(env Environment) Paths {
 	envName := string(env)
 	return Paths{
-		SecretFile:    filepath.Join(s.root, "configs", "secrets", envName+".yml.age"),
-		MasterKeyFile: filepath.Join(s.root, "master.key"),
-		TempDir:       filepath.Join(s.root, ".dygo", "secrets", "tmp"),
+		SecretFile:    filepath.Join(s.root, filepath.FromSlash(shape.ConfigSecretsDir), envName+".yml.age"),
+		MasterKeyFile: filepath.Join(s.root, filepath.FromSlash(shape.LocalSecretKeyFile)),
+		TempDir:       filepath.Join(s.root, filepath.FromSlash(shape.LocalSecretsTempDir)),
 	}
 }
 
@@ -429,7 +430,8 @@ func (s Store) Validate(env Environment) error {
 		return err
 	}
 
-	references, err := FindManifestReferences(filepath.Join(s.root, "configs"))
+	// TODO(secrets): include root dygo.yml config references once config and secrets share a small reference scanner.
+	references, err := FindManifestReferences(filepath.Join(s.root, filepath.FromSlash(shape.ConfigDir)))
 	if err != nil {
 		return err
 	}

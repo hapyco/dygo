@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/hapyco/dygo/internal/shape"
 )
 
 const (
 	// MarkerFile is the canonical root marker for generated dygo projects.
-	MarkerFile = "dygo.yml"
+	MarkerFile = shape.ProjectConfigFile
 
 	frameworkModule = "github.com/hapyco/dygo"
 )

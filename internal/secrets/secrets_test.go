@@ -20,7 +20,7 @@ func TestStoreLifecycle(t *testing.T) {
 		t.Fatalf("Init() error = %v", err)
 	}
 	if _, err := os.Stat(paths.MasterKeyFile); err != nil {
-		t.Fatalf("Stat(master.key) error = %v", err)
+		t.Fatalf("Stat(.dygo/secrets/master.key) error = %v", err)
 	}
 
 	ciphertext, err := os.ReadFile(paths.SecretFile)
@@ -51,7 +51,7 @@ func TestStoreLifecycle(t *testing.T) {
 		t.Fatalf("List() = %#v, want one DATABASE_URL entry", entries)
 	}
 
-	configPath := filepath.Join(root, "configs", "app.yaml")
+	configPath := filepath.Join(root, "config", "app.yaml")
 	if err := os.WriteFile(configPath, []byte("env:\n  DATABASE_URL:\n    secret: DATABASE_URL\ndatabase:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}
@@ -85,7 +85,7 @@ func TestStoreValidationFailures(t *testing.T) {
 		t.Fatal("Set(invalid name) error = nil, want error")
 	}
 
-	configPath := filepath.Join(root, "configs", "app.yaml")
+	configPath := filepath.Join(root, "config", "app.yaml")
 	if err := os.WriteFile(configPath, []byte("database:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}
@@ -112,7 +112,7 @@ func TestStoreResolvesNestedPlainYAMLSecrets(t *testing.T) {
 		t.Fatalf("Get(database.url).Value = %q, want nested value", secret.Value)
 	}
 
-	configPath := filepath.Join(root, "configs", "app.yaml")
+	configPath := filepath.Join(root, "config", "app.yaml")
 	if err := os.WriteFile(configPath, []byte("database:\n  url:\n    secret: database.url\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}
@@ -232,7 +232,7 @@ func readRotationState(t *testing.T, store Store) ([]byte, map[Environment][]byt
 
 	master, err := os.ReadFile(store.Paths(EnvironmentDevelopment).MasterKeyFile)
 	if err != nil {
-		t.Fatalf("ReadFile(master.key) error = %v", err)
+		t.Fatalf("ReadFile(.dygo/secrets/master.key) error = %v", err)
 	}
 	files := make(map[Environment][]byte)
 	for _, env := range SupportedEnvironments() {
@@ -250,7 +250,7 @@ func assertRotationState(t *testing.T, store Store, wantMaster []byte, wantSecre
 
 	gotMaster, gotSecrets := readRotationState(t, store)
 	if !bytes.Equal(gotMaster, wantMaster) {
-		t.Fatal("master.key changed after failed rotation")
+		t.Fatal(".dygo/secrets/master.key changed after failed rotation")
 	}
 	for _, env := range SupportedEnvironments() {
 		if !bytes.Equal(gotSecrets[env], wantSecrets[env]) {

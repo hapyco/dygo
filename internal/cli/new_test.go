@@ -31,10 +31,9 @@ func TestNewProjectCommandCreatesProject(t *testing.T) {
 		"secrets: initialized",
 		"dependencies: tidy skipped",
 		"studio: cached from framework Studio build",
-		"dygo db prepare",
-		"dygo fixtures apply",
-		"dygo setup admin",
-		"dygo serve",
+		"dygo db migrate",
+		"dygo setup",
+		"dygo dev",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("new stdout = %q, want substring %q", stdout.String(), want)
@@ -50,10 +49,10 @@ func TestNewProjectCommandCreatesProject(t *testing.T) {
 		"go.mod",
 		"cmd/dygo/main.go",
 		"apps/my-company/app.yml",
-		"configs/secrets/development.yml.age",
-		"configs/secrets/staging.yml.age",
-		"configs/secrets/production.yml.age",
-		"master.key",
+		"config/secrets/development.yml.age",
+		"config/secrets/staging.yml.age",
+		"config/secrets/production.yml.age",
+		".dygo/secrets/master.key",
 		".dygo/apps/studio/ui/dist/index.html",
 	} {
 		if _, err := os.Stat(filepath.Join(projectRoot, filepath.FromSlash(path))); err != nil {
