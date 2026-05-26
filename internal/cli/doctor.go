@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -49,6 +50,10 @@ type doctorRuntimePool interface {
 
 var openDoctorRuntimePool = func(ctx context.Context, databaseURL string) (doctorRuntimePool, error) {
 	return db.OpenRuntimePool(ctx, databaseURL)
+}
+
+var checkDoctorSchemaSnapshotFreshness = func(ctx context.Context, root string, databaseURL string) error {
+	return db.NewMigrator().CheckSchemaSnapshot(ctx, root, databaseURL)
 }
 
 func (e doctorError) Error() string {
@@ -222,10 +227,31 @@ func checkSchemaSnapshot(root string) doctorResult {
 	if info.IsDir() {
 		return doctorResult{Status: doctorFail, Name: "schema snapshot", Detail: fmt.Sprintf("%s is a directory; run dygo db migrate", shape.SchemaSnapshot)}
 	}
-	// TODO(doctor): compare db/schema.sql with a fresh pg_dump once the runtime
-	// database check can share the existing schema snapshotter without adding
-	// another database connection path.
 	return doctorResult{Status: doctorPass, Name: "schema snapshot", Detail: fmt.Sprintf("%s present", shape.SchemaSnapshot)}
+}
+
+func checkSchemaSnapshotFreshness(ctx context.Context, root string, databaseURL string) doctorResult {
+	path := filepath.Join(root, filepath.FromSlash(shape.SchemaSnapshot))
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return doctorResult{Status: doctorSkip, Name: "schema snapshot freshness", Detail: fmt.Sprintf("%s is missing", shape.SchemaSnapshot)}
+		}
+		return doctorResult{Status: doctorFail, Name: "schema snapshot freshness", Detail: fmt.Sprintf("stat %s: %v", shape.SchemaSnapshot, err)}
+	}
+	if info.IsDir() {
+		return doctorResult{Status: doctorSkip, Name: "schema snapshot freshness", Detail: fmt.Sprintf("%s is not a file", shape.SchemaSnapshot)}
+	}
+	if err := checkDoctorSchemaSnapshotFreshness(ctx, root, databaseURL); err != nil {
+		if errors.Is(err, db.ErrSchemaSnapshotOutOfDate) {
+			return doctorResult{Status: doctorFail, Name: "schema snapshot freshness", Detail: fmt.Sprintf("%s is out of date; run dygo db migrate", shape.SchemaSnapshot)}
+		}
+		if errors.Is(err, db.ErrSchemaSnapshotMissing) {
+			return doctorResult{Status: doctorFail, Name: "schema snapshot freshness", Detail: fmt.Sprintf("%s is missing; run dygo db migrate", shape.SchemaSnapshot)}
+		}
+		return doctorResult{Status: doctorFail, Name: "schema snapshot freshness", Detail: err.Error()}
+	}
+	return doctorResult{Status: doctorPass, Name: "schema snapshot freshness", Detail: fmt.Sprintf("%s matches live database", shape.SchemaSnapshot)}
 }
 
 func checkStudioAssets(root string) doctorResult {
@@ -291,6 +317,7 @@ func checkRuntimeReadiness(ctx context.Context, root string) []doctorResult {
 
 	results := []doctorResult{
 		{Status: doctorPass, Name: "runtime database", Detail: string(env) + " database reachable"},
+		checkSchemaSnapshotFreshness(ctx, root, databaseURL),
 	}
 	for _, check := range health.CoreRuntimeChecks(ctx, pool) {
 		results = append(results, doctorResultFromHealth(check))

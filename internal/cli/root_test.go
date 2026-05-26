@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -1326,6 +1327,9 @@ func TestDoctorCommand(t *testing.T) {
 		permissionCount: 17,
 		adminExists:     true,
 	})
+	withDoctorSchemaSnapshotCheck(t, func(context.Context, string, string) error {
+		return nil
+	})
 
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -1362,9 +1366,46 @@ fields:
 		"PASS config: dygo.yml server=127.0.0.1:6790",
 		"PASS secrets layout: 3 environments configured",
 		"PASS runtime database: development database reachable",
+		"PASS schema snapshot freshness: db/schema.sql matches live database",
 		"PASS core fixtures: 2 roles and 17 permissions ready",
 		"PASS administrator account: Administrator account exists",
 		"dygo doctor passed",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
+func TestDoctorCommandReportsStaleSchemaSnapshot(t *testing.T) {
+	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{
+		roleCount:       2,
+		permissionCount: 17,
+		adminExists:     true,
+	})
+	withDoctorSchemaSnapshotCheck(t, func(context.Context, string, string) error {
+		return fmt.Errorf("%w: db/schema.sql; run dygo doctor", db.ErrSchemaSnapshotOutOfDate)
+	})
+
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"doctor"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(doctor) error = nil, want stale schema snapshot diagnostic")
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"PASS schema snapshot: db/schema.sql present",
+		"FAIL schema snapshot freshness: db/schema.sql is out of date; run dygo db migrate",
+		"dygo doctor found 1 problem",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
@@ -1399,6 +1440,7 @@ func TestDoctorCommandReportsMissingSchemaSnapshot(t *testing.T) {
 	output := stdout.String()
 	for _, want := range []string{
 		"FAIL schema snapshot: missing db/schema.sql; run dygo db migrate",
+		"SKIP schema snapshot freshness: db/schema.sql is missing",
 		"PASS Studio assets: project Studio cache available",
 		"dygo doctor found 1 problem",
 	} {
@@ -1410,6 +1452,9 @@ func TestDoctorCommandReportsMissingSchemaSnapshot(t *testing.T) {
 
 func TestDoctorCommandReportsMissingFirstRunSetup(t *testing.T) {
 	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{})
+	withDoctorSchemaSnapshotCheck(t, func(context.Context, string, string) error {
+		return nil
+	})
 
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -2280,6 +2325,15 @@ func withDoctorRuntimePool(t *testing.T, pool *fakeDoctorRuntimePool) {
 	}
 	t.Cleanup(func() {
 		openDoctorRuntimePool = previous
+	})
+}
+
+func withDoctorSchemaSnapshotCheck(t *testing.T, check func(context.Context, string, string) error) {
+	t.Helper()
+	previous := checkDoctorSchemaSnapshotFreshness
+	checkDoctorSchemaSnapshotFreshness = check
+	t.Cleanup(func() {
+		checkDoctorSchemaSnapshotFreshness = previous
 	})
 }
 
