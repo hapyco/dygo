@@ -29,12 +29,6 @@ records:
   - name: system-manager
     label: System Manager
 `)
-	writeFixtureFile(t, filepath.Join(appDir, "entities", "_collections", "role-row", "fixtures.yml"), `
-entity: role-row
-match: [name]
-records:
-  - name: ignored
-`)
 
 	files, err := Discover([]manifest.LoadedApp{{
 		Dir: appDir,
@@ -51,6 +45,31 @@ records:
 	}
 	if files[0].Path != filepath.Join(entityDir, "fixtures.yml") {
 		t.Fatalf("Discover() fixture path = %q, want Entity bundle fixture", files[0].Path)
+	}
+}
+
+func TestDiscoverRejectsCollectionBundleFixtureFiles(t *testing.T) {
+	root := t.TempDir()
+	appDir := filepath.Join(root, "apps", "core")
+	writeFixtureFile(t, filepath.Join(appDir, "entities", "_collections", "role-row", "fixtures.yml"), `
+entity: role-row
+match: [name]
+records:
+  - name: ignored
+`)
+
+	_, err := Discover([]manifest.LoadedApp{{
+		Dir: appDir,
+		Manifest: manifest.Manifest{
+			Name:  "core",
+			Paths: manifest.DefaultPaths(),
+		},
+	}})
+	if err == nil {
+		t.Fatal("Discover() error = nil, want collection fixture error")
+	}
+	if !strings.Contains(err.Error(), "collection Entity fixtures are not supported") {
+		t.Fatalf("Discover() error = %q, want collection fixture error", err.Error())
 	}
 }
 
@@ -101,6 +120,129 @@ records:
 	}
 	if !strings.Contains(err.Error(), `fixture entity "role" must match Entity bundle "roles"`) {
 		t.Fatalf("Discover() error = %q, want Entity bundle mismatch", err.Error())
+	}
+}
+
+func TestRunnerPlanValidatesFixtureMatchAgainstEntityMetadata(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureApp(t, root, "sales")
+	writeFixtureEntity(t, root, "sales", "lead", `
+label: Lead
+name:
+  strategy: random
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	writeFixtureFile(t, filepath.Join(root, "apps", "sales", "entities", "lead", "fixtures.yml"), `
+entity: lead
+match: [title]
+records:
+  - title: First Lead
+`)
+
+	_, err := NewRunner().Plan(context.Background(), root)
+	if err == nil {
+		t.Fatal("Plan() error = nil, want non-unique match error")
+	}
+	if !strings.Contains(err.Error(), `fixture match "title" is not backed by a unique field or constraint on Entity "lead"`) {
+		t.Fatalf("Plan() error = %q, want non-unique match error", err.Error())
+	}
+}
+
+func TestRunnerPlanValidatesFixtureLinkReferencesAgainstMetadata(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureApp(t, root, "sales")
+	writeFixtureEntity(t, root, "sales", "company", `
+label: Company
+name:
+  strategy: random
+fields:
+  - name: code
+    label: Code
+    type: text
+`)
+	writeFixtureEntity(t, root, "sales", "lead", `
+label: Lead
+name:
+  strategy: random
+fields:
+  - name: company
+    label: Company
+    type: link
+    options:
+      entity: company
+`)
+	writeFixtureFile(t, filepath.Join(root, "apps", "sales", "entities", "lead", "fixtures.yml"), `
+entity: lead
+match: [name]
+records:
+  - name: lead-one
+    company:
+      match:
+        code: ACME
+`)
+
+	_, err := NewRunner().Plan(context.Background(), root)
+	if err == nil {
+		t.Fatal("Plan() error = nil, want invalid link reference match error")
+	}
+	if !strings.Contains(err.Error(), `fixture match "code" is not backed by a unique field or constraint on Entity "company"`) {
+		t.Fatalf("Plan() error = %q, want invalid link reference match error", err.Error())
+	}
+}
+
+func TestRunnerPlanDetectsFixtureDependencyCycles(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureApp(t, root, "sales")
+	writeFixtureEntity(t, root, "sales", "company", `
+label: Company
+name:
+  strategy: random
+fields:
+  - name: lead
+    label: Lead
+    type: link
+    options:
+      entity: lead
+`)
+	writeFixtureEntity(t, root, "sales", "lead", `
+label: Lead
+name:
+  strategy: random
+fields:
+  - name: company
+    label: Company
+    type: link
+    options:
+      entity: company
+`)
+	writeFixtureFile(t, filepath.Join(root, "apps", "sales", "entities", "company", "fixtures.yml"), `
+entity: company
+match: [name]
+records:
+  - name: company-one
+    lead:
+      match:
+        name: lead-one
+`)
+	writeFixtureFile(t, filepath.Join(root, "apps", "sales", "entities", "lead", "fixtures.yml"), `
+entity: lead
+match: [name]
+records:
+  - name: lead-one
+    company:
+      match:
+        name: company-one
+`)
+
+	_, err := NewRunner().Plan(context.Background(), root)
+	if err == nil {
+		t.Fatal("Plan() error = nil, want fixture dependency cycle error")
+	}
+	if !strings.Contains(err.Error(), "fixture dependency cycle among entities: company, lead") {
+		t.Fatalf("Plan() error = %q, want dependency cycle error", err.Error())
 	}
 }
 
@@ -668,7 +810,26 @@ func loadedFixture(t *testing.T, name string, body string) LoadedFile {
 	return LoadedFile{AppName: "core", AppDir: "/tmp/core", Path: name, Fixture: fixture}
 }
 
+func writeFixtureApp(t *testing.T, root string, appName string) {
+	t.Helper()
+	writeFixtureProjectFile(t, filepath.Join(root, "apps", appName, "app.yml"), fmt.Sprintf(`
+name: %s
+label: %s
+version: 0.1.0
+`, appName, appName))
+}
+
+func writeFixtureEntity(t *testing.T, root string, appName string, entityName string, body string) {
+	t.Helper()
+	writeFixtureProjectFile(t, filepath.Join(root, "apps", appName, "entities", entityName, "entity.yml"), body)
+}
+
 func writeFixtureFile(t *testing.T, path string, body string) {
+	t.Helper()
+	writeFixtureProjectFile(t, path, body)
+}
+
+func writeFixtureProjectFile(t *testing.T, path string, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(path), err)
