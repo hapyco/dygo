@@ -104,11 +104,17 @@ Generators are non-interactive by default. They write when there are no conflict
 - `dygo route resolve <method> <path>` - Explains which route, action, and permission a request would use.
 - `dygo route reserved` - Lists framework-reserved route slugs.
 
-## Permissions
+## Permissions*
 
-- `dygo permission` - Groups permission inspection and validation commands.
-- `dygo permission check` - Returns a concise allow or deny result for an action.
-- `dygo permission explain <entity> <action>` - Explains why an action is allowed or denied.
+- `dygo permission` - Groups live permission inspection commands.
+- `dygo permission list` - Lists live role permission grants from the configured database.
+- `dygo permission list <app>/<entity>` - Lists live role permission grants for one Entity.
+- `dygo permission check <app>/<entity> <action> --user <email-or-id>` - Checks live database permissions and prints `allow` or `deny`.
+- `dygo permission check <app>/<entity> <action> --role <role>` - Checks whether one live role grants the action and prints `allow` or `deny`.
+- `dygo permission explain <app>/<entity> <action> --user <email-or-id>` - Explains the live permission decision for one user.
+- `dygo permission explain <app>/<entity> <action> --role <role>` - Explains the live permission decision for one role.
+
+Permission commands default to `--env development` and read live Core permission Records from the configured database. The CLI should share the same internal permission verification methods used by the server/runtime so command answers match API and Studio authorization behavior.
 
 ## Secrets
 
