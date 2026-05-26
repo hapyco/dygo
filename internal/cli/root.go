@@ -69,7 +69,7 @@ func RunWithOptions(ctx context.Context, args []string, stdin io.Reader, stdout,
 	if err != nil {
 		return fmt.Errorf("configure record hooks: %w", err)
 	}
-	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, recordHooks)
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, defaultPermissionRunner{}, recordHooks)
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker) error {
@@ -86,11 +86,11 @@ func runWithServicesAndSetup(ctx context.Context, args []string, stdin io.Reader
 }
 
 func runWithServicesAndSetupAndFixtures(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner) error {
-	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, database, sync, setup, fixture, nil)
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, database, sync, setup, fixture, defaultPermissionRunner{}, nil)
 }
 
-func runWithServicesAndSetupAndFixturesAndHooks(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, recordHooks *db.RecordHookRegistry) error {
-	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup, fixture, recordHooks)
+func runWithServicesAndSetupAndFixturesAndHooks(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, permission permissionRunner, recordHooks *db.RecordHookRegistry) error {
+	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup, fixture, permission, recordHooks)
 	if err != nil {
 		return err
 	}
@@ -111,10 +111,10 @@ func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	if err != nil {
 		return nil, fmt.Errorf("configure record hooks: %w", err)
 	}
-	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, recordHooks)
+	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, defaultPermissionRunner{}, recordHooks)
 }
 
-func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, recordHooks *db.RecordHookRegistry) (*cobra.Command, error) {
+func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, permission permissionRunner, recordHooks *db.RecordHookRegistry) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
 	}
@@ -141,6 +141,9 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	}
 	if fixture == nil {
 		return nil, fmt.Errorf("fixture runner is required")
+	}
+	if permission == nil {
+		return nil, fmt.Errorf("permission runner is required")
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -174,6 +177,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newHookCommand(stdout))
 	root.AddCommand(newGenerateCommand(stdout))
 	root.AddCommand(newRouteCommand(stdout))
+	root.AddCommand(newPermissionCommand(ctx, stdout, permission))
 	root.AddCommand(newSecretCommand(ctx, stdin, stdout, stderr))
 
 	return root, nil

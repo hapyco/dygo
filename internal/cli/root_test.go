@@ -2028,7 +2028,7 @@ func runWithOptionsForTest(ctx context.Context, args []string, stdin io.Reader, 
 	if err != nil {
 		return err
 	}
-	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, noopDatabaseRunner(), migrator, &fakeAdminSetupRunner{}, &fakeFixtureRunner{}, recordHooks)
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, noopDatabaseRunner(), migrator, &fakeAdminSetupRunner{}, &fakeFixtureRunner{}, &fakePermissionRunner{}, recordHooks)
 }
 
 func recordhooksForTest(registrars []sdk.RecordHookRegistrar) (*db.RecordHookRegistry, error) {
