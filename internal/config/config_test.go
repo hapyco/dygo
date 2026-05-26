@@ -44,18 +44,12 @@ func TestLoadRepositoryConfig(t *testing.T) {
 	}
 }
 
-func TestLoadPrefersRootDygoYML(t *testing.T) {
+func TestLoadReadsRootDygoYML(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, FilePath), []byte("name: test\nserver:\n  port: 7777\ndatabase:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, "configs"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(configs) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, LegacyFilePath), []byte("server:\n  port: 8888\ndatabase:\n  url:\n    secret: OLD_DATABASE_URL\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(legacy config) error = %v", err)
 	}
 
 	cfg, err := Load(root)
@@ -67,23 +61,17 @@ func TestLoadPrefersRootDygoYML(t *testing.T) {
 	}
 }
 
-func TestLoadFallsBackToLegacyConfig(t *testing.T) {
+func TestLoadRequiresRootDygoYML(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "configs"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(configs) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, LegacyFilePath), []byte("server:\n  port: 8888\ndatabase:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(legacy config) error = %v", err)
-	}
 
-	cfg, err := Load(root)
-	if err != nil {
-		t.Fatalf("Load() error = %v, want nil", err)
+	_, err := Load(root)
+	if err == nil {
+		t.Fatal("Load() error = nil, want missing dygo.yml error")
 	}
-	if cfg.Server.Port != 8888 {
-		t.Fatalf("Load().Server.Port = %d, want legacy config", cfg.Server.Port)
+	if !strings.Contains(err.Error(), "read dygo config") || !strings.Contains(err.Error(), "dygo.yml") {
+		t.Fatalf("Load() error = %q, want missing dygo.yml context", err.Error())
 	}
 }
 

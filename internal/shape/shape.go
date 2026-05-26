@@ -10,7 +10,6 @@ import (
 
 const (
 	ProjectConfigFile = "dygo.yml"
-	LegacyConfigFile  = "configs/dygo.yaml"
 
 	AppsDir          = "apps"
 	ConfigDir        = "config"

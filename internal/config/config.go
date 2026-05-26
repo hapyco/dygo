@@ -21,9 +21,6 @@ const (
 
 	// FilePath is the canonical project-relative dygo runtime config path.
 	FilePath = shape.ProjectConfigFile
-
-	// LegacyFilePath is read for older generated projects and the framework repo.
-	LegacyFilePath = shape.LegacyConfigFile
 )
 
 // Config contains dygo runtime settings.
@@ -56,13 +53,7 @@ func Load(root string) (Config, error) {
 		root = "."
 	}
 	path := filepath.Join(root, filepath.FromSlash(FilePath))
-	if _, err := os.Stat(path); err == nil {
-		return LoadFile(path)
-	} else if !os.IsNotExist(err) {
-		return Config{}, fmt.Errorf("stat dygo config %s: %w", path, err)
-	}
-	legacyPath := filepath.Join(root, filepath.FromSlash(LegacyFilePath))
-	return LoadFile(legacyPath)
+	return LoadFile(path)
 }
 
 // LoadFile reads, decodes, and validates one dygo config file.
