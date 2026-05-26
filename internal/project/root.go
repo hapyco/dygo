@@ -65,6 +65,13 @@ func inspectRoot(dir string) (Root, bool, error) {
 		if markerInfo.IsDir() {
 			return Root{}, false, fmt.Errorf("dygo root marker %s must be a file", markerPath)
 		}
+		ok, err := isFrameworkRoot(dir)
+		if err != nil {
+			return Root{}, false, err
+		}
+		if ok {
+			return Root{Path: dir, Marker: "framework-repo"}, true, nil
+		}
 		return Root{Path: dir, Marker: MarkerFile}, true, nil
 	}
 	if err != nil && !os.IsNotExist(err) {

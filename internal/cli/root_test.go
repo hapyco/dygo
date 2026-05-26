@@ -1357,12 +1357,50 @@ fields:
 		"PASS route registry: 1 routeable entities",
 		"PASS fixture files: 0 files, 0 records valid",
 		"SKIP hook wiring: go.mod not found",
+		"PASS schema snapshot: db/schema.sql present",
+		"PASS Studio assets: project Studio cache available",
 		"PASS config: dygo.yml server=127.0.0.1:6790",
 		"PASS secrets layout: 3 environments configured",
 		"PASS runtime database: development database reachable",
 		"PASS core fixtures: 2 roles and 17 permissions ready",
 		"PASS administrator account: Administrator account exists",
 		"dygo doctor passed",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
+func TestDoctorCommandReportsMissingSchemaSnapshot(t *testing.T) {
+	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{
+		roleCount:       2,
+		permissionCount: 17,
+		adminExists:     true,
+	})
+
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	if err := os.Remove(filepath.Join(root, "db", "schema.sql")); err != nil {
+		t.Fatalf("Remove(db/schema.sql) error = %v", err)
+	}
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"doctor"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(doctor) error = nil, want missing schema snapshot diagnostic")
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"FAIL schema snapshot: missing db/schema.sql; run dygo db migrate",
+		"PASS Studio assets: project Studio cache available",
+		"dygo doctor found 1 problem",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
@@ -2126,7 +2164,20 @@ func writeCLIProjectRoot(t *testing.T, root string) {
 	if err := os.WriteFile(filepath.Join(root, "dygo.yml"), []byte("name: test\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
 	}
+	writeCLISchemaSnapshot(t, root)
 	writeCLIStudioCache(t, root)
+}
+
+func writeCLISchemaSnapshot(t *testing.T, root string) {
+	t.Helper()
+
+	path := filepath.Join(root, "db", "schema.sql")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(db) error = %v", err)
+	}
+	if err := os.WriteFile(path, []byte("-- test schema snapshot\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(db/schema.sql) error = %v", err)
+	}
 }
 
 func writeCLIStudioCache(t *testing.T, root string) {

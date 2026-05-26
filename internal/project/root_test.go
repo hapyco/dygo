@@ -45,6 +45,7 @@ func TestDiscoverRootAcceptsFileStartPath(t *testing.T) {
 func TestDiscoverRootFindsFrameworkRepositoryRoot(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "go.mod"), "module github.com/hapyco/dygo\n")
+	writeFile(t, filepath.Join(root, MarkerFile), "name: dygo\n")
 	for _, dir := range []string{"apps", filepath.Join("internal", "cli")} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%s) error = %v", dir, err)

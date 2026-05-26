@@ -18,6 +18,8 @@ import (
 	"github.com/hapyco/dygo/internal/hookgen"
 	"github.com/hapyco/dygo/internal/project"
 	"github.com/hapyco/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/shape"
+	"github.com/hapyco/dygo/internal/studio"
 	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 )
@@ -81,6 +83,8 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 			doctorResult{Status: doctorSkip, Name: "route registry", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "fixture files", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "schema snapshot", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "Studio assets", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "config", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "secrets layout", Detail: "project root not found"},
 		)
@@ -108,6 +112,10 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 			doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "app manifests or entity metadata are invalid"},
 		)
 	}
+	results = append(results,
+		checkSchemaSnapshot(root),
+		checkStudioAssets(root),
+	)
 	configResult := checkConfig(root)
 	results = append(results, configResult)
 	secretsResult := checkSecretsLayout(root)
@@ -200,6 +208,32 @@ func checkHookWiring(root string) doctorResult {
 		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: err.Error()}
 	}
 	return doctorResult{Status: doctorPass, Name: "hook wiring", Detail: fmt.Sprintf("%d hook files wired", len(hooks))}
+}
+
+func checkSchemaSnapshot(root string) doctorResult {
+	path := filepath.Join(root, filepath.FromSlash(shape.SchemaSnapshot))
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return doctorResult{Status: doctorFail, Name: "schema snapshot", Detail: fmt.Sprintf("missing %s; run dygo db migrate", shape.SchemaSnapshot)}
+		}
+		return doctorResult{Status: doctorFail, Name: "schema snapshot", Detail: fmt.Sprintf("stat %s: %v", shape.SchemaSnapshot, err)}
+	}
+	if info.IsDir() {
+		return doctorResult{Status: doctorFail, Name: "schema snapshot", Detail: fmt.Sprintf("%s is a directory; run dygo db migrate", shape.SchemaSnapshot)}
+	}
+	// TODO(doctor): compare db/schema.sql with a fresh pg_dump once the runtime
+	// database check can share the existing schema snapshotter without adding
+	// another database connection path.
+	return doctorResult{Status: doctorPass, Name: "schema snapshot", Detail: fmt.Sprintf("%s present", shape.SchemaSnapshot)}
+}
+
+func checkStudioAssets(root string) doctorResult {
+	_, source, err := studio.HandlerForProject(root)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "Studio assets", Detail: err.Error()}
+	}
+	return doctorResult{Status: doctorPass, Name: "Studio assets", Detail: source + " available"}
 }
 
 func checkConfig(root string) doctorResult {
