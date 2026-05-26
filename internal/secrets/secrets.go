@@ -115,90 +115,56 @@ func (s Store) Paths(env Environment) Paths {
 }
 
 // Init creates a root master key and encrypted secret files for all environments.
-func (s Store) Init(force bool) (Paths, error) {
+func (s Store) Init() (Paths, error) {
 	paths := s.Paths(EnvironmentDevelopment)
 	envs := SupportedEnvironments()
 
-	if !force {
-		masterExists := exists(paths.MasterKeyFile)
-		var identity *age.HybridIdentity
-		var keyData []byte
-		var err error
-		if masterExists {
-			identity, err = loadMasterIdentity(paths.MasterKeyFile)
-			if err != nil {
-				return Paths{}, err
-			}
-		} else {
-			identity, keyData, err = generateMasterKeyData()
-			if err != nil {
-				return Paths{}, err
-			}
-		}
-
-		docs := make(map[Environment]Document, len(envs))
-		for _, env := range envs {
-			envPaths := s.Paths(env)
-			if exists(envPaths.SecretFile) {
-				if !masterExists {
-					return Paths{}, fmt.Errorf("%s already exists; rerun with --force to migrate it to master.key", envPaths.SecretFile)
-				}
-				continue
-			}
-			docs[env] = NewDocument(env)
-		}
-
-		encrypted, err := encryptDocuments(docs, identity.Recipient())
+	masterExists := exists(paths.MasterKeyFile)
+	var identity *age.HybridIdentity
+	var keyData []byte
+	var err error
+	if masterExists {
+		identity, err = loadMasterIdentity(paths.MasterKeyFile)
 		if err != nil {
 			return Paths{}, err
 		}
-		if !masterExists {
-			if err := writeFileAtomic(paths.MasterKeyFile, keyData, 0o600); err != nil {
-				return Paths{}, fmt.Errorf("write master key: %w", err)
-			}
+	} else {
+		identity, keyData, err = generateMasterKeyData()
+		if err != nil {
+			return Paths{}, err
 		}
-		for _, env := range envs {
-			ciphertext, ok := encrypted[env]
-			if !ok {
-				continue
-			}
-			if err := writeFileAtomic(s.Paths(env).SecretFile, ciphertext, 0o644); err != nil {
-				return Paths{}, fmt.Errorf("write encrypted %s secrets file: %w", env, err)
-			}
-		}
-		return paths, nil
 	}
 
 	docs := make(map[Environment]Document, len(envs))
 	for _, env := range envs {
-		doc, err := s.loadForRewrite(env)
-		if err != nil {
-			if !force || exists(s.Paths(env).SecretFile) {
-				return Paths{}, fmt.Errorf("load existing %s secrets: %w", env, err)
+		envPaths := s.Paths(env)
+		if exists(envPaths.SecretFile) {
+			if !masterExists {
+				return Paths{}, fmt.Errorf("%s already exists but %s is missing; restore the key or remove the stale encrypted file", envPaths.SecretFile, paths.MasterKeyFile)
 			}
-			doc = NewDocument(env)
+			continue
 		}
-		docs[env] = doc
+		docs[env] = NewDocument(env)
 	}
 
-	identity, keyData, err := generateMasterKeyData()
-	if err != nil {
-		return Paths{}, err
-	}
 	encrypted, err := encryptDocuments(docs, identity.Recipient())
 	if err != nil {
 		return Paths{}, err
 	}
-
-	if err := writeFileAtomic(paths.MasterKeyFile, keyData, 0o600); err != nil {
-		return Paths{}, fmt.Errorf("write master key: %w", err)
+	if !masterExists {
+		if err := writeFileAtomic(paths.MasterKeyFile, keyData, 0o600); err != nil {
+			return Paths{}, fmt.Errorf("write master key: %w", err)
+		}
 	}
 	for _, env := range envs {
-		if err := writeFileAtomic(s.Paths(env).SecretFile, encrypted[env], 0o644); err != nil {
+		ciphertext, ok := encrypted[env]
+		if !ok {
+			continue
+		}
+		if err := writeFileAtomic(s.Paths(env).SecretFile, ciphertext, 0o644); err != nil {
 			return Paths{}, fmt.Errorf("write encrypted %s secrets file: %w", env, err)
 		}
 	}
-
 	return paths, nil
 }
 
@@ -1044,14 +1010,6 @@ func (s Store) remove(path string) error {
 		return s.fileOps.remove(path)
 	}
 	return os.Remove(path)
-}
-
-func (s Store) loadForRewrite(env Environment) (Document, error) {
-	paths := s.Paths(env)
-	if !exists(paths.SecretFile) {
-		return NewDocument(env), nil
-	}
-	return s.Load(env)
 }
 
 func encryptArmored(plaintext []byte, recipients []age.Recipient) ([]byte, error) {

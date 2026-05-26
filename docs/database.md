@@ -15,23 +15,23 @@ database:
     secret: DATABASE_URL
 ```
 
-Do not put a raw database URL in `configs/dygo.yaml`.
+Do not put a raw database URL in `dygo.yml`.
 
 ## Development Secret
 
 Set the local development database URL by editing development secrets:
 
 ```sh
-go run ./cmd/dygo secrets edit
+go run ./cmd/dygo secret edit
 ```
 
 The value is encrypted into:
 
 ```txt
-configs/secrets/development.yml.age
+config/secrets/development.yml.age
 ```
 
-The local `master.key` at the project root decrypts and re-encrypts the file. Do not commit `master.key`.
+The local `.dygo/secrets/master.key` decrypts and re-encrypts the file. Do not commit `.dygo/secrets/master.key`.
 
 ## Connectivity Check
 

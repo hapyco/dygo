@@ -15,7 +15,7 @@ func TestStoreLifecycle(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 
-	paths, err := store.Init(false)
+	paths, err := store.Init()
 	if err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
@@ -78,7 +78,7 @@ func TestStoreValidationFailures(t *testing.T) {
 		t.Fatal("ValidateSecretName(database..url) error = nil, want error")
 	}
 
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 	if err := store.Set(EnvironmentDevelopment, "database..url", "value"); err == nil {
@@ -97,7 +97,7 @@ func TestStoreValidationFailures(t *testing.T) {
 func TestStoreResolvesNestedPlainYAMLSecrets(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 	if err := store.SavePlaintext(EnvironmentDevelopment, []byte("database:\n  url: postgres://nested\n")); err != nil {
@@ -125,7 +125,7 @@ func TestLoadWithUnusableMasterKeyFails(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 
-	paths, err := store.Init(false)
+	paths, err := store.Init()
 	if err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
@@ -150,7 +150,7 @@ func TestRotateKeyPreservesAllEnvironments(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 	if err := store.Set(EnvironmentDevelopment, "DATABASE_URL", "postgres://development"); err != nil {
@@ -209,7 +209,7 @@ func newRotatableStore(t *testing.T) Store {
 	t.Helper()
 
 	store := NewStore(t.TempDir())
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 	for _, tt := range []struct {

@@ -135,8 +135,8 @@ Permission commands default to `--env development` and read live Core permission
 - `dygo secret edit --env <environment>` - Opens decrypted secrets for `development`, `staging`, or `production`.
 - `dygo secret validate` - Validates development secrets and config references.
 - `dygo secret validate --env <environment>` - Validates encrypted secrets and config references for `development`, `staging`, or `production`.
-- `dygo secret rotate-key` - Prints the rotation plan, prompts interactively, then rotates `master.key` and re-encrypts all environment secret files.
-- `dygo secret rotate-key --yes` - Rotates `master.key` and re-encrypts all environment secret files without an interactive prompt.
+- `dygo secret rotate-key` - Prints the rotation plan, prompts interactively, then rotates `.dygo/secrets/master.key` and re-encrypts all environment secret files.
+- `dygo secret rotate-key --yes` - Rotates `.dygo/secrets/master.key` and re-encrypts all environment secret files without an interactive prompt.
 
 Secret names support root keys and dot-separated YAML paths, such as `DATABASE_URL` or `database.url`. `dygo secret get` prints only the raw value to stdout; errors and diagnostics go to stderr.
 

@@ -27,7 +27,7 @@ These docs live in the repository so they are versioned with code, reviewed in P
 - [Records](records.md) explains the first metadata-powered Record CRUD API.
 - [App SDK](sdk.md) explains the public Go package app code can compile against.
 - [Studio](studio.md) explains the first-party global UI app.
-- [Encrypted Secrets](secrets.md) explains repo-stored encrypted secrets and the `dygo secrets` CLI.
+- [Encrypted Secrets](secrets.md) explains repo-stored encrypted secrets and the `dygo secret` CLI.
 - [Documentation Strategy](docs-strategy.md) explains why docs live in `/docs` instead of GitHub Wiki.
 
 ## Working Notes

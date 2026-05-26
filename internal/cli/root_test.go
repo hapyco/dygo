@@ -737,7 +737,7 @@ func TestDBCheckCommandRequiresSecret(t *testing.T) {
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
 	store := secrets.NewStore(root)
-	if _, err := store.Init(true); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 	t.Chdir(root)
@@ -1210,7 +1210,7 @@ func TestMigrateCommandRequiresSecret(t *testing.T) {
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
 	store := secrets.NewStore(root)
-	if _, err := store.Init(true); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 	t.Chdir(root)
@@ -2400,7 +2400,7 @@ func TestSecretsInitCommand(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"secrets", "init"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"secret", "init"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("Run(secrets init) error = %v, want nil", err)
 	}
@@ -2427,7 +2427,7 @@ func TestSecretsInitCommand(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := Run(context.Background(), []string{"secrets", "init"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := Run(context.Background(), []string{"secret", "init"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("second secrets init error = %v, want nil", err)
 	}
 }
@@ -2436,7 +2436,7 @@ func TestSecretsEditDefaultsToDevelopment(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	store := secrets.NewStore(root)
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 	editor := writeEditorScript(t, root, `
@@ -2448,7 +2448,7 @@ YAML
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"secrets", "edit", "--editor", editor}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"secret", "edit", "--editor", editor}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("Run(secrets edit) error = %v, want nil", err)
 	}
@@ -2468,7 +2468,7 @@ func TestSecretsEditSelectedEnvironmentAndEditorArgs(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	store := secrets.NewStore(root)
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 	editor := writeEditorScript(t, root, `
@@ -2483,7 +2483,7 @@ YAML
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"secrets", "edit", "--env", "staging", "--editor", editor + " --flag"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"secret", "edit", "--env", "staging", "--editor", editor + " --flag"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("Run(secrets edit --env staging) error = %v, want nil", err)
 	}
@@ -2503,7 +2503,7 @@ func TestSecretsEditUnchangedDoesNotRewrite(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	store := secrets.NewStore(root)
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 	if err := store.Set(secrets.EnvironmentDevelopment, "DATABASE_URL", "postgres://development"); err != nil {
@@ -2519,7 +2519,7 @@ func TestSecretsEditUnchangedDoesNotRewrite(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err = Run(context.Background(), []string{"secrets", "edit", "--editor", editor}, strings.NewReader(""), &stdout, &stderr)
+	err = Run(context.Background(), []string{"secret", "edit", "--editor", editor}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("Run(secrets edit unchanged) error = %v, want nil", err)
 	}
@@ -2539,7 +2539,7 @@ func TestSecretsEditInvalidYAMLDoesNotOverwrite(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	store := secrets.NewStore(root)
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 	if err := store.Set(secrets.EnvironmentDevelopment, "DATABASE_URL", "postgres://old"); err != nil {
@@ -2554,7 +2554,7 @@ YAML
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"secrets", "edit", "--editor", editor}, strings.NewReader("no\n"), &stdout, &stderr)
+	err := Run(context.Background(), []string{"secret", "edit", "--editor", editor}, strings.NewReader("no\n"), &stdout, &stderr)
 	if err == nil {
 		t.Fatal("Run(secrets edit invalid) error = nil, want validation error")
 	}
@@ -2603,7 +2603,7 @@ func TestSecretsValidateDefaultsToDevelopment(t *testing.T) {
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
 	store := secrets.NewStore(root)
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 	if err := store.Set(secrets.EnvironmentDevelopment, "DATABASE_URL", "postgres://development"); err != nil {
@@ -2613,7 +2613,7 @@ func TestSecretsValidateDefaultsToDevelopment(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"secrets", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"secret", "validate"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("Run(secrets validate) error = %v, want nil", err)
 	}
@@ -2622,11 +2622,37 @@ func TestSecretsValidateDefaultsToDevelopment(t *testing.T) {
 	}
 }
 
+func TestSecretGetPrintsRawValue(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	store := secrets.NewStore(root)
+	if _, err := store.Init(); err != nil {
+		t.Fatalf("Init(secrets) error = %v", err)
+	}
+	if err := store.Set(secrets.EnvironmentStaging, "database.url", "postgres://staging"); err != nil {
+		t.Fatalf("Set(database.url) error = %v", err)
+	}
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"secret", "get", "database.url", "--env", "staging"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(secret get) error = %v, want nil", err)
+	}
+	if stdout.String() != "postgres://staging\n" {
+		t.Fatalf("secret get stdout = %q, want raw secret value", stdout.String())
+	}
+	if stderr.String() != "" {
+		t.Fatalf("secret get stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestSecretsRotateKeyCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	store := secrets.NewStore(root)
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 	if err := store.Set(secrets.EnvironmentProduction, "DATABASE_URL", "postgres://production"); err != nil {
@@ -2636,12 +2662,17 @@ func TestSecretsRotateKeyCommand(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"secrets", "rotate-key", "--confirm", "test/master.key"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"secret", "rotate-key", "--yes"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("Run(secrets rotate-key) error = %v, want nil", err)
 	}
-	if !strings.Contains(stdout.String(), "rotated secrets master key") || !strings.Contains(stdout.String(), "master.key") {
-		t.Fatalf("secrets rotate-key stdout = %q, want rotate output", stdout.String())
+	for _, want := range []string{"secret rotate-key plan", "key: .dygo/secrets/master.key", "rotated secrets master key"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("secrets rotate-key stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if stderr.String() != "" {
+		t.Fatalf("secrets rotate-key stderr = %q, want empty for --yes", stderr.String())
 	}
 	secret, err := store.Get(secrets.EnvironmentProduction, "DATABASE_URL")
 	if err != nil {
@@ -2652,84 +2683,51 @@ func TestSecretsRotateKeyCommand(t *testing.T) {
 	}
 }
 
-func TestSecretsRotateKeyRequiresConfirmation(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		args []string
-	}{
-		{name: "missing", args: []string{"secrets", "rotate-key"}},
-		{name: "wrong", args: []string{"secrets", "rotate-key", "--confirm", "wrong"}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			writeCLIProjectRoot(t, root)
-			store := secrets.NewStore(root)
-			paths, err := store.Init(false)
-			if err != nil {
-				t.Fatalf("Init(secrets) error = %v", err)
-			}
-			before, err := os.ReadFile(paths.MasterKeyFile)
-			if err != nil {
-				t.Fatalf("ReadFile(master.key) error = %v", err)
-			}
-			if err := store.Set(secrets.EnvironmentProduction, "DATABASE_URL", "postgres://production"); err != nil {
-				t.Fatalf("Set(production DATABASE_URL) error = %v", err)
-			}
-			t.Chdir(root)
-
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-			err = Run(context.Background(), tt.args, strings.NewReader(""), &stdout, &stderr)
-			if err == nil {
-				t.Fatal("Run(secrets rotate-key) error = nil, want confirmation error")
-			}
-			if !strings.Contains(err.Error(), "secrets rotate-key requires --confirm test/master.key") {
-				t.Fatalf("Run(secrets rotate-key) error = %q, want confirmation target", err.Error())
-			}
-			after, err := os.ReadFile(paths.MasterKeyFile)
-			if err != nil {
-				t.Fatalf("ReadFile(master.key after failed confirmation) error = %v", err)
-			}
-			if string(after) != string(before) {
-				t.Fatal("master.key changed after failed confirmation")
-			}
-			secret, err := store.Get(secrets.EnvironmentProduction, "DATABASE_URL")
-			if err != nil {
-				t.Fatalf("Get(production DATABASE_URL) error = %v", err)
-			}
-			if secret.Value != "postgres://production" {
-				t.Fatalf("production DATABASE_URL = %q, want original value", secret.Value)
-			}
-		})
-	}
-}
-
-func TestSecretsRotateKeyFrameworkRootConfirmationFallback(t *testing.T) {
+func TestSecretsRotateKeyPromptsBeforeRotation(t *testing.T) {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "apps"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(apps) error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, "configs"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(configs) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/hapyco/dygo\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(go.mod) error = %v", err)
-	}
+	writeCLIProjectRoot(t, root)
 	store := secrets.NewStore(root)
-	if _, err := store.Init(false); err != nil {
+	paths, err := store.Init()
+	if err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 	if err := store.Set(secrets.EnvironmentDevelopment, "DATABASE_URL", "postgres://development"); err != nil {
 		t.Fatalf("Set(development DATABASE_URL) error = %v", err)
 	}
+	before, err := os.ReadFile(paths.MasterKeyFile)
+	if err != nil {
+		t.Fatalf("ReadFile(master.key) error = %v", err)
+	}
 	t.Chdir(root)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	token := filepath.Base(root) + "/master.key"
-	err := Run(context.Background(), []string{"secrets", "rotate-key", "--confirm", token}, strings.NewReader(""), &stdout, &stderr)
+	err = Run(context.Background(), []string{"secret", "rotate-key"}, strings.NewReader("\n"), &stdout, &stderr)
 	if err != nil {
-		t.Fatalf("Run(secrets rotate-key framework fallback) error = %v, want nil", err)
+		t.Fatalf("Run(secret rotate-key cancel) error = %v, want nil", err)
+	}
+	if !strings.Contains(stderr.String(), "Rotate secrets master key? [y/N] ") {
+		t.Fatalf("secret rotate-key stderr = %q, want prompt", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "secret key rotation cancelled") {
+		t.Fatalf("secret rotate-key stdout = %q, want cancellation", stdout.String())
+	}
+	after, err := os.ReadFile(paths.MasterKeyFile)
+	if err != nil {
+		t.Fatalf("ReadFile(master.key after cancel) error = %v", err)
+	}
+	if !bytes.Equal(after, before) {
+		t.Fatal("master.key changed after cancelled rotation")
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = Run(context.Background(), []string{"secret", "rotate-key"}, strings.NewReader("yes\n"), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(secret rotate-key confirm) error = %v, want nil", err)
+	}
+	if !strings.Contains(stdout.String(), "rotated secrets master key") {
+		t.Fatalf("secret rotate-key stdout = %q, want rotate output", stdout.String())
 	}
 	secret, err := store.Get(secrets.EnvironmentDevelopment, "DATABASE_URL")
 	if err != nil {
@@ -2811,7 +2809,7 @@ func writeCLISecretsLayout(t *testing.T, root string) {
 	t.Helper()
 
 	store := secrets.NewStore(root)
-	if _, err := store.Init(true); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 }
@@ -2820,7 +2818,7 @@ func writeCLIDatabaseSecret(t *testing.T, root string, env secrets.Environment, 
 	t.Helper()
 
 	store := secrets.NewStore(root)
-	if _, err := store.Init(true); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init(secrets) error = %v", err)
 	}
 	if err := store.Set(env, "DATABASE_URL", value); err != nil {

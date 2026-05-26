@@ -104,7 +104,7 @@ func Generate(ctx context.Context, options Options) (Result, error) {
 		return Result{}, err
 	}
 	store := secrets.NewStore(target)
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		return Result{}, fmt.Errorf("initialize encrypted secrets: %w", err)
 	}
 	if err := store.Set(secrets.EnvironmentDevelopment, "DATABASE_URL", databaseURL); err != nil {
