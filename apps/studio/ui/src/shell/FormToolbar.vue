@@ -4,7 +4,7 @@ import Toolbar from './Toolbar.vue'
 const props = withDefaults(defineProps<{
   ariaLabel?: string
 }>(), {
-  ariaLabel: 'Page toolbar',
+  ariaLabel: 'Form toolbar',
 })
 </script>
 

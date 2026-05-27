@@ -9,6 +9,7 @@ import type { RecordData } from '@/features/records/records.api'
 import { isHiddenRecordSubmitField } from '@/features/records/system-fields'
 import { RecordFormRenderer } from '@/renderers/records'
 import { RouteName } from '@/router/routes'
+import FormToolbar from '@/shell/FormToolbar.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import type { PageHeaderAction } from '@/shell/types'
 import { useMetadataStore } from '@/stores/metadata.store'
@@ -620,6 +621,8 @@ function humanizeEntity(value: string): string {
       :actions="actions"
     />
 
+    <FormToolbar />
+
     <div class="record-form-page__body">
       <div v-if="loading" class="record-form-page__state">
         <Spinner size="sm" label="Loading record" />
@@ -660,7 +663,7 @@ function humanizeEntity(value: string): string {
 <style scoped>
 .record-form-page {
   gap: 0;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
 }
