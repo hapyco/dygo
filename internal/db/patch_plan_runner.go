@@ -112,11 +112,25 @@ func PlanPatches(ctx context.Context, pool *pgxpool.Pool, root string, phase str
 	if err != nil {
 		return PatchPlan{}, err
 	}
-	runs, err := NewPatchLedger(pool).ListPatchRuns(ctx)
-	if err != nil {
-		return PatchPlan{}, err
+	runs := []PatchRun{}
+	if patchLedgerTablesAvailable(live) {
+		runs, err = NewPatchLedger(pool).ListPatchRuns(ctx)
+		if err != nil {
+			return PatchPlan{}, err
+		}
 	}
 	return BuildPatchPlan(loaded, metadata.Entities, live, runs, phase)
+}
+
+func patchLedgerTablesAvailable(live LiveSchema) bool {
+	if live.Tables == nil {
+		return false
+	}
+	// Fresh databases do not have metadata tables yet; treat the patch ledger as
+	// empty until schema sync creates it.
+	_, hasApp := live.Tables["app"]
+	_, hasPatchRun := live.Tables["patch_run"]
+	return hasApp && hasPatchRun
 }
 
 // ApplyPatchPlan applies planned pending patches using one transaction per patch.

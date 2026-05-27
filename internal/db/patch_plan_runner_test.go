@@ -111,3 +111,27 @@ func TestBuildPatchPlanRejectsInvalidPhase(t *testing.T) {
 		t.Fatalf("BuildPatchPlan() error = %q, want phase error", err.Error())
 	}
 }
+
+func TestPatchLedgerTablesAvailableRequiresMetadataTables(t *testing.T) {
+	tests := []struct {
+		name string
+		live LiveSchema
+		want bool
+	}{
+		{name: "empty", live: LiveSchema{Tables: map[string]liveTable{}}, want: false},
+		{name: "app only", live: LiveSchema{Tables: map[string]liveTable{"app": {Name: "app"}}}, want: false},
+		{name: "patch run only", live: LiveSchema{Tables: map[string]liveTable{"patch_run": {Name: "patch_run"}}}, want: false},
+		{name: "ledger ready", live: LiveSchema{Tables: map[string]liveTable{
+			"app":       {Name: "app"},
+			"patch_run": {Name: "patch_run"},
+		}}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := patchLedgerTablesAvailable(tt.live); got != tt.want {
+				t.Fatalf("patchLedgerTablesAvailable() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
