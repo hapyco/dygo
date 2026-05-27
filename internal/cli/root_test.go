@@ -1090,7 +1090,8 @@ func TestDBMigrateDryRunPlansFullWorkflow(t *testing.T) {
 	fakeFixture := &fakeFixtureRunner{plan: fixturePlan(2, 5)}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--dry-run"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
+	fakeDB := noopDatabaseRunner()
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--dry-run"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fakeDB, fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
 	if err != nil {
 		t.Fatalf("Run(db migrate --dry-run) error = %v, want nil", err)
 	}
@@ -1101,6 +1102,9 @@ func TestDBMigrateDryRunPlansFullWorkflow(t *testing.T) {
 	}
 	if fakeSync.patchPlanCalls != 2 || fakeSync.planCalls != 1 || fakeSync.calls != 0 || fakeFixture.planCalls != 1 || fakeFixture.calls != 0 {
 		t.Fatalf("plan/apply calls = patchPlan %d plan %d sync %d fixturePlan %d fixtureApply %d, want dry-run only", fakeSync.patchPlanCalls, fakeSync.planCalls, fakeSync.calls, fakeFixture.planCalls, fakeFixture.calls)
+	}
+	if fakeDB.operations[0] != "exists" {
+		t.Fatalf("database operations = %#v, want existence check", fakeDB.operations)
 	}
 }
 
@@ -1122,7 +1126,8 @@ func TestDBMigrateYesAppliesFullWorkflow(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--yes"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, noopDatabaseRunner(), fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
+	fakeDB := noopDatabaseRunner()
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--yes"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fakeDB, fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
 	if err != nil {
 		t.Fatalf("Run(db migrate --yes) error = %v, want nil", err)
 	}
@@ -1133,6 +1138,134 @@ func TestDBMigrateYesAppliesFullWorkflow(t *testing.T) {
 	}
 	if fakeSync.patchApplyCalls != 2 || fakeSync.calls != 1 || fakeFixture.calls != 1 {
 		t.Fatalf("apply calls = patch %d sync %d fixture %d, want full workflow", fakeSync.patchApplyCalls, fakeSync.calls, fakeFixture.calls)
+	}
+	if fakeDB.operations[0] != "exists" {
+		t.Fatalf("database operations = %#v, want existence check", fakeDB.operations)
+	}
+}
+
+func TestDBMigrateYesCreatesMissingDatabaseBeforePlanning(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fakeDB := &fakeDatabaseRunner{
+		existsResult: db.DatabaseStatus{Name: "dygo", Exists: false},
+		existsSet:    true,
+		createResult: db.DatabaseResult{Name: "dygo", Changed: true},
+	}
+	fakeSync := &fakeSchemaSyncRunner{result: db.SchemaSyncResult{Apps: 2, Entities: 8, Fields: 34, Operations: 3}}
+	fakeFixture := &fakeFixtureRunner{plan: fixturePlan(1, 2), result: fixtures.Result{Created: 1, Updated: 1}}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--yes"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fakeDB, fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
+	if err != nil {
+		t.Fatalf("Run(db migrate --yes missing database) error = %v, want nil", err)
+	}
+	for _, want := range []string{"database created: dygo (development)", "db migrate plan (development)", "database migrated (development)"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("db migrate stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if got := strings.Join(fakeDB.operations, ","); got != "exists,create" {
+		t.Fatalf("database operations = %s, want exists,create", got)
+	}
+	if fakeSync.planCalls != 1 || fakeSync.calls != 1 || fakeFixture.planCalls != 1 || fakeFixture.calls != 1 {
+		t.Fatalf("migration calls = plan %d sync %d fixturePlan %d fixtureApply %d, want full workflow", fakeSync.planCalls, fakeSync.calls, fakeFixture.planCalls, fakeFixture.calls)
+	}
+}
+
+func TestDBMigratePromptsBeforeCreatingMissingDatabase(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fakeDB := &fakeDatabaseRunner{
+		existsResult: db.DatabaseStatus{Name: "dygo", Exists: false},
+		existsSet:    true,
+	}
+	fakeSync := &fakeSchemaSyncRunner{}
+	fakeFixture := &fakeFixtureRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate"}, strings.NewReader("\n"), &stdout, &stderr, noopServeRunner, fakeDB, fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
+	if err != nil {
+		t.Fatalf("Run(db migrate missing database cancel) error = %v, want nil", err)
+	}
+	for _, want := range []string{"database: will create dygo (development)", "database migration cancelled"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("db migrate stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if !strings.Contains(stderr.String(), "Create database before planning migration? [y/N] ") {
+		t.Fatalf("db migrate stderr = %q, want create prompt", stderr.String())
+	}
+	if got := strings.Join(fakeDB.operations, ","); got != "exists" {
+		t.Fatalf("database operations = %s, want exists only", got)
+	}
+	if fakeSync.planCalls != 0 || fakeFixture.planCalls != 0 {
+		t.Fatalf("plan calls = schema %d fixture %d, want none", fakeSync.planCalls, fakeFixture.planCalls)
+	}
+}
+
+func TestDBMigrateDryRunReportsMissingDatabaseWithoutPlanning(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fakeDB := &fakeDatabaseRunner{
+		existsResult: db.DatabaseStatus{Name: "dygo", Exists: false},
+		existsSet:    true,
+	}
+	fakeSync := &fakeSchemaSyncRunner{}
+	fakeFixture := &fakeFixtureRunner{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--dry-run"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fakeDB, fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
+	if err != nil {
+		t.Fatalf("Run(db migrate --dry-run missing database) error = %v, want nil", err)
+	}
+	for _, want := range []string{"database: would create dygo (development)", "dry-run: database is missing; run dygo db migrate to create it before full planning"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("db migrate dry-run stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if got := strings.Join(fakeDB.operations, ","); got != "exists" {
+		t.Fatalf("database operations = %s, want exists only", got)
+	}
+	if fakeDB.operation == "create" || fakeSync.planCalls != 0 || fakeFixture.planCalls != 0 {
+		t.Fatalf("write/plan calls = db operation %q schema %d fixture %d, want none", fakeDB.operation, fakeSync.planCalls, fakeFixture.planCalls)
+	}
+}
+
+func TestDBMigrateExistenceErrorsAreSanitized(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
+	t.Chdir(root)
+
+	fakeDB := &fakeDatabaseRunner{
+		existsErr: fmt.Errorf("connect postgres://user:secret-password@localhost:5432/dygo failed"),
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--yes"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fakeDB, &fakeSchemaSyncRunner{}, &fakeAdminSetupRunner{}, &fakeFixtureRunner{})
+	if err == nil {
+		t.Fatal("Run(db migrate existence error) error = nil, want error")
+	}
+	if strings.Contains(err.Error(), databaseURL) || strings.Contains(err.Error(), "secret-password") {
+		t.Fatalf("Run(db migrate existence error) error = %q, leaked database URL", err.Error())
 	}
 }
 
@@ -2489,11 +2622,15 @@ func fixturePlan(fileCount int, recordCount int) fixtures.Plan {
 
 type fakeDatabaseRunner struct {
 	checkErr     error
+	existsResult db.DatabaseStatus
+	existsErr    error
+	existsSet    bool
 	createResult db.DatabaseResult
 	createErr    error
 	dropResult   db.DatabaseResult
 	dropErr      error
 	operation    string
+	operations   []string
 	root         string
 	databaseURL  string
 	calls        int
@@ -2502,13 +2639,33 @@ type fakeDatabaseRunner struct {
 func (r *fakeDatabaseRunner) Check(_ context.Context, databaseURL string) error {
 	r.calls++
 	r.operation = "check"
+	r.operations = append(r.operations, "check")
 	r.databaseURL = databaseURL
 	return r.checkErr
+}
+
+func (r *fakeDatabaseRunner) Exists(_ context.Context, databaseURL string) (db.DatabaseStatus, error) {
+	r.calls++
+	r.operation = "exists"
+	r.operations = append(r.operations, "exists")
+	r.databaseURL = databaseURL
+	if r.existsErr != nil {
+		return db.DatabaseStatus{}, r.existsErr
+	}
+	if r.existsSet {
+		return r.existsResult, nil
+	}
+	target, err := db.ParseDatabaseTarget(databaseURL)
+	if err != nil {
+		return db.DatabaseStatus{}, err
+	}
+	return db.DatabaseStatus{Name: target.Name, Exists: true}, nil
 }
 
 func (r *fakeDatabaseRunner) Create(_ context.Context, databaseURL string) (db.DatabaseResult, error) {
 	r.calls++
 	r.operation = "create"
+	r.operations = append(r.operations, "create")
 	r.databaseURL = databaseURL
 	return r.createResult, r.createErr
 }
@@ -2516,6 +2673,7 @@ func (r *fakeDatabaseRunner) Create(_ context.Context, databaseURL string) (db.D
 func (r *fakeDatabaseRunner) Drop(_ context.Context, databaseURL string) (db.DatabaseResult, error) {
 	r.calls++
 	r.operation = "drop"
+	r.operations = append(r.operations, "drop")
 	r.databaseURL = databaseURL
 	return r.dropResult, r.dropErr
 }

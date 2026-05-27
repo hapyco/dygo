@@ -25,7 +25,7 @@ func newDBCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	cmd.AddCommand(newDBCheckCommand(ctx, stdout, database))
 	cmd.AddCommand(newDBCreateCommand(ctx, stdout, database))
 	cmd.AddCommand(newDBDropCommand(ctx, stdin, stdout, stderr, database))
-	cmd.AddCommand(newDBMigrateCommand(ctx, stdin, stdout, stderr, sync, fixture))
+	cmd.AddCommand(newDBMigrateCommand(ctx, stdin, stdout, stderr, database, sync, fixture))
 	cmd.AddCommand(newDBPruneCommand(ctx, stdin, stdout, stderr, sync))
 	cmd.AddCommand(newDBResetCommand(ctx, stdin, stdout, stderr, database, sync, fixture))
 
@@ -145,7 +145,7 @@ func newDBDropCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Wr
 	return cmd
 }
 
-func newDBMigrateCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, sync schemaSyncRunner, fixture fixtureRunner) *cobra.Command {
+func newDBMigrateCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, database databaseRunner, sync schemaSyncRunner, fixture fixtureRunner) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
 	yes := false
 	dryRun := false
@@ -158,6 +158,47 @@ func newDBMigrateCommand(ctx context.Context, stdin io.Reader, stdout, stderr io
 			env, root, databaseURL, err := databaseInputs(envName)
 			if err != nil {
 				return err
+			}
+			status, err := database.Exists(ctx, databaseURL)
+			if err != nil {
+				return db.SanitizeDatabaseError("check db migrate database", databaseURL, err)
+			}
+			if !status.Exists {
+				if dryRun {
+					if _, err := fmt.Fprintf(stdout, "database: would create %s (%s)\n", status.Name, env); err != nil {
+						return fmt.Errorf("write db migrate database plan: %w", err)
+					}
+					if _, err := fmt.Fprintln(stdout, "dry-run: database is missing; run dygo db migrate to create it before full planning"); err != nil {
+						return fmt.Errorf("write db migrate dry-run output: %w", err)
+					}
+					return nil
+				}
+				if !yes {
+					if _, err := fmt.Fprintf(stdout, "database: will create %s (%s)\n", status.Name, env); err != nil {
+						return fmt.Errorf("write db migrate database plan: %w", err)
+					}
+					ok, err := confirm(stdin, stderr, "Create database before planning migration? [y/N] ")
+					if err != nil {
+						return err
+					}
+					if !ok {
+						if _, err := fmt.Fprintln(stdout, "database migration cancelled"); err != nil {
+							return fmt.Errorf("write db migrate cancellation: %w", err)
+						}
+						return nil
+					}
+				}
+				result, err := database.Create(ctx, databaseURL)
+				if err != nil {
+					return db.SanitizeDatabaseError("create db migrate database", databaseURL, err)
+				}
+				action := "created"
+				if !result.Changed {
+					action = "already exists"
+				}
+				if _, err := fmt.Fprintf(stdout, "database %s: %s (%s)\n", action, result.Name, env); err != nil {
+					return fmt.Errorf("write db migrate database output: %w", err)
+				}
 			}
 			plan, err := planDBMigration(ctx, sync, fixture, root, databaseURL)
 			if err != nil {

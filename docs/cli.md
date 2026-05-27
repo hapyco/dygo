@@ -27,9 +27,9 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 - `dygo db create` - Creates the configured PostgreSQL database.
 - `dygo db drop` - Prints the drop target, prompts interactively, then drops the configured PostgreSQL database.
 - `dygo db drop --yes` - Drops the configured PostgreSQL database without an interactive prompt.
-- `dygo db migrate` - Prints the full migration plan, prompts interactively, then applies pre-sync patches, metadata sync, post-sync patches, fixtures, and schema dump.
+- `dygo db migrate` - Ensures the configured database exists, prints the full migration plan, prompts interactively, then applies pre-sync patches, metadata sync, post-sync patches, fixtures, and schema dump.
 - `dygo db migrate --yes` - Applies the full migration workflow without an interactive prompt.
-- `dygo db migrate --dry-run` - Prints the full migration plan without writing.
+- `dygo db migrate --dry-run` - Prints the full migration plan without writing; if the database is missing, reports that it would be created and exits before full planning.
 - `dygo db prune` - Prints the metadata-orphaned schema cleanup plan, prompts interactively, then removes approved objects.
 - `dygo db prune --yes` - Prints the cleanup plan and applies it without an interactive prompt.
 - `dygo db prune --dry-run` - Previews metadata-orphaned schema cleanup without writing.

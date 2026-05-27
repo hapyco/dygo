@@ -62,18 +62,20 @@ Create the configured database if it is missing:
 go run ./cmd/dygo db create
 ```
 
-Migrate the database after it exists:
+Migrate the database. `db migrate` ensures the configured database exists, prints the full plan, prompts, then applies pre-sync patches, metadata schema sync, post-sync patches, fixtures, and schema snapshot refresh.
 
 ```sh
 go run ./cmd/dygo db migrate
 ```
 
-`db migrate` prints the full plan, prompts, then applies pre-sync patches, metadata schema sync, post-sync patches, fixtures, and schema snapshot refresh.
+When the configured database is missing, normal `db migrate` prompts before creating it because schema planning needs a real database to inspect.
 
 ```sh
 go run ./cmd/dygo db migrate --dry-run
 go run ./cmd/dygo db migrate --yes
 ```
+
+`--dry-run` never creates the database. If the database is missing, it reports that the database would be created and exits before full schema planning.
 
 After migration, create the first Administrator account before opening Studio:
 

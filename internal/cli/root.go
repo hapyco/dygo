@@ -41,6 +41,7 @@ type fixtureRunner interface {
 }
 type databaseRunner interface {
 	Check(context.Context, string) error
+	Exists(context.Context, string) (db.DatabaseStatus, error)
 	Create(context.Context, string) (db.DatabaseResult, error)
 	Drop(context.Context, string) (db.DatabaseResult, error)
 }
@@ -225,6 +226,10 @@ func (r checkBackedDatabaseRunner) Check(ctx context.Context, databaseURL string
 		return r.check(ctx, databaseURL)
 	}
 	return r.manager.Check(ctx, databaseURL)
+}
+
+func (r checkBackedDatabaseRunner) Exists(ctx context.Context, databaseURL string) (db.DatabaseStatus, error) {
+	return r.manager.Exists(ctx, databaseURL)
 }
 
 func (r checkBackedDatabaseRunner) Create(ctx context.Context, databaseURL string) (db.DatabaseResult, error) {
