@@ -13,14 +13,17 @@ import {
 } from 'reka-ui'
 
 import Button from '../atoms/Button.vue'
+import IconButton from '../atoms/IconButton.vue'
 import type { DropdownMenuItem as DropdownMenuItemModel } from '../types'
 
 withDefaults(defineProps<{
   label: string
   items: DropdownMenuItemModel[]
   align?: 'start' | 'center' | 'end'
+  triggerType?: 'button' | 'icon'
 }>(), {
   align: 'end',
+  triggerType: 'button',
 })
 
 const emit = defineEmits<{
@@ -36,7 +39,20 @@ function preventCheckboxClose(event: Event) {
 <template>
   <DropdownMenuRoot>
     <DropdownMenuTrigger as-child>
+      <IconButton
+        v-if="triggerType === 'icon'"
+        class="d-dropdown-menu__trigger"
+        type="button"
+        variant="secondary"
+        :label="label"
+      >
+        <slot name="trigger">
+          <ChevronDown :size="13" :stroke-width="1.9" aria-hidden="true" />
+        </slot>
+      </IconButton>
+
       <Button
+        v-else
         class="d-dropdown-menu__trigger"
         type="button"
         variant="secondary"

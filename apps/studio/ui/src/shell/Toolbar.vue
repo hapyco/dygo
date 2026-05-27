@@ -42,7 +42,6 @@ function slotHasContent(name: 'left' | 'default' | 'right'): boolean {
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid var(--studio-border);
   padding: 8px 12px;
 }
 
