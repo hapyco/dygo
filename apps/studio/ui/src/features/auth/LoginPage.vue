@@ -109,9 +109,8 @@ async function submitLogin() {
   display: grid;
   min-height: 100vh;
   place-items: center;
-  background:
-    linear-gradient(180deg, oklch(0.985 0.005 246), var(--studio-bg) 38%),
-    var(--studio-bg);
+  background: var(--studio-bg);
+  background-image: none;
   padding: 32px;
 }
 

@@ -65,9 +65,8 @@ const { sidebarCollapsed } = storeToRefs(navigationStore)
   grid-template-columns: var(--studio-shell-sidebar-width) minmax(0, 1fr);
   grid-template-rows: var(--studio-shell-header-height) minmax(0, 1fr);
   overflow: hidden;
-  background:
-    linear-gradient(180deg, oklch(0.982 0.006 246), var(--studio-bg) 34%),
-    var(--studio-bg);
+  background: var(--studio-bg);
+  background-image: none;
 }
 
 .studio-shell--sidebar-collapsed {
@@ -94,7 +93,7 @@ const { sidebarCollapsed } = storeToRefs(navigationStore)
   min-width: 0;
   grid-column: 2;
   grid-row: 2;
-  overflow: hidden;
+  overflow: visible;
   padding: 0 var(--studio-shell-sheet-right-gutter) 0 0;
 }
 

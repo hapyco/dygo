@@ -8,4 +8,4 @@ script = ""
 [[actions]]
 name = "Run"
 icon = "run"
-command = "go run ./cmd/dygo serve"
+command = "go run ./cmd/dygo dev"

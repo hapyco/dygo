@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, RotateCcw, Save } from '@lucide/vue'
+import { Plus, RotateCcw, Save, Trash2 } from '@lucide/vue'
 
 import { ErrorState, Spinner } from '@/design'
 import type { MetadataEntityMeta, MetadataField } from '@/features/metadata/metadata.api'
@@ -65,6 +65,7 @@ const entityLabel = computed(() => entityMeta.value?.label || humanizeEntity(pro
 const isSystem = computed(() => entityMeta.value?.['is-system'] === true)
 const isNew = computed(() => props.mode === 'new')
 const isSingle = computed(() => props.mode === 'single')
+const isRecord = computed(() => props.mode === 'record')
 const loading = computed(() => (
   entityMetaStatus.value === 'idle'
   || entityMetaStatus.value === 'loading'
@@ -81,7 +82,7 @@ const actions = computed<PageHeaderAction[]>(() => {
     return []
   }
 
-  return [
+  const next: PageHeaderAction[] = [
     {
       label: 'Reset',
       icon: RotateCcw,
@@ -98,6 +99,19 @@ const actions = computed<PageHeaderAction[]>(() => {
       onSelect: saveRecord,
     },
   ]
+
+  if (isRecord.value) {
+    next.push({
+      label: 'Delete',
+      icon: Trash2,
+      variant: 'secondary',
+      disabled: loading.value || saving.value || !recordState.value.record,
+      loading: saving.value,
+      onSelect: deleteRecord,
+    })
+  }
+
+  return next
 })
 
 watch(
@@ -186,6 +200,26 @@ async function saveRecord() {
     if (!isSingle.value && nextName && (isNew.value || nextName !== props.recordName)) {
       await router.replace({ name: RouteName.RecordDetail, params: { entity: props.entity, recordName: nextName } })
     }
+  } catch {
+    // The store owns the API error shape for display.
+  }
+}
+
+async function deleteRecord() {
+  if (!isRecord.value || loading.value || saving.value || !recordState.value.record) {
+    return
+  }
+
+  const recordLabel = props.recordName || entityLabel.value
+  if (!window.confirm(`Delete ${recordLabel}? This cannot be undone.`)) {
+    return
+  }
+
+  localError.value = ''
+
+  try {
+    await recordsStore.deleteRecord(props.entity, props.recordName ?? '', currentRecordID())
+    await router.replace({ name: RouteName.EntityRecords, params: { entity: props.entity } })
   } catch {
     // The store owns the API error shape for display.
   }
@@ -600,7 +634,7 @@ function humanizeEntity(value: string): string {
       <template v-else-if="entityMeta">
         <ErrorState
           v-if="saveError"
-          title="Record not saved"
+          title="Record action failed"
           :message="saveError"
         />
 

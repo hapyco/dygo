@@ -55,10 +55,12 @@ const hasHeaderActions = computed(() => props.showActions && (props.actions.leng
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  border: 1px solid var(--studio-border);
   border-radius: var(--studio-radius-sheet) var(--studio-radius-sheet) 0 0;
   background: var(--studio-surface);
-  box-shadow: var(--studio-shadow-sheet);
+  box-shadow:
+    0 0 0 1px var(--studio-border),
+    0 3px 8px -6px var(--studio-border),
+    0 8px 16px -10px var(--studio-border);
 }
 
 .studio-page-sheet__header {

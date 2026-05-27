@@ -322,7 +322,7 @@
                           "id": "ZutZJ",
                           "name": "swAccentTextB",
                           "fill": "$--accent-foreground",
-                          "content": "--accent  #2563EB",
+                          "content": "--accent  #252525",
                           "fontFamily": "$--font-mono",
                           "fontSize": "$--text-xs",
                           "fontWeight": "normal"
@@ -366,7 +366,7 @@
                           "id": "vwwqh",
                           "name": "swInfoTextB",
                           "fill": "$--info-foreground",
-                          "content": "--info  #2563EB",
+                          "content": "--info  #252525",
                           "fontFamily": "$--font-mono",
                           "fontSize": "$--text-xs",
                           "fontWeight": "normal"
@@ -5361,7 +5361,7 @@
   "variables": {
     "--accent": {
       "type": "color",
-      "value": "#2F9BF4"
+      "value": "#252525"
     },
     "--accent-foreground": {
       "type": "color",
@@ -5369,7 +5369,7 @@
     },
     "--accent-soft": {
       "type": "color",
-      "value": "#EAF5FF"
+      "value": "#F5F5F5"
     },
     "--background": {
       "type": "color",
@@ -5401,7 +5401,7 @@
     },
     "--focus": {
       "type": "color",
-      "value": "#BFC4CC"
+      "value": "#252525"
     },
     "--font-mono": {
       "type": "string",
@@ -5417,7 +5417,7 @@
     },
     "--info": {
       "type": "color",
-      "value": "#2F9BF4"
+      "value": "#252525"
     },
     "--info-foreground": {
       "type": "color",
@@ -5425,7 +5425,7 @@
     },
     "--info-soft": {
       "type": "color",
-      "value": "#EAF5FF"
+      "value": "#F5F5F5"
     },
     "--input": {
       "type": "color",
@@ -5597,11 +5597,11 @@
     },
     "--chart-blue": {
       "type": "color",
-      "value": "#2F9BF4"
+      "value": "#252525"
     },
     "--chart-blue-soft": {
       "type": "color",
-      "value": "#BFE2FF"
+      "value": "#F5F5F5"
     },
     "--chart-orange": {
       "type": "color",

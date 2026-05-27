@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import type { DataTableRowKey, DataTableSort } from '@/design/types'
 import {
   createRecord as createRecordRequest,
+  deleteRecord as deleteRecordRequest,
   getRecordByName,
   getSingleRecord,
   listRecords,
@@ -389,6 +390,26 @@ export const useRecordsStore = defineStore('records', {
         return record
       } catch (error: unknown) {
         const normalized = storeError(error, 'Studio could not save these settings.')
+        state.saveError = normalized
+        throw error
+      } finally {
+        state.saving = false
+      }
+    },
+
+    async deleteRecord(entity: string, recordName: string, id: string | number): Promise<void> {
+      const state = this.ensureRecord(entity, recordName)
+      state.saving = true
+      state.saveError = null
+
+      try {
+        await deleteRecordRequest(entity, id)
+        state.record = null
+        state.status = 'empty'
+        state.error = null
+        this.markEntityStale(entity)
+      } catch (error: unknown) {
+        const normalized = storeError(error, 'Studio could not delete this record.')
         state.saveError = normalized
         throw error
       } finally {

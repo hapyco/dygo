@@ -62,6 +62,12 @@ export async function updateRecord(entity: string, id: string | number, data: Re
   return payload.data
 }
 
+export async function deleteRecord(entity: string, id: string | number): Promise<void> {
+  await apiRequest<DataEnvelope<{ deleted: boolean }>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}/${encodeURIComponent(String(id))}`, {
+    method: 'DELETE',
+  }, recordRequestOptions('record_delete_failed'))
+}
+
 export async function updateSingleRecord(entity: string, data: RecordData): Promise<RecordData> {
   const payload = await apiRequest<DataEnvelope<RecordData>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}/single`, {
     method: 'PATCH',
