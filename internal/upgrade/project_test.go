@@ -53,6 +53,57 @@ func TestUpgradeProjectUpdatesGoModAndGeneratedRunner(t *testing.T) {
 	}
 }
 
+func TestPlanProjectIsCurrentWhenVersionMatchesTarget(t *testing.T) {
+	root := newUpgradeTestProject(t)
+	writeUpgradeTestFile(t, filepath.Join(root, "cmd", "dygo", "main.go"), "package main\n")
+
+	result, err := PlanProject(root, "v0.0.0")
+	if err != nil {
+		t.Fatalf("PlanProject() error = %v, want nil", err)
+	}
+	if result.WouldUpdate {
+		t.Fatalf("PlanProject() result = %+v, want current project", result)
+	}
+	if result.CurrentVersion != "v0.0.0" || result.TargetVersion != "v0.0.0" {
+		t.Fatalf("PlanProject() result = %+v, want matching versions", result)
+	}
+}
+
+func TestUpgradeProjectNoOpsWhenVersionMatchesTarget(t *testing.T) {
+	root := newUpgradeTestProject(t)
+	writeUpgradeTestFile(t, filepath.Join(root, "cmd", "dygo", "main.go"), "package main\n")
+	calledRunner := false
+	calledConfirm := false
+
+	result, err := UpgradeProject(context.Background(), ProjectOptions{
+		Root:          root,
+		TargetVersion: "v0.0.0",
+		CommandRunner: func(context.Context, string, string, ...string) ([]byte, error) {
+			calledRunner = true
+			return nil, nil
+		},
+		Confirm: func(context.Context, string) (bool, error) {
+			calledConfirm = true
+			return true, nil
+		},
+		StudioAssets: fstest.MapFS{
+			"index.html": {Data: []byte("<html>studio</html>")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpgradeProject() error = %v, want nil", err)
+	}
+	if result.WouldUpdate || result.Updated || result.RunnerUpdated || result.StudioUpdated {
+		t.Fatalf("UpgradeProject() result = %+v, want no-op", result)
+	}
+	if calledRunner || calledConfirm {
+		t.Fatalf("UpgradeProject() called runner=%v confirm=%v, want neither", calledRunner, calledConfirm)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".dygo", "apps", "studio", "ui", "dist", "index.html")); !os.IsNotExist(err) {
+		t.Fatalf("Studio cache stat error = %v, want missing cache after no-op", err)
+	}
+}
+
 func TestUpgradeProjectRefusesDirtyGitWorktree(t *testing.T) {
 	root := newUpgradeTestProject(t)
 	runUpgradeTestCommand(t, root, "git", "init")

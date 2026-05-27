@@ -50,7 +50,7 @@ Update the dygo binary out of band with the installer:
 curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh | sh
 ```
 
-Inside a generated dygo project, `dygo upgrade` updates the project `go.mod` dygo dependency, dygo-managed generated runner files, and the cached Studio UI assets when the installed dygo binary includes them. Project upgrades refuse dirty git worktrees.
+Inside a generated dygo project, `dygo upgrade` updates the project `go.mod` dygo dependency, dygo-managed generated runner files, and the cached Studio UI assets when the target dygo version differs from the project version. Project upgrades refuse dirty git worktrees.
 
 Useful upgrade modes:
 

@@ -6,7 +6,7 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 
 - `dygo` - Shows the root help for the metadata-driven dygo platform CLI.
 - `dygo new <name>` - Creates a new dygo project skeleton.
-- `dygo upgrade` - Upgrades the current project files, assets, and dependencies to match the installed dygo binary.
+- `dygo upgrade` - Upgrades the current project files, assets, and dependencies when the project dygo version differs from the installed dygo binary.
 - `dygo upgrade --check` - Checks whether the current project needs an upgrade without planning or writing changes.
 - `dygo upgrade --to <version>` - Plans or applies a project upgrade to a specific dygo version.
 - `dygo upgrade --dry-run` - Prints the project upgrade plan without writing or prompting.

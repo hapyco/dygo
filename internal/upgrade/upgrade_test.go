@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -41,6 +42,37 @@ func TestRunDryRunInsideProjectPlansProject(t *testing.T) {
 	}
 	if result.Project.CurrentVersion != "v0.0.0" || result.Project.TargetVersion != "v1.2.3" {
 		t.Fatalf("Project result = %+v, want current and target versions", result.Project)
+	}
+}
+
+func TestRunUpgradeNoOpsWhenProjectVersionMatchesTarget(t *testing.T) {
+	root := newUpgradeTestProject(t)
+	calledRunner := false
+	calledConfirm := false
+
+	result, err := Run(context.Background(), Options{
+		CurrentVersion: "v0.0.0",
+		WorkingDir:     root,
+		CommandRunner: func(context.Context, string, string, ...string) ([]byte, error) {
+			calledRunner = true
+			return nil, nil
+		},
+		Confirm: func(context.Context, string) (bool, error) {
+			calledConfirm = true
+			return true, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run(upgrade no-op) error = %v, want nil", err)
+	}
+	if result.Project == nil || result.Project.WouldUpdate || result.Project.Updated {
+		t.Fatalf("Run(upgrade no-op) result = %+v, want current project", result)
+	}
+	if calledRunner || calledConfirm {
+		t.Fatalf("Run(upgrade no-op) called runner=%v confirm=%v, want neither", calledRunner, calledConfirm)
+	}
+	if got := strings.Join(result.Lines, "\n"); !strings.Contains(got, "project: current") {
+		t.Fatalf("Run(upgrade no-op) lines = %#v, want current output", result.Lines)
 	}
 }
 

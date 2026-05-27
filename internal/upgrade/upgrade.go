@@ -121,6 +121,10 @@ func Run(ctx context.Context, options Options) (Result, error) {
 		return Result{}, err
 	}
 	result.Project = &projectResult
+	if !projectResult.WouldUpdate {
+		result.Lines = resultLines(result, options)
+		return result, nil
+	}
 	if !options.DryRun {
 		if !options.Yes {
 			if options.Confirm == nil {
