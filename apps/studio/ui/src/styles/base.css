@@ -57,7 +57,7 @@
     0 0 24px rgb(37 37 37 / 0.045);
 }
 
-  * {
+* {
   box-sizing: border-box;
   scrollbar-color: rgb(37 37 37 / 0.35) transparent;
   scrollbar-width: thin;
@@ -98,6 +98,97 @@ body {
   color: var(--studio-text);
   font-size: 14px;
   overflow: hidden;
+}
+
+body > [data-reka-popper-content-wrapper] {
+  z-index: 1000 !important;
+}
+
+.d-dropdown-menu__content,
+.studio-user-menu__content,
+.d-select-content {
+  z-index: 1000;
+  overflow: hidden;
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-surface);
+  box-shadow: var(--studio-shadow);
+}
+
+.d-dropdown-menu__content,
+.studio-user-menu__content {
+  min-width: 160px;
+  padding: 5px;
+}
+
+.d-dropdown-menu__content {
+  min-width: 184px;
+  max-width: min(280px, calc(100vw - 24px));
+}
+
+.d-select-content {
+  min-width: var(--reka-select-trigger-width);
+  padding: 4px;
+}
+
+.d-dropdown-menu__label {
+  padding: 6px 8px 5px;
+  color: var(--studio-text-subtle);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.d-dropdown-menu__separator {
+  height: 1px;
+  margin: 5px -5px;
+  background: var(--studio-border);
+}
+
+.d-dropdown-menu__item,
+.studio-user-menu__item {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 5px;
+  color: var(--studio-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  outline: none;
+  padding: 0 8px;
+  user-select: none;
+}
+
+.studio-user-menu__item {
+  min-height: 30px;
+}
+
+.d-dropdown-menu__item[data-highlighted],
+.studio-user-menu__item[data-highlighted] {
+  background: var(--studio-surface-raised);
+  color: var(--studio-text);
+}
+
+.d-dropdown-menu__item[data-disabled] {
+  color: var(--studio-text-subtle);
+  opacity: 0.62;
+}
+
+.d-dropdown-menu__item--checkbox {
+  position: relative;
+  padding-left: 28px;
+}
+
+.d-dropdown-menu__indicator {
+  position: absolute;
+  left: 8px;
+  display: inline-flex;
+  width: 14px;
+  align-items: center;
+  justify-content: center;
 }
 
 button,
