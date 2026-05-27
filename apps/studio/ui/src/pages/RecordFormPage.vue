@@ -616,6 +616,7 @@ function humanizeEntity(value: string): string {
   <section class="studio-page record-form-page" :aria-label="entityLabel">
     <PageHeader
       :show-title="false"
+      :system="isSystem"
       :actions="actions"
     />
 

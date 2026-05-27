@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 
-import { AuthApiError, getCurrentUser, type CurrentUser } from '@/features/auth/auth.api'
+import { AuthApiError, getCurrentUser, logout as logoutRequest, type CurrentUser } from '@/features/auth/auth.api'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
 
 type LoadCurrentUserOptions = {
@@ -35,6 +35,14 @@ export const useAuthStore = defineStore('auth', {
 
     clearSession() {
       this.setCurrentUser(null)
+    },
+
+    async logout(): Promise<void> {
+      try {
+        await logoutRequest()
+      } finally {
+        this.clearSession()
+      }
     },
 
     async loadCurrentUser(options: LoadCurrentUserOptions = {}): Promise<CurrentUser | null> {

@@ -93,6 +93,7 @@ function humanizeEntity(value: string): string {
   <section v-else class="studio-page records-page" :aria-label="entityLabel">
     <PageHeader
       :show-title="false"
+      :system="isSystem"
       :actions="canShowList ? actions : []"
     />
 

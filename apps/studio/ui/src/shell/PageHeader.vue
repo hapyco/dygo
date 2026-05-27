@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, useSlots } from 'vue'
 
+import Badge from '@/design/atoms/Badge.vue'
 import Button from '@/design/atoms/Button.vue'
 import Breadcrumbs from './Breadcrumbs.vue'
 import type { PageHeaderAction } from './types'
@@ -11,11 +12,13 @@ const props = withDefaults(defineProps<{
   showBreadcrumbs?: boolean
   showTitle?: boolean
   showActions?: boolean
+  system?: boolean
   actions?: PageHeaderAction[]
 }>(), {
   showBreadcrumbs: true,
   showTitle: true,
   showActions: true,
+  system: false,
   actions: () => [],
 })
 
@@ -41,7 +44,10 @@ function runAction(action: PageHeaderAction) {
     :class="{ 'studio-page-header--with-actions': hasActions }"
   >
     <div v-if="hasMain" class="studio-page-header__main">
-      <Breadcrumbs v-if="hasBreadcrumbs" class="studio-page-header__breadcrumbs" />
+      <div v-if="hasBreadcrumbs" class="studio-page-header__breadcrumb-row">
+        <Breadcrumbs class="studio-page-header__breadcrumbs" />
+        <Badge v-if="props.system" variant="danger">System</Badge>
+      </div>
       <h1 v-if="hasTitle" :id="props.titleId" class="studio-page-header__title">
         <slot name="title">{{ props.title }}</slot>
       </h1>
@@ -92,6 +98,13 @@ function runAction(action: PageHeaderAction) {
   display: grid;
   gap: 6px;
   min-width: 0;
+}
+
+.studio-page-header__breadcrumb-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
 }
 
 .studio-page-header__breadcrumbs {

@@ -56,6 +56,17 @@ export async function getCurrentUser(): Promise<CurrentUser> {
   return payload.data
 }
 
+export async function logout(): Promise<void> {
+  await apiRequest<DataEnvelope<{ 'logged-out': boolean }>, AuthApiError>('/api/v1/auth/logout', {
+    method: 'POST',
+  }, {
+    error: AuthApiError,
+    fallbackCode: 'logout_failed',
+    invalidResponseMessage: 'Studio could not read the server response.',
+    message: logoutErrorMessage,
+  })
+}
+
 function currentUserErrorMessage(payload: ApiErrorEnvelope): string {
   switch (payload.error?.code) {
     case 'unauthenticated':
@@ -64,6 +75,17 @@ function currentUserErrorMessage(payload: ApiErrorEnvelope): string {
       return 'Studio is not ready yet. Run dygo db migrate, then try again.'
     default:
       return 'Studio could not read the current session.'
+  }
+}
+
+function logoutErrorMessage(payload: ApiErrorEnvelope): string {
+  switch (payload.error?.code) {
+    case 'unauthenticated':
+      return 'You are already signed out.'
+    case 'schema_not_ready':
+      return 'Studio is not ready yet. Run dygo db migrate, then try again.'
+    default:
+      return 'Sign out failed. Check the server and try again.'
   }
 }
 
