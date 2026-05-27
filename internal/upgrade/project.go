@@ -36,6 +36,15 @@ func PlanProject(root string, targetVersion string) (ProjectResult, error) {
 	if err != nil {
 		return ProjectResult{}, err
 	}
+	wouldUpdate := current != targetVersion
+	if !wouldUpdate {
+		return ProjectResult{
+			Root:           root,
+			CurrentVersion: current,
+			TargetVersion:  targetVersion,
+			WouldUpdate:    false,
+		}, nil
+	}
 	if _, err := hookgen.RenderRunner(root); err != nil {
 		return ProjectResult{}, fmt.Errorf("render project runner: %w", err)
 	}
@@ -43,7 +52,22 @@ func PlanProject(root string, targetVersion string) (ProjectResult, error) {
 		Root:           root,
 		CurrentVersion: current,
 		TargetVersion:  targetVersion,
-		WouldUpdate:    true,
+		WouldUpdate:    wouldUpdate,
+	}, nil
+}
+
+// CheckProject compares the current project dependency with a target dygo release.
+func CheckProject(root string, targetVersion string) (ProjectResult, error) {
+	root = filepath.Clean(root)
+	current, err := ReadProjectVersion(root)
+	if err != nil {
+		return ProjectResult{}, err
+	}
+	return ProjectResult{
+		Root:           root,
+		CurrentVersion: current,
+		TargetVersion:  targetVersion,
+		WouldUpdate:    current != targetVersion,
 	}, nil
 }
 
@@ -56,6 +80,9 @@ func UpgradeProject(ctx context.Context, options ProjectOptions) (ProjectResult,
 	result, err := PlanProject(root, options.TargetVersion)
 	if err != nil {
 		return ProjectResult{}, err
+	}
+	if !result.WouldUpdate {
+		return result, nil
 	}
 
 	runner := options.CommandRunner

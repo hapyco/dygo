@@ -32,11 +32,11 @@ func CoreRuntimeChecks(ctx context.Context, queryer Queryer) []CheckResult {
 func CheckCoreFixtures(ctx context.Context, queryer Queryer) CheckResult {
 	var roleCount int
 	if err := queryer.QueryRow(ctx, `SELECT COUNT(*) FROM "role" WHERE name IN ($1, $2)`, "studio-member", "system-manager").Scan(&roleCount); err != nil {
-		return CheckResult{Name: "core fixtures", Detail: fmt.Sprintf("check required roles: %v; run dygo db prepare then dygo fixtures apply", err)}
+		return CheckResult{Name: "core fixtures", Detail: fmt.Sprintf("check required roles: %v; run dygo db migrate", err)}
 	}
 	var permissionCount int
 	if err := queryer.QueryRow(ctx, `SELECT COUNT(*) FROM "permission"`).Scan(&permissionCount); err != nil {
-		return CheckResult{Name: "core fixtures", Detail: fmt.Sprintf("check permissions: %v; run dygo db prepare then dygo fixtures apply", err)}
+		return CheckResult{Name: "core fixtures", Detail: fmt.Sprintf("check permissions: %v; run dygo db migrate", err)}
 	}
 
 	var missing []string
@@ -47,7 +47,7 @@ func CheckCoreFixtures(ctx context.Context, queryer Queryer) CheckResult {
 		missing = append(missing, "permissions")
 	}
 	if len(missing) > 0 {
-		return CheckResult{Name: "core fixtures", Detail: fmt.Sprintf("missing Core %s; run dygo fixtures apply", strings.Join(missing, " and "))}
+		return CheckResult{Name: "core fixtures", Detail: fmt.Sprintf("missing Core %s; run dygo fixture apply", strings.Join(missing, " and "))}
 	}
 	return CheckResult{Name: "core fixtures", Ready: true, Detail: fmt.Sprintf("%d roles and %d permissions ready", roleCount, permissionCount)}
 }
@@ -56,10 +56,10 @@ func CheckCoreFixtures(ctx context.Context, queryer Queryer) CheckResult {
 func CheckAdministratorAccount(ctx context.Context, queryer Queryer) CheckResult {
 	var adminExists bool
 	if err := queryer.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM "user" WHERE COALESCE(administrator, false) = true LIMIT 1)`).Scan(&adminExists); err != nil {
-		return CheckResult{Name: "administrator account", Detail: fmt.Sprintf("check administrator account: %v; run dygo db prepare then dygo setup admin", err)}
+		return CheckResult{Name: "administrator account", Detail: fmt.Sprintf("check administrator account: %v; run dygo db migrate then dygo setup", err)}
 	}
 	if !adminExists {
-		return CheckResult{Name: "administrator account", Detail: "missing Administrator account; run dygo setup admin"}
+		return CheckResult{Name: "administrator account", Detail: "missing Administrator account; run dygo setup"}
 	}
 	return CheckResult{Name: "administrator account", Ready: true, Detail: "Administrator account exists"}
 }

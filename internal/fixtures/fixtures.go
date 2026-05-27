@@ -15,7 +15,11 @@ import (
 
 	"github.com/hapyco/dygo/internal/app/manifest"
 	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/entity/catalog"
+	"github.com/hapyco/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/entity/schema"
 	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
@@ -24,6 +28,25 @@ import (
 type Result struct {
 	Created int
 	Updated int
+}
+
+// Plan previews discovered fixture files before a runtime write.
+type Plan struct {
+	Files []LoadedFile
+}
+
+// FileCount returns the number of fixture files in the plan.
+func (p Plan) FileCount() int {
+	return len(p.Files)
+}
+
+// RecordCount returns the number of records in the plan.
+func (p Plan) RecordCount() int {
+	count := 0
+	for _, file := range p.Files {
+		count += len(file.Fixture.Records)
+	}
+	return count
 }
 
 // Runner applies discovered fixture files.
@@ -37,6 +60,19 @@ type LoadedFile struct {
 	AppDir  string
 	Path    string
 	Fixture Fixture
+}
+
+type fixtureField struct {
+	Name    string
+	Type    string
+	Unique  bool
+	Stored  bool
+	Options fieldtype.Options
+}
+
+type fixtureEntityIndex struct {
+	byIdentity map[string]catalog.LoadedEntity
+	byName     map[string][]catalog.LoadedEntity
 }
 
 // Fixture is one per-Entity fixture document.
@@ -84,15 +120,11 @@ func NewRunnerWithHooks(recordHooks *db.RecordHookRegistry) Runner {
 
 // Apply discovers and applies all app-owned fixtures in one transaction.
 func (r Runner) Apply(ctx context.Context, root string, databaseURL string) (Result, error) {
-	apps, err := project.LoadApps(root)
-	if err != nil {
-		return Result{}, fmt.Errorf("validate apps for fixtures: %w", err)
-	}
-	files, err := Discover(apps)
+	plan, err := r.Plan(ctx, root)
 	if err != nil {
 		return Result{}, err
 	}
-	if len(files) == 0 {
+	if len(plan.Files) == 0 {
 		return Result{}, nil
 	}
 
@@ -112,7 +144,7 @@ func (r Runner) Apply(ctx context.Context, root string, databaseURL string) (Res
 		metadata: db.NewMetadataReader(tx),
 		records:  newFixtureRecordStore(tx, r.recordHooks),
 	}
-	result, err := ApplyFiles(ctx, store, files)
+	result, err := ApplyFiles(ctx, store, plan.Files)
 	if err != nil {
 		return Result{}, err
 	}
@@ -122,6 +154,25 @@ func (r Runner) Apply(ctx context.Context, root string, databaseURL string) (Res
 	return result, nil
 }
 
+// Plan discovers app-owned fixtures and validates their file-level shape without writing records.
+func (r Runner) Plan(ctx context.Context, root string) (Plan, error) {
+	if err := ctx.Err(); err != nil {
+		return Plan{}, fmt.Errorf("plan fixtures: %w", err)
+	}
+	metadata, err := project.LoadMetadata(root)
+	if err != nil {
+		return Plan{}, fmt.Errorf("validate metadata for fixtures: %w", err)
+	}
+	files, err := Discover(metadata.Apps)
+	if err != nil {
+		return Plan{}, err
+	}
+	if err := ValidateFiles(files, metadata.Entities); err != nil {
+		return Plan{}, err
+	}
+	return Plan{Files: files}, nil
+}
+
 func newFixtureRecordStore(queryer db.RecordQueryer, recordHooks *db.RecordHookRegistry) db.RecordStore {
 	if recordHooks != nil {
 		return db.NewRecordStoreWithHooks(queryer, recordHooks)
@@ -129,38 +180,15 @@ func newFixtureRecordStore(queryer db.RecordQueryer, recordHooks *db.RecordHookR
 	return db.NewRecordStore(queryer)
 }
 
-// Discover loads fixture files from each app's configured fixtures path.
+// Discover loads fixture files from each app's canonical Entity bundles.
 func Discover(apps []manifest.LoadedApp) ([]LoadedFile, error) {
 	var files []LoadedFile
 	for _, app := range apps {
-		fixturesDir := filepath.Join(app.Dir, app.Manifest.Paths.Fixtures)
-		entries, err := os.ReadDir(fixturesDir)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
+		appFiles, err := discoverEntityBundleFixtures(app)
 		if err != nil {
-			return nil, fmt.Errorf("read fixtures for app %q: %w", app.Manifest.Name, err)
+			return nil, err
 		}
-		for _, entry := range entries {
-			if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
-				continue
-			}
-			path := filepath.Join(fixturesDir, entry.Name())
-			fixture, err := LoadFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", path, err)
-			}
-			expectedEntity := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-			if fixture.Entity != expectedEntity {
-				return nil, fmt.Errorf("%s: fixture entity %q must match file name %q", path, fixture.Entity, expectedEntity)
-			}
-			files = append(files, LoadedFile{
-				AppName: app.Manifest.Name,
-				AppDir:  app.Dir,
-				Path:    path,
-				Fixture: fixture,
-			})
-		}
+		files = append(files, appFiles...)
 	}
 	sort.SliceStable(files, func(i, j int) bool {
 		if files[i].AppName == files[j].AppName {
@@ -169,6 +197,89 @@ func Discover(apps []manifest.LoadedApp) ([]LoadedFile, error) {
 		return files[i].AppName < files[j].AppName
 	})
 	return files, nil
+}
+
+func discoverEntityBundleFixtures(app manifest.LoadedApp) ([]LoadedFile, error) {
+	entitiesDir := filepath.Join(app.Dir, filepath.FromSlash(app.Manifest.Paths.WithDefaults().Entities))
+	entries, err := os.ReadDir(entitiesDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read entities for fixture discovery in app %q: %w", app.Manifest.Name, err)
+	}
+
+	var files []LoadedFile
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if isFixtureCollectionDir(entry.Name()) {
+			if err := rejectCollectionFixtures(app, filepath.Join(entitiesDir, entry.Name())); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		path := filepath.Join(entitiesDir, entry.Name(), shape.EntityFixturesFile)
+		info, err := os.Stat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("stat fixture for app %q from %s: %w", app.Manifest.Name, path, err)
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		file, err := loadDiscoveredFixture(app, path, entry.Name(), "Entity bundle")
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+	return files, nil
+}
+
+func rejectCollectionFixtures(app manifest.LoadedApp, collectionsDir string) error {
+	entries, err := os.ReadDir(collectionsDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read collection fixtures for app %q: %w", app.Manifest.Name, err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(collectionsDir, entry.Name(), shape.EntityFixturesFile)
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("%s: collection Entity fixtures are not supported; put collection row data in parent Entity fixtures", path)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("stat collection fixture for app %q from %s: %w", app.Manifest.Name, path, err)
+		}
+	}
+	return nil
+}
+
+func loadDiscoveredFixture(app manifest.LoadedApp, path string, expectedEntity string, expectedSource string) (LoadedFile, error) {
+	fixture, err := LoadFile(path)
+	if err != nil {
+		return LoadedFile{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if fixture.Entity != expectedEntity {
+		return LoadedFile{}, fmt.Errorf("%s: fixture entity %q must match %s %q", path, fixture.Entity, expectedSource, expectedEntity)
+	}
+	return LoadedFile{
+		AppName: app.Manifest.Name,
+		AppDir:  app.Dir,
+		Path:    path,
+		Fixture: fixture,
+	}, nil
+}
+
+func isFixtureCollectionDir(name string) bool {
+	return name == shape.CollectionDir
 }
 
 // LoadFile loads one fixture file.
@@ -239,6 +350,279 @@ func Decode(data []byte) (Fixture, error) {
 		return Fixture{}, fmt.Errorf("fixture records are required")
 	}
 	return fixture, nil
+}
+
+// ValidateFiles verifies fixture files against source Entity metadata without connecting to the database.
+func ValidateFiles(files []LoadedFile, entities []catalog.LoadedEntity) error {
+	index := newFixtureEntityIndex(entities)
+	filesByEntity := map[string]int{}
+	for fileIndex, file := range files {
+		entity, ok := index.byIdentity[catalog.EntityKey(file.AppName, file.Fixture.Entity)]
+		if !ok {
+			return fmt.Errorf("%s: fixture Entity %s/%s is not loaded", file.Path, file.AppName, file.Fixture.Entity)
+		}
+		if entity.IsCollection() {
+			return fmt.Errorf("%s: collection Entity fixtures are not supported; put collection row data in parent Entity fixtures", file.Path)
+		}
+		if _, exists := filesByEntity[entity.Key()]; exists {
+			return fmt.Errorf("%s: duplicate fixture file for Entity %s/%s", file.Path, entity.AppName, entity.Entity.Name)
+		}
+		filesByEntity[entity.Key()] = fileIndex
+		if err := validateFixtureMatch(file, entity); err != nil {
+			return err
+		}
+		if err := validateFixtureRecords(file, entity, index); err != nil {
+			return err
+		}
+	}
+	return validateFixtureDependencies(files, index, filesByEntity)
+}
+
+func newFixtureEntityIndex(entities []catalog.LoadedEntity) fixtureEntityIndex {
+	index := fixtureEntityIndex{
+		byIdentity: map[string]catalog.LoadedEntity{},
+		byName:     map[string][]catalog.LoadedEntity{},
+	}
+	for _, entity := range entities {
+		index.byIdentity[entity.Key()] = entity
+		index.byName[entity.Entity.Name] = append(index.byName[entity.Entity.Name], entity)
+	}
+	return index
+}
+
+func validateFixtureMatch(file LoadedFile, entity catalog.LoadedEntity) error {
+	seen := map[string]bool{}
+	for _, name := range file.Fixture.Match {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("%s: fixture match contains an empty field", file.Path)
+		}
+		if seen[name] {
+			return fmt.Errorf("%s: fixture match contains duplicate field %q", file.Path, name)
+		}
+		seen[name] = true
+		field, ok := fixtureFieldByName(entity.Entity, name)
+		if !ok {
+			return fmt.Errorf("%s: fixture match field %q does not exist on Entity %q", file.Path, name, entity.Entity.Name)
+		}
+		if !field.Stored {
+			return fmt.Errorf("%s: fixture match field %q uses unsupported collection storage", file.Path, name)
+		}
+	}
+	if fixtureMatchIsUnique(entity.Entity, file.Fixture.Match) {
+		return nil
+	}
+	return fmt.Errorf("%s: fixture match %q is not backed by a unique field or constraint on Entity %q", file.Path, strings.Join(file.Fixture.Match, ", "), entity.Entity.Name)
+}
+
+func validateFixtureRecords(file LoadedFile, entity catalog.LoadedEntity, index fixtureEntityIndex) error {
+	for _, record := range file.Fixture.Records {
+		for _, match := range file.Fixture.Match {
+			value, ok := record.Values[match]
+			if !ok {
+				return fmt.Errorf("%s:%d: fixture record is missing match field %q", file.Path, record.Line, match)
+			}
+			if isNullNode(value.Node) {
+				return fmt.Errorf("%s:%d: fixture match field %q cannot be null", file.Path, value.Line, match)
+			}
+		}
+		for name, value := range record.Values {
+			field, ok := fixtureFieldByName(entity.Entity, name)
+			if !ok {
+				return fmt.Errorf("%s:%d: unknown fixture field %q", file.Path, value.Line, name)
+			}
+			if !field.Stored {
+				// TODO(collections): teach fixtures to validate and upsert owned child rows through the parent Record payload.
+				return fmt.Errorf("%s:%d: fixture field %q uses unsupported collection storage", file.Path, value.Line, name)
+			}
+			if err := validateFixtureValue(file.Path, value, entity, field, index, 0); err != nil {
+				return fmt.Errorf("%s:%d: fixture field %q: %w", file.Path, value.Line, name, err)
+			}
+		}
+	}
+	return nil
+}
+
+func validateFixtureValue(path string, value Value, owner catalog.LoadedEntity, field fixtureField, index fixtureEntityIndex, depth int) error {
+	if field.Type != "link" {
+		return nil
+	}
+	if depth > 8 {
+		return fmt.Errorf("link reference nesting is too deep")
+	}
+	reference, err := decodeLinkReference(value.Node)
+	if err != nil {
+		return err
+	}
+	target, err := index.resolve(owner, field.Options.App, field.Options.Entity)
+	if err != nil {
+		return err
+	}
+	if target.IsCollection() {
+		return fmt.Errorf("link target %s/%s is a collection Entity", target.AppName, target.Entity.Name)
+	}
+	matchNames := sortedValueKeys(reference.Match)
+	if err := validateFixtureReferenceMatch(path, target, matchNames); err != nil {
+		return err
+	}
+	for _, name := range matchNames {
+		targetField, ok := fixtureFieldByName(target.Entity, name)
+		if !ok {
+			return fmt.Errorf("link match field %q does not exist", name)
+		}
+		matchValue := reference.Match[name]
+		if isNullNode(matchValue.Node) {
+			return fmt.Errorf("link match field %q cannot be null", name)
+		}
+		if err := validateFixtureValue(path, matchValue, target, targetField, index, depth+1); err != nil {
+			return fmt.Errorf("link match field %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func validateFixtureReferenceMatch(path string, entity catalog.LoadedEntity, match []string) error {
+	loaded := LoadedFile{
+		AppName: entity.AppName,
+		Path:    path,
+		Fixture: Fixture{Entity: entity.Entity.Name, Match: match},
+	}
+	return validateFixtureMatch(loaded, entity)
+}
+
+func validateFixtureDependencies(files []LoadedFile, index fixtureEntityIndex, filesByEntity map[string]int) error {
+	entitiesByFile := make([]catalog.LoadedEntity, len(files))
+	for fileIndex, file := range files {
+		entitiesByFile[fileIndex] = index.byIdentity[catalog.EntityKey(file.AppName, file.Fixture.Entity)]
+	}
+	dependencies := map[int]map[int]bool{}
+	for fileIndex, file := range files {
+		entity := entitiesByFile[fileIndex]
+		for _, record := range file.Fixture.Records {
+			for name := range record.Values {
+				field, ok := fixtureFieldByName(entity.Entity, name)
+				if !ok || field.Type != "link" {
+					continue
+				}
+				target, err := index.resolve(entity, field.Options.App, field.Options.Entity)
+				if err != nil {
+					return err
+				}
+				targetIndex, ok := filesByEntity[target.Key()]
+				if !ok || targetIndex == fileIndex {
+					continue
+				}
+				if dependencies[fileIndex] == nil {
+					dependencies[fileIndex] = map[int]bool{}
+				}
+				dependencies[fileIndex][targetIndex] = true
+			}
+		}
+	}
+	return validateFixtureDependencyOrder(entitiesByFile, dependencies)
+}
+
+func validateFixtureDependencyOrder(files []catalog.LoadedEntity, dependencies map[int]map[int]bool) error {
+	pending := map[int]bool{}
+	for i := range files {
+		pending[i] = true
+	}
+	for len(pending) > 0 {
+		progressed := false
+		for i := range files {
+			if !pending[i] {
+				continue
+			}
+			blocked := false
+			for dependency := range dependencies[i] {
+				if pending[dependency] {
+					blocked = true
+					break
+				}
+			}
+			if blocked {
+				continue
+			}
+			delete(pending, i)
+			progressed = true
+		}
+		if !progressed {
+			names := make([]string, 0, len(pending))
+			for i := range pending {
+				names = append(names, files[i].Entity.Name)
+			}
+			sort.Strings(names)
+			return fmt.Errorf("fixture dependency cycle among entities: %s", strings.Join(names, ", "))
+		}
+	}
+	return nil
+}
+
+func (i fixtureEntityIndex) resolve(owner catalog.LoadedEntity, appName string, entityName string) (catalog.LoadedEntity, error) {
+	if strings.TrimSpace(entityName) == "" {
+		return catalog.LoadedEntity{}, fmt.Errorf("link target Entity is required")
+	}
+	if strings.TrimSpace(appName) != "" {
+		target, ok := i.byIdentity[catalog.EntityKey(appName, entityName)]
+		if !ok {
+			return catalog.LoadedEntity{}, fmt.Errorf("link target %s/%s is not loaded", appName, entityName)
+		}
+		return target, nil
+	}
+	if target, ok := i.byIdentity[catalog.EntityKey(owner.AppName, entityName)]; ok {
+		return target, nil
+	}
+	matches := i.byName[entityName]
+	switch len(matches) {
+	case 0:
+		return catalog.LoadedEntity{}, fmt.Errorf("link target %q is not loaded", entityName)
+	case 1:
+		return matches[0], nil
+	default:
+		apps := make([]string, 0, len(matches))
+		for _, match := range matches {
+			apps = append(apps, match.AppName)
+		}
+		sort.Strings(apps)
+		return catalog.LoadedEntity{}, fmt.Errorf("link target %q is ambiguous in apps %s; set options.app", entityName, strings.Join(apps, ", "))
+	}
+}
+
+func fixtureFieldByName(entity schema.Entity, name string) (fixtureField, bool) {
+	if name == "name" {
+		return fixtureField{Name: "name", Type: "text", Unique: true, Stored: true}, true
+	}
+	for _, field := range entity.Fields {
+		if field.Name != name {
+			continue
+		}
+		definition, ok := fieldtype.DefaultDefinition(field.Type)
+		return fixtureField{
+			Name:    field.Name,
+			Type:    field.Type,
+			Unique:  field.Unique,
+			Stored:  ok && definition.Behavior.Stored,
+			Options: field.Options,
+		}, true
+	}
+	return fixtureField{}, false
+}
+
+func fixtureMatchIsUnique(entity schema.Entity, match []string) bool {
+	if len(match) == 1 {
+		field, ok := fixtureFieldByName(entity, match[0])
+		if ok && field.Unique {
+			return true
+		}
+	}
+	for _, constraint := range entity.Constraints {
+		if constraint.Type != "unique" {
+			continue
+		}
+		if sameStringSet(match, constraint.Fields) {
+			return true
+		}
+	}
+	return false
 }
 
 // ApplyFiles validates and applies loaded fixtures through store.
@@ -690,6 +1074,22 @@ func sortedValueKeys(values map[string]Value) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func sameStringSet(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	leftSorted := append([]string(nil), left...)
+	rightSorted := append([]string(nil), right...)
+	sort.Strings(leftSorted)
+	sort.Strings(rightSorted)
+	for index := range leftSorted {
+		if leftSorted[index] != rightSorted[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func stringInSlice(value string, values []string) bool {

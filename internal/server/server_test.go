@@ -578,7 +578,7 @@ func TestAuthRouteErrors(t *testing.T) {
 		},
 		{
 			name:   "schema not ready",
-			store:  &fakeAuthStore{loginErr: auth.Error{Code: auth.ErrorSchemaNotReady, Message: "auth schema is not ready; run dygo migrate", Err: errors.New("postgres://secret")}},
+			store:  &fakeAuthStore{loginErr: auth.Error{Code: auth.ErrorSchemaNotReady, Message: "auth schema is not ready; run dygo db migrate", Err: errors.New("postgres://secret")}},
 			body:   `{"data":{"email":"admin@example.com","password":"secret"}}`,
 			status: http.StatusConflict,
 			want:   `"code":"schema_not_ready"`,
@@ -947,7 +947,7 @@ func TestRecordActivityRouteErrors(t *testing.T) {
 		},
 		{
 			name:   "schema not ready",
-			store:  &fakeActivityStore{err: db.RecordError{Code: db.RecordErrorSchemaNotReady, Message: "schema is not ready; run dygo migrate", Details: map[string]any{"entity": "activity"}}},
+			store:  &fakeActivityStore{err: db.RecordError{Code: db.RecordErrorSchemaNotReady, Message: "schema is not ready; run dygo db migrate", Details: map[string]any{"entity": "activity"}}},
 			path:   "/api/v1/records/user/1/activity",
 			status: http.StatusConflict,
 			want:   `"code":"schema_not_ready"`,

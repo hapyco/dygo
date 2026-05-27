@@ -31,10 +31,9 @@ func TestNewProjectCommandCreatesProject(t *testing.T) {
 		"secrets: initialized",
 		"dependencies: tidy skipped",
 		"studio: cached from framework Studio build",
-		"dygo db prepare",
-		"dygo fixtures apply",
-		"dygo setup admin",
-		"dygo serve",
+		"dygo db migrate",
+		"dygo setup",
+		"dygo dev",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("new stdout = %q, want substring %q", stdout.String(), want)
@@ -50,10 +49,11 @@ func TestNewProjectCommandCreatesProject(t *testing.T) {
 		"go.mod",
 		"cmd/dygo/main.go",
 		"apps/my-company/app.yml",
-		"configs/secrets/development.yml.age",
-		"configs/secrets/staging.yml.age",
-		"configs/secrets/production.yml.age",
-		"master.key",
+		"apps/my-company/jobs/_schedules.yml",
+		"config/secrets/development.yml.age",
+		"config/secrets/staging.yml.age",
+		"config/secrets/production.yml.age",
+		".dygo/secrets/master.key",
 		".dygo/apps/studio/ui/dist/index.html",
 	} {
 		if _, err := os.Stat(filepath.Join(projectRoot, filepath.FromSlash(path))); err != nil {
@@ -112,8 +112,8 @@ func writeCLIFrameworkRootForNew(t *testing.T, root string) {
 	if err := os.MkdirAll(filepath.Join(root, "apps"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(apps) error = %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(root, "configs"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(configs) error = %v", err)
+	if err := os.MkdirAll(filepath.Join(root, "internal", "cli"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(internal/cli) error = %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/hapyco/dygo\n\ngo 1.26.2\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(go.mod) error = %v", err)

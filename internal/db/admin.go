@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -14,6 +15,12 @@ import (
 type DatabaseResult struct {
 	Name    string
 	Changed bool
+}
+
+// DatabaseStatus reports whether a configured database exists.
+type DatabaseStatus struct {
+	Name   string
+	Exists bool
 }
 
 // Manager runs database lifecycle and schema commands.
@@ -29,6 +36,25 @@ func NewManager(migrator Migrator) Manager {
 // Check verifies database connectivity.
 func (m Manager) Check(ctx context.Context, databaseURL string) error {
 	return Check(ctx, databaseURL)
+}
+
+// Exists reports whether the configured database exists.
+func (m Manager) Exists(ctx context.Context, databaseURL string) (DatabaseStatus, error) {
+	target, err := ParseDatabaseTarget(databaseURL)
+	if err != nil {
+		return DatabaseStatus{}, err
+	}
+	conn, err := connectMaintenance(ctx, target.MaintenanceURL)
+	if err != nil {
+		return DatabaseStatus{}, sanitizeError("connect to postgres", databaseURL, err)
+	}
+	defer conn.Close(ctx)
+
+	exists, err := databaseExists(ctx, conn, target.Name)
+	if err != nil {
+		return DatabaseStatus{}, sanitizeError("check database", databaseURL, err)
+	}
+	return DatabaseStatus{Name: target.Name, Exists: exists}, nil
 }
 
 // Create creates the configured database if it is missing.
@@ -81,35 +107,6 @@ func (m Manager) Drop(ctx context.Context, databaseURL string) (DatabaseResult, 
 	return DatabaseResult{Name: target.Name, Changed: true}, nil
 }
 
-// Prepare creates the database if needed and syncs metadata schema.
-func (m Manager) Prepare(ctx context.Context, root string, databaseURL string) (SchemaSyncResult, error) {
-	if _, err := m.Create(ctx, databaseURL); err != nil {
-		return SchemaSyncResult{}, err
-	}
-	return m.Migrator.Sync(ctx, root, databaseURL)
-}
-
-// Reset drops, recreates, and syncs the configured database.
-func (m Manager) Reset(ctx context.Context, root string, databaseURL string) (SchemaSyncResult, error) {
-	if _, err := m.Drop(ctx, databaseURL); err != nil {
-		return SchemaSyncResult{}, err
-	}
-	if _, err := m.Create(ctx, databaseURL); err != nil {
-		return SchemaSyncResult{}, err
-	}
-	return m.Migrator.Sync(ctx, root, databaseURL)
-}
-
-// SchemaDump writes db/schema.sql from the live database.
-func (m Manager) SchemaDump(ctx context.Context, root string, databaseURL string) error {
-	return m.Migrator.DumpSchema(ctx, root, databaseURL)
-}
-
-// SchemaCheck verifies db/schema.sql matches the live database schema dump.
-func (m Manager) SchemaCheck(ctx context.Context, root string, databaseURL string) error {
-	return m.Migrator.CheckSchemaSnapshot(ctx, root, databaseURL)
-}
-
 // DatabaseTarget is the database named by a PostgreSQL URL plus a maintenance URL.
 type DatabaseTarget struct {
 	Name           string
@@ -153,7 +150,13 @@ func reservedDatabaseName(name string) bool {
 	}
 }
 
-func connectMaintenance(ctx context.Context, databaseURL string) (*pgx.Conn, error) {
+type maintenanceConn interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Close(context.Context) error
+}
+
+var connectMaintenance = func(ctx context.Context, databaseURL string) (maintenanceConn, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid postgres database url")
@@ -161,7 +164,7 @@ func connectMaintenance(ctx context.Context, databaseURL string) (*pgx.Conn, err
 	return pgx.ConnectConfig(ctx, cfg.ConnConfig)
 }
 
-func databaseExists(ctx context.Context, conn *pgx.Conn, name string) (bool, error) {
+func databaseExists(ctx context.Context, conn maintenanceConn, name string) (bool, error) {
 	var exists bool
 	if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)", name).Scan(&exists); err != nil {
 		return false, err

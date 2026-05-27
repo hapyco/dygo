@@ -4,31 +4,36 @@ Fixtures are app-owned seed Records.
 
 They are for roles, permissions, reference data, and other runtime defaults that should be versioned with an App.
 
-Run metadata sync before applying fixtures:
+Use the normal app-state workflow to sync metadata and apply fixtures:
 
 ```sh
-go run ./cmd/dygo migrate
-go run ./cmd/dygo fixtures apply
+dygo db migrate
 ```
 
-Use another encrypted environment with `--env`:
+Use explicit fixture commands when authoring, debugging, or exporting fixture files. For example, validate fixture files without database writes:
 
 ```sh
-go run ./cmd/dygo fixtures apply --env staging
+dygo fixture validate
+```
+
+Apply fixtures directly to another encrypted environment with `--env`:
+
+```sh
+dygo fixture apply --env staging
 ```
 
 ## File Shape
 
-Fixture files live under an App's manifest-defined `fixtures` directory. The file name must match the Entity key:
+Fixture files live inside normal Entity bundles:
 
 ```txt
-apps/core/fixtures/role.yml
-apps/core/fixtures/permission.yml
+apps/core/entities/role/fixtures.yml
+apps/core/entities/permission/fixtures.yml
 ```
 
-Do not use numeric prefixes such as `001_role.yml`. dygo orders fixture application from link dependencies, so `permission.yml` can reference roles seeded by `role.yml` without filename tricks.
+Do not use numeric prefixes inside Entity bundle names. dygo orders fixture application from link dependencies, so permission fixtures can reference role fixtures without filename tricks.
 
-Each `*.yml` file declares one Entity:
+Each `fixtures.yml` file declares one Entity:
 
 ```yaml
 entity: role
@@ -78,9 +83,18 @@ Core fixtures also do not grant `studio-member` generic `activity` Record access
 
 ## Apply Behavior
 
-`dygo fixtures apply` discovers fixtures from all loaded Apps, validates metadata first, then applies records in deterministic order inside one transaction. Apply order is derived from link dependencies between fixture Entities, not from numeric filename prefixes.
+`dygo fixture validate` discovers fixtures from all loaded Apps and validates fixture files, match fields, link references, dependency cycles, and collection limitations without writing records.
+
+`dygo fixture apply` performs the same validation, prints a plan, prompts, then applies records in deterministic order inside one transaction. Apply order is derived from link dependencies between fixture Entities, not from numeric filename prefixes.
 
 For each fixture record, dygo finds an existing Record through `match`. If one exists, it updates it. If none exists, it creates it through the generic Record runtime.
+
+Use `--dry-run` to print the plan without writing, and `--yes` to skip the interactive prompt after reviewing the plan:
+
+```sh
+dygo fixture apply --dry-run
+dygo fixture apply --yes
+```
 
 The command prints:
 
@@ -90,6 +104,6 @@ fixtures applied: 3 created, 2 updated (development)
 
 ## Boundaries
 
-`dygo db prepare` does not apply fixtures in v1. It still creates the database and syncs metadata schema only.
+`dygo db migrate` applies fixtures as part of the normal app-state workflow. Keep `dygo fixture apply`, `dygo fixture validate`, and `dygo fixture export <app>/<entity>` for app-author tooling, debugging, and exporting Studio-authored Records back into app-owned fixture files.
 
 Fixtures do not delete Records, prune schema, run patches, track history, or expose HTTP endpoints.

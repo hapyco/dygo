@@ -122,7 +122,7 @@ func TestBuildMetadataSchemaPlanUpdatesColumnDefaults(t *testing.T) {
 			},
 			entity: catalog.LoadedEntity{
 				AppName: "crm",
-				Path:    "apps/crm/entities/lead.yml",
+				Path:    testEntityPath("crm", "lead"),
 				Entity: schema.Entity{
 					Name: "lead",
 					Fields: []schema.Field{
@@ -170,7 +170,7 @@ func TestBuildMetadataSchemaPlanUpdatesColumnDefaults(t *testing.T) {
 func TestBuildMetadataSchemaPlanAddsMissingNullableColumn(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "crm",
-		Path:    "apps/crm/entities/lead.yml",
+		Path:    testEntityPath("crm", "lead"),
 		Entity: schema.Entity{
 			Name: "lead",
 			Fields: []schema.Field{
@@ -193,7 +193,7 @@ func TestBuildMetadataSchemaPlanAddsMissingNullableColumn(t *testing.T) {
 func TestBuildMetadataSchemaPlanAddsBigintColumn(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "core",
-		Path:    "apps/core/entities/activity.yml",
+		Path:    testEntityPath("core", "activity"),
 		Entity: schema.Entity{
 			Name: "activity",
 			Fields: []schema.Field{
@@ -217,7 +217,7 @@ func TestBuildMetadataSchemaPlanAddsBigintColumn(t *testing.T) {
 func TestBuildMetadataSchemaPlanAddsPasswordHashColumn(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "core",
-		Path:    "apps/core/entities/user.yml",
+		Path:    testEntityPath("core", "user"),
 		Entity: schema.Entity{
 			Name: "user",
 			Fields: []schema.Field{
@@ -247,7 +247,7 @@ func TestBuildMetadataSchemaPlanAddsPasswordHashColumn(t *testing.T) {
 func TestBuildMetadataSchemaPlanRejectsMissingRequiredColumnWithoutDefault(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "crm",
-		Path:    "apps/crm/entities/lead.yml",
+		Path:    testEntityPath("crm", "lead"),
 		Entity: schema.Entity{
 			Name: "lead",
 			Fields: []schema.Field{
@@ -270,7 +270,7 @@ func TestBuildMetadataSchemaPlanRejectsMissingRequiredColumnWithoutDefault(t *te
 func TestBuildMetadataSchemaPlanAddsRequiredColumnForKnownEmptyTable(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "core",
-		Path:    "apps/core/entities/session.yml",
+		Path:    testEntityPath("core", "session"),
 		Entity: schema.Entity{
 			Name: "session",
 			Fields: []schema.Field{
@@ -297,7 +297,7 @@ func TestBuildMetadataSchemaPlanAddsRequiredColumnForKnownEmptyTable(t *testing.
 func TestBuildMetadataSchemaPlanAddsMissingIndexAndConstraint(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "crm",
-		Path:    "apps/crm/entities/lead.yml",
+		Path:    testEntityPath("crm", "lead"),
 		Entity: schema.Entity{
 			Name: "lead",
 			Fields: []schema.Field{
@@ -323,7 +323,7 @@ func TestBuildMetadataSchemaPlanAddsMissingIndexAndConstraint(t *testing.T) {
 func TestBuildMetadataSchemaPlanAddsFieldLevelCheck(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "sales",
-		Path:    "apps/sales/entities/deal.yml",
+		Path:    testEntityPath("sales", "deal"),
 		Entity: schema.Entity{
 			Name: "deal",
 			Fields: []schema.Field{
@@ -357,7 +357,7 @@ func TestBuildMetadataSchemaPlanAddsFieldLevelCheck(t *testing.T) {
 func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "sales",
-		Path:    "apps/sales/entities/deal.yml",
+		Path:    testEntityPath("sales", "deal"),
 		Entity: schema.Entity{
 			Name: "deal",
 			Fields: []schema.Field{
@@ -376,7 +376,7 @@ func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) 
 	}
 	company := catalog.LoadedEntity{
 		AppName: "sales",
-		Path:    "apps/sales/entities/company.yml",
+		Path:    testEntityPath("sales", "company"),
 		Entity: schema.Entity{
 			Name:   "company",
 			Fields: []schema.Field{{Name: "name", Type: "text"}},
@@ -411,7 +411,7 @@ func TestBuildMetadataSchemaPlanAddsTopLevelIndexesAndConstraints(t *testing.T) 
 func TestBuildMetadataSchemaPlanAddsSingleEntityNameCheck(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "sales",
-		Path:    "apps/sales/entities/invoice-settings.yml",
+		Path:    testEntityPath("sales", "invoice-settings"),
 		Entity: schema.Entity{
 			Name:     "invoice-settings",
 			IsSingle: true,
@@ -437,7 +437,7 @@ func TestBuildMetadataSchemaPlanAddsSingleEntityNameCheck(t *testing.T) {
 func TestBuildMetadataSchemaPlanBlocksNonEmptySingleEntityConversion(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "sales",
-		Path:    "apps/sales/entities/invoice-settings.yml",
+		Path:    testEntityPath("sales", "invoice-settings"),
 		Entity: schema.Entity{
 			Name:     "invoice-settings",
 			IsSingle: true,
@@ -481,7 +481,7 @@ func TestBuildMetadataSchemaPlanBlocksNonEmptySingleEntityConversion(t *testing.
 func TestBuildMetadataSchemaPlanCreatesLinkForeignKeysByDefault(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "sales",
-		Path:    "apps/sales/entities/deal.yml",
+		Path:    testEntityPath("sales", "deal"),
 		Entity: schema.Entity{
 			Name: "deal",
 			Fields: []schema.Field{
@@ -491,7 +491,7 @@ func TestBuildMetadataSchemaPlanCreatesLinkForeignKeysByDefault(t *testing.T) {
 	}
 	company := catalog.LoadedEntity{
 		AppName: "sales",
-		Path:    "apps/sales/entities/company.yml",
+		Path:    testEntityPath("sales", "company"),
 		Entity: schema.Entity{
 			Name:   "company",
 			Fields: []schema.Field{{Name: "name", Type: "text"}},
@@ -518,7 +518,7 @@ func TestBuildMetadataSchemaPlanSkipsDisabledLinkForeignKeys(t *testing.T) {
 	disabled := false
 	entity := catalog.LoadedEntity{
 		AppName: "core",
-		Path:    "apps/core/entities/activity.yml",
+		Path:    testEntityPath("core", "activity"),
 		Entity: schema.Entity{
 			Name: "activity",
 			Fields: []schema.Field{
@@ -528,7 +528,7 @@ func TestBuildMetadataSchemaPlanSkipsDisabledLinkForeignKeys(t *testing.T) {
 	}
 	user := catalog.LoadedEntity{
 		AppName: "core",
-		Path:    "apps/core/entities/user.yml",
+		Path:    testEntityPath("core", "user"),
 		Entity: schema.Entity{
 			Name:   "user",
 			Fields: []schema.Field{{Name: "email", Type: "email"}},
@@ -555,7 +555,7 @@ func TestBuildMetadataSchemaPlanSkipsDisabledLinkForeignKeys(t *testing.T) {
 func TestBuildMetadataSchemaPlanReportsChangedIndexAndConstraintDefinition(t *testing.T) {
 	entity := catalog.LoadedEntity{
 		AppName: "sales",
-		Path:    "apps/sales/entities/deal.yml",
+		Path:    testEntityPath("sales", "deal"),
 		Entity: schema.Entity{
 			Name: "deal",
 			Fields: []schema.Field{
@@ -595,7 +595,7 @@ func TestBuildMetadataSchemaPlanReportsChangedIndexAndConstraintDefinition(t *te
 func TestBuildMetadataSchemaPlanRejectsDuplicateDesiredObjectNames(t *testing.T) {
 	_, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{{
 		AppName: "crm",
-		Path:    "apps/crm/entities/lead.yml",
+		Path:    testEntityPath("crm", "lead"),
 		Entity: schema.Entity{
 			Name: "lead",
 			Fields: []schema.Field{
@@ -666,7 +666,7 @@ func TestBuildMetadataSchemaPlanCreatesCollectionChildTable(t *testing.T) {
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{
 		{
 			AppName: "crm",
-			Path:    "apps/crm/entities/lead.yml",
+			Path:    testEntityPath("crm", "lead"),
 			Entity: schema.Entity{
 				Name: "lead",
 				Fields: []schema.Field{
@@ -676,7 +676,7 @@ func TestBuildMetadataSchemaPlanCreatesCollectionChildTable(t *testing.T) {
 		},
 		{
 			AppName: "crm",
-			Path:    "apps/crm/entities/collections/lead-contact.yml",
+			Path:    testCollectionEntityPath("crm", "lead-contact"),
 			Entity: schema.Entity{
 				Name:         "lead-contact",
 				IsCollection: true,
@@ -709,8 +709,8 @@ func TestBuildMetadataSchemaPlanCreatesCollectionChildTable(t *testing.T) {
 
 func TestBuildMetadataSchemaPlanScopesNonCoreTablesByApp(t *testing.T) {
 	plan, err := BuildMetadataSchemaPlan([]catalog.LoadedEntity{
-		{AppName: "one", Path: "apps/one/entities/user.yml", Entity: schema.Entity{Name: "user"}},
-		{AppName: "two", Path: "apps/two/entities/user.yml", Entity: schema.Entity{Name: "user"}},
+		{AppName: "one", Path: testEntityPath("one", "user"), Entity: schema.Entity{Name: "user"}},
+		{AppName: "two", Path: testEntityPath("two", "user"), Entity: schema.Entity{Name: "user"}},
 	}, LiveSchema{Tables: map[string]liveTable{}})
 	if err != nil {
 		t.Fatalf("BuildMetadataSchemaPlan() error = %v, want nil", err)
@@ -763,7 +763,7 @@ func coreSchemaEntities() []catalog.LoadedEntity {
 		appEntity(),
 		{
 			AppName: "core",
-			Path:    "apps/core/entities/entity.yml",
+			Path:    testEntityPath("core", "entity"),
 			Entity: schema.Entity{
 				Name:   "entity",
 				Naming: schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{app}.{key}"},
@@ -779,7 +779,7 @@ func coreSchemaEntities() []catalog.LoadedEntity {
 		},
 		{
 			AppName: "core",
-			Path:    "apps/core/entities/patch-run.yml",
+			Path:    testEntityPath("core", "patch-run"),
 			Entity: schema.Entity{
 				Name: "patch-run",
 				Fields: []schema.Field{
@@ -802,7 +802,7 @@ func coreSchemaEntities() []catalog.LoadedEntity {
 func appEntity() catalog.LoadedEntity {
 	return catalog.LoadedEntity{
 		AppName: "core",
-		Path:    "apps/core/entities/app.yml",
+		Path:    testEntityPath("core", "app"),
 		Entity: schema.Entity{
 			Name: "app",
 			Fields: []schema.Field{

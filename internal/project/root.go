@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/hapyco/dygo/internal/shape"
 )
 
 const (
 	// MarkerFile is the canonical root marker for generated dygo projects.
-	MarkerFile = "dygo.yml"
+	MarkerFile = shape.ProjectConfigFile
 
 	frameworkModule = "github.com/hapyco/dygo"
 )
@@ -63,6 +65,13 @@ func inspectRoot(dir string) (Root, bool, error) {
 		if markerInfo.IsDir() {
 			return Root{}, false, fmt.Errorf("dygo root marker %s must be a file", markerPath)
 		}
+		ok, err := isFrameworkRoot(dir)
+		if err != nil {
+			return Root{}, false, err
+		}
+		if ok {
+			return Root{Path: dir, Marker: "framework-repo"}, true, nil
+		}
 		return Root{Path: dir, Marker: MarkerFile}, true, nil
 	}
 	if err != nil && !os.IsNotExist(err) {
@@ -93,7 +102,7 @@ func isFrameworkRoot(dir string) (bool, error) {
 		return false, nil
 	}
 
-	for _, path := range []string{"apps", "configs"} {
+	for _, path := range []string{shape.AppsDir, filepath.Join("internal", "cli")} {
 		info, err := os.Stat(filepath.Join(dir, path))
 		if err != nil {
 			if os.IsNotExist(err) {

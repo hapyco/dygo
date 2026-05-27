@@ -146,7 +146,7 @@ func HandlerForProject(root string) (http.Handler, string, error) {
 		return handler, embedded.Name, nil
 	}
 
-	return nil, "", fmt.Errorf("Studio UI assets are unavailable; expected a built Studio cache at %s or bundled Studio assets in this dygo binary. Run dygo upgrade to refresh generated-project assets, or pass --studio-dev-url to a running Studio dev server", ProjectCachePath(root))
+	return nil, "", fmt.Errorf("Studio UI assets are unavailable; expected a built Studio cache at %s or bundled Studio assets in this dygo binary. Run dygo upgrade to refresh generated-project assets, or use dygo dev to proxy a Studio dev server", ProjectCachePath(root))
 }
 
 // InstallCache copies the first available source into the generated-project Studio cache.

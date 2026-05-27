@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/hapyco/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
@@ -18,12 +19,13 @@ const (
 	defaultServerPort     = 6790
 	defaultDatabaseDriver = "postgres"
 
-	// FilePath is the project-relative dygo runtime config path.
-	FilePath = "configs/dygo.yaml"
+	// FilePath is the canonical project-relative dygo runtime config path.
+	FilePath = shape.ProjectConfigFile
 )
 
 // Config contains dygo runtime settings.
 type Config struct {
+	Name     string
 	Server   Server
 	Database Database
 }
@@ -50,7 +52,8 @@ func Load(root string) (Config, error) {
 	if strings.TrimSpace(root) == "" {
 		root = "."
 	}
-	return LoadFile(filepath.Join(root, filepath.FromSlash(FilePath)))
+	path := filepath.Join(root, filepath.FromSlash(FilePath))
+	return LoadFile(path)
 }
 
 // LoadFile reads, decodes, and validates one dygo config file.
@@ -140,6 +143,7 @@ func (e ValidationError) Error() string {
 }
 
 type rawConfig struct {
+	Name     *string      `yaml:"name,omitempty"`
 	Server   *rawServer   `yaml:"server,omitempty"`
 	Database *rawDatabase `yaml:"database,omitempty"`
 }
@@ -159,6 +163,9 @@ type rawSecretReference struct {
 }
 
 func (r rawConfig) apply(cfg *Config) {
+	if r.Name != nil {
+		cfg.Name = strings.TrimSpace(*r.Name)
+	}
 	if r.Server != nil {
 		if r.Server.Host != nil {
 			cfg.Server.Host = *r.Server.Host

@@ -15,37 +15,37 @@ database:
     secret: DATABASE_URL
 ```
 
-Do not put a raw database URL in `configs/dygo.yaml`.
+Do not put a raw database URL in `dygo.yml`.
 
 ## Development Secret
 
 Set the local development database URL by editing development secrets:
 
 ```sh
-go run ./cmd/dygo secrets edit
+dygo secret edit
 ```
 
 The value is encrypted into:
 
 ```txt
-configs/secrets/development.yml.age
+config/secrets/development.yml.age
 ```
 
-The local `master.key` at the project root decrypts and re-encrypts the file. Do not commit `master.key`.
+The local `.dygo/secrets/master.key` decrypts and re-encrypts the file. Do not commit `.dygo/secrets/master.key`.
 
 ## Connectivity Check
 
 Check the development database:
 
 ```sh
-go run ./cmd/dygo db check
+dygo db check
 ```
 
 Check another environment:
 
 ```sh
-go run ./cmd/dygo db check --env staging
-go run ./cmd/dygo db check --env production
+dygo db check --env staging
+dygo db check --env production
 ```
 
 `dygo db check` decrypts the selected environment's `DATABASE_URL`, connects with the PostgreSQL runtime pool, pings the database, and prints a success message.
@@ -59,43 +59,52 @@ The database name comes from the selected environment's `DATABASE_URL`.
 Create the configured database if it is missing:
 
 ```sh
-go run ./cmd/dygo db create
+dygo db create
 ```
 
-Prepare the database for running dygo:
+Migrate the database. `db migrate` ensures the configured database exists, prints the full plan, prompts, then applies pre-sync patches, metadata schema sync, post-sync patches, fixtures, and schema snapshot refresh.
 
 ```sh
-go run ./cmd/dygo db prepare
+dygo db migrate
 ```
 
-`db prepare` creates the database if needed, syncs metadata schema, and updates `db/schema.sql`.
-
-`db prepare` does not apply fixtures in v1. Apply seed Records explicitly after metadata sync:
+When the configured database is missing, normal `db migrate` prompts before creating it because schema planning needs a real database to inspect.
 
 ```sh
-go run ./cmd/dygo fixtures apply
+dygo db migrate --dry-run
+dygo db migrate --yes
 ```
 
-After fixtures are applied, create the first Administrator account before opening Studio:
+`--dry-run` never creates the database. If the database is missing, it reports that the database would be created and exits before full schema planning.
+
+After migration, create the first Administrator account before opening Studio:
 
 ```sh
-go run ./cmd/dygo setup admin
+dygo setup
 ```
 
-Drop or reset the configured database only with explicit confirmation:
+Drop or reset the configured database only after reviewing the printed plan:
 
 ```sh
-go run ./cmd/dygo db drop --confirm development/dygo
-go run ./cmd/dygo db reset --confirm development/dygo
+dygo db drop
+dygo db reset
+dygo db reset --dry-run
 ```
 
-`db reset` drops the database, creates it again, syncs metadata schema, and updates `db/schema.sql`.
-
-The confirmation value is always `<environment>/<database-name>`, where the database name comes from the selected environment's encrypted `DATABASE_URL`. For staging or production, include the matching environment:
+Use `--yes` for agents, scripts, or CI after the plan is acceptable:
 
 ```sh
-go run ./cmd/dygo db drop --env staging --confirm staging/dygo_staging
-go run ./cmd/dygo db reset --env production --confirm production/dygo_prod
+dygo db drop --yes
+dygo db reset --yes
+```
+
+`db reset` drops the database, creates it again, and runs the same migration workflow as `db migrate`.
+
+For staging or production destructive commands, pass `--force` in addition to the prompt or `--yes`:
+
+```sh
+dygo db drop --env staging --force
+dygo db reset --env production --force --yes
 ```
 
 dygo does not automate backups before destructive database operations yet. Take and verify any required backup before running destructive commands, especially for production.
@@ -107,75 +116,74 @@ All database commands default to `development` and support `--env staging` or `-
 dygo has one normal schema input:
 
 ```txt
-apps/*/entities/*.yml
-apps/*/entities/*/*.yml
+apps/*/entities/*/entity.yml
+apps/*/entities/_collections/*.yml
+apps/*/entities/_collections/*/entity.yml
   desired table schema
 ```
 
-During `dygo migrate` and `dygo db prepare`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/` is the source for Core tables such as `app`, `activity`, `entity`, `field`, `index`, `constraint`, `naming-series`, `patch-run`, `user`, `role`, `permission`, and `session`.
+During `dygo db migrate`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/` is the source for Core tables such as `app`, `activity`, `entity`, `field`, `index`, `constraint`, `naming-series`, `patch-run`, `user`, `role`, `permission`, and `session`.
 
 Preview metadata sync:
 
 ```sh
-go run ./cmd/dygo migrate plan
+dygo db migrate --dry-run
 ```
 
 Apply metadata sync:
 
 ```sh
-go run ./cmd/dygo migrate
+dygo db migrate
 ```
 
-`dygo migrate plan` and `dygo migrate` default to `development` and support `--env staging` or `--env production`.
+`dygo db migrate` defaults to `development` and supports `--env staging` or `--env production`.
 
 Before applying changes, dygo builds a schema plan from metadata and compares it with the live PostgreSQL `public` schema. The plan classifies safe operations separately from unsafe or unsupported drift.
 
-Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Each metadata-backed table has system `id`, `name`, `created_at`, and `updated_at` columns. Collection child tables also include `parent_entity_id`, `parent_record_id`, `parent_field_id`, and 1-based `ordinal`, plus a unique constraint on `(parent_entity_id, parent_record_id, parent_field_id, ordinal)`. The Record `name` column is generated from Entity `name` metadata except for Single Entities, where it is fixed to the Entity key, and collection row Entities, where it is framework-owned random length `16`. Composite indexes and composite unique constraints come from top-level Entity metadata; single-field structured checks come from Field metadata. Unsafe or unsupported drift blocks `dygo migrate` before any operation is applied.
+Safe operations include creating missing metadata tables, adding safe metadata columns, and adding missing metadata indexes or constraints. Each metadata-backed table has system `id`, `name`, `created_at`, and `updated_at` columns. Collection child tables also include `parent_entity_id`, `parent_record_id`, `parent_field_id`, and 1-based `ordinal`, plus a unique constraint on `(parent_entity_id, parent_record_id, parent_field_id, ordinal)`. The Record `name` column is generated from Entity `name` metadata except for Single Entities, where it is fixed to the Entity key, and collection row Entities, where it is framework-owned random length `16`. Composite indexes and composite unique constraints come from top-level Entity metadata; single-field structured checks come from Field metadata. Unsafe or unsupported drift blocks `dygo db migrate` before any operation is applied.
 
 Existing early-development databases created before system Record names may report a missing `name` system column. That is treated as unsupported drift because dygo cannot safely invent stable names for existing rows without an explicit patch or reset.
 
-After the schema plan succeeds, `dygo migrate` upserts discovered Apps, Entities, Fields, Indexes, and Constraints into the Core metadata tables. This gives later runtime APIs and Studio a database-backed metadata registry while the YAML files remain the source of truth.
+After the schema plan succeeds, `dygo db migrate` upserts discovered Apps, Entities, Fields, Indexes, and Constraints into the Core metadata tables. This gives later runtime APIs and Studio a database-backed metadata registry while the YAML files remain the source of truth.
 
-App-owned fixtures can be applied after metadata sync. See [Fixtures](fixtures.md) for the `dygo fixtures apply` command and fixture file shape.
+App-owned fixtures are applied by `dygo db migrate` and can also be applied explicitly with `dygo fixture apply`. See [Fixtures](fixtures.md) for the fixture file shape.
 
 The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check/foreign-key changes are not inferred automatically. Those cases need an explicit app patch or, for plain metadata-orphaned objects, an explicit schema prune.
 
 See [Explicit Patches](patches.md) for the model that maps unsafe planner diagnostics to app-owned patch work.
 
-Explicit patches are planned and applied around metadata sync. They do not run automatically as part of `dygo migrate`:
+Explicit patches are planned and applied around metadata sync as part of `dygo db migrate`:
 
 ```sh
-go run ./cmd/dygo migrate plan
-go run ./cmd/dygo patches plan --phase pre-sync
-go run ./cmd/dygo patches apply --phase pre-sync --confirm development/dygo
-go run ./cmd/dygo migrate
-go run ./cmd/dygo patches plan --phase post-sync
-go run ./cmd/dygo patches apply --phase post-sync --confirm development/dygo
+dygo db migrate --dry-run
+dygo db migrate
+dygo db migrate --yes
 ```
 
-Patch apply uses the same typed confirmation shape as destructive DB and schema commands. It applies one pending patch per transaction, records a Core `patch-run` ledger row only after that patch succeeds, and refreshes `db/schema.sql` after a successful apply. dygo does not automate backups before patches yet; take and verify backups before applying patches to production.
+Patch apply records a Core `patch-run` ledger row only after a patch succeeds. `dygo db migrate` refreshes `db/schema.sql` after schema changes. dygo does not automate backups before patches yet; take and verify backups before applying patches to production.
 
 There is no SQL migration file path or `migrations` table in this model. dygo compares metadata intent with the database shape and moves the database forward through metadata.
 
 ## Schema Prune
 
-`dygo schema prune` is the explicit destructive cleanup command for metadata-orphaned objects in dygo's managed schema. Metadata is the source of truth for that schema.
+`dygo db prune` is the explicit destructive cleanup command for metadata-orphaned objects in dygo's managed schema. Metadata is the source of truth for that schema.
 
 Preview the prune plan:
 
 ```sh
-go run ./cmd/dygo schema prune
+dygo db prune --dry-run
 ```
 
 Apply the prune plan:
 
 ```sh
-go run ./cmd/dygo schema prune --confirm development/dygo
+dygo db prune
+dygo db prune --yes
 ```
 
-`dygo schema prune` defaults to `development` and supports `--env staging` or `--env production`.
+`dygo db prune` defaults to `development` and supports `--env staging` or `--env production`.
 
-Preview mode is the default and exits after printing the destructive plan. `--confirm <environment>/<database-name>` applies the plan in one transaction and updates `db/schema.sql` only after a successful prune.
+`--dry-run` exits after printing the destructive plan. Without `--dry-run`, `dygo db prune` prints the plan and prompts before writing. `--yes` skips the prompt. Protected environments require `--force`.
 
 Prune can drop extra tables, constraints, non-constraint indexes, and columns that are present in the managed schema but absent from loaded Entity metadata. It skips primary keys, not-null constraints, system columns, and indexes that back constraints. Generated SQL uses quoted identifiers and does not use `CASCADE`; hidden dependencies should fail instead of widening the blast radius.
 
@@ -183,7 +191,7 @@ Prune still refuses non-prunable blockers such as type drift, required drift, un
 
 ## Schema Snapshot
 
-After a successful `dygo migrate`, confirmed `dygo schema prune`, `db prepare`, or confirmed `db reset`, dygo writes a Postgres-native schema snapshot:
+After a successful `dygo db migrate`, `dygo db prune`, or `dygo db reset`, dygo writes a Postgres-native schema snapshot:
 
 ```txt
 db/schema.sql
@@ -191,14 +199,7 @@ db/schema.sql
 
 The snapshot is generated with `pg_dump --schema-only --no-owner --no-privileges`. dygo looks for `pg_dump` in `PATH`, then checks Postgres.app's latest macOS path.
 
-You can also manage the snapshot manually:
-
-```sh
-go run ./cmd/dygo db schema dump
-go run ./cmd/dygo db schema check
-```
-
-`db schema check` compares the committed `db/schema.sql` with a fresh live schema dump for the selected environment. It does not rewrite the snapshot; if it reports drift, run `dygo db schema dump` after confirming the live schema is the intended one.
+Manual schema dump commands are intentionally not public. `dygo doctor` reports whether the schema snapshot is missing or out of date.
 
 `db/schema.sql` is generated output. It is useful for review and debugging, but app Entity metadata remains the source of truth.
 

@@ -509,7 +509,7 @@ func testEntity(appName string, name string, fields ...schema.Field) catalog.Loa
 	return catalog.LoadedEntity{
 		AppName: appName,
 		AppDir:  "apps/" + appName,
-		Path:    "apps/" + appName + "/entities/" + name + ".yml",
+		Path:    testEntityPath(appName, name),
 		Entity: schema.Entity{
 			Name:   name,
 			Label:  name,

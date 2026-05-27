@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dygo.dev/schemas/config.schema.json",
   "title": "dygo Project Config",
-  "description": "Schema for configs/dygo.yaml. Runtime validation in Go remains authoritative.",
+  "description": "Schema for root dygo.yml project config. Runtime validation in Go remains authoritative.",
   "type": "object",
   "additionalProperties": false,
   "required": ["database"],

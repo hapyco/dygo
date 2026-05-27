@@ -5,21 +5,23 @@
       ".dygo/apps/*/app.yml"
     ],
     "./schemas/entity.schema.json": [
-      "apps/*/entities/*.yml",
-      "apps/*/entities/*/*.yml",
-      ".dygo/apps/*/entities/*.yml",
-      ".dygo/apps/*/entities/*/*.yml"
+      "apps/*/entities/*/entity.yml",
+      "apps/*/entities/_collections/*.yml",
+      "apps/*/entities/_collections/*/entity.yml",
+      ".dygo/apps/*/entities/*/entity.yml",
+      ".dygo/apps/*/entities/_collections/*.yml",
+      ".dygo/apps/*/entities/_collections/*/entity.yml"
     ],
     "./schemas/fixture.schema.json": [
-      "apps/*/fixtures/*.yml",
-      ".dygo/apps/*/fixtures/*.yml"
+      "apps/*/entities/*/fixtures.yml",
+      ".dygo/apps/*/entities/*/fixtures.yml"
     ],
     "./schemas/patch.schema.json": [
       "apps/*/patches/*.yml",
       ".dygo/apps/*/patches/*.yml"
     ],
     "./schemas/config.schema.json": [
-      "configs/dygo.yaml"
+      "dygo.yml"
     ]
   },
   "yaml.validate": true

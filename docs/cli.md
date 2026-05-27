@@ -1,12 +1,12 @@
 # dygo CLI
 
-This document describes the current and proposed dygo CLI surface for the CLI cleanup work. This is a target CLI surface; commands may be implemented incrementally during CLI cleanup.
+This document describes the dygo CLI surface after the CLI cleanup work. Deferred commands and future extensions are listed separately.
 
 ## Root
 
 - `dygo` - Shows the root help for the metadata-driven dygo platform CLI.
 - `dygo new <name>` - Creates a new dygo project skeleton.
-- `dygo upgrade` - Upgrades the current project files, assets, and dependencies to match the installed dygo binary.
+- `dygo upgrade` - Upgrades the current project files, assets, and dependencies when the project dygo version differs from the installed dygo binary.
 - `dygo upgrade --check` - Checks whether the current project needs an upgrade without planning or writing changes.
 - `dygo upgrade --to <version>` - Plans or applies a project upgrade to a specific dygo version.
 - `dygo upgrade --dry-run` - Prints the project upgrade plan without writing or prompting.
@@ -27,9 +27,9 @@ This document describes the current and proposed dygo CLI surface for the CLI cl
 - `dygo db create` - Creates the configured PostgreSQL database.
 - `dygo db drop` - Prints the drop target, prompts interactively, then drops the configured PostgreSQL database.
 - `dygo db drop --yes` - Drops the configured PostgreSQL database without an interactive prompt.
-- `dygo db migrate` - Prints the full migration plan, prompts interactively, then applies pre-sync patches, metadata sync, post-sync patches, fixtures, and schema dump.
+- `dygo db migrate` - Ensures the configured database exists, prints the full migration plan, prompts interactively, then applies pre-sync patches, metadata sync, post-sync patches, fixtures, and schema dump.
 - `dygo db migrate --yes` - Applies the full migration workflow without an interactive prompt.
-- `dygo db migrate --dry-run` - Prints the full migration plan without writing.
+- `dygo db migrate --dry-run` - Prints the full migration plan without writing; if the database is missing, reports that it would be created and exits before full planning.
 - `dygo db prune` - Prints the metadata-orphaned schema cleanup plan, prompts interactively, then removes approved objects.
 - `dygo db prune --yes` - Prints the cleanup plan and applies it without an interactive prompt.
 - `dygo db prune --dry-run` - Previews metadata-orphaned schema cleanup without writing.
@@ -72,7 +72,6 @@ This document describes the current and proposed dygo CLI surface for the CLI cl
 - `dygo hook validate` - Validates hook file conventions, Entity references, duplicate compiled hook IDs when available, generated registrars, and runner wiring.
 - `dygo hook sync` - Updates generated project runner wiring for discovered app hook packages without creating hook files.
 - `dygo hook sync --dry-run` - Prints runner wiring changes without writing.
-- `dygo hook sync --force` - Overwrites dygo-generated runner wiring only; custom runner files still fail.
 
 ## Generate
 
@@ -86,7 +85,7 @@ This document describes the current and proposed dygo CLI surface for the CLI cl
 - `dygo generate fixture <app>/<entity>` - Adds a fixture skeleton to an existing Entity.
 - `dygo generate test <app>/<entity>` - Adds Go test boilerplate for an existing Entity.
 
-Generated files are valid boilerplate, not empty placeholders. Generators do not overwrite custom files unless an explicit force flag is added later.
+Generated files are valid boilerplate, not empty placeholders. Generators do not overwrite custom files. `--force` overwrites dygo-generated files only.
 
 Collection generators create metadata only. Collection rows do not get fixture skeletons, route metadata, standalone permissions, or hooks by default; parent Entity fixtures and hooks own collection row usage. The intended collection file convention is `entities/_collections/<collection>.yml`.
 
@@ -97,8 +96,16 @@ Collection generators create metadata only. Collection rows do not get fixture s
 - `dygo generate entity <app>/<entity> --no-hook` - Skips hook scaffolding and runner wiring in the standard Entity bundle.
 - `dygo generate entity <app>/<entity> --no-fixture` - Skips fixture skeleton creation in the standard Entity bundle.
 - `dygo generate entity <app>/<entity> --no-test` - Skips Go test boilerplate in the standard Entity bundle.
+- `dygo generate app <app> --dry-run` - Prints app skeleton files that would be created or updated without writing.
+- `dygo generate app <app> --force` - Overwrites dygo-generated app skeleton files only; custom files still fail.
 - `dygo generate collection <app>/<collection> --dry-run` - Prints collection metadata files that would be created or updated without writing.
 - `dygo generate collection <app>/<collection> --force` - Overwrites dygo-generated collection metadata only; custom files still fail.
+- `dygo generate hook <app>/<entity> --dry-run` - Prints hook scaffold and runner wiring changes without writing.
+- `dygo generate hook <app>/<entity> --force` - Overwrites dygo-generated hook scaffolding only; custom hook files still fail.
+- `dygo generate fixture <app>/<entity> --dry-run` - Prints fixture skeleton files that would be created or updated without writing.
+- `dygo generate fixture <app>/<entity> --force` - Overwrites dygo-generated fixture skeletons only; custom files still fail.
+- `dygo generate test <app>/<entity> --dry-run` - Prints Go test files that would be created or updated without writing.
+- `dygo generate test <app>/<entity> --force` - Overwrites dygo-generated Go test files only; custom files still fail.
 
 Generators are non-interactive by default. They write when there are no conflicts, skip unchanged generated files, and fail on custom-file conflicts with a clear message.
 
@@ -135,8 +142,8 @@ Permission commands default to `--env development` and read live Core permission
 - `dygo secret edit --env <environment>` - Opens decrypted secrets for `development`, `staging`, or `production`.
 - `dygo secret validate` - Validates development secrets and config references.
 - `dygo secret validate --env <environment>` - Validates encrypted secrets and config references for `development`, `staging`, or `production`.
-- `dygo secret rotate-key` - Prints the rotation plan, prompts interactively, then rotates `master.key` and re-encrypts all environment secret files.
-- `dygo secret rotate-key --yes` - Rotates `master.key` and re-encrypts all environment secret files without an interactive prompt.
+- `dygo secret rotate-key` - Prints the rotation plan, prompts interactively, then rotates `.dygo/secrets/master.key` and re-encrypts all environment secret files.
+- `dygo secret rotate-key --yes` - Rotates `.dygo/secrets/master.key` and re-encrypts all environment secret files without an interactive prompt.
 
 Secret names support root keys and dot-separated YAML paths, such as `DATABASE_URL` or `database.url`. `dygo secret get` prints only the raw value to stdout; errors and diagnostics go to stderr.
 
@@ -166,28 +173,6 @@ Until `dygo.dev/install` is wired:
 curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh | sh
 dygo upgrade
 ```
-
-## Removal And Replacement Notes
-
-- Remove `dygo schema` - Prune moves to `dygo db prune`, and schema snapshot checking moves into `dygo doctor`.
-- Replace `dygo schema prune` with `dygo db prune` - Prune is a database cleanup action; help text should clarify that it removes metadata-orphaned schema objects.
-- Replace `dygo migrate` with `dygo db migrate` - Metadata schema sync is a database operation and belongs under the database command group.
-- Replace `dygo migrate plan` with `dygo db migrate --dry-run` - Planning is the same migration workflow in preview mode, not a separate command group.
-- Remove `dygo db prepare` - It only combines `dygo db create` and metadata sync; the explicit flow is clearer.
-- Remove `dygo setup admin` - First-run setup should live behind `dygo setup`; the future path is a UI wizard rather than many setup subcommands.
-- Remove public `dygo db schema` commands - `dygo db migrate` and `dygo db prune` refresh `db/schema.sql`, and `dygo doctor` should report whether the schema snapshot is missing or out of date.
-- Remove public `dygo db schema dump` - Manual dumping can hide drift by making the snapshot match an unintended database state.
-- Remove public `dygo patch` commands - Patches are part of the `dygo db migrate` workflow. Add direct patch controls later only if debugging or recovery needs a lower-level expert command.
-- Replace plural command groups with singular command groups - `dygo apps` becomes `dygo app`, `dygo entities` becomes `dygo entity`, `dygo fixtures` becomes `dygo fixture`, `dygo hooks` becomes `dygo hook`, and `dygo secrets` becomes `dygo secret`.
-- Replace `dygo hooks generate <app> <entity>` with `dygo generate hook <app>/<entity>` - Source scaffolding belongs under `dygo generate`, and app/entity targets use slash identity.
-- Use `dygo generate` as the home for source scaffolding - Avoid per-resource `generate` subcommands such as `dygo hook generate`.
-- Do not add `dygo generate resource` - `dygo generate entity` owns the standard Entity bundle.
-- Keep explicit `dygo fixture` commands - `dygo db migrate` applies fixtures during the normal app-state workflow, while `dygo fixture apply`, `validate`, and `export` support app-author tooling and debugging.
-- Remove `dygo upgrade --cli-only` - Binary updates are handled out of band through installer, package manager, or Go toolchain.
-- Remove `dygo upgrade --install-dir` - Install location belongs to the installer, not the project upgrade command.
-- Remove `dygo upgrade --project-only` - `dygo upgrade` is project-only by definition.
-- Remove `dygo secret init --force` - Key replacement belongs to `dygo secret rotate-key`; init should only create missing secret infrastructure.
-- Move `dygo serve --studio-dev-url` to `dygo dev` if the override is still needed - Studio/Vite proxying is local development orchestration, not runtime serving.
 
 ## Environment Safety Rule
 

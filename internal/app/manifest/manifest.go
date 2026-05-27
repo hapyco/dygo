@@ -35,13 +35,10 @@ type Manifest struct {
 
 // Paths contains app-relative directories for app-owned metadata and behavior.
 type Paths struct {
-	Entities    string `yaml:"entities,omitempty"`
-	Permissions string `yaml:"permissions,omitempty"`
-	Hooks       string `yaml:"hooks,omitempty"`
-	Fixtures    string `yaml:"fixtures,omitempty"`
-	Patches     string `yaml:"patches,omitempty"`
-	Docs        string `yaml:"docs,omitempty"`
-	Assets      string `yaml:"assets,omitempty"`
+	Entities string `yaml:"entities,omitempty"`
+	Patches  string `yaml:"patches,omitempty"`
+	Docs     string `yaml:"docs,omitempty"`
+	Assets   string `yaml:"assets,omitempty"`
 }
 
 // LoadedApp is an app manifest loaded from a concrete app directory.
@@ -63,13 +60,10 @@ func (e ValidationError) Error() string {
 // DefaultPaths returns dygo's standard app directory names.
 func DefaultPaths() Paths {
 	return Paths{
-		Entities:    "entities",
-		Permissions: "permissions",
-		Hooks:       "hooks",
-		Fixtures:    "fixtures",
-		Patches:     "patches",
-		Docs:        "docs",
-		Assets:      "assets",
+		Entities: "entities",
+		Patches:  "patches",
+		Docs:     "docs",
+		Assets:   "assets",
 	}
 }
 
@@ -78,15 +72,6 @@ func (p Paths) WithDefaults() Paths {
 	defaults := DefaultPaths()
 	if p.Entities == "" {
 		p.Entities = defaults.Entities
-	}
-	if p.Permissions == "" {
-		p.Permissions = defaults.Permissions
-	}
-	if p.Hooks == "" {
-		p.Hooks = defaults.Hooks
-	}
-	if p.Fixtures == "" {
-		p.Fixtures = defaults.Fixtures
 	}
 	if p.Patches == "" {
 		p.Patches = defaults.Patches
@@ -263,9 +248,6 @@ func isKebabName(value string) bool {
 
 func validatePaths(paths Paths, problems *[]string) {
 	validatePath("entities", paths.Entities, problems)
-	validatePath("permissions", paths.Permissions, problems)
-	validatePath("hooks", paths.Hooks, problems)
-	validatePath("fixtures", paths.Fixtures, problems)
 	validatePath("patches", paths.Patches, problems)
 	validatePath("docs", paths.Docs, problems)
 	validatePath("assets", paths.Assets, problems)

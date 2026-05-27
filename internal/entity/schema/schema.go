@@ -827,6 +827,12 @@ func inspectSource(data []byte) (sourceMap, error) {
 
 func entityNameFromPath(path string) (string, error) {
 	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if name == "entity" {
+		parent := filepath.Base(filepath.Dir(path))
+		if parent != "" && parent != "." && parent != "entities" && parent != "_collections" {
+			name = parent
+		}
+	}
 	if strings.TrimSpace(name) == "" {
 		return "", fmt.Errorf("entity filename must not be empty")
 	}

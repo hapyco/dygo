@@ -20,7 +20,7 @@ func TestBuildMetadataRecords(t *testing.T) {
 		Entities: []catalog.LoadedEntity{
 			{
 				AppName: "core",
-				Path:    "apps/core/entities/user.yml",
+				Path:    testEntityPath("core", "user"),
 				Entity: schema.Entity{
 					Name:        "user",
 					Label:       "User",
@@ -112,7 +112,7 @@ func TestBuildMetadataRecordsUsesCoreMetadataNamingFormats(t *testing.T) {
 			metadataNamingEntity("constraint", schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{entity}.{constraint-name}"}),
 			{
 				AppName: "sales",
-				Path:    "apps/sales/entities/invoice.yml",
+				Path:    testEntityPath("sales", "invoice"),
 				Entity: schema.Entity{
 					Name:  "invoice",
 					Label: "Invoice",
@@ -149,7 +149,7 @@ func TestBuildMetadataRecordsUsesCoreMetadataNamingFormats(t *testing.T) {
 func metadataNamingEntity(name string, naming schema.Naming) catalog.LoadedEntity {
 	return catalog.LoadedEntity{
 		AppName: "core",
-		Path:    "apps/core/entities/" + name + ".yml",
+		Path:    testEntityPath("core", name),
 		Entity: schema.Entity{
 			Name:   name,
 			Label:  name,
@@ -169,7 +169,7 @@ func TestBuildMetadataRecordsUsesEntityTableNamingFormat(t *testing.T) {
 		Entities: []catalog.LoadedEntity{
 			{
 				AppName: "core",
-				Path:    "apps/core/entities/entity.yml",
+				Path:    testEntityPath("core", "entity"),
 				Entity: schema.Entity{
 					Name:   "entity",
 					Label:  "Entity",
@@ -182,7 +182,7 @@ func TestBuildMetadataRecordsUsesEntityTableNamingFormat(t *testing.T) {
 			},
 			{
 				AppName: "core",
-				Path:    "apps/core/entities/user.yml",
+				Path:    testEntityPath("core", "user"),
 				Entity: schema.Entity{
 					Name:  "user",
 					Label: "User",
@@ -215,7 +215,7 @@ func TestBuildMetadataRecordsStoresFrameworkOwnedCollectionMetadata(t *testing.T
 		Entities: []catalog.LoadedEntity{
 			{
 				AppName: "sales",
-				Path:    "apps/sales/entities/collections/invoice-item.yml",
+				Path:    testCollectionEntityPath("sales", "invoice-item"),
 				Entity: schema.Entity{
 					Name:         "invoice-item",
 					Label:        "Invoice Item",

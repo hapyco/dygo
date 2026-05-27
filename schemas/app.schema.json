@@ -39,9 +39,6 @@
       "description": "App-relative metadata and asset directories. Omitted paths use dygo defaults.",
       "properties": {
         "entities": { "$ref": "#/$defs/relativePath" },
-        "permissions": { "$ref": "#/$defs/relativePath" },
-        "hooks": { "$ref": "#/$defs/relativePath" },
-        "fixtures": { "$ref": "#/$defs/relativePath" },
         "patches": { "$ref": "#/$defs/relativePath" },
         "docs": { "$ref": "#/$defs/relativePath" },
         "assets": { "$ref": "#/$defs/relativePath" }

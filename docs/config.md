@@ -3,7 +3,7 @@
 dygo project config lives at:
 
 ```txt
-configs/dygo.yaml
+dygo.yml
 ```
 
 The file is required for project-aware runtime commands.
@@ -52,10 +52,10 @@ There are no `DYGO_` environment overrides yet.
 
 There are no global config flags yet.
 
-Secrets stay separate from runtime config. `configs/dygo.yaml` references secret names only; raw secret values must not live there.
+Secrets stay separate from runtime config. `dygo.yml` references secret names only; raw secret values must not live there.
 
-`dygo serve` uses this config to choose the HTTP bind address.
+`dygo dev` and `dygo serve` use this config to choose the HTTP bind address.
 
-`dygo db check`, `dygo db create`, `dygo db prepare`, `dygo db reset`, and `dygo db schema` use this config to find the encrypted database URL secret.
+`dygo db check`, `dygo db create`, `dygo db drop`, `dygo db migrate`, `dygo db prune`, and `dygo db reset` use this config to find the encrypted database URL secret.
 
-`dygo migrate` uses this config to find the same encrypted database URL secret before syncing metadata schema.
+`dygo fixture apply`, `dygo fixture export`, `dygo setup`, and `dygo permission` also use this config when they need the selected environment's database URL.

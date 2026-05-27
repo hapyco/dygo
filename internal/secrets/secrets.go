@@ -14,6 +14,7 @@ import (
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
+	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/yamlmeta"
 	"gopkg.in/yaml.v3"
 )
@@ -81,7 +82,7 @@ func ParseEnvironment(value string) (Environment, error) {
 	}
 }
 
-// SupportedEnvironments returns the environments managed by dygo secrets.
+// SupportedEnvironments returns the environments managed by dygo secret.
 func SupportedEnvironments() []Environment {
 	return []Environment{
 		EnvironmentDevelopment,
@@ -107,97 +108,63 @@ func ValidateSecretName(name string) error {
 func (s Store) Paths(env Environment) Paths {
 	envName := string(env)
 	return Paths{
-		SecretFile:    filepath.Join(s.root, "configs", "secrets", envName+".yml.age"),
-		MasterKeyFile: filepath.Join(s.root, "master.key"),
-		TempDir:       filepath.Join(s.root, ".dygo", "secrets", "tmp"),
+		SecretFile:    filepath.Join(s.root, filepath.FromSlash(shape.ConfigSecretsDir), envName+".yml.age"),
+		MasterKeyFile: filepath.Join(s.root, filepath.FromSlash(shape.LocalSecretKeyFile)),
+		TempDir:       filepath.Join(s.root, filepath.FromSlash(shape.LocalSecretsTempDir)),
 	}
 }
 
 // Init creates a root master key and encrypted secret files for all environments.
-func (s Store) Init(force bool) (Paths, error) {
+func (s Store) Init() (Paths, error) {
 	paths := s.Paths(EnvironmentDevelopment)
 	envs := SupportedEnvironments()
 
-	if !force {
-		masterExists := exists(paths.MasterKeyFile)
-		var identity *age.HybridIdentity
-		var keyData []byte
-		var err error
-		if masterExists {
-			identity, err = loadMasterIdentity(paths.MasterKeyFile)
-			if err != nil {
-				return Paths{}, err
-			}
-		} else {
-			identity, keyData, err = generateMasterKeyData()
-			if err != nil {
-				return Paths{}, err
-			}
-		}
-
-		docs := make(map[Environment]Document, len(envs))
-		for _, env := range envs {
-			envPaths := s.Paths(env)
-			if exists(envPaths.SecretFile) {
-				if !masterExists {
-					return Paths{}, fmt.Errorf("%s already exists; rerun with --force to migrate it to master.key", envPaths.SecretFile)
-				}
-				continue
-			}
-			docs[env] = NewDocument(env)
-		}
-
-		encrypted, err := encryptDocuments(docs, identity.Recipient())
+	masterExists := exists(paths.MasterKeyFile)
+	var identity *age.HybridIdentity
+	var keyData []byte
+	var err error
+	if masterExists {
+		identity, err = loadMasterIdentity(paths.MasterKeyFile)
 		if err != nil {
 			return Paths{}, err
 		}
-		if !masterExists {
-			if err := writeFileAtomic(paths.MasterKeyFile, keyData, 0o600); err != nil {
-				return Paths{}, fmt.Errorf("write master key: %w", err)
-			}
+	} else {
+		identity, keyData, err = generateMasterKeyData()
+		if err != nil {
+			return Paths{}, err
 		}
-		for _, env := range envs {
-			ciphertext, ok := encrypted[env]
-			if !ok {
-				continue
-			}
-			if err := writeFileAtomic(s.Paths(env).SecretFile, ciphertext, 0o644); err != nil {
-				return Paths{}, fmt.Errorf("write encrypted %s secrets file: %w", env, err)
-			}
-		}
-		return paths, nil
 	}
 
 	docs := make(map[Environment]Document, len(envs))
 	for _, env := range envs {
-		doc, err := s.loadForRewrite(env)
-		if err != nil {
-			if !force || exists(s.Paths(env).SecretFile) {
-				return Paths{}, fmt.Errorf("load existing %s secrets: %w", env, err)
+		envPaths := s.Paths(env)
+		if exists(envPaths.SecretFile) {
+			if !masterExists {
+				return Paths{}, fmt.Errorf("%s already exists but %s is missing; restore the key or remove the stale encrypted file", envPaths.SecretFile, paths.MasterKeyFile)
 			}
-			doc = NewDocument(env)
+			continue
 		}
-		docs[env] = doc
+		docs[env] = NewDocument(env)
 	}
 
-	identity, keyData, err := generateMasterKeyData()
-	if err != nil {
-		return Paths{}, err
-	}
 	encrypted, err := encryptDocuments(docs, identity.Recipient())
 	if err != nil {
 		return Paths{}, err
 	}
-
-	if err := writeFileAtomic(paths.MasterKeyFile, keyData, 0o600); err != nil {
-		return Paths{}, fmt.Errorf("write master key: %w", err)
+	if !masterExists {
+		if err := writeFileAtomic(paths.MasterKeyFile, keyData, 0o600); err != nil {
+			return Paths{}, fmt.Errorf("write master key: %w", err)
+		}
 	}
 	for _, env := range envs {
-		if err := writeFileAtomic(s.Paths(env).SecretFile, encrypted[env], 0o644); err != nil {
+		ciphertext, ok := encrypted[env]
+		if !ok {
+			continue
+		}
+		if err := writeFileAtomic(s.Paths(env).SecretFile, ciphertext, 0o644); err != nil {
 			return Paths{}, fmt.Errorf("write encrypted %s secrets file: %w", env, err)
 		}
 	}
-
 	return paths, nil
 }
 
@@ -429,7 +396,7 @@ func (s Store) Validate(env Environment) error {
 		return err
 	}
 
-	references, err := FindManifestReferences(filepath.Join(s.root, "configs"))
+	references, err := FindProjectReferences(s.root)
 	if err != nil {
 		return err
 	}
@@ -615,6 +582,23 @@ type ManifestReference struct {
 	SecretName string
 }
 
+// FindProjectReferences scans root dygo.yml and config YAML files for secret references.
+func FindProjectReferences(root string) ([]ManifestReference, error) {
+	var references []ManifestReference
+	projectConfigReferences, err := FindManifestFileReferences(filepath.Join(root, filepath.FromSlash(shape.ProjectConfigFile)))
+	if err != nil {
+		return nil, err
+	}
+	references = append(references, projectConfigReferences...)
+
+	configReferences, err := FindManifestReferences(filepath.Join(root, filepath.FromSlash(shape.ConfigDir)))
+	if err != nil {
+		return nil, err
+	}
+	references = append(references, configReferences...)
+	return references, nil
+}
+
 // FindManifestReferences scans YAML configs for secret references.
 func FindManifestReferences(configRoot string) ([]ManifestReference, error) {
 	if !exists(configRoot) {
@@ -637,20 +621,34 @@ func FindManifestReferences(configRoot string) ([]ManifestReference, error) {
 			return nil
 		}
 
-		data, err := os.ReadFile(path)
+		fileReferences, err := FindManifestFileReferences(path)
 		if err != nil {
-			return fmt.Errorf("read config manifest %s: %w", path, err)
+			return err
 		}
-		var node yaml.Node
-		if err := yaml.Unmarshal(data, &node); err != nil {
-			return fmt.Errorf("parse config manifest %s: %w", path, err)
-		}
-		collectManifestReferences(path, &node, &references)
+		references = append(references, fileReferences...)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+	return references, nil
+}
+
+// FindManifestFileReferences scans one YAML manifest for secret references.
+func FindManifestFileReferences(path string) ([]ManifestReference, error) {
+	if !exists(path) {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config manifest %s: %w", path, err)
+	}
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return nil, fmt.Errorf("parse config manifest %s: %w", path, err)
+	}
+	var references []ManifestReference
+	collectManifestReferences(path, &node, &references)
 	return references, nil
 }
 
@@ -1042,14 +1040,6 @@ func (s Store) remove(path string) error {
 		return s.fileOps.remove(path)
 	}
 	return os.Remove(path)
-}
-
-func (s Store) loadForRewrite(env Environment) (Document, error) {
-	paths := s.Paths(env)
-	if !exists(paths.SecretFile) {
-		return NewDocument(env), nil
-	}
-	return s.Load(env)
 }
 
 func encryptArmored(plaintext []byte, recipients []age.Recipient) ([]byte, error) {

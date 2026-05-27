@@ -7,8 +7,8 @@ dygo's first Record runtime is generic. It uses persisted Core metadata to map E
 Run metadata sync before using the Record API:
 
 ```sh
-go run ./cmd/dygo migrate
-go run ./cmd/dygo serve
+dygo db migrate
+dygo dev
 ```
 
 Record API routes require a valid `dygo_session` cookie from the auth API and an allowed Entity permission.

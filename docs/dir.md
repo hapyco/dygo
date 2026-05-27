@@ -84,7 +84,7 @@ deploy/                          - Deployed project root
 
 ## Framework
 
-Framework tree follows current implementation and may change during refactors.
+The framework repository uses this working tree:
 
 ```txt
 dygo/                           - Framework repository root
@@ -120,8 +120,9 @@ dygo/                           - Framework repository root
     studio/                     - Studio web app
   pkg/                          - Public Go API surface
     sdk/                        - App hook SDK
-  configs/                      - Framework config files
+  config/                       - Framework runtime config files
     secrets/                    - Encrypted dev secrets
+    github.yml                  - GitHub repository and project board metadata
   db/                           - Framework DB artifacts
     schema.sql                  - Framework schema snapshot
   docs/                         - Framework documentation

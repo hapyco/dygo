@@ -18,13 +18,13 @@ func TestGenerateCreatesHookRegisterAndRunner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate() error = %v, want nil", err)
 	}
-	if !result.HookFileCreated || !result.RegisterFileWritten || !result.RunnerFileWritten {
+	if !result.HookFileCreated || !result.RunnerFileWritten {
 		t.Fatalf("Generate() result = %+v, want created/written files", result)
 	}
 
-	hookSource := readTestFile(t, filepath.Join(root, "apps", "sales", "hooks", "lead.go"))
+	hookSource := readTestFile(t, filepath.Join(root, "apps", "sales", "entities", "lead", "hooks.go"))
 	for _, want := range []string{
-		"func registerLeadHooks(registry sdk.RecordHookRegistry) error",
+		"func Register(registry sdk.RecordHookRegistry) error",
 		`sdk.RecordBeforeCreate, "lead-before-create", beforeCreateLead`,
 		`sdk.RecordAfterCreate, "lead-after-create", afterCreateLead`,
 		`sdk.RecordBeforeUpdate, "lead-before-update", beforeUpdateLead`,
@@ -39,19 +39,12 @@ func TestGenerateCreatesHookRegisterAndRunner(t *testing.T) {
 		}
 	}
 
-	registerSource := readTestFile(t, filepath.Join(root, "apps", "sales", "hooks", "register.go"))
-	for _, want := range []string{generatedHeader, "func Register(registry sdk.RecordHookRegistry) error", "registerLeadHooks(registry)"} {
-		if !strings.Contains(registerSource, want) {
-			t.Fatalf("register source = %q, want substring %q", registerSource, want)
-		}
-	}
-
 	runnerSource := readTestFile(t, filepath.Join(root, "cmd", "dygo", "main.go"))
 	for _, want := range []string{
 		generatedHeader,
-		`saleshooks "example.com/acme/apps/sales/hooks"`,
+		`salesleadhooks "example.com/acme/apps/sales/entities/lead"`,
 		"dygoruntime.Run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr",
-		"saleshooks.Register",
+		"salesleadhooks.Register",
 	} {
 		if !strings.Contains(runnerSource, want) {
 			t.Fatalf("runner source = %q, want substring %q", runnerSource, want)
@@ -62,7 +55,7 @@ func TestGenerateCreatesHookRegisterAndRunner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate() second error = %v, want nil", err)
 	}
-	if second.HookFileCreated || second.RegisterFileWritten || second.RunnerFileWritten {
+	if second.HookFileCreated || second.RunnerFileWritten {
 		t.Fatalf("Generate() second result = %+v, want idempotent no-op", second)
 	}
 }
@@ -96,22 +89,23 @@ func TestGenerateReturnsUsefulLookupErrors(t *testing.T) {
 	}
 }
 
-func TestGenerateFailsSafelyForCustomRegister(t *testing.T) {
+func TestGenerateFailsSafelyForExistingHookWithoutRegister(t *testing.T) {
 	root := newTestProject(t, "example.com/acme")
 	writeTestApp(t, root, "sales", "")
 	writeTestEntity(t, root, "sales", "lead")
-	writeTestFile(t, filepath.Join(root, "apps", "sales", "hooks", "register.go"), "package hooks\n")
+	hookPath := filepath.Join(root, "apps", "sales", "entities", "lead", "hooks.go")
+	writeTestFile(t, hookPath, "package hooks\n")
 
 	_, err := Generate(root, "sales", "lead")
 	if err == nil {
-		t.Fatal("Generate() error = nil, want custom register error")
+		t.Fatal("Generate() error = nil, want existing hook error")
 	}
-	for _, want := range []string{"register.go exists and is not dygo-generated", "registerLeadHooks"} {
+	for _, want := range []string{"hooks.go exists but does not expose Register", "sdk.RecordHookRegistry"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Generate() error = %q, want substring %q", err.Error(), want)
 		}
 	}
-	assertPathMissing(t, filepath.Join(root, "apps", "sales", "hooks", "lead.go"))
+	assertPathMissing(t, filepath.Join(root, "cmd", "dygo", "main.go"))
 }
 
 func TestGenerateFailsSafelyForCustomRunner(t *testing.T) {
@@ -124,17 +118,17 @@ func TestGenerateFailsSafelyForCustomRunner(t *testing.T) {
 	if err == nil {
 		t.Fatal("Generate() error = nil, want custom runner error")
 	}
-	for _, want := range []string{"cmd/dygo/main.go exists and is not dygo-generated", `saleshooks "example.com/acme/apps/sales/hooks"`} {
+	for _, want := range []string{"cmd/dygo/main.go exists and is not dygo-generated", `salesleadhooks "example.com/acme/apps/sales/entities/lead"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Generate() error = %q, want substring %q", err.Error(), want)
 		}
 	}
-	assertPathMissing(t, filepath.Join(root, "apps", "sales", "hooks", "lead.go"))
+	assertPathMissing(t, filepath.Join(root, "apps", "sales", "entities", "lead", "hooks.go"))
 }
 
-func TestGenerateHonorsCustomHooksPathAndKebabEntityName(t *testing.T) {
+func TestGenerateUsesEntityBundleAndKebabEntityName(t *testing.T) {
 	root := newTestProject(t, "example.com/acme")
-	writeTestApp(t, root, "sales", "paths:\n  hooks: custom-hooks\n")
+	writeTestApp(t, root, "sales", "")
 	writeTestEntity(t, root, "sales", "lead-status")
 
 	_, err := Generate(root, "sales", "lead-status")
@@ -142,15 +136,15 @@ func TestGenerateHonorsCustomHooksPathAndKebabEntityName(t *testing.T) {
 		t.Fatalf("Generate() error = %v, want nil", err)
 	}
 
-	hookSource := readTestFile(t, filepath.Join(root, "apps", "sales", "custom-hooks", "lead-status.go"))
-	for _, want := range []string{"registerLeadStatusHooks", "beforeCreateLeadStatus", "afterCreateLeadStatus", "beforeUpdateLeadStatus", "afterUpdateLeadStatus"} {
+	hookSource := readTestFile(t, filepath.Join(root, "apps", "sales", "entities", "lead-status", "hooks.go"))
+	for _, want := range []string{"func Register(registry sdk.RecordHookRegistry) error", "beforeCreateLeadStatus", "afterCreateLeadStatus", "beforeUpdateLeadStatus", "afterUpdateLeadStatus"} {
 		if !strings.Contains(hookSource, want) {
 			t.Fatalf("hook source = %q, want substring %q", hookSource, want)
 		}
 	}
 	runnerSource := readTestFile(t, filepath.Join(root, "cmd", "dygo", "main.go"))
-	if !strings.Contains(runnerSource, `saleshooks "example.com/acme/apps/sales/custom-hooks"`) {
-		t.Fatalf("runner source = %q, want custom hooks import", runnerSource)
+	if !strings.Contains(runnerSource, `salesleadstatushooks "example.com/acme/apps/sales/entities/lead-status"`) {
+		t.Fatalf("runner source = %q, want Entity hook import", runnerSource)
 	}
 }
 
@@ -162,11 +156,11 @@ func TestGeneratePreservesExistingEntityHookFile(t *testing.T) {
 
 import "github.com/hapyco/dygo/pkg/sdk"
 
-func registerLeadHooks(registry sdk.RecordHookRegistry) error {
+func Register(registry sdk.RecordHookRegistry) error {
 	return nil
 }
 `
-	hookPath := filepath.Join(root, "apps", "sales", "hooks", "lead.go")
+	hookPath := filepath.Join(root, "apps", "sales", "entities", "lead", "hooks.go")
 	writeTestFile(t, hookPath, existing)
 
 	result, err := Generate(root, "sales", "lead")
@@ -179,9 +173,9 @@ func registerLeadHooks(registry sdk.RecordHookRegistry) error {
 	if got := readTestFile(t, hookPath); got != existing {
 		t.Fatalf("hook source changed:\n%s", got)
 	}
-	registerSource := readTestFile(t, filepath.Join(root, "apps", "sales", "hooks", "register.go"))
-	if !strings.Contains(registerSource, "registerLeadHooks(registry)") {
-		t.Fatalf("register source = %q, want existing hook registrar call", registerSource)
+	runnerSource := readTestFile(t, filepath.Join(root, "cmd", "dygo", "main.go"))
+	if !strings.Contains(runnerSource, "salesleadhooks.Register") {
+		t.Fatalf("runner source = %q, want existing hook registrar call", runnerSource)
 	}
 }
 
@@ -200,8 +194,8 @@ func TestGenerateRunnerOrdersMultipleHookApps(t *testing.T) {
 	}
 
 	runnerSource := readTestFile(t, filepath.Join(root, "cmd", "dygo", "main.go"))
-	assertBefore(t, runnerSource, `saleshooks "example.com/acme/apps/sales/hooks"`, `supporthooks "example.com/acme/apps/support/hooks"`)
-	assertBefore(t, runnerSource, "saleshooks.Register", "supporthooks.Register")
+	assertBefore(t, runnerSource, `salesleadhooks "example.com/acme/apps/sales/entities/lead"`, `supporttickethooks "example.com/acme/apps/support/entities/ticket"`)
+	assertBefore(t, runnerSource, "salesleadhooks.Register", "supporttickethooks.Register")
 }
 
 func TestGenerateOutputCompilesInProject(t *testing.T) {
@@ -251,7 +245,7 @@ func writeTestApp(t *testing.T, root string, name string, extra string) {
 func writeTestEntity(t *testing.T, root string, appName string, entityName string) {
 	t.Helper()
 	body := "label: " + strings.ToUpper(entityName[:1]) + entityName[1:] + "\nname:\n  strategy: random\nfields:\n  - name: title\n    label: Title\n    type: text\n"
-	writeTestFile(t, filepath.Join(root, "apps", appName, "entities", entityName+".yml"), body)
+	writeTestFile(t, filepath.Join(root, "apps", appName, "entities", entityName, "entity.yml"), body)
 }
 
 func writeTestFile(t *testing.T, path string, body string) {

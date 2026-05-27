@@ -8,18 +8,15 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
-	"github.com/hapyco/dygo/internal/project"
 	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
-func newSecretsCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
+func newSecretCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "secrets",
+		Use:   "secret",
 		Short: "Manage encrypted dygo secrets",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -27,17 +24,16 @@ func newSecretsCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 		},
 	}
 
-	cmd.AddCommand(newSecretsInitCommand(stdout))
-	cmd.AddCommand(newSecretsEditCommand(ctx, stdin, stdout, stderr))
-	cmd.AddCommand(newSecretsValidateCommand(stdout))
-	cmd.AddCommand(newSecretsRotateKeyCommand(stdout))
+	cmd.AddCommand(newSecretInitCommand(stdout))
+	cmd.AddCommand(newSecretGetCommand(stdout))
+	cmd.AddCommand(newSecretEditCommand(ctx, stdin, stdout, stderr))
+	cmd.AddCommand(newSecretValidateCommand(stdout))
+	cmd.AddCommand(newSecretRotateKeyCommand(stdin, stdout, stderr))
 
 	return cmd
 }
 
-func newSecretsInitCommand(stdout io.Writer) *cobra.Command {
-	var force bool
-
+func newSecretInitCommand(stdout io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize the root master key and encrypted secrets files",
@@ -47,7 +43,7 @@ func newSecretsInitCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			paths, err := store.Init(force)
+			paths, err := store.Init()
 			if err != nil {
 				return err
 			}
@@ -58,12 +54,42 @@ func newSecretsInitCommand(stdout io.Writer) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&force, "force", false, "Replace existing master key and re-encrypt existing secret files")
+	return cmd
+}
+
+func newSecretGetCommand(stdout io.Writer) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+
+	cmd := &cobra.Command{
+		Use:   "get <name>",
+		Short: "Print one decrypted secret value",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			env, err := secrets.ParseEnvironment(envName)
+			if err != nil {
+				return err
+			}
+			store, err := newWorkingSecretsStore()
+			if err != nil {
+				return err
+			}
+			secret, err := store.Get(env, args[0])
+			if err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintln(stdout, secret.Value); err != nil {
+				return fmt.Errorf("write secret value: %w", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
 
 	return cmd
 }
 
-func newSecretsEditCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
+func newSecretEditCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
 	var editor string
 
@@ -90,7 +116,7 @@ func newSecretsEditCommand(ctx context.Context, stdin io.Reader, stdout, stderr 
 	return cmd
 }
 
-func newSecretsValidateCommand(stdout io.Writer) *cobra.Command {
+func newSecretValidateCommand(stdout io.Writer) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
 
 	cmd := &cobra.Command{
@@ -121,26 +147,33 @@ func newSecretsValidateCommand(stdout io.Writer) *cobra.Command {
 	return cmd
 }
 
-func newSecretsRotateKeyCommand(stdout io.Writer) *cobra.Command {
-	var confirmToken string
+func newSecretRotateKeyCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
+	var yes bool
 
 	cmd := &cobra.Command{
-		Use:   "rotate-key --confirm <project-name>/master.key",
+		Use:   "rotate-key",
 		Short: "Rotate the root master key and re-encrypt all secrets",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			root, err := workingRootPath()
+			store, err := newWorkingSecretsStore()
 			if err != nil {
 				return err
 			}
-			expected, err := rotateKeyConfirmationToken(root)
-			if err != nil {
+			if err := writeRotateKeyPlan(stdout, store); err != nil {
 				return err
 			}
-			if confirmToken != expected {
-				return fmt.Errorf("secrets rotate-key requires --confirm %s", expected)
+			if !yes {
+				ok, err := confirm(stdin, stderr, "Rotate secrets master key? [y/N] ")
+				if err != nil {
+					return err
+				}
+				if !ok {
+					if _, err := fmt.Fprintln(stdout, "secret key rotation cancelled"); err != nil {
+						return fmt.Errorf("write rotate-key cancellation: %w", err)
+					}
+					return nil
+				}
 			}
-			store := secrets.NewStore(root)
 			paths, err := store.RotateKey()
 			if err != nil {
 				return err
@@ -152,39 +185,9 @@ func newSecretsRotateKeyCommand(stdout io.Writer) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&confirmToken, "confirm", "", "Typed confirmation token: <project-name>/master.key")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Rotate the master key without an interactive prompt")
 
 	return cmd
-}
-
-func rotateKeyConfirmationToken(root string) (string, error) {
-	name, err := projectNameForConfirmation(root)
-	if err != nil {
-		return "", err
-	}
-	return name + "/master.key", nil
-}
-
-func projectNameForConfirmation(root string) (string, error) {
-	markerPath := filepath.Join(root, project.MarkerFile)
-	data, err := os.ReadFile(markerPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return filepath.Base(root), nil
-		}
-		return "", fmt.Errorf("read %s: %w", project.MarkerFile, err)
-	}
-	var marker struct {
-		Name string `yaml:"name"`
-	}
-	if err := yaml.Unmarshal(data, &marker); err != nil {
-		return "", fmt.Errorf("parse %s: %w", project.MarkerFile, err)
-	}
-	name := strings.TrimSpace(marker.Name)
-	if name == "" {
-		return "", fmt.Errorf("%s name is required for rotate-key confirmation", project.MarkerFile)
-	}
-	return name, nil
 }
 
 func newWorkingSecretsStore() (secrets.Store, error) {
@@ -193,6 +196,13 @@ func newWorkingSecretsStore() (secrets.Store, error) {
 		return secrets.Store{}, err
 	}
 	return secrets.NewStore(root), nil
+}
+
+func writeRotateKeyPlan(stdout io.Writer, store secrets.Store) error {
+	if _, err := fmt.Fprintf(stdout, "secret rotate-key plan\nkey: %s\n%s", rel(store.Paths(secrets.EnvironmentDevelopment).MasterKeyFile), formatSecretFiles(store)); err != nil {
+		return fmt.Errorf("write rotate-key plan: %w", err)
+	}
+	return nil
 }
 
 func confirm(stdin io.Reader, stdout io.Writer, prompt string) (bool, error) {

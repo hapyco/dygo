@@ -44,6 +44,37 @@ func TestLoadRepositoryConfig(t *testing.T) {
 	}
 }
 
+func TestLoadReadsRootDygoYML(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, FilePath), []byte("name: test\nserver:\n  port: 7777\ndatabase:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.Name != "test" || cfg.Server.Port != 7777 || cfg.Database.URL.Secret != "DATABASE_URL" {
+		t.Fatalf("Load() = %+v, want root dygo.yml config", cfg)
+	}
+}
+
+func TestLoadRequiresRootDygoYML(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	_, err := Load(root)
+	if err == nil {
+		t.Fatal("Load() error = nil, want missing dygo.yml error")
+	}
+	if !strings.Contains(err.Error(), "read dygo config") || !strings.Contains(err.Error(), "dygo.yml") {
+		t.Fatalf("Load() error = %q, want missing dygo.yml context", err.Error())
+	}
+}
+
 func TestLoadFileMergesDefaults(t *testing.T) {
 	t.Parallel()
 

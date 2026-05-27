@@ -68,6 +68,15 @@ type Decision struct {
 	Reason   string
 }
 
+// RoleDecision is the result of checking one role grant.
+type RoleDecision struct {
+	Allowed bool
+	Role    string
+	Entity  string
+	Action  Action
+	Reason  string
+}
+
 // Error reports stable permission engine failures.
 type Error struct {
 	Code    string
@@ -179,6 +188,47 @@ func (c Checker) Can(ctx context.Context, request Request) error {
 		Action:   decision.Action,
 		RecordID: decision.RecordID,
 	}), nil)
+}
+
+// CheckRole evaluates whether a role grants an Entity permission action.
+func CheckRole(ctx context.Context, queryer Queryer, role string, entity string, action Action) (RoleDecision, error) {
+	role = strings.TrimSpace(role)
+	entity = strings.TrimSpace(entity)
+	action = Action(strings.TrimSpace(string(action)))
+	if role == "" {
+		return RoleDecision{}, permissionError(ErrorInvalidRequest, "role is required", map[string]any{"role": role}, nil)
+	}
+	if entity == "" {
+		return RoleDecision{}, permissionError(ErrorInvalidRequest, "entity is required", map[string]any{"entity": entity}, nil)
+	}
+	column, ok := actionColumn(action)
+	if !ok {
+		return RoleDecision{}, permissionError(ErrorInvalidRequest, "permission action is not supported", map[string]any{"action": action}, nil)
+	}
+	if queryer == nil {
+		return RoleDecision{}, permissionError(ErrorInternal, "permission queryer is required", nil, nil)
+	}
+
+	sql := fmt.Sprintf(`
+SELECT EXISTS (
+	SELECT 1
+	FROM "permission" p
+	JOIN "role" r ON r.id = p.role_id AND COALESCE(r.enabled, false) = true
+	JOIN entity e ON e.id = p.entity_id
+	WHERE r.name = $1
+		AND e.slug = $2
+		AND COALESCE(p.%s, false) = true
+	LIMIT 1
+)`, column)
+
+	var allowed bool
+	if err := queryer.QueryRow(ctx, sql, role, entity).Scan(&allowed); err != nil {
+		return RoleDecision{}, permissionError(ErrorInternal, "permission check failed", map[string]any{"role": role, "entity": entity, "action": action}, err)
+	}
+	if allowed {
+		return RoleDecision{Allowed: true, Role: role, Entity: entity, Action: action, Reason: ReasonAllowed}, nil
+	}
+	return RoleDecision{Allowed: false, Role: role, Entity: entity, Action: action, Reason: ReasonDenied}, nil
 }
 
 // IsError reports whether err is a permission Error.

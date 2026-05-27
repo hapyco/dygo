@@ -401,10 +401,10 @@ func newUserRecordDataMutationQueryer(recordRows ...[]any) *recordDataMutationQu
 		row: newRecordDataMutationRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, false, []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newRecordDataMutationRows([][]any{
-				{"email", "Email", "email", true, true, false, nil, nil, 1, nil},
-				{"full-name", "Full Name", "text", true, false, false, nil, nil, 2, nil},
-				{"password", "Password", "password", false, false, false, nil, nil, 3, nil},
-				{"enabled", "Enabled", "boolean", false, false, true, []byte("true"), nil, 4, nil},
+				{int64(101), "email", "Email", "email", true, true, false, nil, nil, 1, nil},
+				{int64(102), "full-name", "Full Name", "text", true, false, false, nil, nil, 2, nil},
+				{int64(103), "password", "Password", "password", false, false, false, nil, nil, 3, nil},
+				{int64(104), "enabled", "Enabled", "boolean", false, false, true, []byte("true"), nil, 4, nil},
 			}),
 			newRecordDataMutationRows(nil),
 			newRecordDataMutationRows(nil),
@@ -487,14 +487,14 @@ func hookActivityMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
 	switch {
 	case strings.Contains(sql, `FROM "field"`):
 		return newRecordDataMutationRows([][]any{
-			{"kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record"]}`)},
-			{"operation", "Operation", "select", true, false, true, nil, nil, 2, []byte(`{"values":["create","update","delete"]}`)},
-			{"status", "Status", "select", true, false, true, nil, nil, 3, []byte(`{"values":["success"]}`)},
-			{"entity", "Entity", "link", false, false, true, nil, nil, 4, []byte(`{"entity":"entity"}`)},
-			{"record-id", "Record ID", "bigint", false, false, true, nil, nil, 5, nil},
-			{"title", "Title", "text", true, false, false, nil, nil, 6, nil},
-			{"changes", "Changes", "json", false, false, false, nil, nil, 7, nil},
-			{"snapshot", "Snapshot", "json", false, false, false, nil, nil, 8, nil},
+			{int64(201), "kind", "Kind", "select", true, false, true, nil, nil, 1, []byte(`{"values":["record"]}`)},
+			{int64(202), "operation", "Operation", "select", true, false, true, nil, nil, 2, []byte(`{"values":["create","update","delete"]}`)},
+			{int64(203), "status", "Status", "select", true, false, true, nil, nil, 3, []byte(`{"values":["success"]}`)},
+			{int64(204), "entity", "Entity", "link", false, false, true, nil, nil, 4, []byte(`{"entity":"entity"}`)},
+			{int64(205), "record-id", "Record ID", "bigint", false, false, true, nil, nil, 5, nil},
+			{int64(206), "title", "Title", "text", true, false, false, nil, nil, 6, nil},
+			{int64(207), "changes", "Changes", "json", false, false, false, nil, nil, 7, nil},
+			{int64(208), "snapshot", "Snapshot", "json", false, false, false, nil, nil, 8, nil},
 		}), true
 	case strings.Contains(sql, `FROM "index"`), strings.Contains(sql, `FROM "constraint"`):
 		return newRecordDataMutationRows(nil), true

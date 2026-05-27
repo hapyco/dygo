@@ -15,9 +15,6 @@ dependencies:
   - core
 paths:
   entities: entities
-  permissions: permissions
-  hooks: hooks
-  fixtures: fixtures
   patches: patches
   docs: docs
   assets: assets
@@ -39,9 +36,6 @@ paths:
 
 ```txt
 entities
-permissions
-hooks
-fixtures
 patches
 docs
 assets
@@ -54,17 +48,17 @@ The app root directory should usually match the manifest `name`.
 List discovered apps from the current project:
 
 ```sh
-go run ./cmd/dygo apps list
-go run ./cmd/dygo apps validate
-go run ./cmd/dygo entities list
-go run ./cmd/dygo entities validate
+dygo app list
+dygo app validate
+dygo entity list
+dygo entity validate
 ```
 
 The app commands read app manifests from `apps/` and `.dygo/apps/`. Entity validation uses the discovered apps to load each app's `entities/` directory.
 
 These commands can be run from nested directories. The CLI walks upward to find the dygo project root before reading app manifests.
 
-`paths.hooks` identifies the app's conventional Go hook source directory. Files named `hooks/<entity>.go` are validated against Entity keys in the same app, but dygo does not dynamically load Go source files. Compiled hook registration is documented in [Record Hooks](record-hooks.md).
+Entity-owned files such as `entity.yml`, `fixtures.yml`, `hooks.go`, `permissions.yml`, and `views.yml` live inside the Entity bundle under `entities/<entity>/`. Compiled hook registration is documented in [Record Hooks](record-hooks.md).
 
 ## V1 Boundaries
 

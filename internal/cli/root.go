@@ -19,6 +19,7 @@ import (
 	"github.com/hapyco/dygo/internal/fixtures"
 	recordhooks "github.com/hapyco/dygo/internal/hooks"
 	"github.com/hapyco/dygo/internal/server"
+	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/studio"
 	"github.com/hapyco/dygo/pkg/sdk"
 	"github.com/spf13/cobra"
@@ -33,16 +34,16 @@ type adminSetupRunner interface {
 	SetupAdmin(context.Context, string, auth.SetupAdminInput) (auth.User, error)
 }
 type fixtureRunner interface {
+	Plan(context.Context, string) (fixtures.Plan, error)
 	Apply(context.Context, string, string) (fixtures.Result, error)
+	ExportPlan(context.Context, string, string, shape.AppRef, bool) (fixtures.ExportPlan, error)
+	WriteExportPlan(context.Context, fixtures.ExportPlan) (fixtures.ExportResult, error)
 }
 type databaseRunner interface {
 	Check(context.Context, string) error
+	Exists(context.Context, string) (db.DatabaseStatus, error)
 	Create(context.Context, string) (db.DatabaseResult, error)
 	Drop(context.Context, string) (db.DatabaseResult, error)
-	Prepare(context.Context, string, string) (db.SchemaSyncResult, error)
-	Reset(context.Context, string, string) (db.SchemaSyncResult, error)
-	SchemaCheck(context.Context, string, string) error
-	SchemaDump(context.Context, string, string) error
 }
 type schemaSyncRunner interface {
 	ApplyPatches(context.Context, string, string, string, string) (db.PatchApplyResult, error)
@@ -72,7 +73,7 @@ func RunWithOptions(ctx context.Context, args []string, stdin io.Reader, stdout,
 	if err != nil {
 		return fmt.Errorf("configure record hooks: %w", err)
 	}
-	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, recordHooks)
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, defaultPermissionRunner{}, recordHooks)
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker) error {
@@ -89,11 +90,11 @@ func runWithServicesAndSetup(ctx context.Context, args []string, stdin io.Reader
 }
 
 func runWithServicesAndSetupAndFixtures(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner) error {
-	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, database, sync, setup, fixture, nil)
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, database, sync, setup, fixture, defaultPermissionRunner{}, nil)
 }
 
-func runWithServicesAndSetupAndFixturesAndHooks(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, recordHooks *db.RecordHookRegistry) error {
-	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup, fixture, recordHooks)
+func runWithServicesAndSetupAndFixturesAndHooks(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, permission permissionRunner, recordHooks *db.RecordHookRegistry) error {
+	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup, fixture, permission, recordHooks)
 	if err != nil {
 		return err
 	}
@@ -114,10 +115,10 @@ func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	if err != nil {
 		return nil, fmt.Errorf("configure record hooks: %w", err)
 	}
-	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, recordHooks)
+	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, defaultPermissionRunner{}, recordHooks)
 }
 
-func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, recordHooks *db.RecordHookRegistry) (*cobra.Command, error) {
+func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, permission permissionRunner, recordHooks *db.RecordHookRegistry) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
 	}
@@ -145,6 +146,9 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	if fixture == nil {
 		return nil, fmt.Errorf("fixture runner is required")
 	}
+	if permission == nil {
+		return nil, fmt.Errorf("permission runner is required")
+	}
 
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("create root command: %w", err)
@@ -167,17 +171,18 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newUpgradeCommand(ctx, stdin, stdout, stderr))
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDoctorCommand(ctx, stdout))
+	root.AddCommand(newDevCommand(ctx, stdout, stderr, serve, recordHooks))
 	root.AddCommand(newServeCommand(ctx, stdout, stderr, serve, recordHooks))
-	root.AddCommand(newDBCommand(ctx, stdout, database))
-	root.AddCommand(newMigrateCommand(ctx, stdout, sync))
-	root.AddCommand(newPatchesCommand(ctx, stdout, sync))
-	root.AddCommand(newSchemaCommand(ctx, stdout, sync))
+	root.AddCommand(newDBCommand(ctx, stdin, stdout, stderr, database, sync, fixture))
 	root.AddCommand(newSetupCommand(ctx, stdin, stdout, stderr, setup))
-	root.AddCommand(newFixturesCommand(ctx, stdout, fixture))
-	root.AddCommand(newAppsCommand(stdout))
-	root.AddCommand(newEntitiesCommand(stdout))
-	root.AddCommand(newHooksCommand(stdout))
-	root.AddCommand(newSecretsCommand(ctx, stdin, stdout, stderr))
+	root.AddCommand(newFixtureCommand(ctx, stdin, stdout, stderr, fixture))
+	root.AddCommand(newAppCommand(stdout))
+	root.AddCommand(newEntityCommand(stdout))
+	root.AddCommand(newHookCommand(stdout))
+	root.AddCommand(newGenerateCommand(stdout))
+	root.AddCommand(newRouteCommand(stdout))
+	root.AddCommand(newPermissionCommand(ctx, stdout, permission))
+	root.AddCommand(newSecretCommand(ctx, stdin, stdout, stderr))
 
 	return root, nil
 }
@@ -198,11 +203,33 @@ func (r defaultFixtureRunner) Apply(ctx context.Context, root string, databaseUR
 	return fixtures.NewRunner().Apply(ctx, root, databaseURL)
 }
 
+func (r defaultFixtureRunner) Plan(ctx context.Context, root string) (fixtures.Plan, error) {
+	if r.recordHooks != nil {
+		return fixtures.NewRunnerWithHooks(r.recordHooks).Plan(ctx, root)
+	}
+	return fixtures.NewRunner().Plan(ctx, root)
+}
+
+func (r defaultFixtureRunner) ExportPlan(ctx context.Context, root string, databaseURL string, target shape.AppRef, includeLinks bool) (fixtures.ExportPlan, error) {
+	return fixtures.NewRunner().ExportPlan(ctx, root, databaseURL, target, includeLinks)
+}
+
+func (r defaultFixtureRunner) WriteExportPlan(ctx context.Context, plan fixtures.ExportPlan) (fixtures.ExportResult, error) {
+	if err := ctx.Err(); err != nil {
+		return fixtures.ExportResult{}, fmt.Errorf("write fixture export plan: %w", err)
+	}
+	return fixtures.WriteExportPlan(plan)
+}
+
 func (r checkBackedDatabaseRunner) Check(ctx context.Context, databaseURL string) error {
 	if r.check != nil {
 		return r.check(ctx, databaseURL)
 	}
 	return r.manager.Check(ctx, databaseURL)
+}
+
+func (r checkBackedDatabaseRunner) Exists(ctx context.Context, databaseURL string) (db.DatabaseStatus, error) {
+	return r.manager.Exists(ctx, databaseURL)
 }
 
 func (r checkBackedDatabaseRunner) Create(ctx context.Context, databaseURL string) (db.DatabaseResult, error) {
@@ -211,22 +238,6 @@ func (r checkBackedDatabaseRunner) Create(ctx context.Context, databaseURL strin
 
 func (r checkBackedDatabaseRunner) Drop(ctx context.Context, databaseURL string) (db.DatabaseResult, error) {
 	return r.manager.Drop(ctx, databaseURL)
-}
-
-func (r checkBackedDatabaseRunner) Prepare(ctx context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
-	return r.manager.Prepare(ctx, root, databaseURL)
-}
-
-func (r checkBackedDatabaseRunner) Reset(ctx context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {
-	return r.manager.Reset(ctx, root, databaseURL)
-}
-
-func (r checkBackedDatabaseRunner) SchemaDump(ctx context.Context, root string, databaseURL string) error {
-	return r.manager.SchemaDump(ctx, root, databaseURL)
-}
-
-func (r checkBackedDatabaseRunner) SchemaCheck(ctx context.Context, root string, databaseURL string) error {
-	return r.manager.SchemaCheck(ctx, root, databaseURL)
 }
 
 func newVersionCommand(stdout io.Writer) *cobra.Command {
@@ -245,65 +256,31 @@ func newVersionCommand(stdout io.Writer) *cobra.Command {
 
 func newServeCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRunner, recordHooks *db.RecordHookRegistry) *cobra.Command {
 	envName := "development"
-	studioDevURL := ""
 
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the dygo server",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			_, root, databaseURL, err := databaseInputs(envName)
-			if err != nil {
-				return err
-			}
-			cfg, err := config.Load(root)
-			if err != nil {
-				return fmt.Errorf("load config: %w", err)
-			}
-			studioURL := studioDevURL
-			var stopStudio studioDevStop
-			if studioURL == "" {
-				var err error
-				studioURL, stopStudio, err = startStudioDevServer(ctx, root, stdout, stderr)
-				if err != nil {
-					return err
-				}
-			}
-			if stopStudio != nil {
-				defer func() {
-					_ = stopStudio()
-				}()
-			}
-			var studioHandler http.Handler
-			if studioURL != "" {
-				handler, err := server.NewStudioDevProxy(studioURL)
-				if err != nil {
-					return err
-				}
-				studioHandler = handler
-			} else {
-				handler, _, err := studio.HandlerForProject(root)
-				if err != nil {
-					return fmt.Errorf("resolve Studio UI: %w", err)
-				}
-				studioHandler = handler
-			}
-			address := cfg.Server.Address()
-			if err := serve(ctx, server.Options{
-				Address:     address,
-				DatabaseURL: databaseURL,
-				RecordHooks: recordHooks,
-				Studio:      studioHandler,
-				OnReady: func(address string) error {
-					if _, err := fmt.Fprintf(stdout, "dygo serving on %s\n", address); err != nil {
-						return fmt.Errorf("write serve output: %w", err)
-					}
-					return nil
-				},
-			}); err != nil {
-				return fmt.Errorf("serve dygo: %w", err)
-			}
-			return nil
+			return runServerCommand(ctx, stdout, stderr, serve, recordHooks, envName, false, "")
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+
+	return cmd
+}
+
+func newDevCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRunner, recordHooks *db.RecordHookRegistry) *cobra.Command {
+	envName := "development"
+	studioDevURL := ""
+
+	cmd := &cobra.Command{
+		Use:   "dev",
+		Short: "Run the local dygo development server",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runServerCommand(ctx, stdout, stderr, serve, recordHooks, envName, true, studioDevURL)
 		},
 	}
 
@@ -311,6 +288,77 @@ func newServeCommand(ctx context.Context, stdout, stderr io.Writer, serve serveR
 	cmd.Flags().StringVar(&studioDevURL, "studio-dev-url", studioDevURL, "Proxy Studio UI requests to a frontend dev server")
 
 	return cmd
+}
+
+func runServerCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRunner, recordHooks *db.RecordHookRegistry, envName string, devMode bool, studioDevURL string) error {
+	_, root, databaseURL, err := databaseInputs(envName)
+	if err != nil {
+		return err
+	}
+	cfg, err := config.Load(root)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	studioHandler, stopStudio, err := studioHandlerForCommand(ctx, root, stdout, stderr, devMode, studioDevURL)
+	if err != nil {
+		return err
+	}
+	if stopStudio != nil {
+		defer func() {
+			_ = stopStudio()
+		}()
+	}
+	readyPrefix := "dygo serving"
+	if devMode {
+		readyPrefix = "dygo dev serving"
+	}
+	address := cfg.Server.Address()
+	if err := serve(ctx, server.Options{
+		Address:     address,
+		DatabaseURL: databaseURL,
+		RecordHooks: recordHooks,
+		Studio:      studioHandler,
+		OnReady: func(address string) error {
+			if _, err := fmt.Fprintf(stdout, "%s on %s\n", readyPrefix, address); err != nil {
+				return fmt.Errorf("write serve output: %w", err)
+			}
+			return nil
+		},
+	}); err != nil {
+		return fmt.Errorf("serve dygo: %w", err)
+	}
+	return nil
+}
+
+func studioHandlerForCommand(ctx context.Context, root string, stdout, stderr io.Writer, devMode bool, studioDevURL string) (http.Handler, studioDevStop, error) {
+	if !devMode {
+		handler, _, err := studio.HandlerForProject(root)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve Studio UI: %w", err)
+		}
+		return handler, nil, nil
+	}
+	studioURL := studioDevURL
+	var stopStudio studioDevStop
+	if studioURL == "" {
+		var err error
+		studioURL, stopStudio, err = startStudioDevServer(ctx, root, stdout, stderr)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if studioURL == "" {
+		handler, _, err := studio.HandlerForProject(root)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve Studio UI: %w", err)
+		}
+		return handler, nil, nil
+	}
+	handler, err := server.NewStudioDevProxy(studioURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	return handler, stopStudio, nil
 }
 
 func startStudioDevServerProcess(ctx context.Context, root string, _ io.Writer, stderr io.Writer) (string, studioDevStop, error) {

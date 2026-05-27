@@ -8,6 +8,7 @@ import (
 
 	"github.com/hapyco/dygo/internal/entity/fieldtype"
 	"github.com/hapyco/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/shape"
 )
 
 func TestCoreSelectValuesMatchEntityMetadata(t *testing.T) {
@@ -46,7 +47,7 @@ func loadCoreEntity(t *testing.T, name string) schema.Entity {
 	if !ok {
 		t.Fatal("runtime caller unavailable")
 	}
-	path := filepath.Join(filepath.Dir(file), "..", "..", "apps", "core", "entities", name+".yml")
+	path := filepath.Join(filepath.Dir(file), "..", "..", "apps", "core", filepath.FromSlash(shape.EntityMetadataPath(name)))
 	entity, err := schema.LoadFile(path, fieldtype.DefaultRegistry())
 	if err != nil {
 		t.Fatalf("LoadFile(%s) error = %v", path, err)

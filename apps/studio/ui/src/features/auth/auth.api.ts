@@ -61,7 +61,7 @@ function currentUserErrorMessage(payload: ApiErrorEnvelope): string {
     case 'unauthenticated':
       return 'Sign in to open Studio.'
     case 'schema_not_ready':
-      return 'Studio is not ready yet. Run dygo migrate, then try again.'
+      return 'Studio is not ready yet. Run dygo db migrate, then try again.'
     default:
       return 'Studio could not read the current session.'
   }
@@ -72,7 +72,7 @@ function loginErrorMessage(payload: ApiErrorEnvelope): string {
     case 'invalid_credentials':
       return 'Email or password is incorrect.'
     case 'schema_not_ready':
-      return 'Studio is not ready yet. Run dygo migrate, then try again.'
+      return 'Studio is not ready yet. Run dygo db migrate, then try again.'
     case 'invalid_request':
       return payload.error.message ?? 'Enter a valid email and password.'
     default:

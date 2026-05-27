@@ -15,12 +15,12 @@ func TestStoreLifecycle(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 
-	paths, err := store.Init(false)
+	paths, err := store.Init()
 	if err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 	if _, err := os.Stat(paths.MasterKeyFile); err != nil {
-		t.Fatalf("Stat(master.key) error = %v", err)
+		t.Fatalf("Stat(.dygo/secrets/master.key) error = %v", err)
 	}
 
 	ciphertext, err := os.ReadFile(paths.SecretFile)
@@ -51,7 +51,7 @@ func TestStoreLifecycle(t *testing.T) {
 		t.Fatalf("List() = %#v, want one DATABASE_URL entry", entries)
 	}
 
-	configPath := filepath.Join(root, "configs", "app.yaml")
+	configPath := filepath.Join(root, "config", "app.yaml")
 	if err := os.WriteFile(configPath, []byte("env:\n  DATABASE_URL:\n    secret: DATABASE_URL\ndatabase:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}
@@ -78,14 +78,14 @@ func TestStoreValidationFailures(t *testing.T) {
 		t.Fatal("ValidateSecretName(database..url) error = nil, want error")
 	}
 
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 	if err := store.Set(EnvironmentDevelopment, "database..url", "value"); err == nil {
 		t.Fatal("Set(invalid name) error = nil, want error")
 	}
 
-	configPath := filepath.Join(root, "configs", "app.yaml")
+	configPath := filepath.Join(root, "config", "app.yaml")
 	if err := os.WriteFile(configPath, []byte("database:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}
@@ -94,10 +94,39 @@ func TestStoreValidationFailures(t *testing.T) {
 	}
 }
 
+func TestStoreValidateChecksProjectConfigReferences(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	if _, err := store.Init(); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	config := filepath.Join(root, "dygo.yml")
+	if err := os.WriteFile(config, []byte("database:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
+	}
+
+	err := store.Validate(EnvironmentDevelopment)
+	if err == nil {
+		t.Fatal("Validate() error = nil for missing dygo.yml secret, want error")
+	}
+	for _, want := range []string{"dygo.yml", `missing secret "DATABASE_URL"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
+		}
+	}
+
+	if err := store.Set(EnvironmentDevelopment, "DATABASE_URL", "postgres://local"); err != nil {
+		t.Fatalf("Set(DATABASE_URL) error = %v", err)
+	}
+	if err := store.Validate(EnvironmentDevelopment); err != nil {
+		t.Fatalf("Validate() error = %v, want dygo.yml reference satisfied", err)
+	}
+}
+
 func TestStoreResolvesNestedPlainYAMLSecrets(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 	if err := store.SavePlaintext(EnvironmentDevelopment, []byte("database:\n  url: postgres://nested\n")); err != nil {
@@ -112,7 +141,7 @@ func TestStoreResolvesNestedPlainYAMLSecrets(t *testing.T) {
 		t.Fatalf("Get(database.url).Value = %q, want nested value", secret.Value)
 	}
 
-	configPath := filepath.Join(root, "configs", "app.yaml")
+	configPath := filepath.Join(root, "config", "app.yaml")
 	if err := os.WriteFile(configPath, []byte("database:\n  url:\n    secret: database.url\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}
@@ -125,7 +154,7 @@ func TestLoadWithUnusableMasterKeyFails(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 
-	paths, err := store.Init(false)
+	paths, err := store.Init()
 	if err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
@@ -150,7 +179,7 @@ func TestRotateKeyPreservesAllEnvironments(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 	if err := store.Set(EnvironmentDevelopment, "DATABASE_URL", "postgres://development"); err != nil {
@@ -209,7 +238,7 @@ func newRotatableStore(t *testing.T) Store {
 	t.Helper()
 
 	store := NewStore(t.TempDir())
-	if _, err := store.Init(false); err != nil {
+	if _, err := store.Init(); err != nil {
 		t.Fatalf("Init() error = %v", err)
 	}
 	for _, tt := range []struct {
@@ -232,7 +261,7 @@ func readRotationState(t *testing.T, store Store) ([]byte, map[Environment][]byt
 
 	master, err := os.ReadFile(store.Paths(EnvironmentDevelopment).MasterKeyFile)
 	if err != nil {
-		t.Fatalf("ReadFile(master.key) error = %v", err)
+		t.Fatalf("ReadFile(.dygo/secrets/master.key) error = %v", err)
 	}
 	files := make(map[Environment][]byte)
 	for _, env := range SupportedEnvironments() {
@@ -250,7 +279,7 @@ func assertRotationState(t *testing.T, store Store, wantMaster []byte, wantSecre
 
 	gotMaster, gotSecrets := readRotationState(t, store)
 	if !bytes.Equal(gotMaster, wantMaster) {
-		t.Fatal("master.key changed after failed rotation")
+		t.Fatal(".dygo/secrets/master.key changed after failed rotation")
 	}
 	for _, env := range SupportedEnvironments() {
 		if !bytes.Equal(gotSecrets[env], wantSecrets[env]) {

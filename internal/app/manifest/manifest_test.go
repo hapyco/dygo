@@ -44,9 +44,6 @@ label: CRM
 version: 0.1.0
 paths:
   entities: metadata/entities
-  permissions: metadata/permissions
-  hooks: hooks
-  fixtures: data/fixtures
   patches: data/patches
   docs: docs
   assets: assets
@@ -59,8 +56,8 @@ paths:
 	if app.Paths.Entities != "metadata/entities" {
 		t.Fatalf("LoadFile().Paths.Entities = %q, want explicit path", app.Paths.Entities)
 	}
-	if app.Paths.Permissions != "metadata/permissions" {
-		t.Fatalf("LoadFile().Paths.Permissions = %q, want explicit path", app.Paths.Permissions)
+	if app.Paths.Patches != "data/patches" {
+		t.Fatalf("LoadFile().Paths.Patches = %q, want explicit path", app.Paths.Patches)
 	}
 }
 

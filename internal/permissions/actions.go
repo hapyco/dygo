@@ -2,6 +2,7 @@ package permissions
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hapyco/dygo/internal/db"
 )
@@ -27,6 +28,15 @@ func SupportedActions() []Action {
 		actions[index] = spec.Action
 	}
 	return actions
+}
+
+// ParseAction normalizes and validates a permission action name.
+func ParseAction(value string) (Action, error) {
+	action := Action(strings.TrimSpace(value))
+	if _, ok := actionColumn(action); !ok {
+		return "", fmt.Errorf("permission action %q is not supported", value)
+	}
+	return action, nil
 }
 
 func actionColumn(action Action) (string, bool) {

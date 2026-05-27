@@ -1767,7 +1767,7 @@ func classifyRecordDBError(err error, entity string) error {
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "42P01", "42703":
-			return recordError(RecordErrorSchemaNotReady, "schema is not ready; run dygo migrate", map[string]any{"entity": entity}, err)
+			return recordError(RecordErrorSchemaNotReady, "schema is not ready; run dygo db migrate", map[string]any{"entity": entity}, err)
 		case "23505", "23503", "23514", "23502":
 			details := map[string]any{"entity": entity}
 			if pgErr.ConstraintName != "" {

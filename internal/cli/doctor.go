@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,9 +13,15 @@ import (
 	"github.com/hapyco/dygo/internal/app/manifest"
 	"github.com/hapyco/dygo/internal/config"
 	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/entity/catalog"
+	"github.com/hapyco/dygo/internal/fixtures"
 	"github.com/hapyco/dygo/internal/health"
+	"github.com/hapyco/dygo/internal/hookgen"
 	"github.com/hapyco/dygo/internal/project"
+	routeplan "github.com/hapyco/dygo/internal/routes"
 	"github.com/hapyco/dygo/internal/secrets"
+	"github.com/hapyco/dygo/internal/shape"
+	"github.com/hapyco/dygo/internal/studio"
 	"github.com/jackc/pgx/v5"
 	"github.com/spf13/cobra"
 )
@@ -46,6 +53,10 @@ var openDoctorRuntimePool = func(ctx context.Context, databaseURL string) (docto
 	return db.OpenRuntimePool(ctx, databaseURL)
 }
 
+var checkDoctorSchemaSnapshotFreshness = func(ctx context.Context, root string, databaseURL string) error {
+	return db.NewMigrator().CheckSchemaSnapshot(ctx, root, databaseURL)
+}
+
 func (e doctorError) Error() string {
 	if e.Problems == 1 {
 		return "dygo doctor found 1 problem"
@@ -75,6 +86,11 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 		results = append(results,
 			doctorResult{Status: doctorSkip, Name: "app manifests", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "entity metadata", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "route registry", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "fixture files", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "schema snapshot", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "Studio assets", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "config", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "secrets layout", Detail: "project root not found"},
 		)
@@ -84,10 +100,28 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 	apps, appResult := checkAppManifests(root)
 	results = append(results, appResult)
 	entityResult := doctorResult{Status: doctorSkip, Name: "entity metadata", Detail: "app manifests are invalid"}
+	var entities []catalog.LoadedEntity
 	if appResult.Status == doctorPass {
-		entityResult = checkEntityMetadata(apps)
+		entities, entityResult = checkEntityMetadata(apps)
 	}
 	results = append(results, entityResult)
+	if appResult.Status == doctorPass && entityResult.Status == doctorPass {
+		results = append(results,
+			checkRouteRegistry(entities),
+			checkFixtureFiles(ctx, root),
+			checkHookWiring(root),
+		)
+	} else {
+		results = append(results,
+			doctorResult{Status: doctorSkip, Name: "route registry", Detail: "app manifests or entity metadata are invalid"},
+			doctorResult{Status: doctorSkip, Name: "fixture files", Detail: "app manifests or entity metadata are invalid"},
+			doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "app manifests or entity metadata are invalid"},
+		)
+	}
+	results = append(results,
+		checkSchemaSnapshot(root),
+		checkStudioAssets(root),
+	)
 	configResult := checkConfig(root)
 	results = append(results, configResult)
 	secretsResult := checkSecretsLayout(root)
@@ -131,12 +165,106 @@ func checkAppManifests(root string) ([]manifest.LoadedApp, doctorResult) {
 	return apps, doctorResult{Status: doctorPass, Name: "app manifests", Detail: fmt.Sprintf("%d apps valid", len(apps))}
 }
 
-func checkEntityMetadata(apps []manifest.LoadedApp) doctorResult {
+func checkEntityMetadata(apps []manifest.LoadedApp) ([]catalog.LoadedEntity, doctorResult) {
 	entities, err := project.LoadEntities(apps)
 	if err != nil {
-		return doctorResult{Status: doctorFail, Name: "entity metadata", Detail: err.Error()}
+		return nil, doctorResult{Status: doctorFail, Name: "entity metadata", Detail: err.Error()}
 	}
-	return doctorResult{Status: doctorPass, Name: "entity metadata", Detail: fmt.Sprintf("%d entities valid", len(entities))}
+	return entities, doctorResult{Status: doctorPass, Name: "entity metadata", Detail: fmt.Sprintf("%d entities valid", len(entities))}
+}
+
+func checkRouteRegistry(entities []catalog.LoadedEntity) doctorResult {
+	result, err := routeplan.Validate(entities)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "route registry", Detail: err.Error()}
+	}
+	return doctorResult{
+		Status: doctorPass,
+		Name:   "route registry",
+		Detail: fmt.Sprintf("%d reserved routes, %d entity routes, %d conflicts", result.ReservedRoutes, result.EntityRoutes, result.Conflicts),
+	}
+}
+
+func checkFixtureFiles(ctx context.Context, root string) doctorResult {
+	plan, err := fixtures.NewRunner().Plan(ctx, root)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "fixture files", Detail: err.Error()}
+	}
+	return doctorResult{Status: doctorPass, Name: "fixture files", Detail: fmt.Sprintf("%d files, %d records valid", plan.FileCount(), plan.RecordCount())}
+}
+
+func checkHookWiring(root string) doctorResult {
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		if os.IsNotExist(err) {
+			return doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "go.mod not found"}
+		}
+		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: fmt.Sprintf("stat go.mod: %v", err)}
+	}
+	if _, err := os.Stat(filepath.Join(root, "cmd", "dygo", "main.go")); err != nil {
+		if os.IsNotExist(err) {
+			return doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "generated runner not found"}
+		}
+		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: fmt.Sprintf("stat generated runner: %v", err)}
+	}
+	problems, err := hookgen.Validate(root)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: err.Error()}
+	}
+	if len(problems) > 0 {
+		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: strings.Join(problems, "; ")}
+	}
+	hooks, err := hookgen.Discover(root)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: err.Error()}
+	}
+	return doctorResult{Status: doctorPass, Name: "hook wiring", Detail: fmt.Sprintf("%d hook files wired", len(hooks))}
+}
+
+func checkSchemaSnapshot(root string) doctorResult {
+	path := filepath.Join(root, filepath.FromSlash(shape.SchemaSnapshot))
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return doctorResult{Status: doctorFail, Name: "schema snapshot", Detail: fmt.Sprintf("missing %s; run dygo db migrate", shape.SchemaSnapshot)}
+		}
+		return doctorResult{Status: doctorFail, Name: "schema snapshot", Detail: fmt.Sprintf("stat %s: %v", shape.SchemaSnapshot, err)}
+	}
+	if info.IsDir() {
+		return doctorResult{Status: doctorFail, Name: "schema snapshot", Detail: fmt.Sprintf("%s is a directory; run dygo db migrate", shape.SchemaSnapshot)}
+	}
+	return doctorResult{Status: doctorPass, Name: "schema snapshot", Detail: fmt.Sprintf("%s present", shape.SchemaSnapshot)}
+}
+
+func checkSchemaSnapshotFreshness(ctx context.Context, root string, databaseURL string) doctorResult {
+	path := filepath.Join(root, filepath.FromSlash(shape.SchemaSnapshot))
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return doctorResult{Status: doctorSkip, Name: "schema snapshot freshness", Detail: fmt.Sprintf("%s is missing", shape.SchemaSnapshot)}
+		}
+		return doctorResult{Status: doctorFail, Name: "schema snapshot freshness", Detail: fmt.Sprintf("stat %s: %v", shape.SchemaSnapshot, err)}
+	}
+	if info.IsDir() {
+		return doctorResult{Status: doctorSkip, Name: "schema snapshot freshness", Detail: fmt.Sprintf("%s is not a file", shape.SchemaSnapshot)}
+	}
+	if err := checkDoctorSchemaSnapshotFreshness(ctx, root, databaseURL); err != nil {
+		if errors.Is(err, db.ErrSchemaSnapshotOutOfDate) {
+			return doctorResult{Status: doctorFail, Name: "schema snapshot freshness", Detail: fmt.Sprintf("%s is out of date; run dygo db migrate", shape.SchemaSnapshot)}
+		}
+		if errors.Is(err, db.ErrSchemaSnapshotMissing) {
+			return doctorResult{Status: doctorFail, Name: "schema snapshot freshness", Detail: fmt.Sprintf("%s is missing; run dygo db migrate", shape.SchemaSnapshot)}
+		}
+		return doctorResult{Status: doctorFail, Name: "schema snapshot freshness", Detail: err.Error()}
+	}
+	return doctorResult{Status: doctorPass, Name: "schema snapshot freshness", Detail: fmt.Sprintf("%s matches live database", shape.SchemaSnapshot)}
+}
+
+func checkStudioAssets(root string) doctorResult {
+	_, source, err := studio.HandlerForProject(root)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "Studio assets", Detail: err.Error()}
+	}
+	return doctorResult{Status: doctorPass, Name: "Studio assets", Detail: source + " available"}
 }
 
 func checkConfig(root string) doctorResult {
@@ -176,7 +304,7 @@ func checkRuntimeReadiness(ctx context.Context, root string) []doctorResult {
 	databaseURL, err := doctorDatabaseURL(root, env)
 	if err != nil {
 		return []doctorResult{
-			{Status: doctorFail, Name: "runtime database", Detail: fmt.Sprintf("%v; run dygo secrets edit", err)},
+			{Status: doctorFail, Name: "runtime database", Detail: fmt.Sprintf("%v; run dygo secret edit", err)},
 			{Status: doctorSkip, Name: "core fixtures", Detail: "runtime database is not ready"},
 			{Status: doctorSkip, Name: "administrator account", Detail: "runtime database is not ready"},
 		}
@@ -185,7 +313,7 @@ func checkRuntimeReadiness(ctx context.Context, root string) []doctorResult {
 	pool, err := openDoctorRuntimePool(ctx, databaseURL)
 	if err != nil {
 		return []doctorResult{
-			{Status: doctorFail, Name: "runtime database", Detail: fmt.Sprintf("%v; run dygo db prepare", err)},
+			{Status: doctorFail, Name: "runtime database", Detail: fmt.Sprintf("%v; run dygo db migrate", err)},
 			{Status: doctorSkip, Name: "core fixtures", Detail: "runtime database is not ready"},
 			{Status: doctorSkip, Name: "administrator account", Detail: "runtime database is not ready"},
 		}
@@ -194,6 +322,7 @@ func checkRuntimeReadiness(ctx context.Context, root string) []doctorResult {
 
 	results := []doctorResult{
 		{Status: doctorPass, Name: "runtime database", Detail: string(env) + " database reachable"},
+		checkSchemaSnapshotFreshness(ctx, root, databaseURL),
 	}
 	for _, check := range health.CoreRuntimeChecks(ctx, pool) {
 		results = append(results, doctorResultFromHealth(check))

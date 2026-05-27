@@ -2,109 +2,130 @@ package upgrade
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
-func TestRunCheckCLIOnlyUsesLatestRelease(t *testing.T) {
-	server := releaseServer(t)
-	defer server.Close()
+func TestRunCheckUsesInstalledVersion(t *testing.T) {
+	root := newUpgradeTestProject(t)
 
 	result, err := Run(context.Background(), Options{
-		CurrentVersion: "v1.0.0",
+		CurrentVersion: "v1.2.3",
 		Check:          true,
-		CLIOnly:        true,
-		InstallDir:     t.TempDir(),
-		APIBaseURL:     server.URL,
-		HTTPClient:     server.Client(),
-		GOOS:           "darwin",
-		GOARCH:         "arm64",
+		WorkingDir:     root,
 	})
 	if err != nil {
-		t.Fatalf("Run(check cli-only) error = %v, want nil", err)
+		t.Fatalf("Run(check) error = %v, want nil", err)
 	}
-	if result.TargetVersion != "v1.2.3" || result.CLI == nil || result.Project != nil {
-		t.Fatalf("Run(check cli-only) result = %+v, want CLI-only latest plan", result)
+	if result.TargetVersion != "v1.2.3" || result.Project == nil {
+		t.Fatalf("Run(check) result = %+v, want installed-version project check", result)
 	}
-	if result.CLI.Installed {
-		t.Fatalf("CLI.Installed = true, want check-only")
+	if result.Project.CurrentVersion != "v0.0.0" || !result.Project.WouldUpdate {
+		t.Fatalf("Project result = %+v, want available update", result.Project)
 	}
 }
 
-func TestRunDryRunInsideProjectPlansCLIAndProject(t *testing.T) {
-	server := releaseServer(t)
-	defer server.Close()
+func TestRunDryRunInsideProjectPlansProject(t *testing.T) {
 	root := newUpgradeTestProject(t)
 
 	result, err := Run(context.Background(), Options{
 		CurrentVersion: "v1.0.0",
+		TargetVersion:  "v1.2.3",
 		DryRun:         true,
 		WorkingDir:     root,
-		InstallDir:     t.TempDir(),
-		APIBaseURL:     server.URL,
-		HTTPClient:     server.Client(),
-		GOOS:           "linux",
-		GOARCH:         "amd64",
 	})
 	if err != nil {
 		t.Fatalf("Run(dry-run project) error = %v, want nil", err)
 	}
-	if result.CLI == nil || result.Project == nil {
-		t.Fatalf("Run(dry-run project) result = %+v, want CLI and project plans", result)
+	if result.Project == nil {
+		t.Fatalf("Run(dry-run project) result = %+v, want project plan", result)
 	}
 	if result.Project.CurrentVersion != "v0.0.0" || result.Project.TargetVersion != "v1.2.3" {
 		t.Fatalf("Project result = %+v, want current and target versions", result.Project)
 	}
 }
 
-func TestRunProjectOnlyOutsideProjectFails(t *testing.T) {
-	server := releaseServer(t)
-	defer server.Close()
+func TestRunUpgradeNoOpsWhenProjectVersionMatchesTarget(t *testing.T) {
+	root := newUpgradeTestProject(t)
+	calledRunner := false
+	calledConfirm := false
 
-	_, err := Run(context.Background(), Options{
-		ProjectOnly: true,
-		WorkingDir:  t.TempDir(),
-		APIBaseURL:  server.URL,
-		HTTPClient:  server.Client(),
+	result, err := Run(context.Background(), Options{
+		CurrentVersion: "v0.0.0",
+		WorkingDir:     root,
+		CommandRunner: func(context.Context, string, string, ...string) ([]byte, error) {
+			calledRunner = true
+			return nil, nil
+		},
+		Confirm: func(context.Context, string) (bool, error) {
+			calledConfirm = true
+			return true, nil
+		},
 	})
-	if err == nil {
-		t.Fatal("Run(project-only outside project) error = nil, want error")
+	if err != nil {
+		t.Fatalf("Run(upgrade no-op) error = %v, want nil", err)
+	}
+	if result.Project == nil || result.Project.WouldUpdate || result.Project.Updated {
+		t.Fatalf("Run(upgrade no-op) result = %+v, want current project", result)
+	}
+	if calledRunner || calledConfirm {
+		t.Fatalf("Run(upgrade no-op) called runner=%v confirm=%v, want neither", calledRunner, calledConfirm)
+	}
+	if got := strings.Join(result.Lines, "\n"); !strings.Contains(got, "project: current") {
+		t.Fatalf("Run(upgrade no-op) lines = %#v, want current output", result.Lines)
 	}
 }
 
-func TestRunCheckFailsWhenReleaseAssetIsMissing(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"tag_name":"v1.2.3","assets":[{"name":"checksums.txt","browser_download_url":"https://example.test/checksums.txt"}]}`)
-	}))
-	defer server.Close()
-
+func TestRunOutsideProjectFails(t *testing.T) {
 	_, err := Run(context.Background(), Options{
-		Check:      true,
-		CLIOnly:    true,
-		InstallDir: t.TempDir(),
-		APIBaseURL: server.URL,
-		HTTPClient: server.Client(),
-		GOOS:       "linux",
-		GOARCH:     "amd64",
+		CurrentVersion: "v1.2.3",
+		WorkingDir:     t.TempDir(),
 	})
 	if err == nil {
-		t.Fatal("Run(check missing asset) error = nil, want missing asset error")
+		t.Fatal("Run(outside project) error = nil, want error")
 	}
-	if got := err.Error(); got != "release v1.2.3 does not contain asset dygo_v1.2.3_linux_amd64.tar.gz" {
-		t.Fatalf("Run(check missing asset) error = %q, want missing asset error", got)
+	if got := err.Error(); got != "dygo upgrade requires a generated dygo project" {
+		t.Fatalf("Run(outside project) error = %q, want project requirement", got)
 	}
 }
 
-func releaseServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/releases/latest", "/releases/tags/v1.2.3":
-			fmt.Fprint(w, `{"tag_name":"v1.2.3","assets":[{"name":"dygo_v1.2.3_darwin_arm64.tar.gz","browser_download_url":"https://example.test/darwin"},{"name":"dygo_v1.2.3_linux_amd64.tar.gz","browser_download_url":"https://example.test/linux"},{"name":"checksums.txt","browser_download_url":"https://example.test/checksums.txt"}]}`)
-		default:
-			t.Fatalf("unexpected release path %s", r.URL.Path)
-		}
-	}))
+func TestRunDevBinaryRequiresExplicitTarget(t *testing.T) {
+	root := newUpgradeTestProject(t)
+
+	_, err := Run(context.Background(), Options{
+		CurrentVersion: "dev",
+		WorkingDir:     root,
+	})
+	if err == nil {
+		t.Fatal("Run(dev upgrade) error = nil, want explicit target error")
+	}
+	if got := err.Error(); got != "dygo upgrade requires --to when running an unreleased dev binary" {
+		t.Fatalf("Run(dev upgrade) error = %q, want explicit target", got)
+	}
+}
+
+func TestRunUpgradePromptsBeforeApply(t *testing.T) {
+	root := newUpgradeTestProject(t)
+	calledRunner := false
+
+	_, err := Run(context.Background(), Options{
+		CurrentVersion: "v1.2.3",
+		WorkingDir:     root,
+		CommandRunner: func(context.Context, string, string, ...string) ([]byte, error) {
+			calledRunner = true
+			return nil, nil
+		},
+		Confirm: func(context.Context, string) (bool, error) {
+			return false, nil
+		},
+	})
+	if err == nil {
+		t.Fatal("Run(upgrade cancelled) error = nil, want cancellation")
+	}
+	if got := err.Error(); got != "project upgrade cancelled" {
+		t.Fatalf("Run(upgrade cancelled) error = %q, want cancellation", got)
+	}
+	if calledRunner {
+		t.Fatal("CommandRunner called after declined prompt")
+	}
 }

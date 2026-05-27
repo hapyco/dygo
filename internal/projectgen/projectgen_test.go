@@ -41,29 +41,23 @@ func TestGenerateCreatesProjectSkeletonAndSecrets(t *testing.T) {
 		"cmd/dygo/main.go",
 		"apps/my-company/app.yml",
 		"apps/my-company/entities",
-		"apps/my-company/permissions",
-		"apps/my-company/hooks",
-		"apps/my-company/fixtures",
-		"apps/my-company/patches",
-		"apps/my-company/docs/index.md",
-		"apps/my-company/assets",
-		"configs/dygo.yaml",
-		"configs/secrets/development.yml.age",
-		"configs/secrets/staging.yml.age",
-		"configs/secrets/production.yml.age",
+		"apps/my-company/entities/_collections",
+		"apps/my-company/jobs",
+		"apps/my-company/jobs/_schedules.yml",
+		"apps/my-company/pages",
+		"apps/my-company/reports",
+		"apps/my-company/roles.yml",
+		"config/secrets/development.yml.age",
+		"config/secrets/staging.yml.age",
+		"config/secrets/production.yml.age",
 		"db/schema.sql",
 		"docs/index.md",
-		"var/storage/public",
-		"var/storage/private",
-		"var/backups",
-		"var/logs",
-		"var/tmp",
-		"var/cache",
-		"var/imports",
-		"var/exports",
-		".dygo/apps",
-		".dygo/cache",
-		"master.key",
+		".dygo/apps/studio",
+		".dygo/files",
+		".dygo/logs",
+		".dygo/tmp",
+		".dygo/secrets",
+		".dygo/secrets/master.key",
 		".gitignore",
 	} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(path))); err != nil {
@@ -93,23 +87,21 @@ func TestGenerateCreatesProjectSkeletonAndSecrets(t *testing.T) {
 	if err := store.Validate(secrets.EnvironmentDevelopment); err != nil {
 		t.Fatalf("Validate(development) error = %v, want generated dev secrets valid", err)
 	}
-	keyInfo, err := os.Stat(filepath.Join(root, "master.key"))
+	keyInfo, err := os.Stat(filepath.Join(root, ".dygo", "secrets", "master.key"))
 	if err != nil {
-		t.Fatalf("Stat(master.key) error = %v", err)
+		t.Fatalf("Stat(.dygo/secrets/master.key) error = %v", err)
 	}
 	if keyInfo.Mode().Perm() != 0o600 {
-		t.Fatalf("master.key mode = %v, want 0600", keyInfo.Mode().Perm())
+		t.Fatalf(".dygo/secrets/master.key mode = %v, want 0600", keyInfo.Mode().Perm())
 	}
 
-	assertContains(t, readFile(t, filepath.Join(root, ".gitignore")), "master.key")
+	assertContains(t, readFile(t, filepath.Join(root, ".gitignore")), ".dygo/secrets/master.key")
 	assertContains(t, readFile(t, filepath.Join(root, ".gitignore")), ".dygo/")
-	assertContains(t, readFile(t, filepath.Join(root, ".gitignore")), "var/")
 	assertContains(t, readFile(t, filepath.Join(root, "cmd", "dygo", "main.go")), "dygoruntime.Run")
 	readme := readFile(t, filepath.Join(root, "README.md"))
-	assertContains(t, readme, "dygo db prepare")
-	assertContains(t, readme, "dygo fixtures apply")
-	assertContains(t, readme, "dygo setup admin")
-	assertContains(t, readme, "dygo serve")
+	assertContains(t, readme, "dygo db migrate")
+	assertContains(t, readme, "dygo setup")
+	assertContains(t, readme, "dygo dev")
 }
 
 func TestGenerateInstallsStudioCacheFromFrameworkBuild(t *testing.T) {

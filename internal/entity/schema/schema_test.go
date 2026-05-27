@@ -79,6 +79,26 @@ func TestLoadFile(t *testing.T) {
 	}
 }
 
+func TestLoadFileDerivesCanonicalBundleNameFromParentFolder(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "lead", "entity.yml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(path, []byte(validEntityYAML()), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	entity, err := LoadFile(path, fieldtype.DefaultRegistry())
+	if err != nil {
+		t.Fatalf("LoadFile() error = %v, want nil", err)
+	}
+	if entity.Name != "lead" {
+		t.Fatalf("LoadFile().Name = %q, want lead", entity.Name)
+	}
+}
+
 func TestDecodeCollectionEntityNaming(t *testing.T) {
 	t.Parallel()
 

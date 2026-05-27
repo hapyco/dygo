@@ -2,7 +2,7 @@
 
 dygo stores environment secrets as encrypted YAML files in the repository.
 
-The encrypted files are safe to commit. The root `master.key` is local-only, ignored by git, and required to decrypt, edit, validate, or rotate secrets.
+The encrypted files are safe to commit. The local `.dygo/secrets/master.key` is ignored by git and required to decrypt, edit, validate, or rotate secrets.
 
 Database credentials use the same model. Local development should store `DATABASE_URL` in the `development` encrypted secrets file, not in plaintext config.
 
@@ -11,21 +11,21 @@ Database credentials use the same model. Local development should store `DATABAS
 Committed files:
 
 ```txt
-configs/secrets/development.yml.age
-configs/secrets/staging.yml.age
-configs/secrets/production.yml.age
+config/secrets/development.yml.age
+config/secrets/staging.yml.age
+config/secrets/production.yml.age
 ```
 
 Ignored local files:
 
 ```txt
-master.key
+.dygo/secrets/master.key
 .dygo/secrets/tmp/
 ```
 
-dygo uses `filippo.io/age` with one hybrid age identity in `master.key`. The public encryption recipient is derived from that key when dygo writes encrypted files, so separate recipient files are not needed.
+dygo uses `filippo.io/age` with one hybrid age identity in `.dygo/secrets/master.key`. The public encryption recipient is derived from that key when dygo writes encrypted files, so separate recipient files are not needed.
 
-Do not commit `master.key`. Anyone with that file can decrypt every environment secret file in the project.
+Do not commit `.dygo/secrets/master.key`. Anyone with that file can decrypt every environment secret file in the project.
 
 ## Environments
 
@@ -39,22 +39,22 @@ Do not use short forms like `dev` or `prod`.
 
 ## Commands
 
-Secret commands discover the dygo project root before reading or writing `master.key`, `configs/secrets/`, and `.dygo/secrets/tmp/`, so they can be run from nested directories inside a project.
+Secret commands discover the dygo project root before reading or writing `.dygo/secrets/master.key`, `config/secrets/`, and `.dygo/secrets/tmp/`, so they can be run from nested directories inside a project.
 
-`dygo new <name>` runs the same initialization for new projects and seeds `DATABASE_URL` in development secrets. Run `dygo secrets init` directly only for an existing project that does not have encrypted secrets yet.
+`dygo new <name>` runs the same initialization for new projects and seeds `DATABASE_URL` in development secrets. Run `dygo secret init` directly only for an existing project that does not have encrypted secrets yet.
 
 Initialize secrets:
 
 ```sh
-go run ./cmd/dygo secrets init
+dygo secret init
 ```
 
-This creates `master.key` and missing encrypted files for `development`, `staging`, and `production`.
+This creates `.dygo/secrets/master.key` and missing encrypted files for `development`, `staging`, and `production`.
 
 Edit development secrets:
 
 ```sh
-go run ./cmd/dygo secrets edit
+dygo secret edit
 ```
 
 Without `--editor`, dygo opens `nano`.
@@ -62,30 +62,38 @@ Without `--editor`, dygo opens `nano`.
 Edit another environment:
 
 ```sh
-go run ./cmd/dygo secrets edit --env staging
+dygo secret edit --env staging
 ```
 
 Choose an editor explicitly:
 
 ```sh
-go run ./cmd/dygo secrets edit --editor nano
-go run ./cmd/dygo secrets edit --env staging --editor "code --wait"
+dygo secret edit --editor nano
+dygo secret edit --env staging --editor "code --wait"
+```
+
+Print one secret value for scripts:
+
+```sh
+dygo secret get DATABASE_URL
+dygo secret get database.url --env staging
 ```
 
 Validate secrets and config references:
 
 ```sh
-go run ./cmd/dygo secrets validate
-go run ./cmd/dygo secrets validate --env staging
+dygo secret validate
+dygo secret validate --env staging
 ```
 
 Rotate the project master key:
 
 ```sh
-go run ./cmd/dygo secrets rotate-key --confirm my-company/master.key
+dygo secret rotate-key
+dygo secret rotate-key --yes
 ```
 
-`rotate-key` requires the exact confirmation token `<project-name>/master.key`, where `<project-name>` comes from `dygo.yml`. It decrypts every environment with the existing `master.key`, stages and verifies the rotated key and encrypted files, replaces files in a recoverable order, and then re-encrypts every environment file for the new key.
+`rotate-key` prints the rotation plan and prompts before writing unless `--yes` is passed. It decrypts every environment with the existing master key, stages and verifies the rotated key and encrypted files, replaces files in a recoverable order, and then re-encrypts every environment file for the new key.
 
 ## Decrypted Shape
 
@@ -126,7 +134,7 @@ DATABASE_URL.
 Open the development secrets file:
 
 ```sh
-go run ./cmd/dygo secrets edit
+dygo secret edit
 ```
 
 Add `DATABASE_URL`:
@@ -138,7 +146,7 @@ DATABASE_URL: postgres://user:password@127.0.0.1:5432/dygo
 Then validate:
 
 ```sh
-go run ./cmd/dygo secrets validate
+dygo secret validate
 ```
 
 ## Manifest References
@@ -151,7 +159,7 @@ env:
     secret: DATABASE_URL
 ```
 
-`dygo secrets validate --env <environment>` checks existing YAML under `configs/` for this shape and fails when a referenced secret is missing.
+`dygo secret validate --env <environment>` checks existing YAML under `config/` for this shape and fails when a referenced secret is missing.
 
 The project database config also references secrets:
 
@@ -171,8 +179,8 @@ database:
 
 ## Boundaries
 
-Secrets can only be changed through `dygo secrets edit`. There are no public `set`, `get`, `show`, `list`, or `remove` commands.
+Secrets can only be changed through `dygo secret edit` and read through `dygo secret get`. There are no public `set`, `show`, `list`, or `remove` commands.
 
-`master.key` is intentionally project-local for now. Sharing it, backing it up, and injecting it into deployment environments are operational concerns outside this first implementation.
+`.dygo/secrets/master.key` is intentionally project-local for now. Sharing it, backing it up, and injecting it into deployment environments are operational concerns outside this first implementation.
 
 dygo still uses one local root key for development, staging, and production. Per-environment recipients, KMS, Vault, and other external production secret providers are future work.
