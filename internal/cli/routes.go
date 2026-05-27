@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,7 +73,23 @@ func newRouteValidateCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("validate routes: %w", err)
 			}
-			if _, err := fmt.Fprintf(stdout, "routes are valid: %d routeable entities, %d reserved slugs\n", len(routeplan.Entries(metadata.Entities)), len(routeplan.ReservedSlugs())); err != nil {
+			result, err := routeplan.Validate(metadata.Entities)
+			if err != nil {
+				var validation routeplan.ValidationError
+				if errors.As(err, &validation) {
+					if _, writeErr := fmt.Fprintln(stdout, "route validation failed:"); writeErr != nil {
+						return fmt.Errorf("write route validate output: %w", writeErr)
+					}
+					for _, problem := range validation.Problems {
+						if _, writeErr := fmt.Fprintf(stdout, "- %s\n", problem); writeErr != nil {
+							return fmt.Errorf("write route validate output: %w", writeErr)
+						}
+					}
+					return fmt.Errorf("route validation failed with %d conflict(s)", len(validation.Problems))
+				}
+				return fmt.Errorf("validate routes: %w", err)
+			}
+			if _, err := fmt.Fprintf(stdout, "routes are valid: %d reserved routes, %d entity routes, %d conflicts\n", result.ReservedRoutes, result.EntityRoutes, result.Conflicts); err != nil {
 				return fmt.Errorf("write route validate output: %w", err)
 			}
 			return nil

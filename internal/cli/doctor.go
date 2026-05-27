@@ -174,10 +174,14 @@ func checkEntityMetadata(apps []manifest.LoadedApp) ([]catalog.LoadedEntity, doc
 }
 
 func checkRouteRegistry(entities []catalog.LoadedEntity) doctorResult {
+	result, err := routeplan.Validate(entities)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "route registry", Detail: err.Error()}
+	}
 	return doctorResult{
 		Status: doctorPass,
 		Name:   "route registry",
-		Detail: fmt.Sprintf("%d routeable entities, %d reserved slugs", len(routeplan.Entries(entities)), len(routeplan.ReservedSlugs())),
+		Detail: fmt.Sprintf("%d reserved routes, %d entity routes, %d conflicts", result.ReservedRoutes, result.EntityRoutes, result.Conflicts),
 	}
 }
 
