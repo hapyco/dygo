@@ -122,7 +122,6 @@ dygo/                           - Framework repository root
     sdk/                        - App hook SDK
   config/                       - Framework runtime config files
     secrets/                    - Encrypted dev secrets
-  configs/                      - Framework project-management config files
     github.yml                  - GitHub repository and project board metadata
   db/                           - Framework DB artifacts
     schema.sql                  - Framework schema snapshot

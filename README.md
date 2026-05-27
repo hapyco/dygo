@@ -135,4 +135,4 @@ Roadmap work is tracked in GitHub Projects:
 
 - [dygo Roadmap](https://github.com/orgs/hapyco/projects/3/views/1)
 
-Repository/project metadata for maintainers and agents lives in [configs/github.yml](configs/github.yml).
+Repository/project metadata for maintainers and agents lives in [config/github.yml](config/github.yml).
