@@ -17,7 +17,7 @@ withDefaults(defineProps<{
   disabled?: boolean
   readonly?: boolean
 }>(), {
-  size: 'md',
+  size: 'xs',
   required: false,
   disabled: false,
   readonly: false,

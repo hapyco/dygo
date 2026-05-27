@@ -19,7 +19,7 @@ withDefaults(defineProps<{
   readonly?: boolean
 }>(), {
   type: 'text',
-  size: 'md',
+  size: 'xs',
   required: false,
   disabled: false,
   readonly: false,

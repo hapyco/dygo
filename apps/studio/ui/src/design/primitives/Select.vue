@@ -27,7 +27,7 @@ const props = withDefaults(defineProps<{
   readonly?: boolean
   invalid?: boolean
 }>(), {
-  size: 'md',
+  size: 'xs',
   disabled: false,
   readonly: false,
   invalid: false,

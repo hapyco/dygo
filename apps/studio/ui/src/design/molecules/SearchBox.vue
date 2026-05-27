@@ -14,7 +14,7 @@ withDefaults(defineProps<{
   readonly?: boolean
 }>(), {
   placeholder: 'Search',
-  size: 'md',
+  size: 'xs',
   disabled: false,
   readonly: false,
 })

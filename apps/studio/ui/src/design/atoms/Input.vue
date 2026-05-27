@@ -16,7 +16,7 @@ withDefaults(defineProps<{
   invalid?: boolean
 }>(), {
   type: 'text',
-  size: 'md',
+  size: 'xs',
   readonly: false,
   invalid: false,
 })
