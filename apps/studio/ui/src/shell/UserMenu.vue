@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { LogOut } from '@lucide/vue'
+import { ref } from 'vue'
+import { LogOut, RefreshCw } from '@lucide/vue'
 import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuPortal,
   DropdownMenuRoot,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
 import { useRouter } from 'vue-router'
 
+import { reloadStudioApp } from '@/app/reload'
 import Avatar from '@/design/atoms/Avatar.vue'
 import { RouteName } from '@/router/routes'
 import { useAuthStore } from '@/stores/auth.store'
@@ -22,6 +25,20 @@ withDefaults(defineProps<{
 
 const router = useRouter()
 const authStore = useAuthStore()
+const reloading = ref(false)
+
+async function reloadApp() {
+  if (reloading.value) {
+    return
+  }
+
+  reloading.value = true
+  try {
+    await reloadStudioApp(router)
+  } finally {
+    reloading.value = false
+  }
+}
 
 async function logout() {
   await authStore.logout()
@@ -43,6 +60,11 @@ async function logout() {
         align="end"
         :side-offset="8"
       >
+        <DropdownMenuItem class="studio-user-menu__item" :disabled="reloading" @select="reloadApp">
+          <RefreshCw :size="14" :stroke-width="1.8" aria-hidden="true" />
+          <span>Reload</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator class="studio-user-menu__separator" />
         <DropdownMenuItem class="studio-user-menu__item" @select="logout">
           <LogOut :size="14" :stroke-width="1.8" aria-hidden="true" />
           <span>Logout</span>
@@ -98,5 +120,16 @@ async function logout() {
 .studio-user-menu__item[data-highlighted] {
   background: var(--studio-surface-raised);
   color: var(--studio-text);
+}
+
+.studio-user-menu__item[data-disabled] {
+  color: var(--studio-text-subtle);
+  pointer-events: none;
+}
+
+.studio-user-menu__separator {
+  height: 1px;
+  background: var(--studio-border);
+  margin: 5px -5px;
 }
 </style>

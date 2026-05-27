@@ -8,14 +8,17 @@ import Shell from '@/shell/Shell.vue'
 import type { ShellNavItem } from '@/shell/types'
 import { useAuthStore } from '@/stores/auth.store'
 import { useMetadataStore } from '@/stores/metadata.store'
+import { useNavigationStore } from '@/stores/navigation.store'
 import { usePlatformStore } from '@/stores/platform.store'
 
 const route = useRoute()
 const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
+const navigationStore = useNavigationStore()
 const platformStore = usePlatformStore()
 
 const usesShell = computed(() => !route.meta.public)
+const routeViewKey = computed(() => `${route.fullPath}:${navigationStore.routeReloadVersion}`)
 const currentEntity = computed(() => {
   const value = route.params.entity
   if (typeof value !== 'string' && !Array.isArray(value)) {
@@ -100,7 +103,7 @@ function humanizeEntity(value: string): string {
 </script>
 
 <template>
-  <RouterView v-if="!usesShell" />
+  <RouterView v-if="!usesShell" :key="routeViewKey" />
   <Shell v-else :user-name="userName" :nav-items="navItems">
     <template #sidebar>
       <div v-if="metadataStore.entitiesStatus === 'loading'" class="studio-entity-nav-state">
@@ -114,7 +117,7 @@ function humanizeEntity(value: string): string {
       </div>
     </template>
 
-    <RouterView />
+    <RouterView :key="routeViewKey" />
   </Shell>
 </template>
 
