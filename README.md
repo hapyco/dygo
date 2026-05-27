@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh
 
 See [dygo CLI](docs/cli.md) for the command surface.
 
-`go run ./cmd/dygo dev` starts dygo on `127.0.0.1:6790` for local development. In this source checkout it also starts the Studio development asset server internally and proxies Studio through the same dygo origin.
+`dygo dev` starts dygo on `127.0.0.1:6790` for local development. In this source checkout it also starts the Studio development asset server internally and proxies Studio through the same dygo origin.
 
 The default server address is:
 
@@ -111,8 +111,7 @@ docs/              framework documentation
 - [Documentation Index](docs/index.md)
 - [Installation](docs/installation.md)
 - [CLI](docs/cli.md)
-- [The dygo Doctrine](docs/doctrine.md)
-- [Platform Thesis](docs/platform-thesis.md)
+- [Doctrine](docs/doctrine.md)
 - [Nomenclature](docs/nomenclature.md)
 - [App Model](docs/app-model.md)
 - [App Manifest](docs/app-manifest.md)
@@ -129,7 +128,6 @@ docs/              framework documentation
 - [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)
 - [Contributing](CONTRIBUTING.md)
-- [Documentation Strategy](docs/docs-strategy.md)
 
 ## Roadmap
 

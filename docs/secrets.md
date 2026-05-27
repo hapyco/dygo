@@ -46,7 +46,7 @@ Secret commands discover the dygo project root before reading or writing `.dygo/
 Initialize secrets:
 
 ```sh
-go run ./cmd/dygo secret init
+dygo secret init
 ```
 
 This creates `.dygo/secrets/master.key` and missing encrypted files for `development`, `staging`, and `production`.
@@ -54,7 +54,7 @@ This creates `.dygo/secrets/master.key` and missing encrypted files for `develop
 Edit development secrets:
 
 ```sh
-go run ./cmd/dygo secret edit
+dygo secret edit
 ```
 
 Without `--editor`, dygo opens `nano`.
@@ -62,35 +62,35 @@ Without `--editor`, dygo opens `nano`.
 Edit another environment:
 
 ```sh
-go run ./cmd/dygo secret edit --env staging
+dygo secret edit --env staging
 ```
 
 Choose an editor explicitly:
 
 ```sh
-go run ./cmd/dygo secret edit --editor nano
-go run ./cmd/dygo secret edit --env staging --editor "code --wait"
+dygo secret edit --editor nano
+dygo secret edit --env staging --editor "code --wait"
 ```
 
 Print one secret value for scripts:
 
 ```sh
-go run ./cmd/dygo secret get DATABASE_URL
-go run ./cmd/dygo secret get database.url --env staging
+dygo secret get DATABASE_URL
+dygo secret get database.url --env staging
 ```
 
 Validate secrets and config references:
 
 ```sh
-go run ./cmd/dygo secret validate
-go run ./cmd/dygo secret validate --env staging
+dygo secret validate
+dygo secret validate --env staging
 ```
 
 Rotate the project master key:
 
 ```sh
-go run ./cmd/dygo secret rotate-key
-go run ./cmd/dygo secret rotate-key --yes
+dygo secret rotate-key
+dygo secret rotate-key --yes
 ```
 
 `rotate-key` prints the rotation plan and prompts before writing unless `--yes` is passed. It decrypts every environment with the existing master key, stages and verifies the rotated key and encrypted files, replaces files in a recoverable order, and then re-encrypts every environment file for the new key.
@@ -134,7 +134,7 @@ DATABASE_URL.
 Open the development secrets file:
 
 ```sh
-go run ./cmd/dygo secret edit
+dygo secret edit
 ```
 
 Add `DATABASE_URL`:
@@ -146,7 +146,7 @@ DATABASE_URL: postgres://user:password@127.0.0.1:5432/dygo
 Then validate:
 
 ```sh
-go run ./cmd/dygo secret validate
+dygo secret validate
 ```
 
 ## Manifest References

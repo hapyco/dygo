@@ -9,14 +9,14 @@ The first auth layer uses Core `user` and `session` records. Password fields are
 Create the first Administrator account after running metadata sync and fixtures:
 
 ```sh
-go run ./cmd/dygo db migrate
-go run ./cmd/dygo setup
+dygo db migrate
+dygo setup
 ```
 
 For automation:
 
 ```sh
-printf 'change-me\n' | go run ./cmd/dygo setup --email admin@example.com --full-name "Admin User" --password-stdin
+printf 'change-me\n' | dygo setup --email admin@example.com --full-name "Admin User" --password-stdin
 ```
 
 The Administrator account is special. It is not a role and does not depend on role assignment. Record permission enforcement treats `administrator=true` as privileged inside the permission engine before regular role permissions are checked.

@@ -17,7 +17,7 @@ The default address is:
 `dygo dev` loads the development database credentials by default and starts the local development experience:
 
 ```sh
-go run ./cmd/dygo dev
+dygo dev
 ```
 
 In a source checkout with `apps/studio/ui/package.json`, `dygo dev` starts Studio's development asset server internally and proxies Studio pages through dygo. The browser-facing address stays `http://127.0.0.1:6790/`, so Studio and `/api/v1/...` share one origin during development.
@@ -29,13 +29,13 @@ Generated projects serve Studio from `.dygo/apps/studio/ui/dist` when that cache
 Use another encrypted environment with `--env`:
 
 ```sh
-go run ./cmd/dygo serve --env staging
+dygo serve --env staging
 ```
 
 Use `dygo dev --studio-dev-url` only when the Studio asset server is already running somewhere else:
 
 ```sh
-go run ./cmd/dygo dev --studio-dev-url http://127.0.0.1:6791
+dygo dev --studio-dev-url http://127.0.0.1:6791
 ```
 
 The server opens and pings PostgreSQL before it starts listening. It does not run `dygo db migrate` automatically; run metadata sync before serving runtime metadata.

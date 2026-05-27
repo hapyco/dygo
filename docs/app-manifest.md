@@ -48,10 +48,10 @@ The app root directory should usually match the manifest `name`.
 List discovered apps from the current project:
 
 ```sh
-go run ./cmd/dygo app list
-go run ./cmd/dygo app validate
-go run ./cmd/dygo entity list
-go run ./cmd/dygo entity validate
+dygo app list
+dygo app validate
+dygo entity list
+dygo entity validate
 ```
 
 The app commands read app manifests from `apps/` and `.dygo/apps/`. Entity validation uses the discovered apps to load each app's `entities/` directory.

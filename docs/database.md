@@ -22,7 +22,7 @@ Do not put a raw database URL in `dygo.yml`.
 Set the local development database URL by editing development secrets:
 
 ```sh
-go run ./cmd/dygo secret edit
+dygo secret edit
 ```
 
 The value is encrypted into:
@@ -38,14 +38,14 @@ The local `.dygo/secrets/master.key` decrypts and re-encrypts the file. Do not c
 Check the development database:
 
 ```sh
-go run ./cmd/dygo db check
+dygo db check
 ```
 
 Check another environment:
 
 ```sh
-go run ./cmd/dygo db check --env staging
-go run ./cmd/dygo db check --env production
+dygo db check --env staging
+dygo db check --env production
 ```
 
 `dygo db check` decrypts the selected environment's `DATABASE_URL`, connects with the PostgreSQL runtime pool, pings the database, and prints a success message.
@@ -59,20 +59,20 @@ The database name comes from the selected environment's `DATABASE_URL`.
 Create the configured database if it is missing:
 
 ```sh
-go run ./cmd/dygo db create
+dygo db create
 ```
 
 Migrate the database. `db migrate` ensures the configured database exists, prints the full plan, prompts, then applies pre-sync patches, metadata schema sync, post-sync patches, fixtures, and schema snapshot refresh.
 
 ```sh
-go run ./cmd/dygo db migrate
+dygo db migrate
 ```
 
 When the configured database is missing, normal `db migrate` prompts before creating it because schema planning needs a real database to inspect.
 
 ```sh
-go run ./cmd/dygo db migrate --dry-run
-go run ./cmd/dygo db migrate --yes
+dygo db migrate --dry-run
+dygo db migrate --yes
 ```
 
 `--dry-run` never creates the database. If the database is missing, it reports that the database would be created and exits before full schema planning.
@@ -80,22 +80,22 @@ go run ./cmd/dygo db migrate --yes
 After migration, create the first Administrator account before opening Studio:
 
 ```sh
-go run ./cmd/dygo setup
+dygo setup
 ```
 
 Drop or reset the configured database only after reviewing the printed plan:
 
 ```sh
-go run ./cmd/dygo db drop
-go run ./cmd/dygo db reset
-go run ./cmd/dygo db reset --dry-run
+dygo db drop
+dygo db reset
+dygo db reset --dry-run
 ```
 
 Use `--yes` for agents, scripts, or CI after the plan is acceptable:
 
 ```sh
-go run ./cmd/dygo db drop --yes
-go run ./cmd/dygo db reset --yes
+dygo db drop --yes
+dygo db reset --yes
 ```
 
 `db reset` drops the database, creates it again, and runs the same migration workflow as `db migrate`.
@@ -103,8 +103,8 @@ go run ./cmd/dygo db reset --yes
 For staging or production destructive commands, pass `--force` in addition to the prompt or `--yes`:
 
 ```sh
-go run ./cmd/dygo db drop --env staging --force
-go run ./cmd/dygo db reset --env production --force --yes
+dygo db drop --env staging --force
+dygo db reset --env production --force --yes
 ```
 
 dygo does not automate backups before destructive database operations yet. Take and verify any required backup before running destructive commands, especially for production.
@@ -127,13 +127,13 @@ During `dygo db migrate`, dygo loads every discovered App from `apps/` and `.dyg
 Preview metadata sync:
 
 ```sh
-go run ./cmd/dygo db migrate --dry-run
+dygo db migrate --dry-run
 ```
 
 Apply metadata sync:
 
 ```sh
-go run ./cmd/dygo db migrate
+dygo db migrate
 ```
 
 `dygo db migrate` defaults to `development` and supports `--env staging` or `--env production`.
@@ -155,9 +155,9 @@ See [Explicit Patches](patches.md) for the model that maps unsafe planner diagno
 Explicit patches are planned and applied around metadata sync as part of `dygo db migrate`:
 
 ```sh
-go run ./cmd/dygo db migrate --dry-run
-go run ./cmd/dygo db migrate
-go run ./cmd/dygo db migrate --yes
+dygo db migrate --dry-run
+dygo db migrate
+dygo db migrate --yes
 ```
 
 Patch apply records a Core `patch-run` ledger row only after a patch succeeds. `dygo db migrate` refreshes `db/schema.sql` after schema changes. dygo does not automate backups before patches yet; take and verify backups before applying patches to production.
@@ -171,14 +171,14 @@ There is no SQL migration file path or `migrations` table in this model. dygo co
 Preview the prune plan:
 
 ```sh
-go run ./cmd/dygo db prune --dry-run
+dygo db prune --dry-run
 ```
 
 Apply the prune plan:
 
 ```sh
-go run ./cmd/dygo db prune
-go run ./cmd/dygo db prune --yes
+dygo db prune
+dygo db prune --yes
 ```
 
 `dygo db prune` defaults to `development` and supports `--env staging` or `--env production`.

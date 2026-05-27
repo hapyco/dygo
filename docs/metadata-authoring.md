@@ -37,7 +37,7 @@ The schemas cover the fixed metadata envelope and common enums such as built-in 
 Use editor feedback for fast authoring, then run dygo validation before trusting metadata:
 
 ```sh
-go run ./cmd/dygo app validate
-go run ./cmd/dygo entity validate
-go run ./cmd/dygo fixture validate
+dygo app validate
+dygo entity validate
+dygo fixture validate
 ```

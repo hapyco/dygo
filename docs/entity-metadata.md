@@ -332,8 +332,8 @@ Moving a file without changing its basename does not move data because Entity id
 Validate discovered Entity metadata from the current project:
 
 ```sh
-go run ./cmd/dygo entity list
-go run ./cmd/dygo entity validate
+dygo entity list
+dygo entity validate
 ```
 
 `entity list` prints a tree grouped by app name.

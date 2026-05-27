@@ -84,7 +84,7 @@ deploy/                          - Deployed project root
 
 ## Framework
 
-Framework tree follows current implementation and may change during refactors.
+The framework repository uses this working tree:
 
 ```txt
 dygo/                           - Framework repository root

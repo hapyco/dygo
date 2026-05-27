@@ -7,19 +7,19 @@ They are for roles, permissions, reference data, and other runtime defaults that
 Use the normal app-state workflow to sync metadata and apply fixtures:
 
 ```sh
-go run ./cmd/dygo db migrate
+dygo db migrate
 ```
 
 Use explicit fixture commands when authoring, debugging, or exporting fixture files. For example, validate fixture files without database writes:
 
 ```sh
-go run ./cmd/dygo fixture validate
+dygo fixture validate
 ```
 
 Apply fixtures directly to another encrypted environment with `--env`:
 
 ```sh
-go run ./cmd/dygo fixture apply --env staging
+dygo fixture apply --env staging
 ```
 
 ## File Shape
@@ -92,8 +92,8 @@ For each fixture record, dygo finds an existing Record through `match`. If one e
 Use `--dry-run` to print the plan without writing, and `--yes` to skip the interactive prompt after reviewing the plan:
 
 ```sh
-go run ./cmd/dygo fixture apply --dry-run
-go run ./cmd/dygo fixture apply --yes
+dygo fixture apply --dry-run
+dygo fixture apply --yes
 ```
 
 The command prints:
