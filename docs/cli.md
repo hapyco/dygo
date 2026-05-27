@@ -72,7 +72,6 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 - `dygo hook validate` - Validates hook file conventions, Entity references, duplicate compiled hook IDs when available, generated registrars, and runner wiring.
 - `dygo hook sync` - Updates generated project runner wiring for discovered app hook packages without creating hook files.
 - `dygo hook sync --dry-run` - Prints runner wiring changes without writing.
-- `dygo hook sync --force` - Overwrites dygo-generated runner wiring only; custom runner files still fail.
 
 ## Generate
 

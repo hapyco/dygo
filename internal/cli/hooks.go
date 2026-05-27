@@ -91,7 +91,6 @@ func newHookValidateCommand(stdout io.Writer) *cobra.Command {
 
 func newHookSyncCommand(stdout io.Writer) *cobra.Command {
 	var dryRun bool
-	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "sync",
@@ -116,9 +115,6 @@ func newHookSyncCommand(stdout io.Writer) *cobra.Command {
 				}
 				return nil
 			}
-			// --force is reserved for generated runner rewrites. Custom runner
-			// files still fail in hookgen preflight to avoid hidden user edits.
-			_ = force
 			update, written, err := hookgen.UpdateRunner(root)
 			if err != nil {
 				return fmt.Errorf("sync hooks: %w", err)
@@ -130,7 +126,6 @@ func newHookSyncCommand(stdout io.Writer) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print runner wiring changes without writing")
-	cmd.Flags().BoolVar(&force, "force", false, "overwrite dygo-generated runner wiring")
 	return cmd
 }
 

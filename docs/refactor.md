@@ -374,7 +374,6 @@ TODO:
 - Add `dygo hook validate`.
 - Add `dygo hook sync`.
 - Add `dygo hook sync --dry-run`.
-- Add `dygo hook sync --force`.
 - Make `hook list` show:
   - discovered hook files
   - app/entity ownership
