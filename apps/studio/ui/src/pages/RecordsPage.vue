@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ListFilter, Plus } from '@lucide/vue'
+import { Plus } from '@lucide/vue'
 
 import { ErrorState, Spinner } from '@/design'
 import PageHeader from '@/shell/PageHeader.vue'
@@ -46,15 +46,7 @@ function openRecord(row: Record<string, unknown>) {
 }
 
 const actions = computed<PageHeaderAction[]>(() => {
-  const next: PageHeaderAction[] = [
-    {
-      label: 'Filter',
-      icon: ListFilter,
-      variant: 'secondary',
-      disabled: true,
-    },
-  ]
-
+  const next: PageHeaderAction[] = []
   if (!isSystem.value) {
     next.push({
       label: 'New record',

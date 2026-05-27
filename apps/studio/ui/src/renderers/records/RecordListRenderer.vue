@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowUpDown, PanelRightOpen, Settings2 } from '@lucide/vue'
+import { ArrowUpDown, ListFilter, PanelRightOpen, Settings2 } from '@lucide/vue'
 
 import { IconButton, Select } from '@/design'
 import DataTable from '@/design/organisms/DataTable.vue'
@@ -230,6 +230,10 @@ function createRecord() {
       </template>
 
       <template #right>
+        <IconButton label="Filter" disabled>
+          <ListFilter :size="14" :stroke-width="1.8" aria-hidden="true" />
+        </IconButton>
+
         <DropdownMenu
           label="Columns"
           trigger-type="icon"

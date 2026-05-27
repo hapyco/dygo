@@ -514,13 +514,16 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
   border-spacing: 0;
 }
 
-.data-table th,
-.data-table td {
-  border-bottom: 1px solid var(--studio-border);
+.data-table thead th,
+.data-table tbody td {
   padding: 9px 12px;
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
+}
+
+.data-table thead th {
+  border-bottom: 1px solid var(--studio-border);
 }
 
 .data-table .data-table__select-cell {
@@ -573,6 +576,10 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
   font-size: 13px;
   font-weight: 400;
   line-height: 1.35;
+}
+
+.data-table tbody td {
+  border-bottom: 0;
 }
 
 .data-table tbody tr:hover td {
