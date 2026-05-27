@@ -3,6 +3,12 @@ description: System-wide configuration for dygo runtime and Studio behavior.
 icon: settings-2
 is-single: true
 fields:
+  - name: home
+    label: Home
+    type: text
+    required: true
+    default: /
+
   - name: country
     label: Country
     type: link
