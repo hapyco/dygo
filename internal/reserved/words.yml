@@ -1,6 +1,7 @@
 slugs:
   - api
   - assets
+  - boot
   - health
   - login
   - logout

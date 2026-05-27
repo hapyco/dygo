@@ -34,7 +34,7 @@ fields:
 		{
 			name: "validate",
 			args: []string{"route", "validate"},
-			want: []string{"routes are valid: 7 reserved routes, 1 entity routes, 0 conflicts"},
+			want: []string{"routes are valid: 8 reserved routes, 1 entity routes, 0 conflicts"},
 		},
 		{
 			name: "reserved",

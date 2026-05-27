@@ -212,7 +212,7 @@ func writeAPIResolution(stdout io.Writer, method string, parts []string, routes 
 		switch parts[2] {
 		case "auth":
 			return writeStaticRoute(stdout, "api auth", "authentication endpoint")
-		case "apps", "entities", "platform":
+		case "apps", "boot", "entities", "platform":
 			return writeStaticRoute(stdout, "api metadata", "framework metadata endpoint")
 		}
 	}

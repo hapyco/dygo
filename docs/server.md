@@ -64,9 +64,10 @@ Studio-oriented auth uses an HttpOnly `dygo_session` cookie:
 POST /api/v1/auth/login
 POST /api/v1/auth/logout
 GET  /api/v1/auth/me
+GET  /api/v1/boot
 ```
 
-`POST /api/v1/auth/login` is public. Metadata and Record API routes require a valid session and use the same permission engine. Metadata list endpoints filter unreadable Entities; Record API routes require the relevant Entity action.
+`POST /api/v1/auth/login` is public. Boot, metadata, and Record API routes require a valid session. Metadata and Record APIs use the same permission engine. Metadata list endpoints filter unreadable Entities; Record API routes require the relevant Entity action.
 
 ## Metadata API
 

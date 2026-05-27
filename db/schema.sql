@@ -105,6 +105,7 @@ CREATE TABLE public.configuration (
     country_id bigint,
     language_id bigint,
     currency_id bigint,
+    home text DEFAULT '/'::text NOT NULL,
     CONSTRAINT configuration_single_check CHECK ((name = 'configuration'::text))
 );
 

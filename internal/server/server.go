@@ -14,11 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/hapyco/dygo/internal/auth"
 	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/permissions"
 	"github.com/hapyco/dygo/internal/recordquery"
-	"github.com/go-chi/chi/v5"
+	"github.com/hapyco/dygo/internal/reserved"
 )
 
 const shutdownTimeout = 5 * time.Second
@@ -87,6 +88,7 @@ func NewRouter(options ...Options) http.Handler {
 		registerAuthRoutes(api, opts.Auth)
 		api.Group(func(protected chi.Router) {
 			protected.Use(authMiddleware(opts.Auth))
+			registerBootRoutes(protected, opts.Records)
 			registerPlatformRoutes(protected)
 			registerMetadataRoutes(protected, opts.Metadata, opts.Permissions)
 			registerRecordRoutes(protected, opts.Records, opts.Activity, opts.Permissions)
@@ -424,6 +426,84 @@ func writeAuthError(w http.ResponseWriter, err error) {
 
 type dataEnvelope struct {
 	Data any `json:"data"`
+}
+
+type bootDefaults struct {
+	Home string `json:"home"`
+}
+
+type bootPayload struct {
+	User     auth.User    `json:"user"`
+	Defaults bootDefaults `json:"defaults"`
+}
+
+type bootHandler struct {
+	store RecordStore
+}
+
+func registerBootRoutes(router chi.Router, store RecordStore) {
+	handler := bootHandler{store: store}
+	router.Get("/boot", handler.boot)
+}
+
+func (h bootHandler) boot(w http.ResponseWriter, r *http.Request) {
+	user, ok := CurrentUserFromContext(r.Context())
+	if !ok {
+		writeAuthError(w, auth.Error{Code: auth.ErrorUnauthenticated, Message: "authentication required"})
+		return
+	}
+
+	home, err := h.homeDefault(r.Context())
+	if err != nil {
+		writeRecordError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, dataEnvelope{Data: bootPayload{
+		User:     user,
+		Defaults: bootDefaults{Home: home},
+	}})
+}
+
+func (h bootHandler) homeDefault(ctx context.Context) (string, error) {
+	if h.store == nil {
+		return "/", nil
+	}
+
+	record, err := h.store.GetSingleRecord(ctx, "configuration")
+	if err != nil {
+		var recordErr db.RecordError
+		if errors.As(err, &recordErr) && (recordErr.Code == db.RecordErrorNotFound || recordErr.Code == db.RecordErrorInvalidRequest) {
+			return "/", nil
+		}
+		return "", err
+	}
+
+	return normalizeBootHome(record["home"]), nil
+}
+
+func normalizeBootHome(value any) string {
+	home, ok := value.(string)
+	if !ok {
+		return "/"
+	}
+
+	home = strings.TrimSpace(home)
+	if home == "" || !strings.HasPrefix(home, "/") || strings.HasPrefix(home, "//") {
+		return "/"
+	}
+
+	parsed, err := url.Parse(home)
+	if err != nil || parsed.Scheme != "" || parsed.Host != "" {
+		return "/"
+	}
+
+	firstSegment := strings.Trim(strings.Split(strings.TrimPrefix(parsed.Path, "/"), "/")[0], " ")
+	if firstSegment != "" && reserved.IsSlug(firstSegment) {
+		return "/"
+	}
+
+	return home
 }
 
 type listEnvelope struct {

@@ -57,9 +57,9 @@ function humanize(value: string): string {
 
 <template>
   <nav class="studio-breadcrumbs" aria-label="Breadcrumb">
-    <a class="studio-breadcrumbs__home" href="/" aria-label="Home">
+    <RouterLink class="studio-breadcrumbs__home" :to="{ name: RouteName.Home }" aria-label="Home">
       <Home class="studio-breadcrumbs__home-icon" :size="16" :stroke-width="1.8" aria-hidden="true" />
-    </a>
+    </RouterLink>
     <template v-if="entityCrumb">
       <ChevronRight class="studio-breadcrumbs__separator" :size="14" :stroke-width="1.8" aria-hidden="true" />
       <RouterLink class="studio-breadcrumbs__link" :to="{ name: RouteName.EntityRecords, params: { entity: entitySlug } }">

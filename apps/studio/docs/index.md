@@ -36,4 +36,4 @@ Studio is root-mounted by default. Global pages and record pages both live at ro
 /:entity/:id
 ```
 
-Dynamic Entity route slugs are authenticated. `/login` is public and redirects authenticated users back to `/`. Activity appears inside the Record page.
+Dynamic Entity route slugs are authenticated. `/login` is public and redirects authenticated users back to `/`, which resolves through the boot default `home` route when configured. Activity appears inside the Record page.

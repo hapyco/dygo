@@ -55,7 +55,7 @@ Current routes:
 /:entity/:name
 ```
 
-`/login` is public. The other routes require a valid Studio session.
+`/login` is public. The other routes require a valid Studio session. `/` resolves through the boot default `home` route when configured.
 
 The `:entity` segment is the Entity slug, not the app name plus Entity key. It defaults to the Entity key and can be set with `route.slug` when two apps would otherwise collide.
 

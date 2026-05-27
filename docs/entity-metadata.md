@@ -97,7 +97,7 @@ fields:
 
 The stable internal Entity identity is `{app, key}`. Two apps may define the same Entity key, such as `crm/contact` and `support/contact`.
 
-The user-facing route slug is separate from that internal identity. `route.slug` is optional and defaults to the Entity key. Route slugs must be globally unique across loaded apps and must not use Studio's reserved root slugs: `api`, `assets`, `health`, `login`, `logout`, `me`, or `setup`. dygo fails validation on route slug conflicts instead of generating unstable numeric suffixes. If two apps both define `contact`, set one explicit slug, such as:
+The user-facing route slug is separate from that internal identity. `route.slug` is optional and defaults to the Entity key. Route slugs must be globally unique across loaded apps and must not use Studio's reserved root slugs: `api`, `assets`, `boot`, `health`, `login`, `logout`, `me`, or `setup`. dygo fails validation on route slug conflicts instead of generating unstable numeric suffixes. If two apps both define `contact`, set one explicit slug, such as:
 
 ```yaml
 route:

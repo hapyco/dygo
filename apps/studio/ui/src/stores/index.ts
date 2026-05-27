@@ -1,4 +1,5 @@
 export { useAuthStore } from './auth.store'
+export { useBootStore } from './boot.store'
 export { useMetadataStore } from './metadata.store'
 export { useNavigationStore } from './navigation.store'
 export { usePlatformStore } from './platform.store'

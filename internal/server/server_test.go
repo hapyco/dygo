@@ -554,6 +554,69 @@ func TestAuthRoutes(t *testing.T) {
 	}
 }
 
+func TestBootRoute(t *testing.T) {
+	tests := []struct {
+		name   string
+		store  *fakeRecordStore
+		status int
+		want   string
+	}{
+		{
+			name:   "configured home",
+			store:  &fakeRecordStore{record: db.Record{"home": "/currency"}},
+			status: http.StatusOK,
+			want:   `"home":"/currency"`,
+		},
+		{
+			name:   "default home without store",
+			store:  nil,
+			status: http.StatusOK,
+			want:   `"home":"/"`,
+		},
+		{
+			name:   "reserved home falls back",
+			store:  &fakeRecordStore{record: db.Record{"home": "/boot"}},
+			status: http.StatusOK,
+			want:   `"home":"/"`,
+		},
+		{
+			name:   "schema error returns conflict",
+			store:  &fakeRecordStore{singleErr: db.RecordError{Code: db.RecordErrorSchemaNotReady, Message: "schema is not ready"}},
+			status: http.StatusConflict,
+			want:   `"code":"schema_not_ready"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := authenticatedRequest(http.MethodGet, "/api/v1/boot", "")
+			recorder := httptest.NewRecorder()
+			options := Options{Auth: validFakeAuthStore()}
+			if tt.store != nil {
+				options.Records = tt.store
+			}
+
+			NewRouter(options).ServeHTTP(recorder, request)
+
+			response := recorder.Result()
+			defer response.Body.Close()
+			if response.StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", response.StatusCode, tt.status)
+			}
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("ReadAll(boot body) error = %v", err)
+			}
+			if !contains(string(body), tt.want) {
+				t.Fatalf("body = %s, want %q", string(body), tt.want)
+			}
+			if tt.status == http.StatusOK && !contains(string(body), `"email":"admin@example.com"`) {
+				t.Fatalf("body = %s, want boot user", string(body))
+			}
+		})
+	}
+}
+
 func TestAuthRouteErrors(t *testing.T) {
 	tests := []struct {
 		name   string

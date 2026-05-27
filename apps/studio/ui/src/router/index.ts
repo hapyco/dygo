@@ -5,7 +5,9 @@ import HomePage from '@/pages/HomePage.vue'
 import NotFoundPage from '@/pages/NotFoundPage.vue'
 import RecordFormPage from '@/pages/RecordFormPage.vue'
 import RecordsPage from '@/pages/RecordsPage.vue'
+import type { StudioBoot } from '@/features/boot/boot.api'
 import { useAuthStore } from '@/stores/auth.store'
+import { useBootStore } from '@/stores/boot.store'
 import { pinia } from '@/stores/pinia'
 import { routeParam, RouteName } from './routes'
 
@@ -66,13 +68,26 @@ export const router = createRouter({
 
 router.beforeEach(async (to): Promise<RouteLocationRaw | undefined> => {
   const authStore = useAuthStore(pinia)
+  const bootStore = useBootStore(pinia)
   const user = await authStore.loadCurrentUser()
 
   if (to.meta.redirectIfAuthenticated && user) {
-    return { name: RouteName.Home }
+    const boot = await bootStore.loadBoot()
+    return bootHomeRedirect(boot) ?? { name: RouteName.Home }
+  }
+
+  if (!user) {
+    bootStore.clearBoot()
   }
 
   if (to.meta.public || user) {
+    if (user) {
+      const boot = await bootStore.loadBoot()
+      if (to.name === RouteName.Home) {
+        return bootHomeRedirect(boot)
+      }
+    }
+
     return undefined
   }
 
@@ -81,3 +96,21 @@ router.beforeEach(async (to): Promise<RouteLocationRaw | undefined> => {
     query: { redirect: to.fullPath },
   }
 })
+
+function bootHomeRedirect(boot: StudioBoot | null): RouteLocationRaw | undefined {
+  const home = normalizeBootHome(boot?.defaults.home)
+  return home === '/' ? undefined : home
+}
+
+function normalizeBootHome(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '/'
+  }
+
+  const home = value.trim()
+  if (home === '' || !home.startsWith('/') || home.startsWith('//')) {
+    return '/'
+  }
+
+  return home
+}
