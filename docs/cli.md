@@ -174,28 +174,6 @@ curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh
 dygo upgrade
 ```
 
-## Removal And Replacement Notes
-
-- Remove `dygo schema` - Prune moves to `dygo db prune`, and schema snapshot checking moves into `dygo doctor`.
-- Replace `dygo schema prune` with `dygo db prune` - Prune is a database cleanup action; help text should clarify that it removes metadata-orphaned schema objects.
-- Replace `dygo migrate` with `dygo db migrate` - Metadata schema sync is a database operation and belongs under the database command group.
-- Replace `dygo migrate plan` with `dygo db migrate --dry-run` - Planning is the same migration workflow in preview mode, not a separate command group.
-- Remove `dygo db prepare` - It only combines `dygo db create` and metadata sync; the explicit flow is clearer.
-- Remove `dygo setup admin` - First-run setup should live behind `dygo setup`; the future path is a UI wizard rather than many setup subcommands.
-- Remove public `dygo db schema` commands - `dygo db migrate` and `dygo db prune` refresh `db/schema.sql`, and `dygo doctor` should report whether the schema snapshot is missing or out of date.
-- Remove public `dygo db schema dump` - Manual dumping can hide drift by making the snapshot match an unintended database state.
-- Remove public `dygo patch` commands - Patches are part of the `dygo db migrate` workflow. Add direct patch controls later only if debugging or recovery needs a lower-level expert command.
-- Replace plural command groups with singular command groups - `dygo apps` becomes `dygo app`, `dygo entities` becomes `dygo entity`, `dygo fixtures` becomes `dygo fixture`, `dygo hooks` becomes `dygo hook`, and `dygo secrets` becomes `dygo secret`.
-- Replace `dygo hooks generate <app> <entity>` with `dygo generate hook <app>/<entity>` - Source scaffolding belongs under `dygo generate`, and app/entity targets use slash identity.
-- Use `dygo generate` as the home for source scaffolding - Avoid per-resource `generate` subcommands such as `dygo hook generate`.
-- Do not add `dygo generate resource` - `dygo generate entity` owns the standard Entity bundle.
-- Keep explicit `dygo fixture` commands - `dygo db migrate` applies fixtures during the normal app-state workflow, while `dygo fixture apply`, `validate`, and `export` support app-author tooling and debugging.
-- Remove `dygo upgrade --cli-only` - Binary updates are handled out of band through installer, package manager, or Go toolchain.
-- Remove `dygo upgrade --install-dir` - Install location belongs to the installer, not the project upgrade command.
-- Remove `dygo upgrade --project-only` - `dygo upgrade` is project-only by definition.
-- Remove `dygo secret init --force` - Key replacement belongs to `dygo secret rotate-key`; init should only create missing secret infrastructure.
-- Move `dygo serve --studio-dev-url` to `dygo dev` if the override is still needed - Studio/Vite proxying is local development orchestration, not runtime serving.
-
 ## Environment Safety Rule
 
 - `--env` defaults to `development`.
