@@ -1,8 +1,8 @@
 # Dygo Todo
 
-Use this as the bidirectional sync between local tasks and GitHub issues. Unchecked items are open issues. Checked items are completed locally and closed on GitHub. If a task appears here and not on GitHub, create the issue. If an issue exists on GitHub and not here, add it here. GitHub Project statuses are no longer used.
+Use this as a flat local staging list. Track progress with Markdown checkboxes; when we sync to GitHub later, create/update the matching issues and remove synced checked items from this file.
 
-Source: live GitHub issues for `hapyco/dygo` on 2026-05-29.
+Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 
 ## Open issues
 
@@ -67,10 +67,10 @@ Source: live GitHub issues for `hapyco/dygo` on 2026-05-29.
 - [ ] #171 Support environment-oriented fixtures
 - [ ] #176 Add dygo repair for generated project artifacts
 - [ ] #179 Add Core Preference entity for per-user UI and app state
-- [ ] #181 Add Studio record page sidebar
 - [ ] #182 Polish Studio page header shell
 - [ ] #183 Polish Studio toolbar shell
 - [ ] #184 Polish Studio sidebar shell
+- [ ] Polish Studio record list sidebar and activity rail
 - [ ] #185 Add Studio record-list request race protection
 - [ ] #186 Add Studio clear-filters action
 - [ ] #187 Add typed Studio filter value controls
@@ -83,3 +83,4 @@ Source: live GitHub issues for `hapyco/dygo` on 2026-05-29.
 - [x] #117 Add Studio Record filtering UI and query sync
 - [x] #178 Add Studio user-menu Reload action
 - [x] #180 Add Studio record list sort toolbar control
+- [x] #181 Add Studio record page sidebar

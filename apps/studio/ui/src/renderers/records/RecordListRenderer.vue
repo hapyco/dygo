@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, ArrowUp, Check, FunnelPlus, PanelRightOpen, Settings2, X } from '@lucide/vue'
+import { ArrowDown, ArrowUp, Check, FunnelPlus, MessageSquare, PanelRightClose, PanelRightOpen, Settings2, X } from '@lucide/vue'
 import {
   PopoverContent,
   PopoverPortal,
@@ -42,16 +42,18 @@ const recordsStore = useRecordsStore()
 const platformStore = usePlatformStore()
 const route = useRoute()
 const router = useRouter()
+const ID_SEARCH_DEBOUNCE_MS = 700
+const LIST_SIDEBAR_STORAGE_KEY = 'dygo.studio.records.listSidebarOpen'
 const hiddenColumnKeys = ref<string[]>([])
 const idSearch = ref('')
 const filterTokens = ref<ActiveRecordFilter[]>([])
 const viewOptionsOpen = ref(false)
+const listSidebarOpen = ref(readListSidebarOpen())
 let nextFilterTokenId = 1
 let currentEntity = ''
 let idSearchDebounce: ReturnType<typeof setTimeout> | undefined
 let keepViewOptionsOpenTimer: ReturnType<typeof setTimeout> | undefined
 let suppressViewOptionsClose = false
-const ID_SEARCH_DEBOUNCE_MS = 700
 
 type ActiveRecordFilter = {
   id: number
@@ -187,6 +189,12 @@ function updateSelectedRowKeys(value: DataTableRowKey[]) {
 
 function updateSort(value: DataTableSort | null) {
   replaceRecordListRoute(appliedRecordFilters(), value)
+}
+
+function toggleListSidebar() {
+  const nextOpen = !listSidebarOpen.value
+  listSidebarOpen.value = nextOpen
+  writeListSidebarOpen(nextOpen)
 }
 
 function updateViewOptionsOpen(value: boolean) {
@@ -367,6 +375,22 @@ function writeHiddenColumnKeys(entity: string, keys: string[]) {
   }
 
   window.localStorage.setItem(hiddenColumnStorageKey(entity), JSON.stringify(keys.filter((key) => key !== 'name')))
+}
+
+function readListSidebarOpen(): boolean {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  return window.localStorage.getItem(LIST_SIDEBAR_STORAGE_KEY) === 'true'
+}
+
+function writeListSidebarOpen(open: boolean) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(LIST_SIDEBAR_STORAGE_KEY, open ? 'true' : 'false')
 }
 
 function createRecord() {
@@ -634,6 +658,82 @@ function queryValues(value: unknown): string[] {
 
   return [String(value)]
 }
+
+function updatedAtAge(row: Record<string, unknown>): string {
+  const date = recordDate(row['updated-at'])
+  if (!date) {
+    return '-'
+  }
+
+  const elapsedMs = Math.max(0, Date.now() - date.getTime())
+  const elapsedMinutes = Math.floor(elapsedMs / 60_000)
+  if (elapsedMinutes < 1) {
+    return 'now'
+  }
+
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes}m`
+  }
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60)
+  if (elapsedHours < 24) {
+    return `${elapsedHours}h`
+  }
+
+  const elapsedDays = Math.floor(elapsedHours / 24)
+  if (elapsedDays < 7) {
+    return `${elapsedDays}d`
+  }
+
+  const elapsedWeeks = Math.floor(elapsedDays / 7)
+  if (elapsedWeeks < 8) {
+    return `${elapsedWeeks}w`
+  }
+
+  if (elapsedDays < 365) {
+    return `${Math.max(2, Math.round(elapsedDays / 30))}mo`
+  }
+
+  return `${Math.floor(elapsedDays / 365)}y`
+}
+
+function updatedAtISO(row: Record<string, unknown>): string | undefined {
+  return recordDate(row['updated-at'])?.toISOString()
+}
+
+function updatedAtTitle(row: Record<string, unknown>): string | undefined {
+  const date = recordDate(row['updated-at'])
+  if (!date) {
+    return undefined
+  }
+
+  return [
+    date.getFullYear(),
+    padDatePart(date.getMonth() + 1),
+    padDatePart(date.getDate()),
+  ].join('-') + ' ' + [
+    padDatePart(date.getHours()),
+    padDatePart(date.getMinutes()),
+    padDatePart(date.getSeconds()),
+  ].join(':')
+}
+
+function recordDate(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value
+  }
+
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return null
+  }
+
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function padDatePart(value: number): string {
+  return String(value).padStart(2, '0')
+}
 </script>
 
 <template>
@@ -818,38 +918,78 @@ function queryValues(value: unknown): string[] {
           </PopoverPortal>
         </PopoverRoot>
 
-        <IconButton label="Sidebar" disabled>
-          <PanelRightOpen :size="14" :stroke-width="1.8" aria-hidden="true" />
+        <IconButton
+          :label="listSidebarOpen ? 'Hide sidebar' : 'Show sidebar'"
+          :variant="listSidebarOpen ? 'secondary' : 'ghost'"
+          :aria-pressed="listSidebarOpen ? 'true' : 'false'"
+          @click="toggleListSidebar"
+        >
+          <PanelRightClose
+            v-if="listSidebarOpen"
+            :size="14"
+            :stroke-width="1.8"
+            aria-hidden="true"
+          />
+          <PanelRightOpen
+            v-else
+            :size="14"
+            :stroke-width="1.8"
+            aria-hidden="true"
+          />
         </IconButton>
       </template>
     </PageToolbar>
 
-    <DataTable
-      :columns="visibleColumns"
-      :rows="recordState.rows"
-      :state="tableState"
-      :state-title="tableStateTitle"
-      :state-message="tableStateMessage"
-      :loading="loading"
-      :loading-more="recordState.loadingMore"
-      :error="error"
-      :footer-error="footerError"
-      :page-size="recordState.pageSize"
-      :page-size-options="pageSizeOptions"
-      :total-rows="recordState.total"
-      :has-more="hasMore"
-      :sort="recordState.sort"
-      selectable
-      :selected-row-keys="recordState.selectedRowKeys"
-      :empty-action-label="readOnly ? '' : 'Add first record'"
-      row-activatable
-      @update:page-size="updatePageSize"
-      @update:selected-row-keys="updateSelectedRowKeys"
-      @update:sort="updateSort"
-      @row-activate="(row) => emit('open-record', row)"
-      @load-more="recordsStore.loadMore(props.entity)"
-      @empty-action="createRecord"
-    />
+    <div class="record-list-renderer__content" :data-sidebar-open="listSidebarOpen ? '' : undefined">
+      <DataTable
+        :columns="visibleColumns"
+        :rows="recordState.rows"
+        :state="tableState"
+        :state-title="tableStateTitle"
+        :state-message="tableStateMessage"
+        :loading="loading"
+        :loading-more="recordState.loadingMore"
+        :error="error"
+        :footer-error="footerError"
+        :page-size="recordState.pageSize"
+        :page-size-options="pageSizeOptions"
+        :total-rows="recordState.total"
+        :has-more="hasMore"
+        :sort="recordState.sort"
+        selectable
+        :selected-row-keys="recordState.selectedRowKeys"
+        :empty-action-label="readOnly ? '' : 'Add first record'"
+        row-activatable
+        @update:page-size="updatePageSize"
+        @update:selected-row-keys="updateSelectedRowKeys"
+        @update:sort="updateSort"
+        @row-activate="(row) => emit('open-record', row)"
+        @load-more="recordsStore.loadMore(props.entity)"
+        @empty-action="createRecord"
+      >
+        <template #row-side="{ row }">
+          <div class="record-list-renderer__activity-rail-item">
+            <time
+              class="record-list-renderer__activity-age"
+              :datetime="updatedAtISO(row)"
+              :title="updatedAtTitle(row)"
+            >
+              {{ updatedAtAge(row) }}
+            </time>
+            <span class="record-list-renderer__comment-count" aria-label="0 comments">
+              <MessageSquare :size="13" :stroke-width="1.8" aria-hidden="true" />
+              <span>0</span>
+            </span>
+          </div>
+        </template>
+      </DataTable>
+
+      <aside
+        v-if="listSidebarOpen"
+        class="record-list-renderer__sidebar"
+        aria-label="Record list sidebar"
+      />
+    </div>
   </section>
 </template>
 
@@ -864,6 +1004,52 @@ function queryValues(value: unknown): string[] {
 
 .record-list-renderer :deep(.data-table) {
   flex: 1 1 auto;
+}
+
+.record-list-renderer__content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.record-list-renderer__content :deep(.data-table) {
+  min-width: 0;
+}
+
+.record-list-renderer__sidebar {
+  width: 312px;
+  flex: 0 0 312px;
+  border-left: 1px solid var(--studio-border);
+  background: var(--studio-surface);
+}
+
+.record-list-renderer__activity-rail-item {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  color: var(--studio-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.record-list-renderer__activity-age {
+  min-width: 28px;
+  color: var(--studio-text-muted);
+  font: inherit;
+  text-align: right;
+}
+
+.record-list-renderer__comment-count {
+  display: inline-flex;
+  min-width: 28px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  color: var(--studio-text-subtle);
 }
 
 .record-list-renderer__name-search {

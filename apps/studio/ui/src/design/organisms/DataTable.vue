@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useSlots } from 'vue'
 import { AlertCircle, ArrowDown, ArrowUp, Inbox, LockKeyhole, LogIn, Plus } from '@lucide/vue'
 
 import Button from '@/design/atoms/Button.vue'
@@ -72,6 +72,7 @@ const emit = defineEmits<{
   loadMore: []
   emptyAction: []
 }>()
+const slots = useSlots()
 
 const pageSizeControlOptions = computed<SegmentedControlOption[]>(() => (
   props.pageSizeOptions.map((option) => ({
@@ -145,6 +146,7 @@ const isBlockingState = computed(() => (
 const showFooter = computed(() => props.rows.length > 0 && !isBlockingState.value)
 const selectedRowCount = computed(() => props.selectedRowKeys.length)
 const showBulkBar = computed(() => props.selectable && selectedRowCount.value > 0 && !isBlockingState.value)
+const hasSideRail = computed(() => Boolean(slots['row-side']))
 const selectedRowCountText = computed(() => (
   selectedRowCount.value === 1 ? '1 record selected' : `${selectedRowCount.value} records selected`
 ))
@@ -419,6 +421,26 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
             </tr>
           </tbody>
         </table>
+
+      </div>
+
+      <div v-if="hasSideRail" class="data-table__side-rail" aria-label="Activity">
+        <div class="data-table__side-rail-header">
+          <span class="data-table__visually-hidden">Activity</span>
+        </div>
+        <div
+          v-for="(row, index) in rows"
+          :key="rowIdentifier(row, index)"
+          class="data-table__side-rail-row"
+          :class="{ 'data-table__side-rail-row--selected': selectable && selectedRowKeySet.has(rowIdentifier(row, index)) }"
+        >
+          <slot
+            name="row-side"
+            :row="row"
+            :index="index"
+            :row-key="rowIdentifier(row, index)"
+          />
+        </div>
       </div>
     </div>
 
@@ -483,10 +505,12 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
 }
 
 .data-table__scroller {
+  display: grid;
   min-width: 0;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  position: relative;
   scrollbar-color: oklch(0.58 0.018 246 / 0.3) transparent;
   scrollbar-width: thin;
 }
@@ -496,6 +520,7 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
 }
 
 .data-table__x-scroller {
+  grid-area: 1 / 1;
   min-width: 0;
   overflow-x: auto;
   overflow-y: visible;
@@ -519,6 +544,18 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
   padding: 9px 12px;
   text-align: left;
   vertical-align: middle;
+  white-space: nowrap;
+}
+
+.data-table__visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  margin: -1px;
   white-space: nowrap;
 }
 
@@ -604,6 +641,43 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
 
 .data-table__row--selected:hover td {
   background: oklch(0.941 0.034 248);
+}
+
+.data-table__side-rail {
+  display: grid;
+  grid-area: 1 / 1;
+  width: 116px;
+  justify-self: end;
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  align-self: start;
+  box-shadow: -1px 0 0 var(--studio-border);
+  pointer-events: none;
+}
+
+.data-table__side-rail-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 35px;
+  border-bottom: 1px solid var(--studio-border);
+  background: var(--studio-surface);
+}
+
+.data-table__side-rail-row {
+  display: flex;
+  min-height: 35.55px;
+  align-items: center;
+  justify-content: flex-end;
+  background: var(--studio-surface);
+  color: var(--studio-text-muted);
+  padding: 9px 12px 9px 8px;
+}
+
+.data-table__side-rail-row--selected {
+  background: var(--studio-accent-soft);
+  color: var(--studio-text);
 }
 
 .data-table__state {
