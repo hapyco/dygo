@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowUpDown, Check, FunnelPlus, PanelRightOpen, Settings2, X } from '@lucide/vue'
+import { Check, FunnelPlus, PanelRightOpen, Settings2, X } from '@lucide/vue'
 
 import { IconButton, Input } from '@/design'
 import DataTable from '@/design/organisms/DataTable.vue'
@@ -689,10 +689,6 @@ function queryValues(value: unknown): string[] {
             <Settings2 :size="14" :stroke-width="1.8" aria-hidden="true" />
           </template>
         </DropdownMenu>
-
-        <IconButton label="Sort" disabled>
-          <ArrowUpDown :size="14" :stroke-width="1.8" aria-hidden="true" />
-        </IconButton>
 
         <IconButton label="Sidebar" disabled>
           <PanelRightOpen :size="14" :stroke-width="1.8" aria-hidden="true" />

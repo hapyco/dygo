@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-O%27Saasy-blue)](LICENSE)
 [![Status](https://img.shields.io/badge/status-early%20framework%20development-f2cc60)](https://github.com/hapyco/dygo/commits/develop)
 [![Contributions](https://img.shields.io/badge/contributions-paused-lightgrey)](CONTRIBUTING.md)
-[![Roadmap](https://img.shields.io/badge/roadmap-GitHub%20Projects-6f42c1)](https://github.com/orgs/hapyco/projects/3/views/1)
+[![Issues](https://img.shields.io/badge/issues-GitHub-2ea44f)](https://github.com/hapyco/dygo/issues)
 
 dygo is a source-available framework for building serious business software in Go.
 
@@ -129,10 +129,10 @@ docs/              framework documentation
 - [Encrypted Secrets](docs/secrets.md)
 - [Contributing](CONTRIBUTING.md)
 
-## Roadmap
+## Issues
 
-Roadmap work is tracked in GitHub Projects:
+Open issue tracking lives in the GitHub issue list:
 
-- [dygo Roadmap](https://github.com/orgs/hapyco/projects/3/views/1)
+- [dygo issues](https://github.com/hapyco/dygo/issues)
 
-Repository/project metadata for maintainers and agents lives in [config/github.yml](config/github.yml).
+Repository and issue-tracking metadata for maintainers and agents lives in [config/github.yml](config/github.yml).
