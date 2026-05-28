@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowUpDown, ListFilter, PanelRightOpen, Settings2 } from '@lucide/vue'
+import { ArrowUpDown, FunnelPlus, PanelRightOpen, Settings2, X } from '@lucide/vue'
 
 import { IconButton, Select } from '@/design'
 import DataTable from '@/design/organisms/DataTable.vue'
@@ -31,6 +31,8 @@ const hiddenColumnKeys = ref<string[]>([])
 // TODO: Replace these placeholder toolbar controls with metadata-backed list preferences.
 const toolbarView = ref('default')
 const toolbarScope = ref('all')
+const dummyFilters = ref<{ id: number; field: string }[]>([])
+let nextDummyFilterId = 1
 
 const columns = computed(() => buildRecordListColumns(props.fields, props.systemFields ?? []))
 const pageSizeOptions = computed(() => platformStore.recordListPolicy?.['page-sizes'] ?? [])
@@ -42,6 +44,23 @@ const toolbarScopeOptions: FieldOption[] = [
   { value: 'all', label: 'All' },
   { value: 'mine', label: 'Mine' },
 ]
+const filterableFields = computed(() => (
+  [...props.fields, ...(props.systemFields ?? [])].filter(isFilterableField)
+))
+const filterFieldMenuItems = computed<DropdownMenuItem[]>(() => {
+  if (filterableFields.value.length === 0) {
+    return [{ type: 'item', key: 'empty', label: 'No filterable fields', disabled: true }]
+  }
+
+  return [
+    { type: 'label', key: 'filter-fields-label', label: 'Fields' },
+    ...filterableFields.value.map((field) => ({
+      type: 'item' as const,
+      key: field.name,
+      label: field.label || field.name,
+    })),
+  ]
+})
 const hiddenColumnKeySet = computed(() => new Set(hiddenColumnKeys.value.filter((key) => key !== 'name')))
 const visibleColumns = computed(() => columns.value.filter((column) => (
   column.key === 'name' || !hiddenColumnKeySet.value.has(column.key)
@@ -144,6 +163,22 @@ function updateSort(value: DataTableSort | null) {
   void recordsStore.setSort(props.entity, value)
 }
 
+function selectFilterField(key: string) {
+  if (!filterableFields.value.some((field) => field.name === key)) {
+    return
+  }
+
+  dummyFilters.value = [
+    ...dummyFilters.value,
+    { id: nextDummyFilterId, field: key },
+  ]
+  nextDummyFilterId += 1
+}
+
+function removeDummyFilter(id: number) {
+  dummyFilters.value = dummyFilters.value.filter((filter) => filter.id !== id)
+}
+
 function selectColumnMenuItem(key: string) {
   if (key === 'show-all') {
     hiddenColumnKeys.value = []
@@ -206,34 +241,105 @@ function createRecord() {
   }
   emit('create-record')
 }
+
+function isFilterableField(field: MetadataField): boolean {
+  if (!field.listable || field['write-only']) {
+    return false
+  }
+
+  return !['collection', 'json', 'password'].includes(field.type)
+}
+
+function dummyValueForFilterField(field: MetadataField): string {
+  switch (field.type) {
+    case 'boolean':
+      return 'true'
+    case 'datetime':
+      return 'today'
+    case 'link':
+      return 'core.record'
+    default:
+      return field.name === 'type' ? 'text' : 'value'
+  }
+}
+
+function dummyFilterFieldMeta(fieldName: string): MetadataField | null {
+  return filterableFields.value.find((field) => field.name === fieldName) ?? null
+}
+
+function dummyFilterLabel(fieldName: string): string {
+  const field = dummyFilterFieldMeta(fieldName)
+  return field?.label || field?.name || 'Field'
+}
+
+function dummyFilterValue(fieldName: string): string {
+  const field = dummyFilterFieldMeta(fieldName)
+  return field ? dummyValueForFilterField(field) : 'value'
+}
 </script>
 
 <template>
   <section class="record-list-renderer" aria-label="Record list view">
     <PageToolbar v-if="showToolbar">
       <template #left>
-        <Select
-          class="record-list-renderer__toolbar-select"
-          :model-value="toolbarView"
-          :options="toolbarViewOptions"
-          aria-label="View preset"
-          @update:model-value="toolbarView = $event"
-        />
+        <div class="record-list-renderer__toolbar-select">
+          <Select
+            :model-value="toolbarView"
+            :options="toolbarViewOptions"
+            aria-label="View preset"
+            @update:model-value="toolbarView = $event"
+          />
+        </div>
 
-        <Select
-          class="record-list-renderer__toolbar-select"
-          :model-value="toolbarScope"
-          :options="toolbarScopeOptions"
-          aria-label="Scope preset"
-          @update:model-value="toolbarScope = $event"
-        />
+        <div class="record-list-renderer__toolbar-select">
+          <Select
+            :model-value="toolbarScope"
+            :options="toolbarScopeOptions"
+            aria-label="Scope preset"
+            @update:model-value="toolbarScope = $event"
+          />
+        </div>
+
+        <div class="record-list-renderer__filter-controls">
+          <div
+            v-for="filter in dummyFilters"
+            :key="filter.id"
+            class="record-list-renderer__filter-token"
+            aria-label="Dummy active filter"
+          >
+            <button class="record-list-renderer__filter-segment record-list-renderer__filter-segment--field" type="button">
+              {{ dummyFilterLabel(filter.field) }}
+            </button>
+            <button class="record-list-renderer__filter-segment record-list-renderer__filter-segment--operator" type="button">
+              is
+            </button>
+            <button class="record-list-renderer__filter-segment record-list-renderer__filter-segment--value" type="button">
+              {{ dummyFilterValue(filter.field) }}
+            </button>
+            <button
+              class="record-list-renderer__filter-remove"
+              type="button"
+              aria-label="Remove dummy filter"
+              @click="removeDummyFilter(filter.id)"
+            >
+              <X :size="13" :stroke-width="2" aria-hidden="true" />
+            </button>
+          </div>
+
+          <DropdownMenu
+            label="Add filter"
+            trigger-type="icon"
+            :items="filterFieldMenuItems"
+            @select="selectFilterField"
+          >
+            <template #trigger>
+              <FunnelPlus :size="14" :stroke-width="1.8" aria-hidden="true" />
+            </template>
+          </DropdownMenu>
+        </div>
       </template>
 
       <template #right>
-        <IconButton label="Filter" disabled>
-          <ListFilter :size="14" :stroke-width="1.8" aria-hidden="true" />
-        </IconButton>
-
         <DropdownMenu
           label="Columns"
           trigger-type="icon"
@@ -299,7 +405,85 @@ function createRecord() {
 }
 
 .record-list-renderer__toolbar-select {
-  width: 108px;
+  width: 96px;
+  flex: 0 0 96px;
   min-width: 0;
+}
+
+.record-list-renderer__filter-controls {
+  display: flex;
+  flex: 1 1 240px;
+  flex-wrap: wrap;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.record-list-renderer__filter-token {
+  display: inline-flex;
+  max-width: min(320px, 52vw);
+  height: var(--studio-control-height-xs);
+  min-width: 0;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-control-bg);
+  box-shadow: var(--studio-shadow-control);
+}
+
+.record-list-renderer__filter-segment,
+.record-list-renderer__filter-remove {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  border: 0;
+  border-right: 1px solid var(--studio-border);
+  background: transparent;
+  color: var(--studio-text-muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.record-list-renderer__filter-segment {
+  max-width: 120px;
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-list-renderer__filter-segment--field {
+  color: var(--studio-text);
+  font-weight: 500;
+}
+
+.record-list-renderer__filter-segment--operator {
+  color: var(--studio-text-subtle);
+}
+
+.record-list-renderer__filter-segment--value {
+  background: var(--studio-surface);
+  color: var(--studio-text);
+}
+
+.record-list-renderer__filter-remove {
+  width: var(--studio-control-height-xs);
+  flex: 0 0 auto;
+  justify-content: center;
+  border-right: 0;
+}
+
+.record-list-renderer__filter-segment:hover,
+.record-list-renderer__filter-remove:hover {
+  background: var(--studio-surface-raised);
+  color: var(--studio-text);
+}
+
+.record-list-renderer__filter-segment:focus-visible,
+.record-list-renderer__filter-remove:focus-visible {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: -2px;
 }
 </style>

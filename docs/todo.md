@@ -51,6 +51,9 @@ Source: seeded from live GitHub Project 3 (Dygo 1.0) on 2026-05-27.
 - [ ] #126 Design page-specific Studio toolbars: Design how Studio page toolbars adapt across page types.
 - [ ] #127 Design global Studio page tabs: Introduce a tab-like structure that lets users switch between open page sheets through global Studio tabs.
 - [ ] #128 Design page-specific Studio sidebars: Design how Studio pages can provide contextual sidebars without conflicting with the global navigation sidebar.
+- [ ] Polish Studio page header shell: Tighten the page header spacing, hierarchy, and action layout so it reads like a lighter app shell instead of a boxed header.
+- [ ] Polish Studio toolbar shell: Refine the shared form/page toolbar spacing, alignment, controls, and visual weight so the toolbar feels consistent across page types.
+- [ ] Polish Studio sidebar shell: Refine the shell sidebar spacing, section hierarchy, active state treatment, and density so navigation feels closer to the target reference.
 - [ ] #130 Define Record rename and system name behavior: Decide and implement how existing Records handle name changes.
 - [ ] #131 Add Studio form validation and field error mapping: Improve the Studio record form error path so validation failures land on the right fields instead of only showing a page-level save error.
 - [ ] #133 Add Record tagging foundation: Add first-party tagging so users and apps can attach reusable tags to Records across Entities.

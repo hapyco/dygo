@@ -530,6 +530,7 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
   width: 38px;
   padding-left: 12px;
   padding-right: 6px;
+  line-height: 0;
 }
 
 .data-table th {

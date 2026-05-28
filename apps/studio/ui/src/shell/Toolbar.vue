@@ -39,9 +39,9 @@ function slotHasContent(name: 'left' | 'default' | 'right'): boolean {
   display: grid;
   min-width: 0;
   min-height: 40px;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px 10px;
   padding: 8px 12px;
 }
 
@@ -55,14 +55,20 @@ function slotHasContent(name: 'left' | 'default' | 'right'): boolean {
 }
 
 .studio-toolbar__left {
-  justify-self: start;
+  width: 100%;
+  flex-wrap: wrap;
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .studio-toolbar__center {
-  justify-self: start;
+  grid-column: 1 / -1;
+  grid-row: 2;
 }
 
 .studio-toolbar__right {
+  grid-column: 2;
+  grid-row: 1;
   justify-self: end;
 }
 
@@ -74,6 +80,9 @@ function slotHasContent(name: 'left' | 'default' | 'right'): boolean {
   .studio-toolbar__left,
   .studio-toolbar__center,
   .studio-toolbar__right {
+    width: 100%;
+    grid-column: 1;
+    grid-row: auto;
     justify-self: stretch;
   }
 }

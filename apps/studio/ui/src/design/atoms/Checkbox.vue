@@ -55,11 +55,14 @@ defineEmits<{
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   border: 1px solid var(--studio-border-strong);
   border-radius: 5px;
   background: var(--studio-control-bg);
   color: oklch(0.99 0.004 246);
   box-shadow: var(--studio-shadow-control);
+  line-height: 0;
+  vertical-align: middle;
   transition:
     background-color 160ms ease,
     border-color 160ms ease,
