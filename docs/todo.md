@@ -38,10 +38,11 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #121 Harden Studio dev proxy lifecycle
 - [ ] #122 Code-split Studio UI bundle
 - [ ] #124 Add Studio typed record cell renderers
-- [ ] #125 Build Studio command palette actions and search
 - [ ] #126 Design page-specific Studio toolbars
 - [ ] #127 Design global Studio page tabs
 - [ ] #128 Design page-specific Studio sidebars
+- [ ] Polish Studio command palette interactions and visual details
+- [ ] Add Studio command palette v2 with contextual actions and record search
 - [ ] Add Studio multi-tab navigation support
 - [ ] Add pinned section to Studio sidebar
 - [ ] #130 Define Record rename and system name behavior
@@ -89,3 +90,4 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [x] #178 Add Studio user-menu Reload action
 - [x] #180 Add Studio record list sort toolbar control
 - [x] #181 Add Studio record page sidebar
+- [x] #125 Build Studio command palette actions and search
