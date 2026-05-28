@@ -824,7 +824,7 @@ func TestRecordListRouteParsesFiltersAndSort(t *testing.T) {
 	store := &fakeRecordStore{
 		list: db.RecordListResult{Records: []db.Record{}, Limit: 25, Offset: 5},
 	}
-	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user?status=Open&enabled=true&sort=-created-at,name&limit=25&offset=5", "")
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user?status:eq=Open&enabled:eq=true&sort=-created-at,name&limit=25&offset=5", "")
 	recorder := httptest.NewRecorder()
 
 	NewRouter(Options{Auth: validFakeAuthStore(), Records: store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
@@ -837,7 +837,7 @@ func TestRecordListRouteParsesFiltersAndSort(t *testing.T) {
 	if store.listParams.Limit != 25 || store.listParams.Offset != 5 {
 		t.Fatalf("list params pagination = %+v, want limit 25 offset 5", store.listParams)
 	}
-	wantFilters := []db.RecordFilter{{Field: "enabled", Value: "true"}, {Field: "status", Value: "Open"}}
+	wantFilters := []db.RecordFilter{{Field: "enabled", Operator: "eq", Value: "true"}, {Field: "status", Operator: "eq", Value: "Open"}}
 	if !reflect.DeepEqual(store.listParams.Filters, wantFilters) {
 		t.Fatalf("list filters = %#v, want %#v", store.listParams.Filters, wantFilters)
 	}
@@ -847,9 +847,9 @@ func TestRecordListRouteParsesFiltersAndSort(t *testing.T) {
 	}
 }
 
-func TestRecordListRouteRejectsDuplicateFilter(t *testing.T) {
+func TestRecordListRouteRejectsLegacyExactFilter(t *testing.T) {
 	store := &fakeRecordStore{}
-	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user?email=a@example.com&email=b@example.com", "")
+	request := authenticatedRequest(http.MethodGet, "/api/v1/records/user?email=a@example.com", "")
 	recorder := httptest.NewRecorder()
 
 	NewRouter(Options{Auth: validFakeAuthStore(), Records: store, Permissions: &fakePermissionChecker{}}).ServeHTTP(recorder, request)
@@ -857,7 +857,7 @@ func TestRecordListRouteRejectsDuplicateFilter(t *testing.T) {
 	response := recorder.Result()
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusBadRequest {
-		t.Fatalf("duplicate filter status = %d, want 400", response.StatusCode)
+		t.Fatalf("legacy exact filter status = %d, want 400", response.StatusCode)
 	}
 	if len(store.calls) != 0 {
 		t.Fatalf("record store calls = %v, want none", store.calls)

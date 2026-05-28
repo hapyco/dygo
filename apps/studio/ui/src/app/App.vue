@@ -18,7 +18,8 @@ const navigationStore = useNavigationStore()
 const platformStore = usePlatformStore()
 
 const usesShell = computed(() => !route.meta.public)
-const routeViewKey = computed(() => `${route.fullPath}:${navigationStore.routeReloadVersion}`)
+const publicRouteViewKey = computed(() => `${route.fullPath}:${navigationStore.routeReloadVersion}`)
+const shellRouteViewKey = computed(() => `${route.path}:${navigationStore.routeReloadVersion}`)
 const currentEntity = computed(() => {
   const value = route.params.entity
   if (typeof value !== 'string' && !Array.isArray(value)) {
@@ -103,7 +104,7 @@ function humanizeEntity(value: string): string {
 </script>
 
 <template>
-  <RouterView v-if="!usesShell" :key="routeViewKey" />
+  <RouterView v-if="!usesShell" :key="publicRouteViewKey" />
   <Shell v-else :user-name="userName" :nav-items="navItems">
     <template #sidebar>
       <div v-if="metadataStore.entitiesStatus === 'loading'" class="studio-entity-nav-state">
@@ -117,7 +118,7 @@ function humanizeEntity(value: string): string {
       </div>
     </template>
 
-    <RouterView :key="routeViewKey" />
+    <RouterView :key="shellRouteViewKey" />
   </Shell>
 </template>
 

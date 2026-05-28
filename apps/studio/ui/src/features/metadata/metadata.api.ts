@@ -27,6 +27,12 @@ export type MetadataNaming = {
   format?: string
 }
 
+export type MetadataFilterOperator = {
+  key: string
+  label: string
+  arity: 'none' | 'one' | 'range'
+}
+
 export type MetadataField = {
   name: string
   label: string
@@ -42,6 +48,9 @@ export type MetadataField = {
   studio: {
     editor: string
     display: string
+  }
+  filter: {
+    operators: MetadataFilterOperator[]
   }
   default?: unknown
   check?: unknown

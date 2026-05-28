@@ -37,18 +37,18 @@ func TestListPolicy(t *testing.T) {
 
 func TestFromValues(t *testing.T) {
 	values := url.Values{
-		"limit":   {"25"},
-		"offset":  {"5"},
-		"status":  {"Open"},
-		"enabled": {"true"},
-		"sort":    {"-created-at,name"},
+		"limit":      {"25"},
+		"offset":     {"5"},
+		"status:eq":  {"Open"},
+		"enabled:eq": {"true"},
+		"sort":       {"-created-at,name"},
 	}
 
 	params, err := FromValues(values)
 	if err != nil {
 		t.Fatalf("FromValues() error = %v, want nil", err)
 	}
-	wantFilters := []Filter{{Field: "enabled", Value: "true"}, {Field: "status", Value: "Open"}}
+	wantFilters := []Filter{{Field: "enabled", Operator: "eq", Value: "true"}, {Field: "status", Operator: "eq", Value: "Open"}}
 	wantSort := []Sort{{Field: "created-at", Desc: true}, {Field: "name"}}
 	if params.Limit != 25 || params.Offset != 5 {
 		t.Fatalf("FromValues() pagination = %+v, want limit 25 offset 5", params)
@@ -72,7 +72,11 @@ func TestFromValuesRejectsInvalidInput(t *testing.T) {
 		{name: "offset not integer", values: url.Values{"offset": {"nope"}}, want: "offset must be an integer"},
 		{name: "sort repeated", values: url.Values{"sort": {"name", "-created-at"}}, want: "sort must be provided once"},
 		{name: "sort empty", values: url.Values{"sort": {"-"}}, want: "sort field is required"},
-		{name: "filter repeated", values: url.Values{"status": {"Open", "Closed"}}, want: "filter field is duplicated"},
+		{name: "legacy exact filter", values: url.Values{"status": {"Open"}}, want: `unknown query parameter "status"`},
+		{name: "filter missing value", values: url.Values{"status:eq": {""}}, want: "filter value is required"},
+		{name: "filter empty field", values: url.Values{":eq": {"Open"}}, want: "filter field is required"},
+		{name: "filter empty operator", values: url.Values{"status:": {"Open"}}, want: "filter operator is required"},
+		{name: "zero-arity filter with value", values: url.Values{"status:empty": {"Open"}}, want: "filter value is not supported by this operator"},
 		{name: "reserved query", values: url.Values{"search": {"admin"}}, want: `query parameter "search" is reserved`},
 	}
 

@@ -266,6 +266,7 @@ func TestMetadataAPIJSONFieldNames(t *testing.T) {
 	assertJSONKeys(t, field, []string{
 		"check",
 		"default",
+		"filter",
 		"index",
 		"label",
 		"listable",

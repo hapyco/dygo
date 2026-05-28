@@ -181,7 +181,7 @@ func TestRecordDataListPassesFiltersAndSortThroughHookQueryer(t *testing.T) {
 		func(registry sdk.RecordHookRegistry) error {
 			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "list-users", func(ctx context.Context, dygo sdk.RecordHook) error {
 				result, listErr = dygo.Records.List(ctx, "core", "user", sdk.RecordListParams{
-					Filters: []sdk.RecordFilter{{Field: "enabled", Value: "true"}},
+					Filters: []sdk.RecordFilter{{Field: "enabled", Operator: "eq", Value: "true"}},
 					Sort:    []sdk.RecordSort{{Field: "full-name", Desc: true}},
 				})
 				return nil

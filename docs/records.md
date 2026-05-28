@@ -18,7 +18,7 @@ Record API routes require a valid `dygo_session` cookie from the auth API and an
 ## API
 
 ```txt
-GET    /api/v1/records/{entity}?limit=50&offset=0&status=Open&sort=-created-at,name
+GET    /api/v1/records/{entity}?limit=50&offset=0&status:eq=Open&sort=-created-at,name
 GET    /api/v1/records/{entity}/{id}
 GET    /api/v1/records/{entity}/name/{name}
 GET    /api/v1/records/{entity}/single
@@ -35,10 +35,13 @@ Use `GET /api/v1/records/{entity}/name/{name}` to read exactly one Record by its
 
 For Entities marked `is-single: true`, use `GET /api/v1/records/{entity}/single` and `PATCH /api/v1/records/{entity}/single`. dygo owns the singleton Record name and seeds the one allowed row during metadata sync. Normal list, create, and delete operations return `invalid_request` for Single Entities.
 
-Exact filters use direct Field query params:
+Filters use direct operator-bearing Field query params:
 
 ```txt
-GET /api/v1/records/lead?status=Open&enabled=true
+GET /api/v1/records/lead?status:eq=Open&enabled:eq=true
+GET /api/v1/records/lead?amount:gte=10&amount:lte=100
+GET /api/v1/records/lead?name:contains=smith
+GET /api/v1/records/lead?closed-at:empty
 ```
 
 Filters support visible DB-backed Fields and system fields: `id`, `name`, `created-at`, and `updated-at`. The reserved query params `limit`, `offset`, and `sort` cannot be used as HTTP filter names in v1. Write-only fields such as `password` and non-storage fields such as `collection` cannot be filtered.
@@ -191,4 +194,4 @@ update -> update
 delete -> delete
 ```
 
-Administrator users are privileged through the permission engine. Sharing, row-level filtering, owner rules, field-level permissions, advanced list operators, saved views, and Studio list UI are future layers on the same engine.
+Administrator users are privileged through the permission engine. Sharing, row-level filtering, owner rules, field-level permissions, saved views, and richer Studio list UI are future layers on the same engine.

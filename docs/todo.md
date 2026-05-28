@@ -43,7 +43,7 @@ Source: seeded from live GitHub Project 3 (Dygo 1.0) on 2026-05-27.
 - [ ] #103 Design actor-aware hook data access modes: Make hook data access modes explicit before dygo apps rely on implicit trusted access.
 - [ ] #104 Design callable app actions and whitelisted method API: Define how dygo apps expose explicit server-side methods beyond Record CRUD and lifecycle hooks.
 - [ ] #106 Clarify fixture Activity and history documentation: Remove drift between fixture documentation and current Record runtime behavior.
-- [ ] #117 Add Studio Record filtering UI and query sync: Make the Record list Filter action functional with a minimal metadata-backed filtering experience.
+- [x] #117 Add Studio Record filtering UI and query sync: Make the Record list Filter action functional with a minimal metadata-backed filtering experience.
 - [ ] #119 Design Studio breadcrumbs and navigation model: Define the durable Studio breadcrumb and navigation model before route labels spread across pages and custom apps.
 - [ ] #122 Code-split Studio UI bundle: Reduce the initial Studio JavaScript bundle size as the UI grows.
 - [ ] #124 Add Studio typed record cell renderers: Introduce typed Record cell rendering so Studio lists can display common metadata field types better than plain text.

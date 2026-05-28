@@ -97,7 +97,7 @@ func dbRecordListParams(params sdk.RecordListParams) db.RecordListParams {
 	if len(params.Filters) > 0 {
 		converted.Filters = make([]db.RecordFilter, len(params.Filters))
 		for i, filter := range params.Filters {
-			converted.Filters[i] = db.RecordFilter{Field: filter.Field, Value: filter.Value}
+			converted.Filters[i] = db.RecordFilter{Field: filter.Field, Operator: filter.Operator, Value: filter.Value}
 		}
 	}
 	if len(params.Sort) > 0 {

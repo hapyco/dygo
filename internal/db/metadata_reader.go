@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/hapyco/dygo/internal/entity/fieldtype"
+	"github.com/hapyco/dygo/internal/recordfilter"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -84,6 +85,7 @@ type MetadataField struct {
 	NameRenderable bool                `json:"name-renderable"`
 	ValueKind      string              `json:"value-kind"`
 	Studio         MetadataFieldStudio `json:"studio"`
+	Filter         MetadataFieldFilter `json:"filter"`
 	Default        json.RawMessage     `json:"default,omitempty"`
 	Check          json.RawMessage     `json:"check,omitempty"`
 	Position       int                 `json:"position"`
@@ -94,6 +96,11 @@ type MetadataField struct {
 type MetadataFieldStudio struct {
 	Editor  string `json:"editor"`
 	Display string `json:"display"`
+}
+
+// MetadataFieldFilter describes filter operators derived from field type behavior.
+type MetadataFieldFilter struct {
+	Operators []recordfilter.Operator `json:"operators"`
 }
 
 // MetadataIndex is one persisted top-level Entity index definition.
@@ -324,6 +331,7 @@ func metadataSystemFields() []MetadataField {
 				Editor:  systemField.StudioEditor,
 				Display: systemField.StudioDisplay,
 			},
+			Filter:   metadataFieldFilter(systemField.Type, systemField.ValueKind),
 			Position: index + 1,
 		})
 	}
@@ -376,6 +384,11 @@ func (f *MetadataField) applyTypeBehavior() {
 		Editor:  definition.Behavior.StudioEditor,
 		Display: definition.Behavior.StudioDisplay,
 	}
+	f.Filter = metadataFieldFilter(f.Type, f.ValueKind)
+}
+
+func metadataFieldFilter(fieldType string, valueKind string) MetadataFieldFilter {
+	return MetadataFieldFilter{Operators: recordfilter.OperatorsForFieldType(fieldType, valueKind)}
 }
 
 func (r MetadataReader) entityIndexes(ctx context.Context, entityID int64) ([]MetadataIndex, error) {

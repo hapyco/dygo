@@ -64,6 +64,9 @@ function metadataField(overrides: {
       editor: 'text',
       display: overrides.display,
     },
+    filter: {
+      operators: [],
+    },
     position: 1,
   }
 }

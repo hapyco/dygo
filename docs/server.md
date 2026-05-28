@@ -103,7 +103,7 @@ Metadata visibility is permission-aware. `GET /api/v1/entities` returns only Ent
 The first Record API is also generic and metadata-powered:
 
 ```txt
-GET    /api/v1/records/{entity}?limit=50&offset=0&status=Open&sort=-created-at,name
+GET    /api/v1/records/{entity}?limit=50&offset=0&status:eq=Open&sort=-created-at,name
 GET    /api/v1/records/{entity}/{id}
 GET    /api/v1/records/{entity}/name/{name}
 GET    /api/v1/records/{entity}/{id}/activity?limit=50&offset=0
@@ -136,7 +136,7 @@ List responses include pagination metadata:
 {"data":[],"meta":{"limit":50,"offset":0,"count":0}}
 ```
 
-Record lists support exact filters with direct Field query params and multi-field sorting through `sort`. `limit`, `offset`, and `sort` are reserved query params. Sorting uses `-field` for descending order and appends `id ASC` as a deterministic tie-breaker. Advanced operators, saved views, field-level permissions, row-level filters, and Studio list UI are future layers.
+Record lists support direct `field:operator=value` params and multi-field sorting through `sort`. Empty checks use `field:empty` or `field:not-empty`; range checks use `start..end` as the value. `limit`, `offset`, and `sort` are reserved query params. Sorting uses `-field` for descending order and appends `id ASC` as a deterministic tie-breaker. Saved views, field-level permissions, row-level filters, and richer Studio list UI are future layers.
 
 `PATCH` is the update operation and only changes fields provided in the request body. `DELETE` performs a hard delete in v1.
 

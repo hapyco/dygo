@@ -11,6 +11,7 @@ import (
 
 	"github.com/hapyco/dygo/internal/auth"
 	"github.com/hapyco/dygo/internal/corevalues"
+	"github.com/hapyco/dygo/internal/recordfilter"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -106,7 +107,7 @@ func TestRecordStoreListRecordsFiltersResolveLinkNamesToStoredIDs(t *testing.T) 
 	}))
 
 	_, err := NewRecordStore(queryer).ListRecords(context.Background(), "activity", RecordListParams{
-		Filters: []RecordFilter{{Field: "entity", Value: "core.user"}},
+		Filters: []RecordFilter{{Field: "entity", Operator: recordfilter.OperatorEqual, Value: "core.user"}},
 	})
 	if err != nil {
 		t.Fatalf("ListRecords(activity link filter) error = %v, want nil", err)
@@ -129,8 +130,8 @@ func TestRecordStoreListRecordsFiltersAndSorts(t *testing.T) {
 
 	result, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{
 		Filters: []RecordFilter{
-			{Field: "enabled", Value: "true"},
-			{Field: "email", Value: "a@example.com"},
+			{Field: "enabled", Operator: recordfilter.OperatorEqual, Value: "true"},
+			{Field: "email", Operator: recordfilter.OperatorEqual, Value: "a@example.com"},
 		},
 		Sort: []RecordSort{
 			{Field: "full-name", Desc: true},
@@ -158,6 +159,65 @@ func TestRecordStoreListRecordsFiltersAndSorts(t *testing.T) {
 	}
 }
 
+func TestRecordStoreListRecordsSupportsFilterOperators(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(1), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+
+	_, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{
+		Filters: []RecordFilter{
+			{Field: "email", Operator: recordfilter.OperatorContains, Value: "example.com"},
+			{Field: "full-name", Operator: recordfilter.OperatorNotEmpty},
+			{Field: "id", Operator: recordfilter.OperatorGreaterThan, Value: "10"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ListRecords(filter operators) error = %v, want nil", err)
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	for _, want := range []string{
+		`"email" ILIKE '%' || $1 || '%'`,
+		`("full_name" IS NOT NULL AND "full_name" <> '')`,
+		`"id" > $2::bigint`,
+		`LIMIT $3 OFFSET $4`,
+	} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("list query = %q, want %q", lastQuery, want)
+		}
+	}
+	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{"example.com", int64(10), 20, 0}) {
+		t.Fatalf("list args = %#v, want operator filter args", got)
+	}
+}
+
+func TestRecordStoreListRecordsSupportsBetweenFilter(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newUserRecordQueryer()
+	queryer.rows = append(queryer.rows, newFakeRows([][]any{
+		{int64(1), "a@example.com", now, now, "a@example.com", "A User", true},
+	}))
+
+	_, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{
+		Filters: []RecordFilter{{
+			Field:    "created-at",
+			Operator: recordfilter.OperatorBetween,
+			Value:    "2026-05-07T00:00:00Z..2026-05-08T00:00:00Z",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ListRecords(between filter) error = %v, want nil", err)
+	}
+	lastQuery := queryer.queries[len(queryer.queries)-1]
+	if !strings.Contains(lastQuery, `"created_at" BETWEEN $1::timestamptz AND $2::timestamptz`) {
+		t.Fatalf("list query = %q, want between predicate", lastQuery)
+	}
+	if got := queryer.args[len(queryer.args)-1]; !reflect.DeepEqual(got, []any{"2026-05-07T00:00:00Z", "2026-05-08T00:00:00Z", 20, 0}) {
+		t.Fatalf("list args = %#v, want between args", got)
+	}
+}
+
 func TestRecordStoreListRecordsSupportsSystemFiltersAndSortTieBreaker(t *testing.T) {
 	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
 	queryer := newUserRecordQueryer()
@@ -167,8 +227,8 @@ func TestRecordStoreListRecordsSupportsSystemFiltersAndSortTieBreaker(t *testing
 
 	_, err := NewRecordStore(queryer).ListRecords(context.Background(), "user", RecordListParams{
 		Filters: []RecordFilter{
-			{Field: "id", Value: "7"},
-			{Field: "created-at", Value: "2026-05-07T17:00:00+05:00"},
+			{Field: "id", Operator: recordfilter.OperatorEqual, Value: "7"},
+			{Field: "created-at", Operator: recordfilter.OperatorEqual, Value: "2026-05-07T17:00:00+05:00"},
 		},
 		Sort: []RecordSort{{Field: "updated-at", Desc: true}},
 	})
@@ -212,7 +272,7 @@ func TestRecordStoreListRecordsByIdentityHonorsFiltersAndSort(t *testing.T) {
 	}))
 
 	_, err := NewRecordStore(queryer).ListRecordsByIdentity(context.Background(), "crm", "lead", RecordListParams{
-		Filters: []RecordFilter{{Field: "status", Value: "New"}},
+		Filters: []RecordFilter{{Field: "status", Operator: recordfilter.OperatorEqual, Value: "New"}},
 		Sort:    []RecordSort{{Field: "status"}},
 	})
 	if err != nil {
@@ -1586,12 +1646,13 @@ func TestRecordStoreInvalidListFiltersAndSorts(t *testing.T) {
 		params  RecordListParams
 		code    string
 	}{
-		{name: "unknown filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "missing", Value: "x"}}}, code: RecordErrorInvalidRequest},
-		{name: "write-only filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "password", Value: "secret"}}}, code: RecordErrorInvalidRequest},
-		{name: "non-storage filter", queryer: newLeadRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "contacts", Value: "1"}}}, code: RecordErrorInvalidRequest},
-		{name: "duplicate filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "email", Value: "a"}, {Field: "email", Value: "b"}}}, code: RecordErrorInvalidRequest},
-		{name: "invalid boolean filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "enabled", Value: "yes"}}}, code: RecordErrorValidation},
-		{name: "invalid datetime filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "created-at", Value: "May 7"}}}, code: RecordErrorValidation},
+		{name: "unknown filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "missing", Operator: recordfilter.OperatorEqual, Value: "x"}}}, code: RecordErrorInvalidRequest},
+		{name: "write-only filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "password", Operator: recordfilter.OperatorEqual, Value: "secret"}}}, code: RecordErrorInvalidRequest},
+		{name: "non-storage filter", queryer: newLeadRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "contacts", Operator: recordfilter.OperatorEqual, Value: "1"}}}, code: RecordErrorInvalidRequest},
+		{name: "missing filter operator", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "email", Value: "a@example.com"}}}, code: RecordErrorInvalidRequest},
+		{name: "unsupported filter operator", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "enabled", Operator: recordfilter.OperatorContains, Value: "true"}}}, code: RecordErrorInvalidRequest},
+		{name: "invalid boolean filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "enabled", Operator: recordfilter.OperatorEqual, Value: "yes"}}}, code: RecordErrorValidation},
+		{name: "invalid datetime filter", queryer: newUserRecordQueryer(), params: RecordListParams{Filters: []RecordFilter{{Field: "created-at", Operator: recordfilter.OperatorEqual, Value: "May 7"}}}, code: RecordErrorValidation},
 		{name: "unknown sort", queryer: newUserRecordQueryer(), params: RecordListParams{Sort: []RecordSort{{Field: "missing"}}}, code: RecordErrorInvalidRequest},
 		{name: "write-only sort", queryer: newUserRecordQueryer(), params: RecordListParams{Sort: []RecordSort{{Field: "password"}}}, code: RecordErrorInvalidRequest},
 		{name: "non-storage sort", queryer: newLeadRecordQueryer(), params: RecordListParams{Sort: []RecordSort{{Field: "contacts"}}}, code: RecordErrorInvalidRequest},

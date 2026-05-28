@@ -15,6 +15,7 @@ import (
 	"github.com/hapyco/dygo/internal/corevalues"
 	"github.com/hapyco/dygo/internal/entity/fieldtype"
 	"github.com/hapyco/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/recordfilter"
 	"github.com/hapyco/dygo/internal/recordquery"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -62,7 +63,7 @@ type RecordInput map[string]json.RawMessage
 // RecordListParams controls Record list pagination.
 type RecordListParams = recordquery.Params
 
-// RecordFilter is one exact Record list filter on a metadata or system field.
+// RecordFilter is one operator-based Record list filter on a metadata or system field.
 type RecordFilter = recordquery.Filter
 
 // RecordSort is one Record list sort term on a metadata or system field.
@@ -1115,7 +1116,6 @@ func (s RecordStore) listWhere(ctx context.Context, layout recordLayout, filters
 		return "", nil, nil
 	}
 	filters = sortedRecordFilters(filters)
-	seen := map[string]struct{}{}
 	clauses := make([]string, 0, len(filters))
 	args := make([]any, 0, len(filters))
 	for _, filter := range filters {
@@ -1123,22 +1123,115 @@ func (s RecordStore) listWhere(ctx context.Context, layout recordLayout, filters
 		if fieldName == "" {
 			return "", nil, recordError(RecordErrorInvalidRequest, "filter field is required", map[string]any{"entity": layout.Entity}, nil)
 		}
-		if _, ok := seen[fieldName]; ok {
-			return "", nil, recordError(RecordErrorInvalidRequest, "filter field is duplicated", map[string]any{"entity": layout.Entity, "field": fieldName}, nil)
-		}
-		seen[fieldName] = struct{}{}
 		field, err := layout.listField(fieldName, "filter")
 		if err != nil {
 			return "", nil, err
 		}
+		clause, clauseArgs, err := s.recordFilterClause(ctx, layout, field, filter, len(args))
+		if err != nil {
+			return "", nil, err
+		}
+		args = append(args, clauseArgs...)
+		clauses = append(clauses, clause)
+	}
+	return strings.Join(clauses, " AND "), args, nil
+}
+
+func (s RecordStore) recordFilterClause(ctx context.Context, layout recordLayout, field recordField, filter RecordFilter, argOffset int) (string, []any, error) {
+	operator := strings.TrimSpace(filter.Operator)
+	if operator == "" {
+		return "", nil, recordError(RecordErrorInvalidRequest, "filter operator is required", map[string]any{"entity": layout.Entity, "field": field.Name}, nil)
+	}
+	if !recordfilter.Supports(field.Type, field.ValueKind, operator) {
+		return "", nil, recordError(RecordErrorInvalidRequest, "filter operator is not supported for field", map[string]any{"entity": layout.Entity, "field": field.Name, "operator": operator}, nil)
+	}
+
+	column := quoteIdent(field.Column)
+	switch operator {
+	case recordfilter.OperatorEmpty:
+		if strings.TrimSpace(filter.Value) != "" {
+			return "", nil, recordError(RecordErrorInvalidRequest, "filter value is not supported by this operator", map[string]any{"entity": layout.Entity, "field": field.Name, "operator": operator}, nil)
+		}
+		if recordFilterUsesBlankString(field) {
+			return fmt.Sprintf("(%s IS NULL OR %s = '')", column, column), nil, nil
+		}
+		return column + " IS NULL", nil, nil
+	case recordfilter.OperatorNotEmpty:
+		if strings.TrimSpace(filter.Value) != "" {
+			return "", nil, recordError(RecordErrorInvalidRequest, "filter value is not supported by this operator", map[string]any{"entity": layout.Entity, "field": field.Name, "operator": operator}, nil)
+		}
+		if recordFilterUsesBlankString(field) {
+			return fmt.Sprintf("(%s IS NOT NULL AND %s <> '')", column, column), nil, nil
+		}
+		return column + " IS NOT NULL", nil, nil
+	case recordfilter.OperatorBetween:
+		start, end, err := parseRangeFilterValue(layout, field, filter.Value)
+		if err != nil {
+			return "", nil, err
+		}
+		startValue, err := s.recordListValue(ctx, layout, field, start)
+		if err != nil {
+			return "", nil, err
+		}
+		endValue, err := s.recordListValue(ctx, layout, field, end)
+		if err != nil {
+			return "", nil, err
+		}
+		return fmt.Sprintf("%s BETWEEN %s AND %s", column, recordPlaceholder(argOffset+1, field), recordPlaceholder(argOffset+2, field)), []any{startValue, endValue}, nil
+	case recordfilter.OperatorContains, recordfilter.OperatorNotContains:
 		value, err := s.recordListValue(ctx, layout, field, filter.Value)
 		if err != nil {
 			return "", nil, err
 		}
-		args = append(args, value)
-		clauses = append(clauses, fmt.Sprintf("%s = %s", quoteIdent(field.Column), recordPlaceholder(len(args), field)))
+		comparator := "ILIKE"
+		if operator == recordfilter.OperatorNotContains {
+			comparator = "NOT ILIKE"
+		}
+		return fmt.Sprintf("%s %s '%%' || %s || '%%'", column, comparator, recordPlaceholder(argOffset+1, field)), []any{value}, nil
+	default:
+		value, err := s.recordListValue(ctx, layout, field, filter.Value)
+		if err != nil {
+			return "", nil, err
+		}
+		comparator, ok := recordFilterComparator(operator)
+		if !ok {
+			return "", nil, recordError(RecordErrorInvalidRequest, "filter operator is not supported for field", map[string]any{"entity": layout.Entity, "field": field.Name, "operator": operator}, nil)
+		}
+		return fmt.Sprintf("%s %s %s", column, comparator, recordPlaceholder(argOffset+1, field)), []any{value}, nil
 	}
-	return strings.Join(clauses, " AND "), args, nil
+}
+
+func recordFilterComparator(operator string) (string, bool) {
+	switch operator {
+	case recordfilter.OperatorEqual:
+		return "=", true
+	case recordfilter.OperatorNotEqual:
+		return "<>", true
+	case recordfilter.OperatorGreaterThan, recordfilter.OperatorAfter:
+		return ">", true
+	case recordfilter.OperatorGreaterThanOrEqual:
+		return ">=", true
+	case recordfilter.OperatorLessThan, recordfilter.OperatorBefore:
+		return "<", true
+	case recordfilter.OperatorLessThanOrEqual:
+		return "<=", true
+	default:
+		return "", false
+	}
+}
+
+func parseRangeFilterValue(layout recordLayout, field recordField, value string) (string, string, error) {
+	start, end, ok := strings.Cut(value, "..")
+	start = strings.TrimSpace(start)
+	end = strings.TrimSpace(end)
+	if !ok || start == "" || end == "" {
+		return "", "", recordError(RecordErrorInvalidRequest, "filter range must use start..end", map[string]any{"entity": layout.Entity, "field": field.Name}, nil)
+	}
+	return start, end, nil
+}
+
+func recordFilterUsesBlankString(field recordField) bool {
+	return field.ValueKind == fieldtype.ValueString
 }
 
 func (l recordLayout) listOrderBy(sortTerms []RecordSort) (string, error) {
@@ -1730,11 +1823,33 @@ func sortedRecordInputNames(input RecordInput) []string {
 func sortedRecordFilters(filters []RecordFilter) []RecordFilter {
 	sorted := append([]RecordFilter(nil), filters...)
 	for i := 1; i < len(sorted); i++ {
-		for j := i; j > 0 && sorted[j].Field < sorted[j-1].Field; j-- {
+		for j := i; j > 0 && compareRecordFilters(sorted[j], sorted[j-1]) < 0; j-- {
 			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
 		}
 	}
 	return sorted
+}
+
+func compareRecordFilters(left RecordFilter, right RecordFilter) int {
+	if left.Field < right.Field {
+		return -1
+	}
+	if left.Field > right.Field {
+		return 1
+	}
+	if left.Operator < right.Operator {
+		return -1
+	}
+	if left.Operator > right.Operator {
+		return 1
+	}
+	if left.Value < right.Value {
+		return -1
+	}
+	if left.Value > right.Value {
+		return 1
+	}
+	return 0
 }
 
 func sortStrings(values []string) {

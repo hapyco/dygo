@@ -64,10 +64,11 @@ type RecordListParams struct {
 	Sort    []RecordSort
 }
 
-// RecordFilter is one exact Record list filter on a metadata or system field.
+// RecordFilter is one operator-based Record list filter on a metadata or system field.
 type RecordFilter struct {
-	Field string
-	Value string
+	Field    string
+	Operator string
+	Value    string
 }
 
 // RecordSort is one Record list sort term on a metadata or system field.

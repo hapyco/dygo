@@ -15,6 +15,7 @@ import (
 	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/entity/catalog"
 	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/recordfilter"
 	"github.com/hapyco/dygo/internal/recordquery"
 	"github.com/hapyco/dygo/internal/shape"
 	"gopkg.in/yaml.v3"
@@ -281,7 +282,7 @@ func (p *exportPlanner) listAll(identity exportIdentity) ([]db.Record, error) {
 func (p *exportPlanner) findByName(identity exportIdentity, name string) (db.Record, bool, error) {
 	result, err := p.store.ListRecordsByIdentity(p.ctx, identity.app, identity.entity, db.RecordListParams{
 		Limit:   1,
-		Filters: []db.RecordFilter{{Field: "name", Value: name}},
+		Filters: []db.RecordFilter{{Field: "name", Operator: recordfilter.OperatorEqual, Value: name}},
 	})
 	if err != nil {
 		return nil, false, safeWrap(fmt.Sprintf("find record %q for %s/%s", name, identity.app, identity.entity), err)

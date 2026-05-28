@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hapyco/dygo/internal/recordfilter"
 	"github.com/hapyco/dygo/internal/reserved"
 )
 
@@ -33,7 +34,7 @@ func ListPolicy() Policy {
 	}
 }
 
-// Params controls Record list pagination, exact filters, and sorting.
+// Params controls Record list pagination, operator filters, and sorting.
 type Params struct {
 	Limit   int
 	Offset  int
@@ -41,10 +42,11 @@ type Params struct {
 	Sort    []Sort
 }
 
-// Filter is one exact Record list filter.
+// Filter is one operator-based Record list filter.
 type Filter struct {
-	Field string
-	Value string
+	Field    string
+	Operator string
+	Value    string
 }
 
 // Sort is one Record list sort term.
@@ -108,10 +110,13 @@ func FromValues(values url.Values) (Params, error) {
 			if reserved.IsQuery(name) {
 				return Params{}, Error{Message: fmt.Sprintf("query parameter %q is reserved", name), Details: map[string]any{"query": name}}
 			}
-			if len(rawValues) > 1 {
-				return Params{}, Error{Message: "filter field is duplicated", Details: map[string]any{"field": name}}
+			for _, rawValue := range rawValues {
+				filter, err := ParseFilterParam(name, rawValue)
+				if err != nil {
+					return Params{}, err
+				}
+				params.Filters = append(params.Filters, filter)
 			}
-			params.Filters = append(params.Filters, Filter{Field: name, Value: rawValues[0]})
 		}
 	}
 	SortFilters(params.Filters)
@@ -166,9 +171,46 @@ func ParseSort(raw string) ([]Sort, error) {
 	return sortTerms, nil
 }
 
-// SortFilters orders filters by field for deterministic downstream behavior.
+// ParseFilterParam decodes the HTTP filter grammar: field:operator=value.
+func ParseFilterParam(name string, value string) (Filter, error) {
+	name = strings.TrimSpace(name)
+	value = strings.TrimSpace(value)
+	if name == "" {
+		return Filter{}, Error{Message: "filter field is required", Details: map[string]any{"filter": name}}
+	}
+	field, operator, ok := strings.Cut(name, ":")
+	if !ok {
+		return Filter{}, Error{Message: fmt.Sprintf("unknown query parameter %q", name), Details: map[string]any{"query": name}}
+	}
+	field = strings.TrimSpace(field)
+	operator = strings.TrimSpace(operator)
+	if field == "" {
+		return Filter{}, Error{Message: "filter field is required", Details: map[string]any{"filter": name}}
+	}
+	if operator == "" {
+		return Filter{}, Error{Message: "filter operator is required", Details: map[string]any{"field": field, "filter": name}}
+	}
+	if recordfilter.IsZeroArity(operator) {
+		if value != "" {
+			return Filter{}, Error{Message: "filter value is not supported by this operator", Details: map[string]any{"field": field, "operator": operator}}
+		}
+		return Filter{Field: field, Operator: operator}, nil
+	}
+	if value == "" {
+		return Filter{}, Error{Message: "filter value is required", Details: map[string]any{"field": field, "operator": operator}}
+	}
+	return Filter{Field: field, Operator: operator, Value: value}, nil
+}
+
+// SortFilters orders filters by field, operator, and value for deterministic downstream behavior.
 func SortFilters(filters []Filter) {
 	sort.SliceStable(filters, func(i, j int) bool {
-		return filters[i].Field < filters[j].Field
+		if filters[i].Field != filters[j].Field {
+			return filters[i].Field < filters[j].Field
+		}
+		if filters[i].Operator != filters[j].Operator {
+			return filters[i].Operator < filters[j].Operator
+		}
+		return filters[i].Value < filters[j].Value
 	})
 }

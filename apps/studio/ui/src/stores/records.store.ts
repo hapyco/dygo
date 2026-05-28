@@ -12,7 +12,7 @@ import {
   updateSingleRecord as updateSingleRecordRequest,
   type RecordData,
 } from '@/features/records/records.api'
-import { isAllowedRecordPageSize } from '@/features/records/query'
+import { isAllowedRecordPageSize, type RecordListFilter, type RecordListRouteState } from '@/features/records/query'
 import type { RecordListPolicy } from '@/features/platform/platform.api'
 import { usePlatformStore } from './platform.store'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
@@ -34,6 +34,7 @@ export type RecordEntityState = {
   total: number
   pageSize: number
   sort: DataTableSort | null
+  filters: RecordListFilter[]
   selectedRowKeys: DataTableRowKey[]
   status: LoadStatus
   loadingMore: boolean
@@ -64,6 +65,7 @@ function newRecordEntityState(pageSize: number): RecordEntityState {
     total: 0,
     pageSize,
     sort: null,
+    filters: [],
     selectedRowKeys: [],
     status: 'idle',
     loadingMore: false,
@@ -122,6 +124,17 @@ function missingRecordListPolicyError(platformStore: ReturnType<typeof usePlatfo
 
 function sortsEqual(left: DataTableSort | null, right: DataTableSort | null): boolean {
   return left?.key === right?.key && left?.direction === right?.direction
+}
+
+function filtersEqual(left: RecordListFilter[], right: RecordListFilter[]): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  return left.every((filter, index) => {
+    const other = right[index]
+    return filter.field === other.field && filter.operator === other.operator && filter.value === other.value
+  })
 }
 
 export const useRecordsStore = defineStore('records', {
@@ -222,7 +235,7 @@ export const useRecordsStore = defineStore('records', {
       state.total = 0
       state.selectedRowKeys = []
 
-      const request = listRecords(entity, { limit: state.pageSize, offset: 0, sort: state.sort })
+      const request = listRecords(entity, { limit: state.pageSize, offset: 0, sort: state.sort, filters: state.filters })
         .then((result) => {
           state.rows = result.data
           state.total = result.meta.total ?? result.data.length
@@ -443,7 +456,7 @@ export const useRecordsStore = defineStore('records', {
       state.loadMoreError = null
 
       try {
-        const result = await listRecords(entity, { limit: state.pageSize, offset: state.rows.length, sort: state.sort })
+        const result = await listRecords(entity, { limit: state.pageSize, offset: state.rows.length, sort: state.sort, filters: state.filters })
         state.rows = [...state.rows, ...result.data]
         state.total = result.meta.total ?? state.rows.length
         state.status = state.rows.length === 0 ? 'empty' : 'ready'
@@ -475,6 +488,43 @@ export const useRecordsStore = defineStore('records', {
       state.loadMoreError = null
       state.stale = true
       return this.loadInitial(entity, { force: true })
+    },
+
+    async setListQuery(entity: string, query: RecordListRouteState): Promise<RecordEntityState> {
+      const state = this.ensureEntity(entity)
+      const nextFilters = query.filters.map((filter) => ({ ...filter }))
+      const same = sortsEqual(state.sort, query.sort) && filtersEqual(state.filters, nextFilters)
+      if (!same) {
+        state.sort = query.sort
+        state.filters = nextFilters
+        state.selectedRowKeys = []
+        state.loadMoreError = null
+        state.stale = true
+      }
+
+      return this.loadInitial(entity, { force: !same && state.status !== 'idle' })
+    },
+
+    async setFilters(entity: string, filters: RecordListFilter[]): Promise<RecordEntityState> {
+      const state = this.ensureEntity(entity)
+      const nextFilters = filters.map((filter) => ({ ...filter }))
+      if (filtersEqual(state.filters, nextFilters)) {
+        return state
+      }
+
+      state.filters = nextFilters
+      state.selectedRowKeys = []
+      state.loadMoreError = null
+      state.stale = true
+      return this.loadInitial(entity, { force: true })
+    },
+
+    resetFilters(entity: string) {
+      const state = this.ensureEntity(entity)
+      state.filters = []
+      state.selectedRowKeys = []
+      state.loadMoreError = null
+      state.stale = true
     },
 
     setGlobalPageSize(pageSize: number) {
