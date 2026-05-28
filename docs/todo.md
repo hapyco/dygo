@@ -26,6 +26,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #74 Add Studio user and role management
 - [ ] #83 Add Studio standard page skeletons
 - [ ] #84 Add Studio metadata renderer foundation
+- [ ] Add Studio theming support and dark mode
 - [ ] #88 Add post-transaction Record hooks
 - [ ] #89 Design hook priority and override policy
 - [ ] #98 Add secrets rotation recovery diagnostics
@@ -41,6 +42,8 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #126 Design page-specific Studio toolbars
 - [ ] #127 Design global Studio page tabs
 - [ ] #128 Design page-specific Studio sidebars
+- [ ] Add Studio multi-tab navigation support
+- [ ] Add pinned section to Studio sidebar
 - [ ] #130 Define Record rename and system name behavior
 - [ ] #131 Add Studio form validation and field error mapping
 - [ ] #132 Design Studio record form layout metadata
@@ -54,6 +57,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #142 Add Job operations visibility and retry controls
 - [ ] #143 Add job-backed importer foundation for data imports
 - [ ] #144 Add Studio keyboard shortcut foundation
+- [ ] Add custom Studio right-click context menus
 - [ ] #145 Add Studio Kanban view for Records
 - [ ] #146 Add Studio Calendar view for Records
 - [ ] #147 Add Studio Gantt chart view for Records
@@ -77,6 +81,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #188 Add searchable Studio filter field picker
 - [ ] #189 Polish Studio filter dirty state
 - [ ] #190 Canonicalize invalid Studio filter URLs
+- [ ] Add saved filters for Studio record lists
 
 ## Done
 
