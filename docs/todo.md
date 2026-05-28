@@ -67,7 +67,6 @@ Source: live GitHub issues for `hapyco/dygo` on 2026-05-29.
 - [ ] #171 Support environment-oriented fixtures
 - [ ] #176 Add dygo repair for generated project artifacts
 - [ ] #179 Add Core Preference entity for per-user UI and app state
-- [ ] #180 Add Studio record list sort toolbar control
 - [ ] #181 Add Studio record page sidebar
 - [ ] #182 Polish Studio page header shell
 - [ ] #183 Polish Studio toolbar shell
@@ -83,3 +82,4 @@ Source: live GitHub issues for `hapyco/dygo` on 2026-05-29.
 
 - [x] #117 Add Studio Record filtering UI and query sync
 - [x] #178 Add Studio user-menu Reload action
+- [x] #180 Add Studio record list sort toolbar control

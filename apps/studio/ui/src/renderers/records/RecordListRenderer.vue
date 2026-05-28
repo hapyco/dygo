@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Check, FunnelPlus, PanelRightOpen, Settings2, X } from '@lucide/vue'
+import { ArrowDown, ArrowUp, Check, FunnelPlus, PanelRightOpen, Settings2, X } from '@lucide/vue'
+import {
+  PopoverContent,
+  PopoverPortal,
+  PopoverRoot,
+  PopoverTrigger,
+} from 'reka-ui'
 
-import { IconButton, Input } from '@/design'
+import { Checkbox, IconButton, Input } from '@/design'
 import DataTable from '@/design/organisms/DataTable.vue'
 import DropdownMenu from '@/design/primitives/DropdownMenu.vue'
 import type { DataTableRowKey, DataTableSort, DataTableState, DropdownMenuItem } from '@/design/types'
@@ -39,9 +45,12 @@ const router = useRouter()
 const hiddenColumnKeys = ref<string[]>([])
 const idSearch = ref('')
 const filterTokens = ref<ActiveRecordFilter[]>([])
+const viewOptionsOpen = ref(false)
 let nextFilterTokenId = 1
 let currentEntity = ''
 let idSearchDebounce: ReturnType<typeof setTimeout> | undefined
+let keepViewOptionsOpenTimer: ReturnType<typeof setTimeout> | undefined
+let suppressViewOptionsClose = false
 const ID_SEARCH_DEBOUNCE_MS = 700
 
 type ActiveRecordFilter = {
@@ -76,6 +85,9 @@ const hiddenColumnKeySet = computed(() => new Set(hiddenColumnKeys.value.filter(
 const visibleColumns = computed(() => columns.value.filter((column) => (
   column.key === 'name' || !hiddenColumnKeySet.value.has(column.key)
 )))
+const sortableColumns = computed(() => columns.value.filter((column) => column.sortable))
+const orderingField = computed(() => recordState.value.sort?.key ?? '')
+const orderingDirection = computed(() => recordState.value.sort?.direction ?? 'asc')
 const recordState = computed(() => recordsStore.entityState(props.entity))
 const loading = computed(() => recordState.value.status === 'idle' || recordState.value.status === 'loading')
 const error = computed(() => recordState.value.error?.message ?? '')
@@ -140,18 +152,6 @@ const hasMore = computed(() => (
 const showToolbar = computed(() => (
   recordState.value.rows.length > 0 || recordState.value.filters.length > 0 || idSearch.value !== '' || filterTokens.value.length > 0
 ))
-const columnMenuItems = computed<DropdownMenuItem[]>(() => [
-  { type: 'item', key: 'show-all', label: 'Show all', disabled: hiddenColumnKeySet.value.size === 0 },
-  { type: 'separator', key: 'columns-separator' },
-  ...columns.value.map((column) => ({
-    type: 'checkbox' as const,
-    key: column.key,
-    label: column.label,
-    checked: column.key === 'name' || !hiddenColumnKeySet.value.has(column.key),
-    disabled: column.key === 'name',
-  })),
-])
-
 watch(
   () => [
     props.entity,
@@ -174,6 +174,7 @@ watch(
 
 onBeforeUnmount(() => {
   clearIDSearchDebounce()
+  clearKeepViewOptionsOpenTimer()
 })
 
 function updatePageSize(value: number) {
@@ -181,14 +182,43 @@ function updatePageSize(value: number) {
 }
 
 function updateSelectedRowKeys(value: DataTableRowKey[]) {
-  if (props.readOnly) {
-    return
-  }
   recordsStore.setSelectedRowKeys(props.entity, value)
 }
 
 function updateSort(value: DataTableSort | null) {
   replaceRecordListRoute(appliedRecordFilters(), value)
+}
+
+function updateViewOptionsOpen(value: boolean) {
+  if (!value && suppressViewOptionsClose) {
+    viewOptionsOpen.value = true
+    return
+  }
+
+  viewOptionsOpen.value = value
+}
+
+function updateOrderingField(value: string) {
+  keepViewOptionsOpen()
+  if (value === '') {
+    updateSort(null)
+    return
+  }
+
+  updateSort({ key: value, direction: recordState.value.sort?.direction ?? 'asc' })
+}
+
+function toggleOrderingDirection() {
+  keepViewOptionsOpen()
+  const sort = recordState.value.sort
+  if (!sort) {
+    return
+  }
+
+  updateSort({
+    key: sort.key,
+    direction: sort.direction === 'asc' ? 'desc' : 'asc',
+  })
 }
 
 function selectFilterField(key: string) {
@@ -283,14 +313,14 @@ function removeFilter(id: number) {
   replaceRecordListRoute(appliedRecordFilters(), recordState.value.sort)
 }
 
-function selectColumnMenuItem(key: string) {
-  if (key === 'show-all') {
-    hiddenColumnKeys.value = []
-    writeHiddenColumnKeys(props.entity, hiddenColumnKeys.value)
-  }
+function showAllColumns() {
+  keepViewOptionsOpen()
+  hiddenColumnKeys.value = []
+  writeHiddenColumnKeys(props.entity, hiddenColumnKeys.value)
 }
 
 function updateColumnVisibility(key: string, visible: boolean) {
+  keepViewOptionsOpen()
   if (key === 'name') {
     return
   }
@@ -443,6 +473,27 @@ function clearIDSearchDebounce() {
 
   clearTimeout(idSearchDebounce)
   idSearchDebounce = undefined
+}
+
+function keepViewOptionsOpen() {
+  clearKeepViewOptionsOpenTimer()
+  suppressViewOptionsClose = true
+  viewOptionsOpen.value = true
+  keepViewOptionsOpenTimer = setTimeout(() => {
+    suppressViewOptionsClose = false
+    viewOptionsOpen.value = true
+    keepViewOptionsOpenTimer = undefined
+  }, 350)
+}
+
+function clearKeepViewOptionsOpenTimer() {
+  if (keepViewOptionsOpenTimer === undefined) {
+    return
+  }
+
+  clearTimeout(keepViewOptionsOpenTimer)
+  keepViewOptionsOpenTimer = undefined
+  suppressViewOptionsClose = false
 }
 
 function replaceRecordListRoute(filters: RecordListFilter[], sort: DataTableSort | null) {
@@ -678,17 +729,94 @@ function queryValues(value: unknown): string[] {
       </template>
 
       <template #right>
-        <DropdownMenu
-          label="Columns"
-          trigger-type="icon"
-          :items="columnMenuItems"
-          @select="selectColumnMenuItem"
-          @update:checked="updateColumnVisibility"
+        <PopoverRoot
+          :open="viewOptionsOpen"
+          @update:open="updateViewOptionsOpen"
         >
-          <template #trigger>
-            <Settings2 :size="14" :stroke-width="1.8" aria-hidden="true" />
-          </template>
-        </DropdownMenu>
+          <PopoverTrigger as-child>
+            <IconButton label="View options" type="button" variant="secondary">
+              <Settings2 :size="14" :stroke-width="1.8" aria-hidden="true" />
+            </IconButton>
+          </PopoverTrigger>
+
+          <PopoverPortal>
+            <PopoverContent
+              class="record-list-renderer__view-options"
+              align="end"
+              :side-offset="6"
+            >
+              <section class="record-list-renderer__view-options-section">
+                <div class="record-list-renderer__view-options-row">
+                  <span class="record-list-renderer__view-options-label">Ordering</span>
+                  <div class="record-list-renderer__ordering-controls">
+                    <select
+                      class="record-list-renderer__ordering-field"
+                      :value="orderingField"
+                      aria-label="Ordering field"
+                      @change="updateOrderingField(($event.target as HTMLSelectElement).value)"
+                    >
+                      <option value="">Field</option>
+                      <option
+                        v-for="column in sortableColumns"
+                        :key="column.key"
+                        :value="column.key"
+                      >
+                        {{ column.label }}
+                      </option>
+                    </select>
+                    <button
+                      class="record-list-renderer__ordering-direction"
+                      type="button"
+                      :disabled="!recordState.sort"
+                      :aria-label="orderingDirection === 'asc' ? 'Ascending' : 'Descending'"
+                      @click="toggleOrderingDirection"
+                    >
+                      <ArrowUp
+                        v-if="orderingDirection === 'asc'"
+                        :size="14"
+                        :stroke-width="1.9"
+                        aria-hidden="true"
+                      />
+                      <ArrowDown
+                        v-else
+                        :size="14"
+                        :stroke-width="1.9"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="record-list-renderer__view-options-section">
+                <div class="record-list-renderer__view-options-heading">Display properties</div>
+                <div class="record-list-renderer__property-list">
+                  <label
+                    v-for="column in columns"
+                    :key="column.key"
+                    class="record-list-renderer__property-row"
+                    :class="{ 'record-list-renderer__property-row--disabled': column.key === 'name' }"
+                  >
+                    <Checkbox
+                      :model-value="column.key === 'name' || !hiddenColumnKeySet.has(column.key)"
+                      :disabled="column.key === 'name'"
+                      @update:model-value="(visible) => updateColumnVisibility(column.key, visible)"
+                    />
+                    <span>{{ column.label }}</span>
+                  </label>
+                </div>
+                <button
+                  class="record-list-renderer__show-all-properties"
+                  type="button"
+                  :disabled="hiddenColumnKeySet.size === 0"
+                  @click="showAllColumns"
+                >
+                  Show all properties
+                </button>
+              </section>
+            </PopoverContent>
+          </PopoverPortal>
+        </PopoverRoot>
 
         <IconButton label="Sidebar" disabled>
           <PanelRightOpen :size="14" :stroke-width="1.8" aria-hidden="true" />
@@ -711,7 +839,7 @@ function queryValues(value: unknown): string[] {
       :total-rows="recordState.total"
       :has-more="hasMore"
       :sort="recordState.sort"
-      :selectable="!readOnly"
+      selectable
       :selected-row-keys="recordState.selectedRowKeys"
       :empty-action-label="readOnly ? '' : 'Add first record'"
       row-activatable
@@ -847,5 +975,153 @@ select.record-list-renderer__filter-segment {
 .record-list-renderer__filter-remove:focus-visible {
   outline: 2px solid var(--studio-focus);
   outline-offset: -2px;
+}
+
+:global(.record-list-renderer__view-options) {
+  z-index: 50;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(520px, calc(100vh - 40px));
+  overflow-y: auto;
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-surface);
+  box-shadow: var(--studio-shadow-sheet);
+  color: var(--studio-text);
+  outline: none;
+  padding: 12px;
+}
+
+:global(.record-list-renderer__view-options-section + .record-list-renderer__view-options-section) {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--studio-border);
+}
+
+:global(.record-list-renderer__view-options-row) {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+}
+
+:global(.record-list-renderer__view-options-label),
+:global(.record-list-renderer__view-options-heading) {
+  color: var(--studio-text-muted);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+:global(.record-list-renderer__view-options-heading) {
+  margin-bottom: 8px;
+}
+
+:global(.record-list-renderer__ordering-controls) {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+:global(.record-list-renderer__ordering-field) {
+  width: 150px;
+  height: var(--studio-control-height-xs);
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-control-bg);
+  box-shadow: var(--studio-shadow-control);
+  color: var(--studio-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 8px;
+}
+
+:global(.record-list-renderer__ordering-field:focus-visible) {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 2px;
+}
+
+:global(.record-list-renderer__ordering-direction) {
+  display: inline-flex;
+  width: var(--studio-control-height-xs);
+  height: var(--studio-control-height-xs);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-control-bg);
+  box-shadow: var(--studio-shadow-control);
+  color: var(--studio-text-muted);
+}
+
+:global(.record-list-renderer__ordering-direction:hover:not(:disabled)) {
+  border-color: var(--studio-border-strong);
+  background: var(--studio-control-bg-hover);
+  color: var(--studio-text);
+}
+
+:global(.record-list-renderer__ordering-direction:focus-visible) {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 2px;
+}
+
+:global(.record-list-renderer__ordering-direction:disabled) {
+  opacity: 0.58;
+}
+
+:global(.record-list-renderer__property-list) {
+  display: grid;
+  gap: 2px;
+}
+
+:global(.record-list-renderer__property-row) {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 5px;
+  color: var(--studio-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+:global(.record-list-renderer__property-row:hover:not(.record-list-renderer__property-row--disabled)) {
+  background: var(--studio-surface-raised);
+  color: var(--studio-text);
+}
+
+:global(.record-list-renderer__property-row--disabled) {
+  color: var(--studio-text-subtle);
+}
+
+:global(.record-list-renderer__show-all-properties) {
+  min-height: 28px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--studio-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0 8px;
+}
+
+:global(.record-list-renderer__show-all-properties:hover:not(:disabled)) {
+  background: var(--studio-surface-raised);
+  color: var(--studio-text);
+}
+
+:global(.record-list-renderer__show-all-properties:focus-visible) {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 2px;
+}
+
+:global(.record-list-renderer__show-all-properties:disabled) {
+  color: var(--studio-text-subtle);
+  opacity: 0.62;
 }
 </style>

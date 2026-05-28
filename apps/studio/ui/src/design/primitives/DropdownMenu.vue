@@ -115,7 +115,8 @@ function preventCheckboxClose(event: Event) {
   z-index: 50;
   min-width: 184px;
   max-width: min(280px, calc(100vw - 24px));
-  overflow: hidden;
+  max-height: min(430px, calc(100vh - 40px));
+  overflow-y: auto;
   border: 1px solid var(--studio-border);
   border-radius: var(--studio-radius-control);
   background: var(--studio-surface);
