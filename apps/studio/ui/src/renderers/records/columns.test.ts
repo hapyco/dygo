@@ -23,6 +23,7 @@ test('buildRecordListColumns keeps the system name column authoritative', () => 
 
   assert.equal(columns.filter((column) => column.key === 'name').length, 1)
   assert.equal(columns[0].source, 'name')
+  assert.equal(columns[0].label, 'ID')
 })
 
 test('buildRecordListColumns uses system field metadata when provided', () => {
@@ -35,7 +36,7 @@ test('buildRecordListColumns uses system field metadata when provided', () => {
   ])
 
   assert.deepEqual(columns.map((column) => column.key), ['name', 'email', 'updated-at'])
-  assert.equal(columns[0].label, 'Record Name')
+  assert.equal(columns[0].label, 'ID')
   assert.equal(columns.find((column) => column.key === 'updated-at')?.cellType, 'datetime')
   assert.equal(columns.find((column) => column.key === 'updated-at')?.formatValue?.(new Date(2026, 4, 24, 3, 29, 14)), '2026-05-24 03:29:14')
 })

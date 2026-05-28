@@ -2,10 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { ArrowUpDown, FunnelPlus, PanelRightOpen, Settings2, X } from '@lucide/vue'
 
-import { IconButton, Select } from '@/design'
+import { IconButton, Input } from '@/design'
 import DataTable from '@/design/organisms/DataTable.vue'
 import DropdownMenu from '@/design/primitives/DropdownMenu.vue'
-import type { DataTableRowKey, DataTableSort, DataTableState, DropdownMenuItem, FieldOption } from '@/design/types'
+import type { DataTableRowKey, DataTableSort, DataTableState, DropdownMenuItem } from '@/design/types'
 import type { MetadataField } from '@/features/metadata/metadata.api'
 import PageToolbar from '@/shell/PageToolbar.vue'
 import { usePlatformStore } from '@/stores/platform.store'
@@ -28,22 +28,13 @@ const emit = defineEmits<{
 const recordsStore = useRecordsStore()
 const platformStore = usePlatformStore()
 const hiddenColumnKeys = ref<string[]>([])
-// TODO: Replace these placeholder toolbar controls with metadata-backed list preferences.
-const toolbarView = ref('default')
-const toolbarScope = ref('all')
+// TODO: Wire this to a real name-search query once Record list filtering supports search-style matching.
+const nameSearch = ref('')
 const dummyFilters = ref<{ id: number; field: string }[]>([])
 let nextDummyFilterId = 1
 
 const columns = computed(() => buildRecordListColumns(props.fields, props.systemFields ?? []))
 const pageSizeOptions = computed(() => platformStore.recordListPolicy?.['page-sizes'] ?? [])
-const toolbarViewOptions: FieldOption[] = [
-  { value: 'default', label: 'Default' },
-  { value: 'compact', label: 'Compact' },
-]
-const toolbarScopeOptions: FieldOption[] = [
-  { value: 'all', label: 'All' },
-  { value: 'mine', label: 'Mine' },
-]
 const filterableFields = computed(() => (
   [...props.fields, ...(props.systemFields ?? [])].filter(isFilterableField)
 ))
@@ -282,21 +273,13 @@ function dummyFilterValue(fieldName: string): string {
   <section class="record-list-renderer" aria-label="Record list view">
     <PageToolbar v-if="showToolbar">
       <template #left>
-        <div class="record-list-renderer__toolbar-select">
-          <Select
-            :model-value="toolbarView"
-            :options="toolbarViewOptions"
-            aria-label="View preset"
-            @update:model-value="toolbarView = $event"
-          />
-        </div>
-
-        <div class="record-list-renderer__toolbar-select">
-          <Select
-            :model-value="toolbarScope"
-            :options="toolbarScopeOptions"
-            aria-label="Scope preset"
-            @update:model-value="toolbarScope = $event"
+        <div class="record-list-renderer__name-search">
+          <Input
+            :model-value="nameSearch"
+            type="search"
+            placeholder="ID"
+            aria-label="Filter records by ID"
+            @update:model-value="nameSearch = $event"
           />
         </div>
 
@@ -404,9 +387,9 @@ function dummyFilterValue(fieldName: string): string {
   flex: 1 1 auto;
 }
 
-.record-list-renderer__toolbar-select {
-  width: 96px;
-  flex: 0 0 96px;
+.record-list-renderer__name-search {
+  width: 180px;
+  flex: 0 0 180px;
   min-width: 0;
 }
 

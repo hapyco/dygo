@@ -20,7 +20,7 @@ export function recordSystemListColumns(fields: MetadataField[] = []) {
     .filter((field) => field.name !== 'id' && field.listable && !field['write-only'])
     .map((field) => ({
       key: field.name,
-      label: field.label || field.name,
+      label: field.name === 'name' ? 'ID' : field.label || field.name,
       source: field.name === 'name' ? 'name' as const : 'system' as const,
       cellType: field.studio?.display || 'text',
       sortable: true,
