@@ -11,6 +11,7 @@ import {
 } from 'reka-ui'
 import { useRouter } from 'vue-router'
 
+import { queryClient } from '@/app/query'
 import { reloadStudioApp } from '@/app/reload'
 import Avatar from '@/design/atoms/Avatar.vue'
 import { RouteName } from '@/router/routes'
@@ -42,6 +43,7 @@ async function reloadApp() {
 
 async function logout() {
   await authStore.logout()
+  queryClient.clear()
   await router.replace({ name: RouteName.Login })
 }
 </script>

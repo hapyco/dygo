@@ -5,6 +5,15 @@ import { Plus, RotateCcw, Save, Trash2 } from '@lucide/vue'
 
 import { ErrorState, Spinner } from '@/design'
 import type { MetadataEntityMeta, MetadataField } from '@/features/metadata/metadata.api'
+import { useMetadataEntityMetaQuery } from '@/features/metadata/metadata.query'
+import {
+  useCreateRecordMutation,
+  useDeleteRecordMutation,
+  useRecordByNameQuery,
+  useSingleRecordQuery,
+  useUpdateRecordMutation,
+  useUpdateSingleRecordMutation,
+} from '@/features/records/record-form.query'
 import type { RecordData } from '@/features/records/records.api'
 import { isHiddenRecordSubmitField } from '@/features/records/system-fields'
 import { RecordFormRenderer } from '@/renderers/records'
@@ -12,8 +21,7 @@ import { RouteName } from '@/router/routes'
 import FormToolbar from '@/shell/FormToolbar.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import type { PageHeaderAction } from '@/shell/types'
-import { useMetadataStore } from '@/stores/metadata.store'
-import { singleRecordKey, useRecordsStore } from '@/stores/records.store'
+import { statusForError, storeError, type LoadStatus } from '@/stores/status'
 
 const props = defineProps<{
   entity: string
@@ -27,27 +35,113 @@ type ConvertedValue = {
 }
 
 const router = useRouter()
-const metadataStore = useMetadataStore()
-const recordsStore = useRecordsStore()
+const entityMetaQuery = useMetadataEntityMetaQuery(() => props.entity)
 
 const draft = ref<RecordData>({})
 const baseline = ref<RecordData>({})
 const fieldErrors = ref<Record<string, string>>({})
 const localError = ref('')
+const entityMeta = computed(() => entityMetaQuery.data.value ?? null)
+const entityMetaError = computed(() => (
+  entityMetaQuery.error.value
+    ? storeError(entityMetaQuery.error.value, 'Studio could not load entity metadata.')
+    : null
+))
+const entityMetaStatus = computed<LoadStatus>(() => {
+  if (entityMetaQuery.isPending.value) {
+    return 'loading'
+  }
 
-const recordStateKey = computed(() => {
-  if (props.mode === 'new') {
-    return 'new'
+  if (entityMetaError.value) {
+    return statusForError(entityMetaError.value)
   }
-  if (props.mode === 'single') {
-    return singleRecordKey
-  }
-  return props.recordName ?? ''
+
+  return entityMeta.value ? 'ready' : 'idle'
 })
-const recordState = computed(() => recordsStore.recordState(props.entity, recordStateKey.value))
-const entityMeta = computed(() => metadataStore.entityMeta(props.entity))
-const entityMetaStatus = computed(() => metadataStore.entityMetaStatus(props.entity))
-const entityMetaError = computed(() => metadataStore.entityMetaError(props.entity))
+const isNew = computed(() => props.mode === 'new')
+const isSingle = computed(() => props.mode === 'single')
+const isRecord = computed(() => props.mode === 'record')
+const recordByNameQuery = useRecordByNameQuery(
+  () => props.entity,
+  () => props.recordName ?? '',
+  {
+    enabled: computed(() => (
+      isRecord.value
+      && entityMeta.value?.slug === props.entity
+      && entityMeta.value?.['is-single'] !== true
+    )),
+  },
+)
+const singleRecordQuery = useSingleRecordQuery(
+  () => props.entity,
+  {
+    enabled: computed(() => (
+      isSingle.value
+      && entityMeta.value?.slug === props.entity
+    )),
+  },
+)
+const createRecordMutation = useCreateRecordMutation()
+const updateRecordMutation = useUpdateRecordMutation()
+const updateSingleRecordMutation = useUpdateSingleRecordMutation()
+const deleteRecordMutation = useDeleteRecordMutation()
+const record = computed(() => {
+  if (isSingle.value) {
+    return singleRecordQuery.data.value ?? null
+  }
+
+  if (isRecord.value) {
+    return recordByNameQuery.data.value ?? null
+  }
+
+  return null
+})
+const recordError = computed(() => {
+  if (isSingle.value && singleRecordQuery.error.value) {
+    return storeError(singleRecordQuery.error.value, 'Studio could not load these settings.')
+  }
+
+  if (isRecord.value && recordByNameQuery.error.value) {
+    return storeError(recordByNameQuery.error.value, 'Studio could not load this record.')
+  }
+
+  return null
+})
+const recordStatus = computed<LoadStatus>(() => {
+  if (isNew.value) {
+    return 'ready'
+  }
+
+  const activeQuery = isSingle.value ? singleRecordQuery : recordByNameQuery
+  if (activeQuery.isPending.value) {
+    return 'loading'
+  }
+
+  if (recordError.value) {
+    return statusForError(recordError.value)
+  }
+
+  return record.value ? 'ready' : 'idle'
+})
+const recordActionError = computed(() => {
+  if (createRecordMutation.error.value) {
+    return storeError(createRecordMutation.error.value, 'Studio could not create this record.')
+  }
+
+  if (updateSingleRecordMutation.error.value) {
+    return storeError(updateSingleRecordMutation.error.value, 'Studio could not save these settings.')
+  }
+
+  if (updateRecordMutation.error.value) {
+    return storeError(updateRecordMutation.error.value, 'Studio could not save this record.')
+  }
+
+  if (deleteRecordMutation.error.value) {
+    return storeError(deleteRecordMutation.error.value, 'Studio could not delete this record.')
+  }
+
+  return null
+})
 const systemFields = computed(() => entityMeta.value?.['system-fields'] ?? [])
 const fields = computed(() => {
   const meta = entityMeta.value
@@ -64,18 +158,20 @@ const fields = computed(() => {
 })
 const entityLabel = computed(() => entityMeta.value?.label || humanizeEntity(props.entity))
 const isSystem = computed(() => entityMeta.value?.['is-system'] === true)
-const isNew = computed(() => props.mode === 'new')
-const isSingle = computed(() => props.mode === 'single')
-const isRecord = computed(() => props.mode === 'record')
 const loading = computed(() => (
   entityMetaStatus.value === 'idle'
   || entityMetaStatus.value === 'loading'
-  || (!isNew.value && (recordState.value.status === 'idle' || recordState.value.status === 'loading'))
+  || (!isNew.value && (recordStatus.value === 'idle' || recordStatus.value === 'loading'))
 ))
-const saving = computed(() => recordState.value.saving)
-const blockingError = computed(() => entityMetaError.value?.message ?? recordState.value.error?.message ?? '')
-const saveError = computed(() => localError.value || recordState.value.saveError?.message || '')
-const showForm = computed(() => Boolean(entityMeta.value) && (isNew.value || Boolean(recordState.value.record)))
+const saving = computed(() => (
+  createRecordMutation.isPending.value
+  || updateRecordMutation.isPending.value
+  || updateSingleRecordMutation.isPending.value
+  || deleteRecordMutation.isPending.value
+))
+const blockingError = computed(() => entityMetaError.value?.message ?? recordError.value?.message ?? '')
+const saveError = computed(() => localError.value || recordActionError.value?.message || '')
+const showForm = computed(() => Boolean(entityMeta.value) && (isNew.value || Boolean(record.value)))
 const dirty = computed(() => fields.value.some((field) => !draftValuesEqual(draft.value[field.name], baseline.value[field.name])))
 const canSave = computed(() => showForm.value && dirty.value && !loading.value && !saving.value && !isSystem.value)
 const actions = computed<PageHeaderAction[]>(() => {
@@ -106,7 +202,7 @@ const actions = computed<PageHeaderAction[]>(() => {
       label: 'Delete',
       icon: Trash2,
       variant: 'secondary',
-      disabled: loading.value || saving.value || !recordState.value.record,
+      disabled: loading.value || saving.value || !record.value,
       loading: saving.value,
       onSelect: deleteRecord,
     })
@@ -117,10 +213,20 @@ const actions = computed<PageHeaderAction[]>(() => {
 
 watch(
   () => [props.entity, props.mode, props.recordName] as const,
-  async ([entity, mode, recordName]) => {
+  () => {
     fieldErrors.value = {}
     localError.value = ''
-    const meta = await metadataStore.loadEntityMeta(entity)
+    resetRecordActionErrors()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => [props.entity, props.mode, props.recordName, entityMeta.value] as const,
+  async ([entity, mode, _recordName, meta]) => {
+    if (!meta || meta.slug !== entity) {
+      return
+    }
 
     if (meta?.['is-single'] && mode !== 'single') {
       await router.replace({ name: RouteName.EntityRecords, params: { entity } })
@@ -131,28 +237,24 @@ watch(
       await router.replace({ name: RouteName.EntityRecords, params: { entity } })
       return
     }
-
-    if (mode === 'single') {
-      await recordsStore.loadSingleRecord(entity)
-    } else if (mode === 'record' && recordName) {
-      await recordsStore.loadRecordByName(entity, recordName)
-    } else if (mode === 'new') {
-      recordsStore.resetRecordForm(entity, 'new')
-    }
   },
   { immediate: true },
 )
 
 watch(
-  () => [entityMeta.value, recordState.value.record, props.mode] as const,
-  ([meta, record, mode]) => {
-    if (!meta) {
+  () => [entityMeta.value, record.value, props.mode, props.entity] as const,
+  ([meta, nextRecord, mode, entity]) => {
+    if (!meta || meta.slug !== entity) {
+      return
+    }
+
+    if (mode !== 'new' && !nextRecord) {
       return
     }
 
     const nextDraft = mode === 'new'
       ? draftFromDefaults(meta.fields)
-      : draftFromRecord(meta.fields, record)
+      : draftFromRecord(meta.fields, nextRecord)
 
     draft.value = nextDraft
     baseline.value = { ...nextDraft }
@@ -172,6 +274,13 @@ function updateDraft(value: RecordData) {
   draft.value = value
 }
 
+function resetRecordActionErrors() {
+  createRecordMutation.reset()
+  updateRecordMutation.reset()
+  updateSingleRecordMutation.reset()
+  deleteRecordMutation.reset()
+}
+
 async function saveRecord() {
   if (!canSave.value) {
     return
@@ -179,6 +288,7 @@ async function saveRecord() {
 
   fieldErrors.value = {}
   localError.value = ''
+  resetRecordActionErrors()
 
   const payload = buildSubmitPayload()
   if (Object.keys(fieldErrors.value).length > 0) {
@@ -191,10 +301,15 @@ async function saveRecord() {
 
   try {
     const record = isNew.value
-      ? await recordsStore.createRecord(props.entity, payload)
+      ? await createRecordMutation.mutateAsync({ entity: props.entity, data: payload })
       : isSingle.value
-        ? await recordsStore.updateSingleRecord(props.entity, payload)
-        : await recordsStore.updateRecord(props.entity, props.recordName ?? '', currentRecordID(), payload)
+        ? await updateSingleRecordMutation.mutateAsync({ entity: props.entity, data: payload })
+        : await updateRecordMutation.mutateAsync({
+            entity: props.entity,
+            recordName: props.recordName ?? '',
+            id: currentRecordID(),
+            data: payload,
+          })
 
     resetToRecord(record)
     const nextName = typeof record.name === 'string' ? record.name : ''
@@ -202,12 +317,12 @@ async function saveRecord() {
       await router.replace({ name: RouteName.RecordDetail, params: { entity: props.entity, recordName: nextName } })
     }
   } catch {
-    // The store owns the API error shape for display.
+    // TanStack owns the mutation error for display.
   }
 }
 
 async function deleteRecord() {
-  if (!isRecord.value || loading.value || saving.value || !recordState.value.record) {
+  if (!isRecord.value || loading.value || saving.value || !record.value) {
     return
   }
 
@@ -217,17 +332,22 @@ async function deleteRecord() {
   }
 
   localError.value = ''
+  resetRecordActionErrors()
 
   try {
-    await recordsStore.deleteRecord(props.entity, props.recordName ?? '', currentRecordID())
+    await deleteRecordMutation.mutateAsync({
+      entity: props.entity,
+      recordName: props.recordName ?? '',
+      id: currentRecordID(),
+    })
     await router.replace({ name: RouteName.EntityRecords, params: { entity: props.entity } })
   } catch {
-    // The store owns the API error shape for display.
+    // TanStack owns the mutation error for display.
   }
 }
 
 function currentRecordID(): string | number {
-  const id = recordState.value.record?.id
+  const id = record.value?.id
   if (typeof id === 'string' || typeof id === 'number') {
     return id
   }
@@ -648,7 +768,7 @@ function humanizeEntity(value: string): string {
           :fields="fields"
           :system-fields="systemFields"
           :collections="entityMeta.collections"
-          :record="recordState.record"
+          :record="record"
           :mode="props.mode"
           :model-value="draft"
           :field-errors="fieldErrors"

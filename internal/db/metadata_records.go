@@ -191,7 +191,7 @@ func persistFieldRecord(ctx context.Context, tx pgx.Tx, entityID int64, field fi
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO "field" (name, entity_id, field_name, label, type, required, "unique", "index", "default", "check", fetch, position, options)
+INSERT INTO "field" (name, entity_id, field_name, label, type, required, "unique", "index", "default", "check", "fetch", position, options)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, field.RecordName, entityID, field.Name, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Fetch, field.Position, field.Options); err != nil {
 			return fmt.Errorf("persist field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
 		}
@@ -207,7 +207,7 @@ SET name = $2,
 	"index" = $7,
 	"default" = $8,
 	"check" = $9,
-	fetch = $10,
+	"fetch" = $10,
 	position = $11,
 	options = $12,
 	updated_at = now()

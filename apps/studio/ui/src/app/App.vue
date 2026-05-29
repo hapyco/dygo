@@ -4,18 +4,16 @@ import { RouterView, useRoute } from 'vue-router'
 import * as LucideIcons from '@lucide/vue'
 
 import { routeParam, RouteName } from '@/router/routes'
+import { useMetadataEntitiesQuery } from '@/features/metadata/metadata.query'
 import Shell from '@/shell/Shell.vue'
 import type { ShellNavItem } from '@/shell/types'
 import { useAuthStore } from '@/stores/auth.store'
-import { useMetadataStore } from '@/stores/metadata.store'
 import { useNavigationStore } from '@/stores/navigation.store'
-import { usePlatformStore } from '@/stores/platform.store'
+import { storeError } from '@/stores/status'
 
 const route = useRoute()
 const authStore = useAuthStore()
-const metadataStore = useMetadataStore()
 const navigationStore = useNavigationStore()
-const platformStore = usePlatformStore()
 
 const usesShell = computed(() => !route.meta.public)
 const publicRouteViewKey = computed(() => `${route.fullPath}:${navigationStore.routeReloadVersion}`)
@@ -28,12 +26,22 @@ const currentEntity = computed(() => {
 
   return routeParam(value)
 })
+const metadataEntitiesQuery = useMetadataEntitiesQuery({
+  enabled: computed(() => usesShell.value && Boolean(authStore.currentUser)),
+})
+const metadataEntities = computed(() => metadataEntitiesQuery.data.value ?? [])
+const metadataEntitiesLoading = computed(() => metadataEntitiesQuery.isPending.value)
+const metadataEntitiesError = computed(() => (
+  metadataEntitiesQuery.error.value
+    ? storeError(metadataEntitiesQuery.error.value, 'Studio could not load entities.')
+    : null
+))
 
 const lucideIconRegistry = LucideIcons as unknown as Record<string, Component | undefined>
 const fallbackEntityIcon = LucideIcons.Box as Component
 
 const navItems = computed<ShellNavItem[]>(() => {
-  return metadataStore.entities
+  return metadataEntities.value
     .filter((entity) => !entity['is-collection'] && entity.slug)
     .map((entity) => {
       const slug = entity.slug as string
@@ -60,9 +68,6 @@ watch(
     if (!user) {
       return
     }
-
-    await platformStore.loadPlatform()
-    await metadataStore.loadEntities()
   },
   { immediate: true },
 )
@@ -107,13 +112,13 @@ function humanizeEntity(value: string): string {
   <RouterView v-if="!usesShell" :key="publicRouteViewKey" />
   <Shell v-else :user-name="userName" :nav-items="navItems">
     <template #sidebar>
-      <div v-if="metadataStore.entitiesStatus === 'loading'" class="studio-entity-nav-state">
+      <div v-if="metadataEntitiesLoading" class="studio-entity-nav-state">
         Loading entities
       </div>
-      <div v-else-if="metadataStore.entitiesError" class="studio-entity-nav-state">
-        {{ metadataStore.entitiesError.message }}
+      <div v-else-if="metadataEntitiesError" class="studio-entity-nav-state">
+        {{ metadataEntitiesError.message }}
       </div>
-      <div v-else-if="metadataStore.entities.length === 0" class="studio-entity-nav-state">
+      <div v-else-if="metadataEntities.length === 0" class="studio-entity-nav-state">
         No entities yet
       </div>
     </template>

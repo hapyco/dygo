@@ -14,12 +14,14 @@ import {
   Search,
 } from '@lucide/vue'
 
+import { queryClient } from '@/app/query'
 import { reloadStudioApp } from '@/app/reload'
 import type { MetadataEntity } from '@/features/metadata/metadata.api'
+import { useMetadataEntitiesQuery } from '@/features/metadata/metadata.query'
 import { routeParam, RouteName } from '@/router/routes'
 import { useAuthStore } from '@/stores/auth.store'
 import { useBootStore } from '@/stores/boot.store'
-import { useMetadataStore } from '@/stores/metadata.store'
+import { findEntityByRouteSlug } from '@/stores/metadata.identity'
 import { useNavigationStore, type RecentPage } from '@/stores/navigation.store'
 
 type CommandItem = {
@@ -39,7 +41,6 @@ type CommandGroup = {
 }
 
 const navigationStore = useNavigationStore()
-const metadataStore = useMetadataStore()
 const bootStore = useBootStore()
 const authStore = useAuthStore()
 const route = useRoute()
@@ -50,9 +51,13 @@ const query = ref('')
 const activeItemId = ref('')
 const runningAppAction = ref(false)
 const lucideIconRegistry = LucideIcons as unknown as Record<string, Component | undefined>
+const metadataEntitiesQuery = useMetadataEntitiesQuery({
+  enabled: computed(() => Boolean(authStore.currentUser)),
+})
+const metadataEntities = computed(() => metadataEntitiesQuery.data.value ?? [])
 
 const searchableEntities = computed(() => (
-  metadataStore.entities
+  metadataEntities.value
     .filter((entity) => !entity['is-collection'] && entity.slug)
     .slice()
     .sort((first, second) => entityLabel(first).localeCompare(entityLabel(second)))
@@ -297,6 +302,7 @@ async function logout() {
   runningAppAction.value = true
   try {
     await authStore.logout()
+    queryClient.clear()
     await router.replace({ name: RouteName.Login })
   } finally {
     runningAppAction.value = false
@@ -322,7 +328,7 @@ function recentPageForRoute(currentRoute: RouteLocationNormalizedLoaded): Recent
 
   if (currentRoute.name === RouteName.EntityRecords) {
     const entity = routeParam(currentRoute.params.entity as string | string[])
-    const meta = metadataStore.entityByRouteSlug(entity)
+    const meta = findEntityByRouteSlug(metadataEntities.value, entity)
 
     return {
       path: currentRoute.path,
@@ -334,7 +340,7 @@ function recentPageForRoute(currentRoute: RouteLocationNormalizedLoaded): Recent
   if (currentRoute.name === RouteName.RecordDetail) {
     const entity = routeParam(currentRoute.params.entity as string | string[])
     const recordName = routeParam(currentRoute.params.recordName as string | string[])
-    const meta = metadataStore.entityByRouteSlug(entity)
+    const meta = findEntityByRouteSlug(metadataEntities.value, entity)
     const label = meta ? entityLabel(meta) : humanizeEntity(entity)
 
     return {

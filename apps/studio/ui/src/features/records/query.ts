@@ -21,6 +21,27 @@ export type RecordListRouteState = {
   filters: RecordListFilter[]
 }
 
+export type RecordListRouteFilterOperator = {
+  key: string
+  arity: 'none' | 'one' | 'range'
+}
+
+export type RecordListRouteFilterField = {
+  field: string
+  operators: readonly RecordListRouteFilterOperator[]
+}
+
+export type RecordListRouteSchema = {
+  sortableFields: readonly string[]
+  filterFields: readonly RecordListRouteFilterField[]
+}
+
+export type CanonicalRecordListRouteQuery = {
+  state: RecordListRouteState
+  query: Record<string, string | string[]>
+  changed: boolean
+}
+
 export function buildRecordListQuery(params: ListRecordsParams): URLSearchParams {
   const query = new URLSearchParams({
     limit: String(params.limit),
@@ -84,8 +105,63 @@ export function parseRecordListRouteQuery(query: RecordListRouteQuery): RecordLi
   }
 }
 
+export function canonicalizeRecordListRouteQuery(query: RecordListRouteQuery, schema: RecordListRouteSchema): CanonicalRecordListRouteQuery {
+  const state = canonicalizeRecordListRouteState(parseRecordListRouteQuery(query), schema)
+  const canonicalQuery = buildRecordListRouteQuery(state)
+
+  return {
+    state,
+    query: canonicalQuery,
+    changed: !recordListRouteQueriesEqual(query, canonicalQuery),
+  }
+}
+
+export function recordListRouteQueriesEqual(left: RecordListRouteQuery, right: Record<string, string | string[]>): boolean {
+  const leftKeys = Object.keys(left).sort()
+  const rightKeys = Object.keys(right).sort()
+  if (leftKeys.length !== rightKeys.length || leftKeys.some((key, index) => key !== rightKeys[index])) {
+    return false
+  }
+
+  return leftKeys.every((key) => (
+    routeQueryValues(left[key]).sort().join('\u0000') === routeQueryValues(right[key]).sort().join('\u0000')
+  ))
+}
+
 export function isAllowedRecordPageSize(pageSize: number, pageSizes: readonly number[]): boolean {
   return pageSizes.includes(pageSize)
+}
+
+function canonicalizeRecordListRouteState(state: RecordListRouteState, schema: RecordListRouteSchema): RecordListRouteState {
+  const sortableFields = new Set(schema.sortableFields)
+  const filterFields = new Map(schema.filterFields.map((field) => [field.field, field]))
+
+  return {
+    sort: state.sort && sortableFields.has(state.sort.key) ? state.sort : null,
+    filters: state.filters.flatMap((filter) => canonicalizeRecordListRouteFilter(filter, filterFields)),
+  }
+}
+
+function canonicalizeRecordListRouteFilter(
+  filter: RecordListFilter,
+  fields: Map<string, RecordListRouteFilterField>,
+): RecordListFilter[] {
+  const field = fields.get(filter.field)
+  const operator = field?.operators.find((candidate) => candidate.key === filter.operator)
+  if (!field || !operator) {
+    return []
+  }
+
+  if (operator.arity === 'none') {
+    return [{ field: filter.field, operator: filter.operator }]
+  }
+
+  const value = filter.value?.trim() ?? ''
+  if (value === '') {
+    return []
+  }
+
+  return [{ field: filter.field, operator: filter.operator, value }]
 }
 
 function recordFilterQueryKey(filter: RecordListFilter): string {
@@ -120,8 +196,12 @@ function routeQueryValues(value: RouteQueryValue): string[] {
     return value.map((entry) => entry ?? '')
   }
 
-  if (value === undefined || value === null) {
+  if (value === undefined) {
     return []
+  }
+
+  if (value === null) {
+    return ['']
   }
 
   return [value]

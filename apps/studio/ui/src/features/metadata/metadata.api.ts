@@ -69,23 +69,29 @@ export type MetadataEntityMeta = MetadataEntity & {
   collections?: Record<string, MetadataEntityMeta>
 }
 
+type MetadataRequestOptions = {
+  signal?: AbortSignal
+}
+
 export class MetadataApiError extends ApiClientError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
     super('MetadataApiError', code, message, details)
   }
 }
 
-export async function listEntities(): Promise<MetadataEntity[]> {
+export async function listEntities(options: MetadataRequestOptions = {}): Promise<MetadataEntity[]> {
   const payload = await apiRequest<DataEnvelope<MetadataEntity[]>, MetadataApiError>('/api/v1/entities', {
     method: 'GET',
+    signal: options.signal,
   }, metadataRequestOptions())
 
   return payload.data
 }
 
-export async function getEntityMeta(entity: string): Promise<MetadataEntityMeta> {
+export async function getEntityMeta(entity: string, options: MetadataRequestOptions = {}): Promise<MetadataEntityMeta> {
   const payload = await apiRequest<DataEnvelope<MetadataEntityMeta>, MetadataApiError>(`/api/v1/entities/${encodeURIComponent(entity)}/meta`, {
     method: 'GET',
+    signal: options.signal,
   }, metadataRequestOptions())
 
   return payload.data

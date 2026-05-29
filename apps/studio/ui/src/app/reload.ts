@@ -1,30 +1,25 @@
 import type { Router } from 'vue-router'
 
+import { queryClient } from '@/app/query'
+import { metadataEntitiesQueryOptions } from '@/features/metadata/metadata.query'
+import { platformConfigQueryOptions } from '@/features/platform/platform.query'
 import { RouteName } from '@/router/routes'
 import { useAuthStore } from '@/stores/auth.store'
 import { useBootStore } from '@/stores/boot.store'
-import { useMetadataStore } from '@/stores/metadata.store'
 import { useNavigationStore } from '@/stores/navigation.store'
 import { pinia } from '@/stores/pinia'
-import { usePlatformStore } from '@/stores/platform.store'
-import { useRecordsStore } from '@/stores/records.store'
 
 export async function reloadStudioApp(router: Router): Promise<void> {
   const currentRoute = router.currentRoute.value
   const redirectTarget = currentRoute.fullPath
   const authStore = useAuthStore(pinia)
   const bootStore = useBootStore(pinia)
-  const metadataStore = useMetadataStore(pinia)
   const navigationStore = useNavigationStore(pinia)
-  const platformStore = usePlatformStore(pinia)
-  const recordsStore = useRecordsStore(pinia)
 
   authStore.$reset()
   bootStore.$reset()
-  metadataStore.$reset()
   navigationStore.$reset()
-  platformStore.$reset()
-  recordsStore.$reset()
+  queryClient.clear()
 
   const user = await authStore.loadCurrentUser({ force: true })
   if (!user) {
@@ -34,8 +29,8 @@ export async function reloadStudioApp(router: Router): Promise<void> {
 
   const boot = await bootStore.loadBoot({ force: true })
   await Promise.all([
-    platformStore.loadPlatform({ force: true }),
-    metadataStore.loadEntities({ force: true }),
+    queryClient.fetchQuery(platformConfigQueryOptions()),
+    queryClient.fetchQuery(metadataEntitiesQueryOptions()),
   ])
 
   // TODO: include DB-backed preference caches here as boot grows beyond defaults.
