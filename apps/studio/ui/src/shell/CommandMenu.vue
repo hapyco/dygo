@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
+import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
+import { onKeyStroke } from '@vueuse/core'
 import * as LucideIcons from '@lucide/vue'
 import {
   Box,
@@ -196,17 +197,7 @@ watch(
   },
 )
 
-async function openMenu() {
-  navigationStore.openCommandMenu()
-  await nextTick()
-  searchInput.value?.focus()
-}
-
-function closeMenu() {
-  navigationStore.closeCommandMenu()
-}
-
-function handleGlobalKeydown(event: KeyboardEvent) {
+onKeyStroke((event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
     if (commandMenuOpen.value) {
@@ -222,6 +213,16 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     event.preventDefault()
     closeMenu()
   }
+}, { passive: false })
+
+async function openMenu() {
+  navigationStore.openCommandMenu()
+  await nextTick()
+  searchInput.value?.focus()
+}
+
+function closeMenu() {
+  navigationStore.closeCommandMenu()
 }
 
 function handleInputKeydown(event: KeyboardEvent) {
@@ -400,14 +401,6 @@ function normalizeSearch(value: string): string {
 function itemDomId(item: CommandItem): string {
   return `studio-command-menu-item-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
 }
-
-onMounted(() => {
-  window.addEventListener('keydown', handleGlobalKeydown)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleGlobalKeydown)
-})
 </script>
 
 <template>
