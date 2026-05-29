@@ -28,7 +28,7 @@ export async function reloadStudioApp(router: Router): Promise<void> {
   }
 
   const boot = await bootStore.loadBoot({ force: true })
-  await Promise.all([
+  await Promise.allSettled([
     queryClient.fetchQuery(platformConfigQueryOptions()),
     queryClient.fetchQuery(metadataEntitiesQueryOptions()),
   ])

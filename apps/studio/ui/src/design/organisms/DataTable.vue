@@ -305,6 +305,7 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
 <template>
   <section
     class="data-table"
+    :class="{ 'data-table--with-side-rail': hasSideRail }"
     aria-label="Records table"
     :aria-busy="effectiveState === 'loading' ? 'true' : undefined"
   >
@@ -498,6 +499,8 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
 
 <style scoped>
 .data-table {
+  --data-table-side-rail-width: 116px;
+
   display: grid;
   min-height: 0;
   min-width: 0;
@@ -524,8 +527,13 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
   min-width: 0;
   overflow-x: auto;
   overflow-y: visible;
+  scroll-padding-right: var(--data-table-side-rail-width);
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.data-table--with-side-rail .data-table__x-scroller {
+  width: calc(100% - var(--data-table-side-rail-width));
 }
 
 .data-table__x-scroller::-webkit-scrollbar {
@@ -646,7 +654,7 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
 .data-table__side-rail {
   display: grid;
   grid-area: 1 / 1;
-  width: 116px;
+  width: var(--data-table-side-rail-width);
   justify-self: end;
   position: sticky;
   right: 0;

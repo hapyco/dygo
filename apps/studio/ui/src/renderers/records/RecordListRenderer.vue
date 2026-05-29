@@ -52,6 +52,7 @@ const platformConfigQuery = usePlatformConfigQuery()
 const ID_SEARCH_DEBOUNCE_MS = 700
 const LIST_SIDEBAR_STORAGE_KEY = 'dygo.studio.records.listSidebarOpen'
 const PAGE_SIZE_STORAGE_KEY = 'dygo.studio.records.pageSize'
+const DEFAULT_RECORD_LIST_SORT: DataTableSort = { key: 'created-at', direction: 'desc' }
 const storedHiddenColumnKeys = useStorage<string[]>(computed(() => hiddenColumnStorageKey(props.entity)), [], undefined, {
   onError: () => {},
 })
@@ -64,9 +65,10 @@ const hiddenColumnKeys = computed({
 const idSearch = ref('')
 const filterTokens = ref<ActiveRecordFilter[]>([])
 const listQuery = ref<RecordListRouteState>({ sort: null, filters: [] })
-const pageSize = useStorage(PAGE_SIZE_STORAGE_KEY, 0, undefined, {
+const storedPageSize = useStorage(PAGE_SIZE_STORAGE_KEY, 0, undefined, {
   onError: () => {},
 })
+const pageSize = ref(0)
 const selectedRowKeys = ref<DataTableRowKey[]>([])
 const viewOptionsOpen = ref(false)
 const listSidebarOpen = useStorage(LIST_SIDEBAR_STORAGE_KEY, false, undefined, {
@@ -74,6 +76,7 @@ const listSidebarOpen = useStorage(LIST_SIDEBAR_STORAGE_KEY, false, undefined, {
 })
 let nextFilterTokenId = 1
 let currentEntity = ''
+let currentListQuerySignature = ''
 let unmounted = false
 let keepViewOptionsOpenTimer: ReturnType<typeof setTimeout> | undefined
 let suppressViewOptionsClose = false
@@ -84,6 +87,11 @@ type ActiveRecordFilter = {
   operator: string
   value: string
   appliedValue: string
+}
+
+type OrderingOption = {
+  key: string
+  label: string
 }
 
 const columns = computed(() => buildRecordListColumns(props.fields, props.systemFields ?? []))
@@ -112,18 +120,37 @@ const visibleColumns = computed(() => columns.value.filter((column) => (
   column.key === 'name' || !hiddenColumnKeySet.value.has(column.key)
 )))
 const sortableColumns = computed(() => columns.value.filter((column) => column.sortable))
-const orderingField = computed(() => listQuery.value.sort?.key ?? '')
-const orderingDirection = computed(() => listQuery.value.sort?.direction ?? 'asc')
+const effectiveListSort = computed(() => listQuery.value.sort ?? DEFAULT_RECORD_LIST_SORT)
+const orderingField = computed(() => effectiveListSort.value.key)
+const orderingDirection = computed(() => effectiveListSort.value.direction)
+const orderingOptions = computed<OrderingOption[]>(() => {
+  const seen = new Set<string>()
+  return [
+    { key: DEFAULT_RECORD_LIST_SORT.key, label: systemFieldLabel(DEFAULT_RECORD_LIST_SORT.key, 'Created At') },
+    ...sortableColumns.value.map((column) => ({ key: column.key, label: column.label })),
+  ].filter((option) => {
+    if (seen.has(option.key)) {
+      return false
+    }
+
+    seen.add(option.key)
+    return true
+  })
+})
+const recordListReady = computed(() => {
+  const policy = recordListPolicy.value
+  return Boolean(policy && isAllowedRecordPageSize(pageSize.value, policy['page-sizes']))
+})
 const recordsQuery = useInfiniteQuery({
   queryKey: computed(() => recordListQueryKey(props.entity, {
     pageSize: pageSize.value,
-    sort: listQuery.value.sort,
+    sort: effectiveListSort.value,
     filters: listQuery.value.filters,
   })),
   queryFn: ({ pageParam, signal }) => listRecords(props.entity, {
     limit: pageSize.value,
     offset: Number(pageParam),
-    sort: listQuery.value.sort,
+    sort: effectiveListSort.value,
     filters: listQuery.value.filters,
   }, { signal }),
   initialPageParam: 0,
@@ -132,18 +159,28 @@ const recordsQuery = useInfiniteQuery({
     const totalRows = lastPage.meta.total ?? loadedRows
     return loadedRows < totalRows ? loadedRows : undefined
   },
-  enabled: computed(() => pageSize.value > 0),
+  enabled: recordListReady,
 })
 const recordPages = computed(() => recordsQuery.data.value?.pages ?? [])
 const rows = computed<RecordData[]>(() => recordPages.value.flatMap((page) => page.data))
 const totalRows = computed(() => recordPages.value.at(-1)?.meta.total ?? rows.value.length)
+const platformConfigError = computed(() => (
+  platformConfigQuery.error.value
+    ? storeError(platformConfigQuery.error.value, 'Studio could not load record list settings.')
+    : null
+))
 const queryError = computed(() => (
   recordsQuery.error.value
     ? storeError(recordsQuery.error.value, 'Studio could not load records.')
     : null
 ))
+const tableError = computed(() => platformConfigError.value ?? queryError.value)
 const recordStatus = computed<LoadStatus>(() => {
-  if (pageSize.value === 0 || recordsQuery.isPending.value) {
+  if (platformConfigError.value) {
+    return statusForError(platformConfigError.value)
+  }
+
+  if (!recordListReady.value || recordsQuery.isPending.value) {
     return 'loading'
   }
 
@@ -159,9 +196,9 @@ const recordStatus = computed<LoadStatus>(() => {
 })
 const loading = computed(() => recordStatus.value === 'loading')
 const loadingMore = computed(() => recordsQuery.isFetchingNextPage.value)
-const error = computed(() => queryError.value?.message ?? '')
+const error = computed(() => tableError.value?.message ?? '')
 const footerError = computed(() => (
-  recordsQuery.isFetchNextPageError.value ? error.value : ''
+  recordsQuery.isFetchNextPageError.value ? queryError.value?.message ?? '' : ''
 ))
 const tableState = computed<DataTableState>(() => {
   if (loading.value) {
@@ -218,7 +255,7 @@ const tableStateMessage = computed(() => {
   }
 })
 const hasMore = computed(() => (
-  recordsQuery.hasNextPage.value && !queryError.value
+  recordListReady.value && recordsQuery.hasNextPage.value && !platformConfigError.value
 ))
 const showToolbar = computed(() => (
   rows.value.length > 0 || listQuery.value.filters.length > 0 || idSearch.value !== '' || filterTokens.value.length > 0
@@ -260,6 +297,12 @@ watch(
     }
 
     const query = routeRecordListQuery()
+    const listQuerySignature = recordListStateSignature(query)
+    if (currentListQuerySignature !== '' && currentListQuerySignature !== listQuerySignature) {
+      selectedRowKeys.value = []
+    }
+    currentListQuerySignature = listQuerySignature
+
     listQuery.value = {
       sort: query.sort,
       filters: query.filters.map((filter) => ({ ...filter })),
@@ -281,6 +324,7 @@ function updatePageSize(value: number) {
   }
 
   pageSize.value = value
+  storedPageSize.value = value
   selectedRowKeys.value = []
 }
 
@@ -289,7 +333,7 @@ function updateSelectedRowKeys(value: DataTableRowKey[]) {
 }
 
 function updateSort(value: DataTableSort | null) {
-  replaceRecordListRoute(appliedRecordFilters(), value)
+  replaceRecordListRoute(appliedRecordFilters(), defaultRecordListSortEquals(value) ? null : value)
 }
 
 function toggleListSidebar() {
@@ -312,15 +356,17 @@ function updateOrderingField(value: string) {
     return
   }
 
+  if (value === DEFAULT_RECORD_LIST_SORT.key) {
+    updateSort(DEFAULT_RECORD_LIST_SORT)
+    return
+  }
+
   updateSort({ key: value, direction: listQuery.value.sort?.direction ?? 'asc' })
 }
 
 function toggleOrderingDirection() {
   keepViewOptionsOpen()
-  const sort = listQuery.value.sort
-  if (!sort) {
-    return
-  }
+  const sort = effectiveListSort.value
 
   updateSort({
     key: sort.key,
@@ -461,11 +507,12 @@ function defaultPageSize(policy: RecordListPolicy): number {
 }
 
 function readStoredPageSize(policy: RecordListPolicy): number {
-  if (!isAllowedRecordPageSize(pageSize.value, policy['page-sizes'])) {
+  const value = Number(storedPageSize.value)
+  if (!isAllowedRecordPageSize(value, policy['page-sizes'])) {
     return defaultPageSize(policy)
   }
 
-  return pageSize.value
+  return value
 }
 
 function createRecord() {
@@ -489,6 +536,10 @@ function isFilterableField(field: MetadataField): boolean {
 
 function filterFieldLabel(field: MetadataField): string {
   return field.name === 'name' ? 'ID' : field.label || field.name
+}
+
+function systemFieldLabel(name: string, fallback: string): string {
+  return props.systemFields?.find((field) => field.name === name)?.label || fallback
 }
 
 function filterFieldForToken(filter: ActiveRecordFilter): MetadataField | null {
@@ -624,6 +675,10 @@ function routeRecordListQuery(): RecordListRouteState {
   return canonical.state
 }
 
+function recordListStateSignature(state: RecordListRouteState): string {
+  return JSON.stringify(buildRecordListRouteQuery(state))
+}
+
 function recordListRouteSchema() {
   const filterFields: RecordListRouteFilterField[] = [
     { field: 'name', operators: [{ key: 'contains', arity: 'one' }] },
@@ -634,9 +689,13 @@ function recordListRouteSchema() {
   ]
 
   return {
-    sortableFields: sortableColumns.value.map((column) => column.key),
+    sortableFields: orderingOptions.value.map((option) => option.key),
     filterFields,
   }
+}
+
+function defaultRecordListSortEquals(sort: DataTableSort | null): boolean {
+  return sort?.key === DEFAULT_RECORD_LIST_SORT.key && sort.direction === DEFAULT_RECORD_LIST_SORT.direction
 }
 
 function syncFilterControlsFromRoute(filters: RecordListFilter[]) {
@@ -883,17 +942,16 @@ function padDatePart(value: number): string {
                     >
                       <option value="">Field</option>
                       <option
-                        v-for="column in sortableColumns"
-                        :key="column.key"
-                        :value="column.key"
+                        v-for="option in orderingOptions"
+                        :key="option.key"
+                        :value="option.key"
                       >
-                        {{ column.label }}
+                        {{ option.label }}
                       </option>
                     </select>
                     <button
                       class="record-list-renderer__ordering-direction"
                       type="button"
-                      :disabled="!listQuery.sort"
                       :aria-label="orderingDirection === 'asc' ? 'Ascending' : 'Descending'"
                       @click="toggleOrderingDirection"
                     >
