@@ -12,7 +12,7 @@ import {
   updateSingleRecord as updateSingleRecordRequest,
   type RecordData,
 } from '@/features/records/records.api'
-import { isAllowedRecordPageSize, type RecordListFilter, type RecordListRouteState } from '@/features/records/query'
+import { isAllowedRecordPageSize, type ListRecordsParams, type RecordListFilter, type RecordListRouteState } from '@/features/records/query'
 import type { RecordListPolicy } from '@/features/platform/platform.api'
 import { usePlatformStore } from './platform.store'
 import { statusForError, storeError, type LoadStatus, type StoreError } from './status'
@@ -27,6 +27,11 @@ type LoadInitialOptions = {
 
 type LoadOptions = {
   force?: boolean
+}
+
+type ActiveRecordListRequest = {
+  id: number
+  controller: AbortController
 }
 
 export type RecordEntityState = {
@@ -58,6 +63,9 @@ type RecordsState = {
   byRecord: Record<string, RecordFormState>
   pendingRecordByKey: Record<string, Promise<RecordFormState> | undefined>
 }
+
+const activeRecordListRequests = new Map<string, ActiveRecordListRequest>()
+let nextRecordListRequestID = 1
 
 function newRecordEntityState(pageSize: number): RecordEntityState {
   return {
@@ -137,6 +145,52 @@ function filtersEqual(left: RecordListFilter[], right: RecordListFilter[]): bool
   })
 }
 
+function recordListParams(state: RecordEntityState, offset: number): ListRecordsParams {
+  return {
+    limit: state.pageSize,
+    offset,
+    sort: state.sort ? { ...state.sort } : null,
+    filters: state.filters.map((filter) => ({ ...filter })),
+  }
+}
+
+// TODO: Extract this cancellation/token pattern if another Studio store needs race-safe API requests.
+function beginRecordListRequest(entity: string): ActiveRecordListRequest {
+  activeRecordListRequests.get(entity)?.controller.abort()
+
+  const request = {
+    id: nextRecordListRequestID,
+    controller: new AbortController(),
+  }
+  nextRecordListRequestID += 1
+  activeRecordListRequests.set(entity, request)
+  return request
+}
+
+function isCurrentRecordListRequest(entity: string, request: ActiveRecordListRequest): boolean {
+  return activeRecordListRequests.get(entity)?.id === request.id
+}
+
+function finishRecordListRequest(entity: string, request: ActiveRecordListRequest) {
+  if (isCurrentRecordListRequest(entity, request)) {
+    activeRecordListRequests.delete(entity)
+  }
+}
+
+function cancelRecordListRequest(entity: string) {
+  const request = activeRecordListRequests.get(entity)
+  if (!request) {
+    return
+  }
+
+  activeRecordListRequests.delete(entity)
+  request.controller.abort()
+}
+
+function isAbortError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError'
+}
+
 export const useRecordsStore = defineStore('records', {
   state: (): RecordsState => ({
     pageSize: 0,
@@ -185,12 +239,15 @@ export const useRecordsStore = defineStore('records', {
 
       if (this.pageSize !== nextPageSize) {
         this.pageSize = nextPageSize
-        Object.values(this.byEntity).forEach((state) => {
+        Object.entries(this.byEntity).forEach(([entity, state]) => {
           if (state.pageSize === nextPageSize) {
             return
           }
 
+          cancelRecordListRequest(entity)
+          this.pendingInitialByEntity[entity] = undefined
           state.pageSize = nextPageSize
+          state.loadingMore = false
           state.selectedRowKeys = []
           state.stale = true
         })
@@ -228,15 +285,23 @@ export const useRecordsStore = defineStore('records', {
         return pending
       }
 
+      const activeRequest = beginRecordListRequest(entity)
+      const params = recordListParams(state, 0)
+
       state.status = 'loading'
+      state.loadingMore = false
       state.error = null
       state.loadMoreError = null
       state.rows = []
       state.total = 0
       state.selectedRowKeys = []
 
-      const request = listRecords(entity, { limit: state.pageSize, offset: 0, sort: state.sort, filters: state.filters })
+      const request = listRecords(entity, params, { signal: activeRequest.controller.signal })
         .then((result) => {
+          if (!isCurrentRecordListRequest(entity, activeRequest)) {
+            return state
+          }
+
           state.rows = result.data
           state.total = result.meta.total ?? result.data.length
           state.status = result.data.length === 0 ? 'empty' : 'ready'
@@ -245,6 +310,10 @@ export const useRecordsStore = defineStore('records', {
           return state
         })
         .catch((error: unknown) => {
+          if (!isCurrentRecordListRequest(entity, activeRequest) || isAbortError(error)) {
+            return state
+          }
+
           const normalized = storeError(error, 'Studio could not load records.')
           state.rows = []
           state.total = 0
@@ -255,7 +324,10 @@ export const useRecordsStore = defineStore('records', {
           return state
         })
         .finally(() => {
-          this.pendingInitialByEntity[entity] = undefined
+          if (isCurrentRecordListRequest(entity, activeRequest)) {
+            this.pendingInitialByEntity[entity] = undefined
+            finishRecordListRequest(entity, activeRequest)
+          }
         })
 
       this.pendingInitialByEntity[entity] = request
@@ -452,20 +524,34 @@ export const useRecordsStore = defineStore('records', {
         return state
       }
 
+      const activeRequest = beginRecordListRequest(entity)
+      const params = recordListParams(state, state.rows.length)
+
       state.loadingMore = true
       state.loadMoreError = null
 
       try {
-        const result = await listRecords(entity, { limit: state.pageSize, offset: state.rows.length, sort: state.sort, filters: state.filters })
+        const result = await listRecords(entity, params, { signal: activeRequest.controller.signal })
+        if (!isCurrentRecordListRequest(entity, activeRequest)) {
+          return state
+        }
+
         state.rows = [...state.rows, ...result.data]
         state.total = result.meta.total ?? state.rows.length
         state.status = state.rows.length === 0 ? 'empty' : 'ready'
         state.stale = false
       } catch (error: unknown) {
+        if (!isCurrentRecordListRequest(entity, activeRequest) || isAbortError(error)) {
+          return state
+        }
+
         const normalized = storeError(error, 'Studio could not load more records.')
         state.loadMoreError = normalized
       } finally {
-        state.loadingMore = false
+        if (isCurrentRecordListRequest(entity, activeRequest)) {
+          state.loadingMore = false
+          finishRecordListRequest(entity, activeRequest)
+        }
       }
 
       return state
@@ -539,12 +625,15 @@ export const useRecordsStore = defineStore('records', {
       this.pageSize = pageSize
       writeStoredPageSize(pageSize, policy)
 
-      Object.values(this.byEntity).forEach((state) => {
+      Object.entries(this.byEntity).forEach(([entity, state]) => {
         if (state.pageSize === pageSize) {
           return
         }
 
+        cancelRecordListRequest(entity)
+        this.pendingInitialByEntity[entity] = undefined
         state.pageSize = pageSize
+        state.loadingMore = false
         state.selectedRowKeys = []
         state.stale = true
       })
@@ -571,6 +660,7 @@ export const useRecordsStore = defineStore('records', {
     },
 
     resetEntity(entity: string) {
+      cancelRecordListRequest(entity)
       this.byEntity[entity] = newRecordEntityState(this.pageSize)
       this.pendingInitialByEntity[entity] = undefined
     },

@@ -12,17 +12,22 @@ export type RecordListMeta = {
   total?: number
 }
 
+type ListRecordsOptions = {
+  signal?: AbortSignal
+}
+
 export class RecordApiError extends ApiClientError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
     super('RecordApiError', code, message, details)
   }
 }
 
-export async function listRecords(entity: string, params: ListRecordsParams): Promise<ListEnvelope<RecordData[], RecordListMeta>> {
+export async function listRecords(entity: string, params: ListRecordsParams, options: ListRecordsOptions = {}): Promise<ListEnvelope<RecordData[], RecordListMeta>> {
   const query = buildRecordListQuery(params)
 
   return apiRequest<ListEnvelope<RecordData[], RecordListMeta>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}?${query.toString()}`, {
     method: 'GET',
+    signal: options.signal,
   }, recordRequestOptions('records_failed'))
 }
 
