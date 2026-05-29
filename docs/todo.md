@@ -26,7 +26,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #74 Add Studio user and role management
 - [ ] #83 Add Studio standard page skeletons
 - [ ] #84 Add Studio metadata renderer foundation
-- [ ] Add Studio theming support and dark mode
+- [ ] #194 Add Studio theming support and dark mode
 - [ ] #88 Add post-transaction Record hooks
 - [ ] #89 Design hook priority and override policy
 - [ ] #98 Add secrets rotation recovery diagnostics
@@ -41,10 +41,10 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #126 Design page-specific Studio toolbars
 - [ ] #127 Design global Studio page tabs
 - [ ] #128 Design page-specific Studio sidebars
-- [ ] Polish Studio command palette interactions and visual details
-- [ ] Add Studio command palette v2 with contextual actions and record search
-- [ ] Add Studio multi-tab navigation support
-- [ ] Add pinned section to Studio sidebar
+- [ ] #195 Polish Studio command palette interactions and visual details
+- [ ] #196 Add Studio command palette v2 with contextual actions and record search
+- [ ] #197 Add Studio multi-tab navigation support
+- [ ] #198 Add pinned section to Studio sidebar
 - [ ] #130 Define Record rename and system name behavior
 - [ ] #131 Add Studio form validation and field error mapping
 - [ ] #132 Design Studio record form layout metadata
@@ -58,7 +58,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #142 Add Job operations visibility and retry controls
 - [ ] #143 Add job-backed importer foundation for data imports
 - [ ] #144 Add Studio keyboard shortcut foundation
-- [ ] Add custom Studio right-click context menus
+- [ ] #199 Add custom Studio right-click context menus
 - [ ] #145 Add Studio Kanban view for Records
 - [ ] #146 Add Studio Calendar view for Records
 - [ ] #147 Add Studio Gantt chart view for Records
@@ -74,16 +74,16 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #182 Polish Studio page header shell
 - [ ] #183 Polish Studio toolbar shell
 - [ ] #184 Polish Studio sidebar shell
-- [ ] Polish Studio record list sidebar and activity rail
+- [ ] #200 Polish Studio record list sidebar and activity rail
 - [ ] #185 Add Studio record-list request race protection
 - [ ] #186 Add Studio clear-filters action
 - [ ] #187 Add typed Studio filter value controls
 - [ ] #188 Add searchable Studio filter field picker
 - [ ] #189 Polish Studio filter dirty state
 - [ ] #190 Canonicalize invalid Studio filter URLs
-- [ ] Extract Studio record-list URL query canonicalization helper
+- [ ] #201 Extract Studio record-list URL query canonicalization helper
 - [ ] #192 Support filtered Link field records
-- [ ] Add saved filters for Studio record lists
+- [ ] #202 Add saved filters for Studio record lists
 
 ## Done
 
@@ -93,10 +93,10 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [x] #181 Add Studio record page sidebar
 - [x] #125 Build Studio command palette actions and search
 - [x] #154 Support Link field traversal and fetch-from Entity field options
-- [x] Move Studio metadata queries from Pinia to TanStack Query
-- [x] Move Studio platform config from Pinia to TanStack Query
-- [x] Move Studio record form reads and mutations to TanStack Query
-- [x] Reduce Studio Pinia stores to shell and local UI state
-- [x] Simplify Studio reload and logout with TanStack Query cache operations
-- [x] Adopt @vueuse/core for Studio local UI utilities
-- [x] Use VueUse keyboard helpers for Studio command menu
+- [x] #203 Move Studio metadata queries from Pinia to TanStack Query
+- [x] #204 Move Studio platform config from Pinia to TanStack Query
+- [x] #205 Move Studio record form reads and mutations to TanStack Query
+- [x] #206 Reduce Studio Pinia stores to shell and local UI state
+- [x] #207 Simplify Studio reload and logout with TanStack Query cache operations
+- [x] #208 Adopt @vueuse/core for Studio local UI utilities
+- [x] #209 Use VueUse keyboard helpers for Studio command menu

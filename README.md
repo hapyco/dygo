@@ -128,6 +128,7 @@ docs/              framework documentation
 - [Studio](docs/studio.md)
 - [Encrypted Secrets](docs/secrets.md)
 - [Contributing](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
 
 ## Issues
 

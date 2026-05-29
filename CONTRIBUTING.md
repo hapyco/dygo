@@ -25,10 +25,13 @@ Issues are welcome when they help clarify the framework:
 
 Keep issues focused on the problem, context, and desired outcome. Implementation pull requests should wait until contribution guidelines reopen.
 
+Do not open public issues for vulnerabilities or exploit details. Follow the [Security Policy](SECURITY.md) for private reporting.
+
 If you are following the project, start here:
 
 - [README](README.md)
 - [Documentation Index](docs/index.md)
+- [Security Policy](SECURITY.md)
 - [Roadmap](https://github.com/orgs/hapyco/projects/3/views/1)
 
 ## When Contributions Reopen

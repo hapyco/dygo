@@ -25,10 +25,12 @@ These docs describe the framework concepts, file formats, CLI commands, and runt
 - [App SDK](sdk.md) explains the public Go package app code can compile against.
 - [Studio](studio.md) explains the first-party global UI app.
 - [Encrypted Secrets](secrets.md) explains repo-stored encrypted secrets and the `dygo secret` CLI.
+- [Security Policy](../SECURITY.md) explains private vulnerability reporting and safe research guidelines.
 
 ## Working Notes
 
 - [Notes](notes.md) stores internal planning and reduction notes that are not framework reference docs.
 - [Project README](../README.md) gives a short overview and basic development commands.
 - [Contributing](../CONTRIBUTING.md) explains the current paused contribution status.
+- [Security Policy](../SECURITY.md) explains how to report vulnerabilities privately.
 - [Agent Instructions](../AGENT.md) stores repo-level guidance for coding agents.
