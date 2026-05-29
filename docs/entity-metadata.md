@@ -157,6 +157,27 @@ Field `name`, `label`, and `type` are required.
 
 Field names must be unique inside an Entity.
 
+Fields can copy a stored value from a linked Record path with `fetch.from`:
+
+```yaml
+fields:
+  - name: customer
+    label: Customer
+    type: link
+    options:
+      entity: customer
+
+  - name: customer-territory
+    label: Customer Territory
+    type: link
+    fetch:
+      from: customer.territory
+    options:
+      entity: territory
+```
+
+Every path segment before the last segment must be a `link` field. The final field can be scalar or `link`, but its type must match the destination field. If the final field is a `link`, both link fields must target the same Entity. dygo resolves fetched fields when Records are created or updated and stores the copied value on the destination Record.
+
 Every metadata-backed Record has system fields:
 
 ```txt
@@ -264,7 +285,7 @@ Supported field check operators are `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`,
 
 Check fields must be DB-backed scalar fields. `password`, `collection`, `json`, `attachment`, and `link` checks are not supported in v1.
 
-During `dygo db migrate`, normal Entity name metadata is upserted into the Core `entity` table. Collection row Entities omit naming metadata because their row names are framework-owned. Field metadata is upserted into the Core `field` table with field-name, label, type, required, unique, index, default, check, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
+During `dygo db migrate`, normal Entity name metadata is upserted into the Core `entity` table. Collection row Entities omit naming metadata because their row names are framework-owned. Field metadata is upserted into the Core `field` table with field-name, label, type, required, unique, index, default, check, fetch, position, and options. Top-level Entity `indexes` and `constraints` are upserted into the Core `index` and `constraint` tables.
 
 Type-specific settings live under `options`.
 

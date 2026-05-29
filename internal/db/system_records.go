@@ -59,7 +59,11 @@ func (w SystemRecordWriter) InsertByIdentity(ctx context.Context, appName string
 	if layout.IsCollection {
 		return collectionRecordOperationError(layout, "create")
 	}
-	_, err = store.insertRecordWithLayout(ctx, layout, cloneRecordInput(input), false)
+	input = cloneRecordInput(input)
+	if err := store.applyFetchedFields(ctx, layout, input, nil); err != nil {
+		return err
+	}
+	_, err = store.insertRecordWithLayout(ctx, layout, input, false)
 	return err
 }
 

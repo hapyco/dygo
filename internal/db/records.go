@@ -424,6 +424,9 @@ func (s RecordStore) createRecordWithLayout(ctx context.Context, layout recordLa
 	if err := s.runRecordHooks(ctx, hookCtx); err != nil {
 		return nil, err
 	}
+	if err := s.applyFetchedFields(ctx, layout, input, nil); err != nil {
+		return nil, err
+	}
 	if err := layout.validateCreateInput(input); err != nil {
 		return nil, err
 	}
@@ -573,6 +576,9 @@ func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLa
 	hookCtx.Input = input
 	hookCtx.OldRecord = oldRecord
 	if err := s.runRecordHooks(ctx, hookCtx); err != nil {
+		return nil, err
+	}
+	if err := s.applyFetchedFields(ctx, layout, input, oldRecord); err != nil {
 		return nil, err
 	}
 	if err := layout.validateUpdateFields(input); err != nil {
@@ -880,6 +886,7 @@ type recordField struct {
 	Type        string
 	Required    bool
 	Default     json.RawMessage
+	Fetch       recordFieldFetch
 	Options     recordFieldOptions
 	Column      string
 	Storage     bool
@@ -896,6 +903,10 @@ type recordFieldOptions struct {
 	Values     []string `json:"values,omitempty"`
 	Entity     string   `json:"entity,omitempty"`
 	ForeignKey *bool    `json:"foreign-key,omitempty"`
+}
+
+type recordFieldFetch struct {
+	From string `json:"from,omitempty"`
 }
 
 type recordCollection struct {
@@ -984,6 +995,11 @@ func newRecordLayout(meta MetadataEntityMeta) (recordLayout, error) {
 		if len(metadataField.Options) > 0 {
 			if err := json.Unmarshal(metadataField.Options, &field.Options); err != nil {
 				return recordLayout{}, recordError(RecordErrorInternal, "field options metadata is invalid", map[string]any{"entity": routeSlug, "field": metadataField.Name}, err)
+			}
+		}
+		if len(metadataField.Fetch) > 0 {
+			if err := json.Unmarshal(metadataField.Fetch, &field.Fetch); err != nil {
+				return recordLayout{}, recordError(RecordErrorInternal, "field fetch metadata is invalid", map[string]any{"entity": routeSlug, "field": metadataField.Name}, err)
 			}
 		}
 		if field.Storage && !field.SystemName {

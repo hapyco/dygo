@@ -817,6 +817,47 @@ func TestRecordStoreCreateRecordResolvesLinkNamesToStoredIDs(t *testing.T) {
 	}
 }
 
+func TestRecordStoreCreateRecordAppliesFetchedFields(t *testing.T) {
+	now := time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC)
+	queryer := newInvoiceRecordQueryer()
+	queryer.rows = append(queryer.rows,
+		newFakeRows(customerFieldRows()),
+		newFakeRows(nil),
+		newFakeRows(nil),
+		newFakeRows([][]any{
+			{int64(101), "acme", now, now, "Acme LLC", "USD"},
+		}),
+		newFakeRows(customerFieldRows()),
+		newFakeRows(nil),
+		newFakeRows(nil),
+		newFakeRows([][]any{
+			{int64(101), "acme", now, now, "Acme LLC", "USD"},
+		}),
+		newFakeRows([][]any{
+			{int64(201), "invoice-1", now, now, "Acme", "Acme LLC", "USD"},
+		}),
+	)
+
+	record, err := NewRecordStore(queryer).CreateRecord(context.Background(), "invoice", recordInput(map[string]string{
+		"customer": `"Acme"`,
+	}))
+	if err != nil {
+		t.Fatalf("CreateRecord(fetch) error = %v, row SQL = %#v args = %#v, want nil", err, queryer.rowSQL, queryer.rowArgs)
+	}
+	if record["customer-title"] != "Acme LLC" || record["currency"] != "USD" {
+		t.Fatalf("CreateRecord(fetch) = %+v, want fetched customer title and currency", record)
+	}
+	lastQuery, args := lastQueryContaining(t, queryer, `INSERT INTO "sales_invoice"`)
+	for _, want := range []string{`"currency_id"`, `"customer_id"`, `"customer_title"`} {
+		if !strings.Contains(lastQuery, want) {
+			t.Fatalf("create query = %q, want fetched column %q", lastQuery, want)
+		}
+	}
+	if !reflect.DeepEqual(args[:3], []any{int64(840), int64(101), "Acme LLC"}) {
+		t.Fatalf("create args = %#v, want fetched currency id, customer id, title", args)
+	}
+}
+
 func TestRecordStoreCreateRecordRejectsNumericLinkInput(t *testing.T) {
 	_, err := NewRecordStore(newActivityRecordQueryer()).CreateRecord(context.Background(), "activity", recordInput(map[string]string{
 		"actor":     `99`,
@@ -1821,8 +1862,42 @@ func activityEntityMeta() testEntityMeta {
 	}
 }
 
-func metadataFieldRow(name string, label string, fieldType string, required bool, unique bool, indexed bool, defaultValue []byte, check []byte, position int, options []byte) []any {
-	return []any{int64(position), name, label, fieldType, required, unique, indexed, defaultValue, check, position, options}
+func invoiceEntityMeta() testEntityMeta {
+	return testEntityMeta{
+		id:          70,
+		name:        "sales.invoice",
+		key:         "invoice",
+		slug:        "invoice",
+		label:       "Invoice",
+		description: "Sales invoice",
+		icon:        "file-text",
+		naming:      []byte(`{"strategy":"random","length":16}`),
+		app:         "sales",
+		appLabel:    "Sales",
+	}
+}
+
+func customerEntityMeta() testEntityMeta {
+	return testEntityMeta{
+		id:          71,
+		name:        "sales.customer",
+		key:         "customer",
+		slug:        "customer",
+		label:       "Customer",
+		description: "Customer",
+		icon:        "user",
+		naming:      []byte(`{"strategy":"random","length":16}`),
+		app:         "sales",
+		appLabel:    "Sales",
+	}
+}
+
+func metadataFieldRow(name string, label string, fieldType string, required bool, unique bool, indexed bool, defaultValue []byte, check []byte, position int, options []byte, fetch ...[]byte) []any {
+	var fetchValue []byte
+	if len(fetch) > 0 {
+		fetchValue = fetch[0]
+	}
+	return []any{int64(position), name, label, fieldType, required, unique, indexed, defaultValue, check, fetchValue, position, options}
 }
 
 func userFieldRows() [][]any {
@@ -1886,6 +1961,21 @@ func activityFieldRows() [][]any {
 		metadataFieldRow("changes", "Changes", "json", false, false, false, nil, nil, 9, nil),
 		metadataFieldRow("snapshot", "Snapshot", "json", false, false, false, nil, nil, 10, nil),
 		metadataFieldRow("details", "Details", "json", false, false, false, nil, nil, 11, nil),
+	}
+}
+
+func invoiceFieldRows() [][]any {
+	return [][]any{
+		metadataFieldRow("customer", "Customer", "link", true, false, false, nil, nil, 1, []byte(`{"entity":"customer"}`)),
+		metadataFieldRow("customer-title", "Customer Title", "text", false, false, false, nil, nil, 2, nil, []byte(`{"from":"customer.title"}`)),
+		metadataFieldRow("currency", "Currency", "link", false, false, false, nil, nil, 3, []byte(`{"entity":"currency"}`), []byte(`{"from":"customer.default-currency"}`)),
+	}
+}
+
+func customerFieldRows() [][]any {
+	return [][]any{
+		metadataFieldRow("title", "Title", "text", true, false, false, nil, nil, 1, nil),
+		metadataFieldRow("default-currency", "Default Currency", "link", false, false, false, nil, nil, 2, []byte(`{"entity":"currency"}`)),
 	}
 }
 
@@ -1988,6 +2078,18 @@ func newActivityRecordQueryer() *fakeRecordQueryer {
 	}
 }
 
+func newInvoiceRecordQueryer() *fakeRecordQueryer {
+	meta := invoiceEntityMeta()
+	return &fakeRecordQueryer{
+		row: meta.row(),
+		rows: []pgx.Rows{
+			newFakeRows(invoiceFieldRows()),
+			newFakeRows(nil),
+			newFakeRows(nil),
+		},
+	}
+}
+
 type fakeRecordQueryer struct {
 	row                 pgx.Row
 	rows                []pgx.Rows
@@ -2037,6 +2139,9 @@ func (q *fakeRecordQueryer) QueryRow(_ context.Context, sql string, args ...any)
 	if isLeadContactMetadataQuery(sql, args...) {
 		return leadContactEntityMeta().row()
 	}
+	if isSalesCustomerMetadataQuery(sql, args...) {
+		return customerEntityMeta().row()
+	}
 	if strings.Contains(sql, `SELECT "id" FROM "entity"`) && len(args) == 1 {
 		switch args[0] {
 		case "core.user":
@@ -2047,10 +2152,18 @@ func (q *fakeRecordQueryer) QueryRow(_ context.Context, sql string, args ...any)
 			return newFakeRow(int64(30))
 		case "support.ticket":
 			return newFakeRow(int64(50))
+		case "sales.invoice":
+			return newFakeRow(int64(70))
 		}
 	}
 	if strings.Contains(sql, `SELECT "id" FROM "user"`) && len(args) == 1 && args[0] == "admin@example.com" {
 		return newFakeRow(int64(99))
+	}
+	if strings.Contains(sql, `SELECT "id" FROM "sales_customer"`) && len(args) == 1 && args[0] == "Acme" {
+		return newFakeRow(int64(101))
+	}
+	if strings.Contains(sql, `SELECT "id" FROM "sales_currency"`) && len(args) == 1 && args[0] == "USD" {
+		return newFakeRow(int64(840))
 	}
 	if strings.Contains(sql, `SELECT "name" FROM "entity"`) && len(args) == 1 && args[0] == int64(10) {
 		return newFakeRow("core.user")
@@ -2214,6 +2327,13 @@ func isLeadContactMetadataQuery(sql string, args ...any) bool {
 		len(args) == 2 &&
 		args[0] == "crm" &&
 		args[1] == "lead-contact"
+}
+
+func isSalesCustomerMetadataQuery(sql string, args ...any) bool {
+	return strings.Contains(sql, `WHERE a.name = $1 AND e.key = $2`) &&
+		len(args) == 2 &&
+		args[0] == "sales" &&
+		args[1] == "customer"
 }
 
 func (q *fakeRecordQueryer) fakeCollectionMetadataRows(sql string, args ...any) (pgx.Rows, bool) {

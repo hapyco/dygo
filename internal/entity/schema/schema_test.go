@@ -423,6 +423,33 @@ fields:
 	}
 }
 
+func TestDecodeFieldFetch(t *testing.T) {
+	t.Parallel()
+
+	entity, err := Decode([]byte(`
+label: Invoice
+name:
+  strategy: random
+fields:
+  - name: customer
+    label: Customer
+    type: link
+    options:
+      entity: customer
+  - name: customer-name
+    label: Customer Name
+    type: text
+    fetch:
+      from: customer.name
+`), fieldtype.DefaultRegistry())
+	if err != nil {
+		t.Fatalf("Decode() error = %v, want nil", err)
+	}
+	if entity.Fields[1].Fetch == nil || entity.Fields[1].Fetch.From != "customer.name" {
+		t.Fatalf("Decode().Fields[1].Fetch = %+v, want customer.name", entity.Fields[1].Fetch)
+	}
+}
+
 func TestDecodeWithCustomFieldType(t *testing.T) {
 	t.Parallel()
 
@@ -903,6 +930,44 @@ fields:
       values: [A]
 `,
 			wantError: "values are not supported",
+		},
+		{
+			name: "fetch missing from",
+			body: `
+label: Lead
+fields:
+  - name: title
+    label: Title
+    type: text
+    fetch: {}
+`,
+			wantError: "fetch.from is required",
+		},
+		{
+			name: "fetch requires link path",
+			body: `
+label: Lead
+fields:
+  - name: title
+    label: Title
+    type: text
+    fetch:
+      from: company
+`,
+			wantError: "must include a link field and target field",
+		},
+		{
+			name: "fetch invalid segment",
+			body: `
+label: Lead
+fields:
+  - name: title
+    label: Title
+    type: text
+    fetch:
+      from: company.DisplayName
+`,
+			wantError: "must be kebab-case",
 		},
 		{
 			name: "top-level index password unsupported",

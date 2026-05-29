@@ -96,6 +96,7 @@ type Field struct {
 	Index    bool              `yaml:"index,omitempty"`
 	Default  yaml.Node         `yaml:"default,omitempty"`
 	Check    *Check            `yaml:"check,omitempty"`
+	Fetch    *Fetch            `yaml:"fetch,omitempty"`
 	Options  fieldtype.Options `yaml:"options,omitempty"`
 }
 
@@ -103,6 +104,11 @@ type Field struct {
 type Check struct {
 	Operator string    `yaml:"operator"`
 	Value    yaml.Node `yaml:"value,omitempty"`
+}
+
+// Fetch describes a value copied from a linked Record path.
+type Fetch struct {
+	From string `yaml:"from" json:"from"`
 }
 
 // Index describes a non-unique Entity-level database index.
@@ -774,8 +780,34 @@ func validateField(field Field, registry fieldtype.Registry, seenFields map[stri
 		}
 		validateCheckRule(field.Line, fmt.Sprintf("field %q check", fieldLabel), field.Check.Operator, field.Check.Value, problems)
 	}
+	validateFetch(field, problems)
 	if err := definition.Validate(field.Options); err != nil {
 		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q options invalid for type %q: %v", fieldLabel, field.Type, err)))
+	}
+}
+
+func validateFetch(field Field, problems *[]string) {
+	if field.Fetch == nil {
+		return
+	}
+	path := strings.TrimSpace(field.Fetch.From)
+	if path == "" {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q fetch.from is required", field.Name)))
+		return
+	}
+	segments := strings.Split(path, ".")
+	if len(segments) < 2 {
+		*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q fetch.from must include a link field and target field", field.Name)))
+		return
+	}
+	for _, segment := range segments {
+		if strings.TrimSpace(segment) == "" {
+			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q fetch.from contains an empty path segment", field.Name)))
+			return
+		}
+		if !fieldtype.IsName(segment) {
+			*problems = append(*problems, withLine(field.Line, fmt.Sprintf("field %q fetch.from segment %q must be kebab-case", field.Name, segment)))
+		}
 	}
 }
 

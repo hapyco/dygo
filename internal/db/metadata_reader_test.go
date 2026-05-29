@@ -78,8 +78,8 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", true, true, false, []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
-				{int64(1), "email", "Email", "email", true, true, true, nil, nil, 1, []byte(`{"entity":"user"}`)},
-				{int64(2), "enabled", "Enabled", "boolean", false, false, true, []byte(`true`), []byte(`{"operator":"eq","value":true}`), 2, nil},
+				{int64(1), "email", "Email", "email", true, true, true, nil, nil, []byte(`{"from":"profile.email"}`), 1, []byte(`{"entity":"user"}`)},
+				{int64(2), "enabled", "Enabled", "boolean", false, false, true, []byte(`true`), []byte(`{"operator":"eq","value":true}`), nil, 2, nil},
 			}),
 			newFakeRows([][]any{
 				{"by-enabled", []byte(`["enabled"]`), 1},
@@ -100,6 +100,9 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	}
 	if len(meta.Fields) != 2 || meta.Fields[0].Name != "email" || string(meta.Fields[0].Options) != `{"entity":"user"}` {
 		t.Fatalf("GetEntityMeta() fields = %+v, want ordered fields", meta.Fields)
+	}
+	if string(meta.Fields[0].Fetch) != `{"from":"profile.email"}` {
+		t.Fatalf("email fetch = %q, want profile.email", string(meta.Fields[0].Fetch))
 	}
 	if len(meta.SystemFields) != 4 || meta.SystemFields[1].Name != "name" || !meta.SystemFields[1].NameRenderable {
 		t.Fatalf("GetEntityMeta() system fields = %+v, want framework system field metadata", meta.SystemFields)
@@ -126,13 +129,13 @@ func TestMetadataReaderEmbedsCollectionMetadata(t *testing.T) {
 		},
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
-				{int64(1), "status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New"]}`)},
-				{int64(2), "contacts", "Contacts", "collection", false, false, false, nil, nil, 2, []byte(`{"entity":"lead-contact"}`)},
+				{int64(1), "status", "Status", "select", true, false, false, nil, nil, nil, 1, []byte(`{"values":["New"]}`)},
+				{int64(2), "contacts", "Contacts", "collection", false, false, false, nil, nil, nil, 2, []byte(`{"entity":"lead-contact"}`)},
 			}),
 			newFakeRows(nil),
 			newFakeRows(nil),
 			newFakeRows([][]any{
-				{int64(1), "email", "Email", "email", true, false, false, nil, nil, 1, nil},
+				{int64(1), "email", "Email", "email", true, false, false, nil, nil, nil, 1, nil},
 			}),
 			newFakeRows(nil),
 			newFakeRows(nil),
@@ -160,7 +163,7 @@ func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
 		row: newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, false, []byte(`{"strategy":"random","length":16}`), "crm", "CRM"),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
-				{int64(1), "status", "Status", "select", true, false, false, nil, nil, 1, []byte(`{"values":["New"]}`)},
+				{int64(1), "status", "Status", "select", true, false, false, nil, nil, nil, 1, []byte(`{"values":["New"]}`)},
 			}),
 			newFakeRows(nil),
 			newFakeRows(nil),

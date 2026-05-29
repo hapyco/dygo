@@ -106,7 +106,7 @@ func (c Catalog) Validate() ([]LoadedEntity, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCatalog(c.apps, entities); err != nil {
+	if err := validateCatalog(c.apps, entities, c.fieldTypes); err != nil {
 		return nil, err
 	}
 	return entities, nil
@@ -264,7 +264,7 @@ func (c Catalog) loadEntityFile(app manifest.LoadedApp, path string, isCollectio
 	}, nil
 }
 
-func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
+func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity, fieldTypes fieldtype.Registry) error {
 	var problems []string
 	seenIdentities := map[string]LoadedEntity{}
 	seenRouteSlugs := map[string]LoadedEntity{}
@@ -291,7 +291,9 @@ func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
 		}
 	}
 
-	validateFieldTargets(entities, &problems)
+	targets := newTargetIndex(entities)
+	validateFieldTargets(entities, targets, &problems)
+	validateFieldFetches(entities, targets, fieldTypes, &problems)
 	if err := validateHookFiles(apps, entities, &problems); err != nil {
 		return err
 	}
@@ -302,9 +304,7 @@ func validateCatalog(apps []manifest.LoadedApp, entities []LoadedEntity) error {
 	return nil
 }
 
-func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
-	targets := newTargetIndex(entities)
-
+func validateFieldTargets(entities []LoadedEntity, targets targetIndex, problems *[]string) {
 	for _, entity := range entities {
 		for _, field := range entity.Entity.Fields {
 			if field.Type != "link" && field.Type != "collection" {
@@ -340,6 +340,88 @@ func validateFieldTargets(entities []LoadedEntity, problems *[]string) {
 			}
 		}
 	}
+}
+
+func validateFieldFetches(entities []LoadedEntity, targets targetIndex, fieldTypes fieldtype.Registry, problems *[]string) {
+	for _, entity := range entities {
+		for _, field := range entity.Entity.Fields {
+			if field.Fetch == nil {
+				continue
+			}
+			if err := validateFieldFetch(entity, field, targets, fieldTypes); err != nil {
+				*problems = append(*problems, fieldDiagnostic(entity, field, err.Error()))
+			}
+		}
+	}
+}
+
+func validateFieldFetch(owner LoadedEntity, field schema.Field, targets targetIndex, fieldTypes fieldtype.Registry) error {
+	if field.Type == "collection" {
+		return fmt.Errorf("collection fields cannot use fetch")
+	}
+	fieldDefinition, ok := fieldTypes.Get(field.Type)
+	if !ok || !fieldDefinition.Behavior.Stored || fieldDefinition.Behavior.WriteOnly {
+		return fmt.Errorf("field type %q cannot use fetch", field.Type)
+	}
+	segments := strings.Split(strings.TrimSpace(field.Fetch.From), ".")
+	current := owner
+	var source schema.Field
+	for index, segment := range segments {
+		var ok bool
+		source, ok = fetchPathField(current, segment)
+		if !ok {
+			return fmt.Errorf("fetch.from references unknown field %q on Entity %q", segment, current.Entity.Name)
+		}
+		if index == len(segments)-1 {
+			return validateFetchFieldCompatibility(owner, field, current, source, fieldTypes, targets)
+		}
+		if source.Type != "link" {
+			return fmt.Errorf("fetch.from segment %q on Entity %q must be a link field", segment, current.Entity.Name)
+		}
+		target, err := targets.resolve(current, source.Options.App, source.Options.Entity)
+		if err != nil {
+			return err
+		}
+		current = target
+	}
+	return nil
+}
+
+func fetchPathField(entity LoadedEntity, name string) (schema.Field, bool) {
+	if name == "name" {
+		return schema.Field{Name: "name", Label: "Name", Type: "text", Required: true}, true
+	}
+	for _, field := range entity.Entity.Fields {
+		if field.Name == name {
+			return field, true
+		}
+	}
+	return schema.Field{}, false
+}
+
+func validateFetchFieldCompatibility(owner LoadedEntity, destination schema.Field, sourceOwner LoadedEntity, source schema.Field, fieldTypes fieldtype.Registry, targets targetIndex) error {
+	sourceDefinition, ok := fieldTypes.Get(source.Type)
+	if !ok || !sourceDefinition.Behavior.Stored || sourceDefinition.Behavior.WriteOnly {
+		return fmt.Errorf("fetch.from final field %q on Entity %q cannot be fetched", source.Name, sourceOwner.Entity.Name)
+	}
+	if destination.Type != source.Type {
+		return fmt.Errorf("fetch.from final field %q type %q does not match destination type %q", source.Name, source.Type, destination.Type)
+	}
+	if destination.Type != "link" {
+		return nil
+	}
+	destinationTarget, err := targets.resolve(owner, destination.Options.App, destination.Options.Entity)
+	if err != nil {
+		return fmt.Errorf("destination link target: %w", err)
+	}
+	sourceTarget, err := targets.resolve(sourceOwner, source.Options.App, source.Options.Entity)
+	if err != nil {
+		return fmt.Errorf("source link target: %w", err)
+	}
+	if destinationTarget.Key() != sourceTarget.Key() {
+		return fmt.Errorf("fetch.from final link field %q targets %s/%s, but destination targets %s/%s", source.Name, sourceTarget.AppName, sourceTarget.Entity.Name, destinationTarget.AppName, destinationTarget.Entity.Name)
+	}
+	return nil
 }
 
 func validateHookFiles(apps []manifest.LoadedApp, entities []LoadedEntity, problems *[]string) error {

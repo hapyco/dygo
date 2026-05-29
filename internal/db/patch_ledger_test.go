@@ -267,13 +267,13 @@ func fakePatchRunMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
 	switch {
 	case strings.Contains(sql, `FROM "field"`):
 		return newFakeRows([][]any{
-			{int64(1), "app", "App", "link", true, false, true, nil, nil, 1, []byte(`{"entity":"app"}`)},
-			{int64(2), "patch-id", "Patch ID", "text", true, false, true, nil, nil, 2, nil},
-			{int64(3), "path", "Path", "text", true, false, false, nil, nil, 3, nil},
-			{int64(4), "phase", "Phase", "select", true, false, true, nil, nil, 4, []byte(`{"values":["pre-sync","post-sync"]}`)},
-			{int64(5), "checksum", "Checksum", "text", true, false, false, nil, nil, 5, nil},
-			{int64(6), "applied-at", "Applied At", "datetime", true, false, false, nil, nil, 6, nil},
-			{int64(7), "dygo-version", "dygo Version", "text", false, false, false, nil, nil, 7, nil},
+			{int64(1), "app", "App", "link", true, false, true, nil, nil, nil, 1, []byte(`{"entity":"app"}`)},
+			{int64(2), "patch-id", "Patch ID", "text", true, false, true, nil, nil, nil, 2, nil},
+			{int64(3), "path", "Path", "text", true, false, false, nil, nil, nil, 3, nil},
+			{int64(4), "phase", "Phase", "select", true, false, true, nil, nil, nil, 4, []byte(`{"values":["pre-sync","post-sync"]}`)},
+			{int64(5), "checksum", "Checksum", "text", true, false, false, nil, nil, nil, 5, nil},
+			{int64(6), "applied-at", "Applied At", "datetime", true, false, false, nil, nil, nil, 6, nil},
+			{int64(7), "dygo-version", "dygo Version", "text", false, false, false, nil, nil, nil, 7, nil},
 		}), true
 	case strings.Contains(sql, `FROM "index"`), strings.Contains(sql, `FROM "constraint"`):
 		return newFakeRows(nil), true

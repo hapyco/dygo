@@ -88,7 +88,7 @@
     "routeSlug": {
       "allOf": [
         { "$ref": "#/$defs/kebabName" },
-        { "not": { "enum": ["api", "assets", "health", "login", "logout", "me", "setup"] } }
+        { "not": { "enum": ["api", "assets", "boot", "health", "login", "logout", "me", "setup"] } }
       ]
     },
     "name": {
@@ -172,6 +172,7 @@
         },
         "default": true,
         "check": { "$ref": "#/$defs/check" },
+        "fetch": { "$ref": "#/$defs/fetch" },
         "options": { "$ref": "#/$defs/options" }
       },
       "allOf": [
@@ -231,6 +232,18 @@
           }
         }
       ]
+    },
+    "fetch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)+$",
+          "description": "Dotted field path such as customer.territory.manager. Each segment before the final segment must resolve to a link field."
+        }
+      }
     },
     "options": {
       "type": "object",

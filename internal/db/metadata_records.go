@@ -65,6 +65,7 @@ type fieldRecord struct {
 	Index         bool
 	Default       []byte
 	Check         []byte
+	Fetch         []byte
 	Position      int
 	Options       []byte
 }
@@ -190,8 +191,8 @@ func persistFieldRecord(ctx context.Context, tx pgx.Tx, entityID int64, field fi
 	}
 	if err == pgx.ErrNoRows {
 		if _, err := tx.Exec(ctx, `
-INSERT INTO "field" (name, entity_id, field_name, label, type, required, "unique", "index", "default", "check", position, options)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`, field.RecordName, entityID, field.Name, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Position, field.Options); err != nil {
+INSERT INTO "field" (name, entity_id, field_name, label, type, required, "unique", "index", "default", "check", fetch, position, options)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, field.RecordName, entityID, field.Name, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Fetch, field.Position, field.Options); err != nil {
 			return fmt.Errorf("persist field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
 		}
 		return nil
@@ -206,10 +207,11 @@ SET name = $2,
 	"index" = $7,
 	"default" = $8,
 	"check" = $9,
-	position = $10,
-	options = $11,
+	fetch = $10,
+	position = $11,
+	options = $12,
 	updated_at = now()
-WHERE id = $1`, id, field.RecordName, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Position, field.Options); err != nil {
+WHERE id = $1`, id, field.RecordName, field.Label, field.Type, field.Required, field.Unique, field.Index, field.Default, field.Check, field.Fetch, field.Position, field.Options); err != nil {
 		return fmt.Errorf("persist field metadata %s/%s.%s: %w", field.EntityAppName, field.EntityName, field.Name, err)
 	}
 	return nil
@@ -322,6 +324,10 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			if err != nil {
 				return metadataRecordSet{}, fmt.Errorf("build field metadata %s/%s.%s check: %w", loaded.AppName, loaded.Entity.Name, field.Name, err)
 			}
+			fetchJSON, err := fieldFetchJSON(field.Fetch)
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build field metadata %s/%s.%s fetch: %w", loaded.AppName, loaded.Entity.Name, field.Name, err)
+			}
 			recordName, err := deterministicRecordNameFromValues("field", namings.Field, map[string]string{
 				"entity":     entityName,
 				"field-name": field.Name,
@@ -347,6 +353,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 				Index:         field.Index,
 				Default:       defaultJSON,
 				Check:         checkJSON,
+				Fetch:         fetchJSON,
 				Position:      index + 1,
 				Options:       optionsJSON,
 			})
@@ -525,6 +532,13 @@ func fieldCheckJSON(check *schema.Check) ([]byte, error) {
 		"operator": check.Operator,
 		"value":    value,
 	})
+}
+
+func fieldFetchJSON(fetch *schema.Fetch) ([]byte, error) {
+	if fetch == nil {
+		return nil, nil
+	}
+	return json.Marshal(fetch)
 }
 
 func constraintValueJSON(node yaml.Node) ([]byte, error) {

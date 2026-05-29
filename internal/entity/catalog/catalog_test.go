@@ -358,6 +358,131 @@ fields:
 	}
 }
 
+func TestValidateAcceptsFieldFetchPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeFile(t, entityPath(app, "customer"), `
+label: Customer
+name:
+  strategy: random
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	writeFile(t, entityPath(app, "invoice"), `
+label: Invoice
+name:
+  strategy: random
+fields:
+  - name: customer
+    label: Customer
+    type: link
+    options:
+      entity: customer
+  - name: customer-title
+    label: Customer Title
+    type: text
+    fetch:
+      from: customer.title
+`)
+
+	if _, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
+func TestValidateAcceptsFieldFetchLinkToLinkPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeEntity(t, entityPath(app, "currency"), "currency")
+	writeFile(t, entityPath(app, "customer"), `
+label: Customer
+name:
+  strategy: random
+fields:
+  - name: default-currency
+    label: Default Currency
+    type: link
+    options:
+      entity: currency
+`)
+	writeFile(t, entityPath(app, "invoice"), `
+label: Invoice
+name:
+  strategy: random
+fields:
+  - name: customer
+    label: Customer
+    type: link
+    options:
+      entity: customer
+  - name: currency
+    label: Currency
+    type: link
+    fetch:
+      from: customer.default-currency
+    options:
+      entity: currency
+`)
+
+	if _, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
+func TestValidateRejectsInvalidFieldFetchPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	app := loadedApp(root, "sales", "sales", manifest.Paths{})
+	writeFile(t, entityPath(app, "customer"), `
+label: Customer
+name:
+  strategy: random
+fields:
+  - name: title
+    label: Title
+    type: text
+`)
+	invoicePath := entityPath(app, "invoice")
+	writeFile(t, invoicePath, `
+label: Invoice
+name:
+  strategy: random
+fields:
+  - name: customer
+    label: Customer
+    type: link
+    options:
+      entity: customer
+  - name: bad-title
+    label: Bad Title
+    type: text
+    fetch:
+      from: customer.missing
+  - name: bad-link
+    label: Bad Link
+    type: text
+    fetch:
+      from: bad-title.title
+`)
+
+	_, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want fetch errors")
+	}
+	for _, want := range []string{invoicePath, `field "bad-title"`, `unknown field "missing"`, `field "bad-link"`, `must be a link field`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Validate() error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
 func TestValidateRejectsMissingFieldTarget(t *testing.T) {
 	t.Parallel()
 

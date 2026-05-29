@@ -88,6 +88,7 @@ type MetadataField struct {
 	Filter         MetadataFieldFilter `json:"filter"`
 	Default        json.RawMessage     `json:"default,omitempty"`
 	Check          json.RawMessage     `json:"check,omitempty"`
+	Fetch          json.RawMessage     `json:"fetch,omitempty"`
 	Position       int                 `json:"position"`
 	Options        json.RawMessage     `json:"options,omitempty"`
 }
@@ -340,7 +341,7 @@ func metadataSystemFields() []MetadataField {
 
 func (r MetadataReader) entityFields(ctx context.Context, entityID int64) ([]MetadataField, error) {
 	rows, err := r.queryer.Query(ctx, `
-	SELECT id, field_name, label, type, required, "unique", "index", "default", "check", position, options
+	SELECT id, field_name, label, type, required, "unique", "index", "default", "check", fetch, position, options
 	FROM "field"
 	WHERE entity_id = $1
 	ORDER BY position, name`, entityID)
@@ -354,12 +355,14 @@ func (r MetadataReader) entityFields(ctx context.Context, entityID int64) ([]Met
 		var field MetadataField
 		var defaultValue []byte
 		var check []byte
+		var fetch []byte
 		var options []byte
-		if err := rows.Scan(&field.ID, &field.Name, &field.Label, &field.Type, &field.Required, &field.Unique, &field.Index, &defaultValue, &check, &field.Position, &options); err != nil {
+		if err := rows.Scan(&field.ID, &field.Name, &field.Label, &field.Type, &field.Required, &field.Unique, &field.Index, &defaultValue, &check, &fetch, &field.Position, &options); err != nil {
 			return nil, fmt.Errorf("scan metadata field: %w", err)
 		}
 		field.Default = rawJSONOrNil(defaultValue)
 		field.Check = rawJSONOrNil(check)
+		field.Fetch = rawJSONOrNil(fetch)
 		field.Options = rawJSONOrNil(options)
 		field.applyTypeBehavior()
 		fields = append(fields, field)

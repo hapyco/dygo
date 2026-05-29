@@ -65,7 +65,6 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #148 Add Studio grid view for Records
 - [ ] #150 Reject framework-reserved app names in projects
 - [ ] #151 Make local console logging verbose, including Vite output
-- [ ] #154 Support Link field traversal and fetch-from Entity field options
 - [ ] #156 Add Tree Entity support for hierarchical Records
 - [ ] #162 Watch field type behavior contract shape
 - [ ] #169 Expose trusted system record writer API for app code
@@ -82,6 +81,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #188 Add searchable Studio filter field picker
 - [ ] #189 Polish Studio filter dirty state
 - [ ] #190 Canonicalize invalid Studio filter URLs
+- [ ] #192 Support filtered Link field records
 - [ ] Add saved filters for Studio record lists
 
 ## Done
@@ -91,3 +91,4 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [x] #180 Add Studio record list sort toolbar control
 - [x] #181 Add Studio record page sidebar
 - [x] #125 Build Studio command palette actions and search
+- [x] #154 Support Link field traversal and fetch-from Entity field options

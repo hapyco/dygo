@@ -54,6 +54,10 @@ fields:
     label: Check
     type: json
 
+  - name: fetch
+    label: Fetch
+    type: json
+
   - name: position
     label: Position
     type: int

@@ -54,6 +54,9 @@ export type MetadataField = {
   }
   default?: unknown
   check?: unknown
+  fetch?: {
+    from: string
+  }
   position: number
   options?: unknown
 }

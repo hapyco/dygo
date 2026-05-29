@@ -274,6 +274,7 @@ CREATE TABLE public.field (
     index boolean DEFAULT false,
     "default" jsonb,
     "check" jsonb,
+    fetch jsonb,
     "position" integer,
     options jsonb
 );
