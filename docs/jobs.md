@@ -1,0 +1,389 @@
+# Jobs And Queues
+
+This file tracks the durable Jobs and Queues decisions before implementation.
+
+Related tasks:
+
+- #138 Design durable Jobs and Queues architecture
+- #139 Add Core Job metadata and Postgres queue storage
+- #141 Add SDK and internal Jobs APIs
+- #140 Implement Job worker runtime, claiming, retries, and timeouts
+- #31 Add worker command
+
+## Goals
+
+- App code can enqueue durable background work.
+- App code can define typed job runners in app-owned Go files.
+- Workers can claim work safely from PostgreSQL with multiple worker processes.
+- Failed jobs retry with bounded attempts and visible terminal state.
+- Job state is visible through Core records and can later power Studio operations.
+
+## Non-Goals For This Batch
+
+- Recurring schedules and `dygo scheduler`; keep them for #32.
+- Studio retry/cancel/detail screens; keep them for #142.
+- Importer-specific jobs; keep them for #143.
+- External queue backends. PostgreSQL is the first durable backend.
+- Dynamic loading of Go source files. Jobs are compiled into the project runner, like hooks.
+
+## Terms
+
+`Job` is the app-defined background work type, such as `crm/send-welcome-email`.
+
+`Job Execution` is one durable queued occurrence of a Job.
+
+`Attempt` is one try inside a Job Execution. Retries create more attempts, not more Job Executions.
+
+`Worker` is a long-running dygo process that claims and runs Job Executions.
+
+`Queue` is a named lane used by workers to select work. The default queue is `default`.
+
+## App File Shape
+
+Jobs live in the existing app shape:
+
+```txt
+apps/<app>/jobs/<job>/job.yml
+apps/<app>/jobs/<job>/run.go
+apps/<app>/jobs/_schedules.yml
+```
+
+The scheduler batch will define and execute recurring jobs from `_schedules.yml`; this worker batch only runs explicitly enqueued Job Executions.
+
+Proposed `job.yml` shape:
+
+```yaml
+label: Send Welcome Email
+description: Sends the first welcome email to a new contact.
+queue: default
+timeout: 30s
+retry:
+  attempts: 3
+  initial-delay: 10s
+  max-delay: 5m
+```
+
+Decision candidates:
+
+- Use kebab-case metadata keys, matching the rest of dygo metadata.
+- Store durations as strings accepted by Go duration parsing, such as `30s` and `5m`.
+- Treat missing `queue` as `default`.
+- Require `queue` to reference a queue registered in `config/queues.yml`.
+- Require `timeout`; it must be a positive duration.
+- Treat missing `retry` as no retries, one attempt only.
+- `retry.attempts` is total attempts, including the first try.
+- `retry.initial-delay` is the first retry delay.
+- `retry.max-delay` is the exponential retry delay cap.
+- Defer payload schema validation. The first implementation stores JSON payloads and lets runner code validate them.
+
+## Execution Sources
+
+All Job Executions are durable database rows, regardless of where the work definition comes from.
+
+Code-backed jobs:
+
+```txt
+apps/crm/jobs/send-email/job.yml   - App-owned Job metadata
+apps/crm/jobs/send-email/run.go    - Compiled app-owned Job handler
+Core job row                       - Synced runtime metadata
+Core job-execution row             - Queued durable work
+dygo worker                        - Claims the row and calls the compiled handler
+```
+
+System-backed jobs:
+
+```txt
+Studio action                      - User configures work in the UI
+Core job row                       - First-party system Job, such as studio/send-report
+Core job-execution row             - Queued durable work with user-selected payload
+dygo worker                        - Claims the row and calls the built-in handler
+```
+
+Studio should not create arbitrary Go code. Studio-created work stores configuration in Core records and executes through approved built-in handlers.
+
+Future metadata-backed automation can dogfood the same queue:
+
+```txt
+Core automation definition         - DB-stored action graph or workflow steps
+Core job row                       - Built-in automation runner Job
+Core job-execution row             - Queued durable work
+dygo worker                        - Runs the automation handler, which interprets the DB definition
+```
+
+This lets users build complex jobs in Studio from approved steps, while workers still execute known compiled handlers.
+
+## Queue Configuration
+
+Queues are registered explicitly in project config:
+
+```txt
+config/queues.yml
+```
+
+Generated projects include the default queue:
+
+```yaml
+queues:
+  - name: default
+```
+
+Job metadata references a registered queue:
+
+```yaml
+queue: default
+```
+
+Decision candidates:
+
+- `config/queues.yml` is the queue registry for the project.
+- `default` is generated automatically and should be present in every project.
+- Most Jobs should use the default queue. Custom queues are an optional routing tool for work that needs separate handling.
+- A Job whose `queue` is missing uses `default`.
+- A Job whose `queue` names an unregistered queue is invalid.
+- `dygo worker` with no `--queue` flags processes all registered queues.
+- `dygo worker --queue email` processes only registered queue `email`; unknown queue flags fail at startup.
+- Queue validation belongs in job metadata validation, `dygo doctor`, and worker startup checks.
+- Defer queue-specific settings such as per-queue concurrency, rate limits, retention, and dead-letter policy.
+
+## Core Metadata
+
+Add Core `Job` metadata so dygo can persist discovered job definitions next to App, Entity, Field, Permission, and Patch metadata.
+
+Each discovered `apps/<app>/jobs/<job>/job.yml` syncs into one Core `job` record.
+
+Proposed Core `job` fields:
+
+- `app` link to Core App
+- `key` text, app-scoped job key
+- `label` text
+- `description` long text
+- `queue` text, default `default`
+- `timeout` text
+- `retry` json
+- `enabled` boolean, default true
+
+Add Core `Job Execution` storage for durable queue state.
+
+Proposed Core `job-execution` fields:
+
+- `job` link to Core Job
+- `app-name` text snapshot
+- `job-name` text snapshot
+- `queue` text
+- `status` select: `queued`, `running`, `succeeded`, `failed`, `cancelled`
+- `priority` integer, default 0
+- `payload` json
+- `result` json
+- `error` long text
+- `attempts` integer, default 0
+- `max-attempts` integer
+- `retry` json
+- `run-after` datetime
+- `started-at` datetime
+- `finished-at` datetime
+- `locked-by` text
+- `locked-until` datetime
+- `idempotency-key` text
+- `actor` optional link to Core User
+
+Add Core `Schedule` metadata later for recurring work.
+
+Proposed Core `schedule` fields:
+
+- `job` link to Core Job
+- `label` text
+- `enabled` boolean, default true
+- `timezone` text
+- `rule` json
+- `payload` json
+- `next-run-at` datetime
+- `last-run-at` datetime
+- `actor` optional link to Core User
+
+Schedules create Job Executions; workers do not run schedules directly.
+
+Decision candidates:
+
+- Use `Job Execution` everywhere as the official concept name. Use `run` as a verb, such as "run a job execution".
+- Keep attempt history out of the MVP. Store the latest error on `job-execution`; add `job-attempt` later if Studio needs detailed timelines.
+- Use Core record tables for `job` and `job-execution` so Studio and APIs can inspect them through normal metadata paths.
+- Keep `app-name` and `job-name` snapshots on `job-execution` so old queued executions remain understandable after metadata changes.
+- `job-execution.max-attempts` snapshots the Job's total allowed attempts at enqueue time. It is `1` when `retry` is missing.
+- `job-execution.retry` snapshots retry delay settings at enqueue time so later Job metadata changes do not change already queued executions.
+- Every Job must define `timeout`. Workers use it to set each execution lock and handler deadline.
+- Store Studio-created schedules in Core `schedule` records, not `_schedules.yml`.
+- Keep `_schedules.yml` for app-defined schedules shipped with code in a later scheduler batch.
+- Enforce `idempotency-key` uniqueness per Job when present. Enqueueing the same Job with the same key returns the existing Job Execution instead of creating duplicate work.
+- MVP handlers return `error` only. Job Execution keeps nullable `result` JSON as reserved storage for future system/API use, but app SDK code does not write structured results in the first batch.
+- Jobs that produce durable output should create normal Records or files and rely on those as the real output.
+- Priority belongs to Job Executions, not `job.yml`, in the MVP. It defaults to `0`; callers may enqueue with a nonzero priority, and workers claim higher priority executions first.
+
+Open questions:
+
+- Decide whether this uses a partial unique index immediately or transactional enqueue logic until metadata constraints can express that shape.
+
+## PostgreSQL Queue Semantics
+
+Workers claim work from PostgreSQL using row locks:
+
+```sql
+SELECT id
+FROM job_execution
+WHERE status = 'queued'
+  AND run_after <= now()
+  AND queue = ANY($1)
+ORDER BY priority DESC, run_after ASC, id ASC
+FOR UPDATE SKIP LOCKED
+LIMIT $2
+```
+
+The claim transaction updates matching rows to `running`, sets `locked-by`, sets `locked-until`, increments `attempts`, and returns the claimed executions.
+
+Decision candidates:
+
+- Use `FOR UPDATE SKIP LOCKED` for multi-worker safety.
+- A job execution is eligible when `status = queued` and `run-after <= now()`.
+- `locked-until` is the crash recovery lease. If a worker dies, another worker can recover the execution after the lease expires.
+- The worker gives each execution a context deadline based on the job timeout.
+- On success, set `status = succeeded`, `finished-at`, `result`, and clear lock fields.
+- On failure before `max-attempts`, set `status = queued`, compute a future `run-after`, store `error`, and clear lock fields.
+- On final failure, set `status = failed`, `finished-at`, store `error`, and clear lock fields.
+- On timeout, treat the execution's current attempt as failed with error kind `timeout`.
+- Each worker runs a recovery step before claiming new work. The recovery step finds `running` executions with `locked-until` in the past, then retries or fails them based on remaining attempts.
+- Jobs that should not run after becoming stale should validate freshness in their handler or use an idempotency key tied to the business event. Future metadata can add an explicit stale-after setting if this becomes common.
+- Defer a first-class `stale-after` field. It is too much policy for the MVP; handlers own business freshness checks.
+
+## Retry Policy
+
+Default behavior:
+
+- missing `retry`: one attempt only, no retries
+- `retry.attempts`: total attempts, including the first try
+- `retry.initial-delay`: first retry delay, default `10s`
+- `retry.max-delay`: exponential retry delay cap, default `5m`
+
+The MVP retry strategy is exponential only and is not configurable in `job.yml`.
+
+The retry delay is based on the failed attempt number:
+
+```txt
+delay = retry.initial-delay * 2^(failed attempt - 1)
+delay = min(delay, retry.max-delay)
+```
+
+Jitter can be added later; keep the first version deterministic unless we see contention.
+
+Decision candidates:
+
+- `attempts` increments when a worker claims an execution.
+- An execution with `attempts == max-attempts` after failure becomes terminal `failed`.
+- Retry state is represented as `queued` with a future `run-after`, not a separate `retrying` status.
+
+## SDK Shape
+
+The public SDK should expose enqueueing and job registration without exposing PostgreSQL details.
+
+Proposed app-facing types:
+
+```go
+type JobExecution struct {
+	ID       int64
+	AppName  string
+	JobName  string
+	Queue    string
+	Attempt  int
+	Payload  json.RawMessage
+	Records  RecordData
+	Jobs     JobData
+}
+
+type JobFunc func(context.Context, JobExecution) error
+
+type JobRegistry interface {
+	RegisterJob(appName string, jobName string, fn JobFunc) error
+}
+
+type JobRegistrar func(JobRegistry) error
+```
+
+Proposed enqueue API:
+
+```go
+type JobData interface {
+	Enqueue(ctx context.Context, appName string, jobName string, payload json.RawMessage, options EnqueueOptions) (JobExecution, error)
+}
+```
+
+Decision candidates:
+
+- Keep the first SDK payload as `json.RawMessage`; typed helpers can come later.
+- Give jobs access to `Records` and `Jobs` so a job can read/write Records and enqueue follow-up work.
+- Register compiled jobs through `pkg/sdk/runtime.Options`, parallel to Record hook registrars.
+- App identity for SDK calls remains `<app>, <job>`, not route or label.
+
+## Internal Packages
+
+Proposed package split:
+
+```txt
+internal/jobs/metadata       - job.yml reader and validator
+internal/jobs/store          - PostgreSQL enqueue, claim, complete, fail
+internal/jobs/runtime        - registry and worker loop
+internal/cli                 - dygo worker command
+pkg/sdk                      - public job types and registration API
+pkg/sdk/runtime              - project runner options for compiled jobs
+```
+
+Decision candidates:
+
+- Keep blocking operations context-aware.
+- Keep the store interface small enough for worker tests without a live database.
+- Put PostgreSQL-specific SQL behind the store package.
+
+## Worker Command
+
+Add:
+
+```txt
+dygo worker
+```
+
+Proposed flags:
+
+- `--env development`
+- `--queue <name>`, repeatable
+- `--concurrency 4`
+- `--poll-interval 2s`
+- `--once`
+- `--shutdown-timeout 30s`
+
+Behavior:
+
+- Use the same project root and database secret resolution as `dygo serve`, `dygo dev`, and `dygo db`.
+- Start a fixed-size worker pool.
+- With no `--queue` flags, poll all registered queues until the process context is cancelled.
+- With one or more `--queue` flags, poll only those registered queues.
+- Finish in-flight jobs during graceful shutdown until `--shutdown-timeout`.
+- With `--once`, claim and run currently available job executions, then exit. This is useful for tests, local debugging, and one-shot maintenance.
+- `--once` does one batch only: connect to the database, recover expired running executions, claim up to `--concurrency` available executions, run them, persist success/failure/retry state, and exit cleanly. If no executions are available, exit cleanly.
+
+Output decision:
+
+- Normal command lifecycle output goes to stdout.
+- Worker diagnostics and per-execution logs go to stderr.
+- Keep output plain ASCII and parseable.
+
+## Implementation Order
+
+1. Add `config/queues.yml` scaffold, reader, and validator with generated `default` queue.
+2. Add metadata reader/validator for `job.yml`, including registered queue checks.
+3. Add Core `job` and `job-execution` entities and schema snapshot updates.
+4. Add PostgreSQL queue store with enqueue, claim, complete, and fail operations.
+5. Add SDK job registration and enqueue API.
+6. Add worker runtime loop with concurrency, timeouts, retries, and shutdown.
+7. Add `dygo worker` command.
+8. Update docs and todo status after the implementation is verified.
+
+## Discussion Queue
+
+- Decide whether idempotency uses a partial unique index immediately or transactional enqueue logic until metadata constraints can express that shape.

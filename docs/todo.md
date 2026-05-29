@@ -29,6 +29,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #194 Add Studio theming support and dark mode
 - [ ] #88 Add post-transaction Record hooks
 - [ ] #89 Design hook priority and override policy
+- [ ] Add compiled hook registration discovery path for non-runtime hook introspection
 - [ ] #98 Add secrets rotation recovery diagnostics
 - [ ] #99 Design production secrets recipients and provider support
 - [ ] #103 Design actor-aware hook data access modes
@@ -67,7 +68,10 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #162 Watch field type behavior contract shape
 - [ ] #169 Expose trusted system record writer API for app code
 - [ ] #171 Support environment-oriented fixtures
+- [ ] Cache fetched-link traversal in record fetch to reuse shared path prefixes
+- [ ] Add Link on-delete policies in metadata and schema planning (restrict/cascade/set-null)
 - [ ] #176 Add dygo repair for generated project artifacts
+- [ ] Make entity generation and hook runner writes atomic to avoid partial scaffolds
 - [ ] #179 Add Core Preference entity for per-user UI and app state
 - [ ] #182 Polish Studio page header shell
 - [ ] #183 Polish Studio toolbar shell
@@ -80,6 +84,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #189 Polish Studio filter dirty state
 - [ ] #190 Canonicalize invalid Studio filter URLs
 - [ ] #201 Extract Studio record-list URL query canonicalization helper
+- [ ] Debounce record-list route updates for filter changes to reduce replace churn
 - [ ] #192 Support filtered Link field records
 - [ ] #202 Add saved filters for Studio record lists
 
