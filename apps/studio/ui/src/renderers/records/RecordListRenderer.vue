@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useInfiniteQuery } from '@tanstack/vue-query'
+import { useDebounceFn, useStorage } from '@vueuse/core'
 import { ArrowDown, ArrowUp, Check, FunnelPlus, MessageSquare, PanelRightClose, PanelRightOpen, Settings2, X } from '@lucide/vue'
 import {
   PopoverContent,
@@ -14,15 +16,21 @@ import DataTable from '@/design/organisms/DataTable.vue'
 import DropdownMenu from '@/design/primitives/DropdownMenu.vue'
 import type { DataTableRowKey, DataTableSort, DataTableState, DropdownMenuItem } from '@/design/types'
 import type { MetadataField, MetadataFilterOperator } from '@/features/metadata/metadata.api'
+import type { RecordListPolicy } from '@/features/platform/platform.api'
+import { usePlatformConfigQuery } from '@/features/platform/platform.query'
+import { recordListQueryKey } from '@/features/records/record-list.query'
+import { listRecords, type RecordData } from '@/features/records/records.api'
 import {
   buildRecordListRouteQuery,
-  parseRecordListRouteQuery,
+  canonicalizeRecordListRouteQuery,
+  isAllowedRecordPageSize,
   type RecordListFilter,
+  type RecordListRouteFilterField,
   type RecordListRouteState,
+  recordListRouteQueriesEqual,
 } from '@/features/records/query'
 import PageToolbar from '@/shell/PageToolbar.vue'
-import { usePlatformStore } from '@/stores/platform.store'
-import { useRecordsStore } from '@/stores/records.store'
+import { statusForError, storeError, type LoadStatus } from '@/stores/status'
 import { buildRecordListColumns } from './columns'
 
 const props = defineProps<{
@@ -38,20 +46,38 @@ const emit = defineEmits<{
   'open-record': [row: Record<string, unknown>]
 }>()
 
-const recordsStore = useRecordsStore()
-const platformStore = usePlatformStore()
 const route = useRoute()
 const router = useRouter()
+const platformConfigQuery = usePlatformConfigQuery()
 const ID_SEARCH_DEBOUNCE_MS = 700
 const LIST_SIDEBAR_STORAGE_KEY = 'dygo.studio.records.listSidebarOpen'
-const hiddenColumnKeys = ref<string[]>([])
+const PAGE_SIZE_STORAGE_KEY = 'dygo.studio.records.pageSize'
+const DEFAULT_RECORD_LIST_SORT: DataTableSort = { key: 'created-at', direction: 'desc' }
+const storedHiddenColumnKeys = useStorage<string[]>(computed(() => hiddenColumnStorageKey(props.entity)), [], undefined, {
+  onError: () => {},
+})
+const hiddenColumnKeys = computed({
+  get: () => normalizeHiddenColumnKeys(storedHiddenColumnKeys.value),
+  set: (keys: string[]) => {
+    storedHiddenColumnKeys.value = normalizeHiddenColumnKeys(keys)
+  },
+})
 const idSearch = ref('')
 const filterTokens = ref<ActiveRecordFilter[]>([])
+const listQuery = ref<RecordListRouteState>({ sort: null, filters: [] })
+const storedPageSize = useStorage(PAGE_SIZE_STORAGE_KEY, 0, undefined, {
+  onError: () => {},
+})
+const pageSize = ref(0)
+const selectedRowKeys = ref<DataTableRowKey[]>([])
 const viewOptionsOpen = ref(false)
-const listSidebarOpen = ref(readListSidebarOpen())
+const listSidebarOpen = useStorage(LIST_SIDEBAR_STORAGE_KEY, false, undefined, {
+  onError: () => {},
+})
 let nextFilterTokenId = 1
 let currentEntity = ''
-let idSearchDebounce: ReturnType<typeof setTimeout> | undefined
+let currentListQuerySignature = ''
+let unmounted = false
 let keepViewOptionsOpenTimer: ReturnType<typeof setTimeout> | undefined
 let suppressViewOptionsClose = false
 
@@ -63,8 +89,14 @@ type ActiveRecordFilter = {
   appliedValue: string
 }
 
+type OrderingOption = {
+  key: string
+  label: string
+}
+
 const columns = computed(() => buildRecordListColumns(props.fields, props.systemFields ?? []))
-const pageSizeOptions = computed(() => platformStore.recordListPolicy?.['page-sizes'] ?? [])
+const recordListPolicy = computed(() => platformConfigQuery.data.value?.['record-list'] ?? null)
+const pageSizeOptions = computed(() => recordListPolicy.value?.['page-sizes'] ?? [])
 const filterableFields = computed(() => (
   [...props.fields, ...(props.systemFields ?? [])].filter(isFilterableField)
 ))
@@ -88,30 +120,104 @@ const visibleColumns = computed(() => columns.value.filter((column) => (
   column.key === 'name' || !hiddenColumnKeySet.value.has(column.key)
 )))
 const sortableColumns = computed(() => columns.value.filter((column) => column.sortable))
-const orderingField = computed(() => recordState.value.sort?.key ?? '')
-const orderingDirection = computed(() => recordState.value.sort?.direction ?? 'asc')
-const recordState = computed(() => recordsStore.entityState(props.entity))
-const loading = computed(() => recordState.value.status === 'idle' || recordState.value.status === 'loading')
-const error = computed(() => recordState.value.error?.message ?? '')
-const footerError = computed(() => recordState.value.loadMoreError?.message ?? '')
+const effectiveListSort = computed(() => listQuery.value.sort ?? DEFAULT_RECORD_LIST_SORT)
+const orderingField = computed(() => effectiveListSort.value.key)
+const orderingDirection = computed(() => effectiveListSort.value.direction)
+const orderingOptions = computed<OrderingOption[]>(() => {
+  const seen = new Set<string>()
+  return [
+    { key: DEFAULT_RECORD_LIST_SORT.key, label: systemFieldLabel(DEFAULT_RECORD_LIST_SORT.key, 'Created At') },
+    ...sortableColumns.value.map((column) => ({ key: column.key, label: column.label })),
+  ].filter((option) => {
+    if (seen.has(option.key)) {
+      return false
+    }
+
+    seen.add(option.key)
+    return true
+  })
+})
+const recordListReady = computed(() => {
+  const policy = recordListPolicy.value
+  return Boolean(policy && isAllowedRecordPageSize(pageSize.value, policy['page-sizes']))
+})
+const recordsQuery = useInfiniteQuery({
+  queryKey: computed(() => recordListQueryKey(props.entity, {
+    pageSize: pageSize.value,
+    sort: effectiveListSort.value,
+    filters: listQuery.value.filters,
+  })),
+  queryFn: ({ pageParam, signal }) => listRecords(props.entity, {
+    limit: pageSize.value,
+    offset: Number(pageParam),
+    sort: effectiveListSort.value,
+    filters: listQuery.value.filters,
+  }, { signal }),
+  initialPageParam: 0,
+  getNextPageParam: (lastPage, pages) => {
+    const loadedRows = pages.reduce((count, page) => count + page.data.length, 0)
+    const totalRows = lastPage.meta.total ?? loadedRows
+    return loadedRows < totalRows ? loadedRows : undefined
+  },
+  enabled: recordListReady,
+})
+const recordPages = computed(() => recordsQuery.data.value?.pages ?? [])
+const rows = computed<RecordData[]>(() => recordPages.value.flatMap((page) => page.data))
+const totalRows = computed(() => recordPages.value.at(-1)?.meta.total ?? rows.value.length)
+const platformConfigError = computed(() => (
+  platformConfigQuery.error.value
+    ? storeError(platformConfigQuery.error.value, 'Studio could not load record list settings.')
+    : null
+))
+const queryError = computed(() => (
+  recordsQuery.error.value
+    ? storeError(recordsQuery.error.value, 'Studio could not load records.')
+    : null
+))
+const tableError = computed(() => platformConfigError.value ?? queryError.value)
+const recordStatus = computed<LoadStatus>(() => {
+  if (platformConfigError.value) {
+    return statusForError(platformConfigError.value)
+  }
+
+  if (!recordListReady.value || recordsQuery.isPending.value) {
+    return 'loading'
+  }
+
+  if (queryError.value && rows.value.length === 0) {
+    return statusForError(queryError.value)
+  }
+
+  if (rows.value.length === 0) {
+    return 'empty'
+  }
+
+  return 'ready'
+})
+const loading = computed(() => recordStatus.value === 'loading')
+const loadingMore = computed(() => recordsQuery.isFetchingNextPage.value)
+const error = computed(() => tableError.value?.message ?? '')
+const footerError = computed(() => (
+  recordsQuery.isFetchNextPageError.value ? queryError.value?.message ?? '' : ''
+))
 const tableState = computed<DataTableState>(() => {
   if (loading.value) {
     return 'loading'
   }
 
-  if (recordState.value.status === 'forbidden') {
+  if (recordStatus.value === 'forbidden') {
     return 'forbidden'
   }
 
-  if (recordState.value.status === 'unauthenticated') {
+  if (recordStatus.value === 'unauthenticated') {
     return 'unauthenticated'
   }
 
-  if (recordState.value.status === 'empty') {
+  if (recordStatus.value === 'empty') {
     return 'empty'
   }
 
-  if (recordState.value.status === 'error' || error.value) {
+  if (recordStatus.value === 'error') {
     return 'error'
   }
 
@@ -149,11 +255,34 @@ const tableStateMessage = computed(() => {
   }
 })
 const hasMore = computed(() => (
-  recordState.value.rows.length < recordState.value.total && !recordState.value.error
+  recordListReady.value && recordsQuery.hasNextPage.value && !platformConfigError.value
 ))
 const showToolbar = computed(() => (
-  recordState.value.rows.length > 0 || recordState.value.filters.length > 0 || idSearch.value !== '' || filterTokens.value.length > 0
+  rows.value.length > 0 || listQuery.value.filters.length > 0 || idSearch.value !== '' || filterTokens.value.length > 0
 ))
+const scheduleIDSearchApply = useDebounceFn(() => {
+  if (unmounted) {
+    return
+  }
+
+  replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
+}, ID_SEARCH_DEBOUNCE_MS)
+watch(
+  recordListPolicy,
+  (policy) => {
+    if (!policy) {
+      pageSize.value = 0
+      return
+    }
+
+    const nextPageSize = readStoredPageSize(policy)
+    if (pageSize.value !== nextPageSize) {
+      pageSize.value = nextPageSize
+      selectedRowKeys.value = []
+    }
+  },
+  { immediate: true },
+)
 watch(
   () => [
     props.entity,
@@ -161,40 +290,54 @@ watch(
     filterableFields.value.map((field) => `${field.name}:${field.filter?.operators?.map((operator) => operator.key).join(',') ?? ''}`).join('|'),
     columns.value.map((column) => `${column.key}:${column.sortable ? '1' : '0'}`).join('|'),
   ] as const,
-  async () => {
+  () => {
     if (currentEntity !== props.entity) {
-      hiddenColumnKeys.value = readHiddenColumnKeys(props.entity)
+      selectedRowKeys.value = []
       currentEntity = props.entity
     }
 
     const query = routeRecordListQuery()
+    const listQuerySignature = recordListStateSignature(query)
+    if (currentListQuerySignature !== '' && currentListQuerySignature !== listQuerySignature) {
+      selectedRowKeys.value = []
+    }
+    currentListQuerySignature = listQuerySignature
+
+    listQuery.value = {
+      sort: query.sort,
+      filters: query.filters.map((filter) => ({ ...filter })),
+    }
     syncFilterControlsFromRoute(query.filters)
-    await recordsStore.setListQuery(props.entity, query)
   },
   { immediate: true },
 )
 
 onBeforeUnmount(() => {
-  clearIDSearchDebounce()
+  unmounted = true
   clearKeepViewOptionsOpenTimer()
 })
 
 function updatePageSize(value: number) {
-  void recordsStore.setPageSize(props.entity, value)
+  const policy = recordListPolicy.value
+  if (!policy || !isAllowedRecordPageSize(value, policy['page-sizes'])) {
+    return
+  }
+
+  pageSize.value = value
+  storedPageSize.value = value
+  selectedRowKeys.value = []
 }
 
 function updateSelectedRowKeys(value: DataTableRowKey[]) {
-  recordsStore.setSelectedRowKeys(props.entity, value)
+  selectedRowKeys.value = value
 }
 
 function updateSort(value: DataTableSort | null) {
-  replaceRecordListRoute(appliedRecordFilters(), value)
+  replaceRecordListRoute(appliedRecordFilters(), defaultRecordListSortEquals(value) ? null : value)
 }
 
 function toggleListSidebar() {
-  const nextOpen = !listSidebarOpen.value
-  listSidebarOpen.value = nextOpen
-  writeListSidebarOpen(nextOpen)
+  listSidebarOpen.value = !listSidebarOpen.value
 }
 
 function updateViewOptionsOpen(value: boolean) {
@@ -213,15 +356,17 @@ function updateOrderingField(value: string) {
     return
   }
 
-  updateSort({ key: value, direction: recordState.value.sort?.direction ?? 'asc' })
+  if (value === DEFAULT_RECORD_LIST_SORT.key) {
+    updateSort(DEFAULT_RECORD_LIST_SORT)
+    return
+  }
+
+  updateSort({ key: value, direction: listQuery.value.sort?.direction ?? 'asc' })
 }
 
 function toggleOrderingDirection() {
   keepViewOptionsOpen()
-  const sort = recordState.value.sort
-  if (!sort) {
-    return
-  }
+  const sort = effectiveListSort.value
 
   updateSort({
     key: sort.key,
@@ -250,7 +395,7 @@ function selectFilterField(key: string) {
   ]
   nextFilterTokenId += 1
   if (appliesImmediately) {
-    replaceRecordListRoute(appliedRecordFilters(), recordState.value.sort)
+    replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
   }
 }
 
@@ -261,12 +406,11 @@ function updateIDSearch(value: string) {
     return
   }
 
-  scheduleIDSearchApply()
+  void scheduleIDSearchApply()
 }
 
 function applyIDSearch() {
-  clearIDSearchDebounce()
-  replaceRecordListRoute(appliedRecordFilters(), recordState.value.sort)
+  replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
 }
 
 function updateFilterOperator(id: number, operator: string) {
@@ -284,7 +428,7 @@ function updateFilterOperator(id: number, operator: string) {
       appliedValue: appliesImmediately ? normalizeFilterValue(value) : '',
     }
   })
-  replaceRecordListRoute(appliedRecordFilters(), recordState.value.sort)
+  replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
 }
 
 function updateFilterValue(id: number, value: string, applyImmediately = false) {
@@ -313,18 +457,17 @@ function applyFilter(id: number) {
     ))
   }
 
-  replaceRecordListRoute(appliedRecordFilters(), recordState.value.sort)
+  replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
 }
 
 function removeFilter(id: number) {
   filterTokens.value = filterTokens.value.filter((filter) => filter.id !== id)
-  replaceRecordListRoute(appliedRecordFilters(), recordState.value.sort)
+  replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
 }
 
 function showAllColumns() {
   keepViewOptionsOpen()
   hiddenColumnKeys.value = []
-  writeHiddenColumnKeys(props.entity, hiddenColumnKeys.value)
 }
 
 function updateColumnVisibility(key: string, visible: boolean) {
@@ -341,9 +484,8 @@ function updateColumnVisibility(key: string, visible: boolean) {
   }
 
   hiddenColumnKeys.value = Array.from(nextHiddenColumns).sort()
-  writeHiddenColumnKeys(props.entity, hiddenColumnKeys.value)
 
-  if (!visible && recordState.value.sort?.key === key) {
+  if (!visible && listQuery.value.sort?.key === key) {
     updateSort(null)
   }
 }
@@ -352,45 +494,25 @@ function hiddenColumnStorageKey(entity: string): string {
   return `dygo.studio.records.hiddenColumns.${entity}`
 }
 
-function readHiddenColumnKeys(entity: string): string[] {
-  if (typeof window === 'undefined') {
+function normalizeHiddenColumnKeys(value: unknown): string[] {
+  if (!Array.isArray(value)) {
     return []
   }
 
-  try {
-    const value = JSON.parse(window.localStorage.getItem(hiddenColumnStorageKey(entity)) ?? '[]')
-    if (!Array.isArray(value)) {
-      return []
-    }
-
-    return value.filter((key): key is string => typeof key === 'string' && key !== 'name')
-  } catch {
-    return []
-  }
+  return value.filter((key): key is string => typeof key === 'string' && key !== 'name')
 }
 
-function writeHiddenColumnKeys(entity: string, keys: string[]) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.setItem(hiddenColumnStorageKey(entity), JSON.stringify(keys.filter((key) => key !== 'name')))
+function defaultPageSize(policy: RecordListPolicy): number {
+  return policy['page-sizes'][0] ?? policy['default-limit']
 }
 
-function readListSidebarOpen(): boolean {
-  if (typeof window === 'undefined') {
-    return false
+function readStoredPageSize(policy: RecordListPolicy): number {
+  const value = Number(storedPageSize.value)
+  if (!isAllowedRecordPageSize(value, policy['page-sizes'])) {
+    return defaultPageSize(policy)
   }
 
-  return window.localStorage.getItem(LIST_SIDEBAR_STORAGE_KEY) === 'true'
-}
-
-function writeListSidebarOpen(open: boolean) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.setItem(LIST_SIDEBAR_STORAGE_KEY, open ? 'true' : 'false')
+  return value
 }
 
 function createRecord() {
@@ -414,6 +536,10 @@ function isFilterableField(field: MetadataField): boolean {
 
 function filterFieldLabel(field: MetadataField): string {
   return field.name === 'name' ? 'ID' : field.label || field.name
+}
+
+function systemFieldLabel(name: string, fallback: string): string {
+  return props.systemFields?.find((field) => field.name === name)?.label || fallback
 }
 
 function filterFieldForToken(filter: ActiveRecordFilter): MetadataField | null {
@@ -482,23 +608,6 @@ function normalizeFilterValue(value: string): string {
   return value.trim()
 }
 
-function scheduleIDSearchApply() {
-  clearIDSearchDebounce()
-  idSearchDebounce = setTimeout(() => {
-    idSearchDebounce = undefined
-    replaceRecordListRoute(appliedRecordFilters(), recordState.value.sort)
-  }, ID_SEARCH_DEBOUNCE_MS)
-}
-
-function clearIDSearchDebounce() {
-  if (idSearchDebounce === undefined) {
-    return
-  }
-
-  clearTimeout(idSearchDebounce)
-  idSearchDebounce = undefined
-}
-
 function keepViewOptionsOpen() {
   clearKeepViewOptionsOpenTimer()
   suppressViewOptionsClose = true
@@ -523,7 +632,7 @@ function clearKeepViewOptionsOpenTimer() {
 function replaceRecordListRoute(filters: RecordListFilter[], sort: DataTableSort | null) {
   // TODO(filters): debounce route replacement once list filters become heavier than the current metadata-backed query.
   const nextQuery = buildRecordListRouteQuery({ filters, sort })
-  if (routeQueriesEqual(route.query, nextQuery)) {
+  if (recordListRouteQueriesEqual(route.query, nextQuery)) {
     return
   }
 
@@ -558,37 +667,35 @@ function appliedRecordFilters(): RecordListFilter[] {
 }
 
 function routeRecordListQuery(): RecordListRouteState {
-  const parsed = parseRecordListRouteQuery(route.query)
+  const canonical = canonicalizeRecordListRouteQuery(route.query, recordListRouteSchema())
+  if (canonical.changed) {
+    void router.replace({ query: canonical.query })
+  }
+
+  return canonical.state
+}
+
+function recordListStateSignature(state: RecordListRouteState): string {
+  return JSON.stringify(buildRecordListRouteQuery(state))
+}
+
+function recordListRouteSchema() {
+  const filterFields: RecordListRouteFilterField[] = [
+    { field: 'name', operators: [{ key: 'contains', arity: 'one' }] },
+    ...filterableFields.value.map((field): RecordListRouteFilterField => ({
+      field: field.name,
+      operators: field.filter?.operators ?? [],
+    })),
+  ]
+
   return {
-    sort: validRouteSort(parsed.sort),
-    filters: parsed.filters.filter(isValidRouteFilter),
+    sortableFields: orderingOptions.value.map((option) => option.key),
+    filterFields,
   }
 }
 
-function validRouteSort(sort: DataTableSort | null): DataTableSort | null {
-  if (!sort) {
-    return null
-  }
-
-  return columns.value.some((column) => column.key === sort.key && column.sortable) ? sort : null
-}
-
-function isValidRouteFilter(filter: RecordListFilter): boolean {
-  if (filter.field === 'name' && filter.operator === 'contains') {
-    return typeof filter.value === 'string' && filter.value.trim() !== ''
-  }
-
-  const field = filterableFieldByName.value.get(filter.field)
-  const operator = field?.filter?.operators?.find((candidate) => candidate.key === filter.operator)
-  if (!field || !operator) {
-    return false
-  }
-
-  if (operator.arity === 'none') {
-    return filter.value === undefined || filter.value === ''
-  }
-
-  return typeof filter.value === 'string' && filter.value.trim() !== ''
+function defaultRecordListSortEquals(sort: DataTableSort | null): boolean {
+  return sort?.key === DEFAULT_RECORD_LIST_SORT.key && sort.direction === DEFAULT_RECORD_LIST_SORT.direction
 }
 
 function syncFilterControlsFromRoute(filters: RecordListFilter[]) {
@@ -635,28 +742,6 @@ function mergeRouteFilterTokens(filters: Array<Omit<ActiveRecordFilter, 'id'>>):
 
 function filterTokenKey(filter: Omit<ActiveRecordFilter, 'id'>): string {
   return `${filter.field}\u0000${filter.operator}`
-}
-
-function routeQueriesEqual(left: Record<string, unknown>, right: Record<string, string | string[]>): boolean {
-  const leftKeys = Object.keys(left).sort()
-  const rightKeys = Object.keys(right).sort()
-  if (leftKeys.length !== rightKeys.length || leftKeys.some((key, index) => key !== rightKeys[index])) {
-    return false
-  }
-
-  return leftKeys.every((key) => queryValues(left[key]).join('\u0000') === queryValues(right[key]).join('\u0000'))
-}
-
-function queryValues(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map((entry) => entry == null ? '' : String(entry)).sort()
-  }
-
-  if (value == null) {
-    return ['']
-  }
-
-  return [String(value)]
 }
 
 function updatedAtAge(row: Record<string, unknown>): string {
@@ -857,17 +942,16 @@ function padDatePart(value: number): string {
                     >
                       <option value="">Field</option>
                       <option
-                        v-for="column in sortableColumns"
-                        :key="column.key"
-                        :value="column.key"
+                        v-for="option in orderingOptions"
+                        :key="option.key"
+                        :value="option.key"
                       >
-                        {{ column.label }}
+                        {{ option.label }}
                       </option>
                     </select>
                     <button
                       class="record-list-renderer__ordering-direction"
                       type="button"
-                      :disabled="!recordState.sort"
                       :aria-label="orderingDirection === 'asc' ? 'Ascending' : 'Descending'"
                       @click="toggleOrderingDirection"
                     >
@@ -943,28 +1027,28 @@ function padDatePart(value: number): string {
     <div class="record-list-renderer__content" :data-sidebar-open="listSidebarOpen ? '' : undefined">
       <DataTable
         :columns="visibleColumns"
-        :rows="recordState.rows"
+        :rows="rows"
         :state="tableState"
         :state-title="tableStateTitle"
         :state-message="tableStateMessage"
         :loading="loading"
-        :loading-more="recordState.loadingMore"
+        :loading-more="loadingMore"
         :error="error"
         :footer-error="footerError"
-        :page-size="recordState.pageSize"
+        :page-size="pageSize"
         :page-size-options="pageSizeOptions"
-        :total-rows="recordState.total"
+        :total-rows="totalRows"
         :has-more="hasMore"
-        :sort="recordState.sort"
+        :sort="listQuery.sort"
         selectable
-        :selected-row-keys="recordState.selectedRowKeys"
+        :selected-row-keys="selectedRowKeys"
         :empty-action-label="readOnly ? '' : 'Add first record'"
         row-activatable
         @update:page-size="updatePageSize"
         @update:selected-row-keys="updateSelectedRowKeys"
         @update:sort="updateSort"
         @row-activate="(row) => emit('open-record', row)"
-        @load-more="recordsStore.loadMore(props.entity)"
+        @load-more="recordsQuery.fetchNextPage()"
         @empty-action="createRecord"
       >
         <template #row-side="{ row }">

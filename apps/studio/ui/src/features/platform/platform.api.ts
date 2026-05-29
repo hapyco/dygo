@@ -16,9 +16,14 @@ export class PlatformApiError extends ApiClientError {
   }
 }
 
-export async function getPlatformConfig(): Promise<PlatformConfig> {
+type PlatformRequestOptions = {
+  signal?: AbortSignal
+}
+
+export async function getPlatformConfig(options: PlatformRequestOptions = {}): Promise<PlatformConfig> {
   const payload = await apiRequest<DataEnvelope<PlatformConfig>, PlatformApiError>('/api/v1/platform', {
     method: 'GET',
+    signal: options.signal,
   }, {
     error: PlatformApiError,
     fallbackCode: 'platform_failed',

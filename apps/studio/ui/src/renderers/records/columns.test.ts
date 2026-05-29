@@ -11,9 +11,9 @@ test('buildRecordListColumns uses metadata display hints and listability', () =>
     metadataField({ name: 'notes', label: 'Notes', listable: false, display: 'text' }),
   ], systemFields())
 
-  assert.deepEqual(columns.map((column) => column.key), ['name', 'email', 'created-at', 'updated-at'])
+  assert.deepEqual(columns.map((column) => column.key), ['name', 'email'])
   assert.equal(columns.find((column) => column.key === 'email')?.cellType, 'email')
-  assert.equal(columns.find((column) => column.key === 'created-at')?.formatValue?.('bad datetime'), 'bad datetime')
+  assert.equal(columns.some((column) => column.key === 'created-at' || column.key === 'updated-at'), false)
 })
 
 test('buildRecordListColumns keeps the system name column authoritative', () => {
@@ -35,10 +35,9 @@ test('buildRecordListColumns uses system field metadata when provided', () => {
     metadataField({ name: 'updated-at', label: 'Updated', listable: true, display: 'datetime' }),
   ])
 
-  assert.deepEqual(columns.map((column) => column.key), ['name', 'email', 'updated-at'])
+  assert.deepEqual(columns.map((column) => column.key), ['name', 'email'])
   assert.equal(columns[0].label, 'ID')
-  assert.equal(columns.find((column) => column.key === 'updated-at')?.cellType, 'datetime')
-  assert.equal(columns.find((column) => column.key === 'updated-at')?.formatValue?.(new Date(2026, 4, 24, 3, 29, 14)), '2026-05-24 03:29:14')
+  assert.equal(columns.some((column) => column.key === 'updated-at'), false)
 })
 
 function metadataField(overrides: {

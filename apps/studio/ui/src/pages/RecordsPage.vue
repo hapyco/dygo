@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus } from '@lucide/vue'
 
 import { ErrorState, Spinner } from '@/design'
+import { useMetadataEntityMetaQuery } from '@/features/metadata/metadata.query'
 import PageHeader from '@/shell/PageHeader.vue'
 import type { PageHeaderAction } from '@/shell/types'
 import { RecordListRenderer } from '@/renderers/records'
 import { RouteName } from '@/router/routes'
-import { useMetadataStore } from '@/stores/metadata.store'
+import { statusForError, storeError, type LoadStatus } from '@/stores/status'
 import RecordFormPage from './RecordFormPage.vue'
 
 const props = defineProps<{
@@ -16,11 +17,25 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
-const metadataStore = useMetadataStore()
+const entityMetaQuery = useMetadataEntityMetaQuery(() => props.entity)
 
-const entityMeta = computed(() => metadataStore.entityMeta(props.entity))
-const entityMetaStatus = computed(() => metadataStore.entityMetaStatus(props.entity))
-const entityMetaError = computed(() => metadataStore.entityMetaError(props.entity))
+const entityMeta = computed(() => entityMetaQuery.data.value ?? null)
+const entityMetaError = computed(() => (
+  entityMetaQuery.error.value
+    ? storeError(entityMetaQuery.error.value, 'Studio could not load entity metadata.')
+    : null
+))
+const entityMetaStatus = computed<LoadStatus>(() => {
+  if (entityMetaQuery.isPending.value) {
+    return 'loading'
+  }
+
+  if (entityMetaError.value) {
+    return statusForError(entityMetaError.value)
+  }
+
+  return entityMeta.value ? 'ready' : 'idle'
+})
 const isSingle = computed(() => entityMeta.value?.['is-single'] === true)
 const isSystem = computed(() => entityMeta.value?.['is-system'] === true)
 const canShowList = computed(() => entityMetaStatus.value === 'ready' && !isSingle.value)
@@ -59,14 +74,6 @@ const actions = computed<PageHeaderAction[]>(() => {
 
   return next
 })
-
-watch(
-  () => props.entity,
-  async (entity) => {
-    await metadataStore.loadEntityMeta(entity)
-  },
-  { immediate: true },
-)
 
 function humanizeEntity(value: string): string {
   return value

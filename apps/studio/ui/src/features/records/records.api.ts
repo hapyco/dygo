@@ -16,6 +16,10 @@ type ListRecordsOptions = {
   signal?: AbortSignal
 }
 
+type ReadRecordOptions = {
+  signal?: AbortSignal
+}
+
 export class RecordApiError extends ApiClientError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
     super('RecordApiError', code, message, details)
@@ -31,17 +35,19 @@ export async function listRecords(entity: string, params: ListRecordsParams, opt
   }, recordRequestOptions('records_failed'))
 }
 
-export async function getRecordByName(entity: string, recordName: string): Promise<RecordData> {
+export async function getRecordByName(entity: string, recordName: string, options: ReadRecordOptions = {}): Promise<RecordData> {
   const payload = await apiRequest<DataEnvelope<RecordData>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}/name/${encodeURIComponent(recordName)}`, {
     method: 'GET',
+    signal: options.signal,
   }, recordRequestOptions('record_lookup_failed'))
 
   return payload.data
 }
 
-export async function getSingleRecord(entity: string): Promise<RecordData> {
+export async function getSingleRecord(entity: string, options: ReadRecordOptions = {}): Promise<RecordData> {
   const payload = await apiRequest<DataEnvelope<RecordData>, RecordApiError>(`/api/v1/records/${encodeURIComponent(entity)}/single`, {
     method: 'GET',
+    signal: options.signal,
   }, recordRequestOptions('single_record_lookup_failed'))
 
   return payload.data

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
+import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
+import { onKeyStroke } from '@vueuse/core'
 import * as LucideIcons from '@lucide/vue'
 import {
   Box,
@@ -14,12 +15,14 @@ import {
   Search,
 } from '@lucide/vue'
 
+import { queryClient } from '@/app/query'
 import { reloadStudioApp } from '@/app/reload'
 import type { MetadataEntity } from '@/features/metadata/metadata.api'
+import { useMetadataEntitiesQuery } from '@/features/metadata/metadata.query'
 import { routeParam, RouteName } from '@/router/routes'
 import { useAuthStore } from '@/stores/auth.store'
 import { useBootStore } from '@/stores/boot.store'
-import { useMetadataStore } from '@/stores/metadata.store'
+import { findEntityByRouteSlug } from '@/stores/metadata.identity'
 import { useNavigationStore, type RecentPage } from '@/stores/navigation.store'
 
 type CommandItem = {
@@ -39,7 +42,6 @@ type CommandGroup = {
 }
 
 const navigationStore = useNavigationStore()
-const metadataStore = useMetadataStore()
 const bootStore = useBootStore()
 const authStore = useAuthStore()
 const route = useRoute()
@@ -50,9 +52,13 @@ const query = ref('')
 const activeItemId = ref('')
 const runningAppAction = ref(false)
 const lucideIconRegistry = LucideIcons as unknown as Record<string, Component | undefined>
+const metadataEntitiesQuery = useMetadataEntitiesQuery({
+  enabled: computed(() => Boolean(authStore.currentUser)),
+})
+const metadataEntities = computed(() => metadataEntitiesQuery.data.value ?? [])
 
 const searchableEntities = computed(() => (
-  metadataStore.entities
+  metadataEntities.value
     .filter((entity) => !entity['is-collection'] && entity.slug)
     .slice()
     .sort((first, second) => entityLabel(first).localeCompare(entityLabel(second)))
@@ -191,17 +197,7 @@ watch(
   },
 )
 
-async function openMenu() {
-  navigationStore.openCommandMenu()
-  await nextTick()
-  searchInput.value?.focus()
-}
-
-function closeMenu() {
-  navigationStore.closeCommandMenu()
-}
-
-function handleGlobalKeydown(event: KeyboardEvent) {
+onKeyStroke((event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
     if (commandMenuOpen.value) {
@@ -217,6 +213,16 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     event.preventDefault()
     closeMenu()
   }
+}, { passive: false })
+
+async function openMenu() {
+  navigationStore.openCommandMenu()
+  await nextTick()
+  searchInput.value?.focus()
+}
+
+function closeMenu() {
+  navigationStore.closeCommandMenu()
 }
 
 function handleInputKeydown(event: KeyboardEvent) {
@@ -297,6 +303,7 @@ async function logout() {
   runningAppAction.value = true
   try {
     await authStore.logout()
+    queryClient.clear()
     await router.replace({ name: RouteName.Login })
   } finally {
     runningAppAction.value = false
@@ -322,7 +329,7 @@ function recentPageForRoute(currentRoute: RouteLocationNormalizedLoaded): Recent
 
   if (currentRoute.name === RouteName.EntityRecords) {
     const entity = routeParam(currentRoute.params.entity as string | string[])
-    const meta = metadataStore.entityByRouteSlug(entity)
+    const meta = findEntityByRouteSlug(metadataEntities.value, entity)
 
     return {
       path: currentRoute.path,
@@ -334,7 +341,7 @@ function recentPageForRoute(currentRoute: RouteLocationNormalizedLoaded): Recent
   if (currentRoute.name === RouteName.RecordDetail) {
     const entity = routeParam(currentRoute.params.entity as string | string[])
     const recordName = routeParam(currentRoute.params.recordName as string | string[])
-    const meta = metadataStore.entityByRouteSlug(entity)
+    const meta = findEntityByRouteSlug(metadataEntities.value, entity)
     const label = meta ? entityLabel(meta) : humanizeEntity(entity)
 
     return {
@@ -394,14 +401,6 @@ function normalizeSearch(value: string): string {
 function itemDomId(item: CommandItem): string {
   return `studio-command-menu-item-${item.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
 }
-
-onMounted(() => {
-  window.addEventListener('keydown', handleGlobalKeydown)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleGlobalKeydown)
-})
 </script>
 
 <template>

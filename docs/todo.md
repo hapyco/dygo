@@ -81,6 +81,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #188 Add searchable Studio filter field picker
 - [ ] #189 Polish Studio filter dirty state
 - [ ] #190 Canonicalize invalid Studio filter URLs
+- [ ] Extract Studio record-list URL query canonicalization helper
 - [ ] #192 Support filtered Link field records
 - [ ] Add saved filters for Studio record lists
 
@@ -92,3 +93,10 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [x] #181 Add Studio record page sidebar
 - [x] #125 Build Studio command palette actions and search
 - [x] #154 Support Link field traversal and fetch-from Entity field options
+- [x] Move Studio metadata queries from Pinia to TanStack Query
+- [x] Move Studio platform config from Pinia to TanStack Query
+- [x] Move Studio record form reads and mutations to TanStack Query
+- [x] Reduce Studio Pinia stores to shell and local UI state
+- [x] Simplify Studio reload and logout with TanStack Query cache operations
+- [x] Adopt @vueuse/core for Studio local UI utilities
+- [x] Use VueUse keyboard helpers for Studio command menu

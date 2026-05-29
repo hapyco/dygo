@@ -1,0 +1,24 @@
+# Dygo Stack
+
+- Go - Core framework, CLI, HTTP server, database runtime, and app SDK.
+- PostgreSQL - Primary relational database for metadata, records, auth, and framework state.
+- SQL - Schema sync, migrations, metadata storage, and record querying.
+- YAML - Project config, app manifests, entity metadata, fixtures, and explicit patches.
+- Cobra - CLI command framework for `dygo`.
+- Chi - HTTP router for API and Studio server routes.
+- pgx - PostgreSQL driver and connection runtime for Go.
+- age - Encrypted project secrets and local development credentials.
+- x/crypto - Supporting cryptographic primitives for auth and secrets.
+- x/term - Secure terminal input for CLI prompts.
+- Vue 3 - Studio frontend application framework.
+- TypeScript - Type safety for the Studio UI.
+- Vite - Studio development server and production bundler.
+- Tailwind CSS - Studio styling system and utility CSS pipeline.
+- Pinia - Studio client state for auth, navigation, and local UI state.
+- TanStack Query for Vue - Studio server-state fetching, caching, invalidation, and cancellation.
+- VueUse - Studio browser utility composables for local storage, debounced UI actions, and keyboard helpers.
+- Vue Router - Studio client-side routing.
+- Reka UI - Accessible primitive components for menus, popovers, and UI interactions.
+- Lucide Vue - Studio icon set.
+- vue-tsc - Type checking for Vue single-file components.
+- Node.js test runner - Lightweight Studio UI unit tests.

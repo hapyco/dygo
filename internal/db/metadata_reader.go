@@ -341,7 +341,7 @@ func metadataSystemFields() []MetadataField {
 
 func (r MetadataReader) entityFields(ctx context.Context, entityID int64) ([]MetadataField, error) {
 	rows, err := r.queryer.Query(ctx, `
-	SELECT id, field_name, label, type, required, "unique", "index", "default", "check", fetch, position, options
+	SELECT id, field_name, label, type, required, "unique", "index", "default", "check", "fetch", position, options
 	FROM "field"
 	WHERE entity_id = $1
 	ORDER BY position, name`, entityID)

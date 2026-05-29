@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { useStorage } from '@vueuse/core'
 
 export type RecentPage = {
   path: string
@@ -8,13 +9,17 @@ export type RecentPage = {
 
 const RECENT_PAGES_STORAGE_KEY = 'dygo.studio.recentPages'
 const MAX_RECENT_PAGES = 10
+// TODO(preferences): move recent pages into the Preference entity once per-user UI state lands.
+const recentPagesStorage = useStorage<RecentPage[]>(RECENT_PAGES_STORAGE_KEY, [], undefined, {
+  onError: () => {},
+})
 
 export const useNavigationStore = defineStore('navigation', {
   state: () => ({
     sidebarCollapsed: false,
     commandMenuOpen: false,
     routeReloadVersion: 0,
-    recentPages: readRecentPages(),
+    recentPages: normalizeRecentPages(recentPagesStorage.value),
   }),
 
   actions: {
@@ -48,54 +53,31 @@ export const useNavigationStore = defineStore('navigation', {
         ...this.recentPages.filter((recentPage) => recentPage.path !== page.path),
       ].slice(0, MAX_RECENT_PAGES)
 
-      writeRecentPages(this.recentPages)
+      recentPagesStorage.value = this.recentPages
     },
   },
 })
 
-function readRecentPages(): RecentPage[] {
-  if (typeof window === 'undefined') {
+function normalizeRecentPages(value: unknown): RecentPage[] {
+  if (!Array.isArray(value)) {
     return []
   }
 
-  const rawValue = window.localStorage.getItem(RECENT_PAGES_STORAGE_KEY)
-  if (!rawValue) {
-    return []
-  }
+  return value
+    .map((item): RecentPage | null => {
+      if (!item || typeof item !== 'object') {
+        return null
+      }
 
-  try {
-    const value = JSON.parse(rawValue)
-    if (!Array.isArray(value)) {
-      return []
-    }
+      const path = typeof item.path === 'string' ? item.path : ''
+      const label = typeof item.label === 'string' ? item.label : ''
+      const detail = typeof item.detail === 'string' ? item.detail : ''
+      if (!path || !label) {
+        return null
+      }
 
-    return value
-      .map((item): RecentPage | null => {
-        if (!item || typeof item !== 'object') {
-          return null
-        }
-
-        const path = typeof item.path === 'string' ? item.path : ''
-        const label = typeof item.label === 'string' ? item.label : ''
-        const detail = typeof item.detail === 'string' ? item.detail : ''
-        if (!path || !label) {
-          return null
-        }
-
-        return { path, label, detail }
-      })
-      .filter((item): item is RecentPage => Boolean(item))
-      .slice(0, MAX_RECENT_PAGES)
-  } catch {
-    return []
-  }
-}
-
-function writeRecentPages(pages: RecentPage[]) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  // TODO(preferences): move recent pages into the Preference entity once per-user UI state lands.
-  window.localStorage.setItem(RECENT_PAGES_STORAGE_KEY, JSON.stringify(pages.slice(0, MAX_RECENT_PAGES)))
+      return { path, label, detail }
+    })
+    .filter((item): item is RecentPage => Boolean(item))
+    .slice(0, MAX_RECENT_PAGES)
 }
