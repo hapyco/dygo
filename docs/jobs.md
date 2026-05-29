@@ -74,7 +74,8 @@ Decision candidates:
 - `retry.attempts` is total attempts, including the first try.
 - `retry.initial-delay` is the first retry delay.
 - `retry.max-delay` is the exponential retry delay cap.
-- Defer payload schema validation. The first implementation stores JSON payloads and lets runner code validate them.
+- Payloads are JSON. Payload may be empty, but when provided it must be valid JSON.
+- Defer payload schema validation. The first implementation stores JSON payloads and lets handler code validate and decode them.
 
 ## Execution Sources
 
@@ -125,6 +126,7 @@ Generated projects include the default queue:
 ```yaml
 queues:
   - name: default
+    concurrency: 4
 ```
 
 Job metadata references a registered queue:
@@ -137,13 +139,17 @@ Decision candidates:
 
 - `config/queues.yml` is the queue registry for the project.
 - `default` is generated automatically and should be present in every project.
+- Generated `default` queue includes `concurrency: 4`.
+- Workers read queue concurrency from `config/queues.yml`.
+- `--concurrency` overrides queue config for the current worker process when explicitly passed.
 - Most Jobs should use the default queue. Custom queues are an optional routing tool for work that needs separate handling.
 - A Job whose `queue` is missing uses `default`.
 - A Job whose `queue` names an unregistered queue is invalid.
 - `dygo worker` with no `--queue` flags processes all registered queues.
 - `dygo worker --queue email` processes only registered queue `email`; unknown queue flags fail at startup.
 - Queue validation belongs in job metadata validation, `dygo doctor`, and worker startup checks.
-- Defer queue-specific settings such as per-queue concurrency, rate limits, retention, and dead-letter policy.
+- Defer other queue-specific settings such as rate limits, retention, and dead-letter policy.
+- Keep queue configuration opinionated: fewer choices, strong defaults, and minimal knobs in the MVP.
 
 ## Core Metadata
 
@@ -206,6 +212,7 @@ Decision candidates:
 
 - Use `Job Execution` everywhere as the official concept name. Use `run` as a verb, such as "run a job execution".
 - Keep attempt history out of the MVP. Store the latest error on `job-execution`; add `job-attempt` later if Studio needs detailed timelines.
+- Do not add a separate `job-attempt` entity in the MVP. `job-execution.attempts` and latest `error` are enough for the first operational view.
 - Use Core record tables for `job` and `job-execution` so Studio and APIs can inspect them through normal metadata paths.
 - Keep `app-name` and `job-name` snapshots on `job-execution` so old queued executions remain understandable after metadata changes.
 - `job-execution.max-attempts` snapshots the Job's total allowed attempts at enqueue time. It is `1` when `retry` is missing.
@@ -221,6 +228,11 @@ Decision candidates:
 - MVP handlers return `error` only. Job Execution keeps nullable `result` JSON as reserved storage for future system/API use, but app SDK code does not write structured results in the first batch.
 - Jobs that produce durable output should create normal Records or files and rely on those as the real output.
 - Priority belongs to Job Executions, not `job.yml`, in the MVP. It defaults to `0`; callers may enqueue with a nonzero priority, and workers claim higher priority executions first.
+- MVP Job Execution statuses are `queued`, `running`, `succeeded`, `failed`, and `cancelled`.
+- Do not add a separate `retrying` status. Retried executions return to `queued` with a future `run-after` and `attempts > 0`.
+- Cancellation is queued-only in the MVP. A `queued` execution can become `cancelled`; a `running` execution is allowed to finish or timeout.
+- Running cancellation can be added later with cooperative handler cancellation and stronger runtime controls.
+- Store execution lifecycle timestamps on `job-execution`: `run-after`, `started-at`, and `finished-at`.
 
 ## PostgreSQL Queue Semantics
 
@@ -309,6 +321,12 @@ type JobRegistrar func(JobRegistry) error
 Proposed enqueue API:
 
 ```go
+type EnqueueOptions struct {
+	IdempotencyKey string
+	Priority       int
+	RunAfter       time.Time
+}
+
 type JobData interface {
 	Enqueue(ctx context.Context, appName string, jobName string, payload json.RawMessage, options EnqueueOptions) (JobExecution, error)
 }
@@ -320,6 +338,9 @@ Decision candidates:
 - Give jobs access to `Records` and `Jobs` so a job can read/write Records and enqueue follow-up work.
 - Register compiled jobs through `pkg/sdk/runtime.Options`, parallel to Record hook registrars.
 - App identity for SDK calls remains `<app>, <job>`, not route or label.
+- Enqueue options stay small in the MVP: `idempotency-key`, `priority`, and `run-after`.
+- `run-after` schedules one Job Execution for a future time. Recurring work belongs to Schedule metadata, not enqueue options.
+- Do not allow enqueue-time queue, timeout, or retry overrides in the MVP; those come from `job.yml`.
 
 ## Internal Packages
 

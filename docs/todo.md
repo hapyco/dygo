@@ -58,6 +58,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #141 Add SDK and internal Jobs APIs
 - [ ] #142 Add Job operations visibility and retry controls
 - [ ] #143 Add job-backed importer foundation for data imports
+- [ ] Add Core retention policy Entity for platform record cleanup
 - [ ] #144 Add Studio keyboard shortcut foundation
 - [ ] #199 Add custom Studio right-click context menus
 - [ ] #145 Add Studio Kanban view for Records
