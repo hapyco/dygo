@@ -712,6 +712,15 @@ func TestDevCommandConfiguresStudioDevProxy(t *testing.T) {
 	if gotOptions.Studio == nil {
 		t.Fatal("dev Studio handler = nil, want dev proxy handler")
 	}
+	for _, want := range []string{
+		"dygo dev: root " + root,
+		"dygo dev: environment development",
+		"dygo dev: using Studio UI dev server http://localhost:6791",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("dev stderr = %q, want substring %q", stderr.String(), want)
+		}
+	}
 }
 
 func TestDevCommandAutoStartsStudioDevServer(t *testing.T) {
@@ -763,8 +772,16 @@ func TestDevCommandAutoStartsStudioDevServer(t *testing.T) {
 	if gotOptions.Studio == nil {
 		t.Fatal("dev Studio handler = nil, want auto dev proxy handler")
 	}
-	if !strings.Contains(stdout.String(), "dygo dev serving on 127.0.0.1:6790") {
+	if !strings.Contains(stdout.String(), "dygo dev serving at http://localhost:6790") {
 		t.Fatalf("dev stdout = %q, want ready output", stdout.String())
+	}
+	for _, want := range []string{
+		"dygo dev: root " + root,
+		"dygo dev: environment development",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("dev stderr = %q, want substring %q", stderr.String(), want)
+		}
 	}
 }
 

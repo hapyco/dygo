@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -291,13 +293,22 @@ func newDevCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRun
 }
 
 func runServerCommand(ctx context.Context, stdout, stderr io.Writer, serve serveRunner, recordHooks *db.RecordHookRegistry, envName string, devMode bool, studioDevURL string) error {
-	_, root, databaseURL, err := databaseInputs(envName)
+	env, root, databaseURL, err := databaseInputs(envName)
 	if err != nil {
 		return err
 	}
 	cfg, err := config.Load(root)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+	address := cfg.Server.Address()
+	if devMode {
+		if err := writeDevDiagnostic(stderr, "root %s", root); err != nil {
+			return err
+		}
+		if err := writeDevDiagnostic(stderr, "environment %s", env); err != nil {
+			return err
+		}
 	}
 	studioHandler, stopStudio, err := studioHandlerForCommand(ctx, root, stdout, stderr, devMode, studioDevURL)
 	if err != nil {
@@ -312,13 +323,18 @@ func runServerCommand(ctx context.Context, stdout, stderr io.Writer, serve serve
 	if devMode {
 		readyPrefix = "dygo dev serving"
 	}
-	address := cfg.Server.Address()
 	if err := serve(ctx, server.Options{
 		Address:     address,
 		DatabaseURL: databaseURL,
 		RecordHooks: recordHooks,
 		Studio:      studioHandler,
 		OnReady: func(address string) error {
+			if devMode {
+				if _, err := fmt.Fprintf(stdout, "%s at %s\n", readyPrefix, displayDevServerURL(address)); err != nil {
+					return fmt.Errorf("write serve output: %w", err)
+				}
+				return nil
+			}
 			if _, err := fmt.Fprintf(stdout, "%s on %s\n", readyPrefix, address); err != nil {
 				return fmt.Errorf("write serve output: %w", err)
 			}
@@ -346,6 +362,8 @@ func studioHandlerForCommand(ctx context.Context, root string, stdout, stderr io
 		if err != nil {
 			return nil, nil, err
 		}
+	} else if err := writeDevDiagnostic(stderr, "using Studio UI dev server %s", displayDevURL(studioURL)); err != nil {
+		return nil, nil, err
 	}
 	if studioURL == "" {
 		handler, _, err := studio.HandlerForProject(root)
@@ -371,7 +389,11 @@ func startStudioDevServerProcess(ctx context.Context, root string, _ io.Writer, 
 		return "", nil, fmt.Errorf("check Studio UI package: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "npm", "run", "--silent", "dev", "--", "--logLevel", "error", "--clearScreen", "false")
+	if err := writeDevDiagnostic(stderr, "starting Studio UI dev server in %s", relDevPath(root, studioDir)); err != nil {
+		return "", nil, err
+	}
+
+	cmd := exec.CommandContext(ctx, "npm", "run", "--silent", "dev", "--", "--clearScreen", "false")
 	cmd.Dir = studioDir
 	output := newBoundedOutput(32 * 1024)
 	cmd.Stdout = io.MultiWriter(output, stderr)
@@ -389,11 +411,54 @@ func startStudioDevServerProcess(ctx context.Context, root string, _ io.Writer, 
 		_ = stopStudioDevProcess(cmd, done)
 		return "", nil, err
 	}
-
 	stop := func() error {
 		return stopStudioDevProcess(cmd, done)
 	}
 	return defaultStudioDevURL, stop, nil
+}
+
+func writeDevDiagnostic(stderr io.Writer, format string, args ...any) error {
+	if _, err := fmt.Fprintf(stderr, "dygo dev: "+format+"\n", args...); err != nil {
+		return fmt.Errorf("write dev diagnostic: %w", err)
+	}
+	return nil
+}
+
+func displayDevServerURL(address string) string {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return address
+	}
+	return "http://" + net.JoinHostPort(displayLoopbackHost(host), port)
+}
+
+func displayDevURL(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		return rawURL
+	}
+	host, port, err := net.SplitHostPort(parsed.Host)
+	if err == nil {
+		parsed.Host = net.JoinHostPort(displayLoopbackHost(host), port)
+		return parsed.String()
+	}
+	parsed.Host = displayLoopbackHost(parsed.Host)
+	return parsed.String()
+}
+
+func displayLoopbackHost(host string) string {
+	if host == "127.0.0.1" || host == "::1" {
+		return "localhost"
+	}
+	return host
+}
+
+func relDevPath(root string, path string) string {
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	return filepath.ToSlash(relative)
 }
 
 func waitForStudioDevServer(ctx context.Context, studioURL string, done chan error, output *boundedOutput) error {

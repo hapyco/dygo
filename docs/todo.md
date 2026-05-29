@@ -63,8 +63,6 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #146 Add Studio Calendar view for Records
 - [ ] #147 Add Studio Gantt chart view for Records
 - [ ] #148 Add Studio grid view for Records
-- [ ] #150 Reject framework-reserved app names in projects
-- [ ] #151 Make local console logging verbose, including Vite output
 - [ ] #156 Add Tree Entity support for hierarchical Records
 - [ ] #162 Watch field type behavior contract shape
 - [ ] #169 Expose trusted system record writer API for app code
@@ -87,6 +85,8 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 
 ## Done
 
+- [x] #150 Reject framework-reserved app names in projects
+- [x] #151 Make local console logging verbose, including Vite output
 - [x] #117 Add Studio Record filtering UI and query sync
 - [x] #178 Add Studio user-menu Reload action
 - [x] #180 Add Studio record list sort toolbar control

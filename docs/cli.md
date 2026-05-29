@@ -18,6 +18,8 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 - `dygo dev` - Runs the local development experience with backend, Studio dev server, proxying, and diagnostics.
 - `dygo serve` - Starts the dygo server.
 
+`dygo dev` keeps the stable backend ready URL on stdout and writes local development diagnostics to stderr, including the project root, environment, Studio dev server startup, external Studio target when supplied, and Vite output. Loopback URLs are displayed as `localhost`, but dygo may still bind services to `127.0.0.1` for deterministic local-only networking. It must not print raw database URLs or decrypted secret values.
+
 `dygo doctor` checks root/config, secrets, database connectivity, schema snapshot state, app and Entity metadata, route conflicts, fixture validity, hook wiring, generated project runner, Studio assets, and first-run setup state.
 
 ## Database
