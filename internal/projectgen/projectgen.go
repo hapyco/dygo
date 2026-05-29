@@ -14,6 +14,7 @@ import (
 
 	scaffold "github.com/hapyco/dygo/internal/generate"
 	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/reserved"
 	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/studio"
@@ -75,6 +76,9 @@ func Generate(ctx context.Context, options Options) (Result, error) {
 	name, err := NormalizeName(options.Name)
 	if err != nil {
 		return Result{}, err
+	}
+	if reserved.IsApp(name) {
+		return Result{}, fmt.Errorf("app name %q is reserved for framework-managed apps", name)
 	}
 	modulePath := strings.TrimSpace(options.ModulePath)
 	if modulePath == "" {

@@ -179,6 +179,7 @@ func TestGenerateRejectsExistingTargetAndInvalidNames(t *testing.T) {
 		{name: "existing", opts: Options{Name: "acme", WorkingDir: parent, FrameworkRoot: repoRoot, SkipTidy: true}, want: "already exists"},
 		{name: "empty", opts: Options{Name: "   ", WorkingDir: parent, FrameworkRoot: repoRoot, SkipTidy: true}, want: "project name is required"},
 		{name: "digit", opts: Options{Name: "123 app", WorkingDir: parent, FrameworkRoot: repoRoot, SkipTidy: true}, want: "must start with a letter"},
+		{name: "reserved app", opts: Options{Name: "Core", WorkingDir: parent, FrameworkRoot: repoRoot, SkipTidy: true}, want: `app name "core" is reserved`},
 		{name: "bad module", opts: Options{Name: "valid", ModulePath: "bad module", WorkingDir: parent, FrameworkRoot: repoRoot, SkipTidy: true}, want: "must not contain whitespace"},
 	}
 

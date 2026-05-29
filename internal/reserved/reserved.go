@@ -14,12 +14,18 @@ import (
 var wordsYAML []byte
 
 type wordSet struct {
+	Apps    []string `yaml:"apps"`
 	Slugs   []string `yaml:"slugs"`
 	Fields  []string `yaml:"fields"`
 	Queries []string `yaml:"queries"`
 }
 
 var defaultWords = mustLoadWords(wordsYAML)
+
+// IsApp reports whether value is reserved in app-name space.
+func IsApp(value string) bool {
+	return contains(defaultWords.Apps, value)
+}
 
 // IsSlug reports whether value is reserved in root route slug space.
 func IsSlug(value string) bool {
@@ -34,6 +40,11 @@ func IsField(value string) bool {
 // IsQuery reports whether value is reserved in Record list query-param space.
 func IsQuery(value string) bool {
 	return contains(defaultWords.Queries, value)
+}
+
+// Apps returns reserved app names in stable order.
+func Apps() []string {
+	return sortedCopy(defaultWords.Apps)
 }
 
 // Slugs returns reserved root route slugs in stable order.
@@ -64,6 +75,7 @@ func loadWords(data []byte) (wordSet, error) {
 	if err := yaml.Unmarshal(data, &words); err != nil {
 		return wordSet{}, fmt.Errorf("load reserved words: %w", err)
 	}
+	normalizeCategory(&words.Apps)
 	normalizeCategory(&words.Slugs)
 	normalizeCategory(&words.Fields)
 	normalizeCategory(&words.Queries)

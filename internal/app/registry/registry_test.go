@@ -44,9 +44,9 @@ name: core
 label: Core
 version: 0.1.0
 `)
-	writeManifest(t, filepath.Join(root, "apps", "studio"), `
-name: studio
-label: Studio
+	writeManifest(t, filepath.Join(root, "apps", "sales"), `
+name: sales
+label: Sales
 version: 0.1.0
 dependencies:
   - core
@@ -56,8 +56,34 @@ dependencies:
 	if err != nil {
 		t.Fatalf("Validate() error = %v, want nil", err)
 	}
-	if got := appNames(apps); strings.Join(got, ",") != "core,studio" {
-		t.Fatalf("Validate() names = %#v, want [core studio]", got)
+	if got := appNames(apps); strings.Join(got, ",") != "core,sales" {
+		t.Fatalf("Validate() names = %#v, want [core sales]", got)
+	}
+}
+
+func TestValidateRejectsReservedProjectAppNames(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeManifest(t, filepath.Join(root, ".dygo", "apps", "core"), `
+name: core
+label: Core
+version: 0.1.0
+`)
+	writeManifest(t, filepath.Join(root, "apps", "studio"), `
+name: studio
+label: Studio
+version: 0.1.0
+dependencies:
+  - core
+`)
+
+	_, err := New(root).Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want reserved app name error")
+	}
+	if !strings.Contains(err.Error(), `app name "studio" is reserved`) {
+		t.Fatalf("Validate() error = %q, want reserved app name", err.Error())
 	}
 }
 

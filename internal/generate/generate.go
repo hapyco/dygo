@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/hapyco/dygo/internal/reserved"
 	"github.com/hapyco/dygo/internal/shape"
 )
 
@@ -56,6 +57,9 @@ type templateData struct {
 func App(options Options, appName string) (Plan, error) {
 	if err := shape.ValidateMetadataName("app", appName); err != nil {
 		return Plan{}, err
+	}
+	if reserved.IsApp(appName) {
+		return Plan{}, fmt.Errorf("app name %q is reserved for framework-managed apps", appName)
 	}
 	data := templateData{App: appName, Name: appName, Label: labelForName(appName)}
 	return writeScaffold(options, []string{

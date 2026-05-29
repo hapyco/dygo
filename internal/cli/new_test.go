@@ -92,6 +92,22 @@ func TestNewProjectCommandRejectsExistingProject(t *testing.T) {
 	}
 }
 
+func TestNewProjectCommandRejectsReservedAppName(t *testing.T) {
+	root := t.TempDir()
+	writeCLIFrameworkRootForNew(t, root)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"new", "Core", "--skip-tidy"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(new Core) error = nil, want reserved app name error")
+	}
+	if !strings.Contains(err.Error(), `app name "core" is reserved`) {
+		t.Fatalf("Run(new Core) error = %q, want reserved app name", err.Error())
+	}
+}
+
 func TestDygoVersionForNewUsesBuildInfoReleaseVersion(t *testing.T) {
 	oldReadBuildInfo := readBuildInfo
 	readBuildInfo = func() (*debug.BuildInfo, bool) {

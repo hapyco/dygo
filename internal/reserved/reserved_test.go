@@ -7,6 +7,12 @@ import (
 )
 
 func TestReservedWords(t *testing.T) {
+	if !IsApp("CORE") || !IsApp(" studio ") || !IsApp("Localization") {
+		t.Fatal("IsApp() did not normalize reserved app names")
+	}
+	if IsApp("sales") {
+		t.Fatal("IsApp(sales) = true, want false")
+	}
 	if !IsSlug("API") || !IsSlug(" setup ") {
 		t.Fatal("IsSlug() did not normalize reserved root slugs")
 	}
@@ -23,6 +29,7 @@ func TestReservedWords(t *testing.T) {
 
 func TestReservedListsAreSortedCopies(t *testing.T) {
 	nonEmptyTests := [][]string{
+		Apps(),
 		Slugs(),
 		Fields(),
 		Queries(),
@@ -38,7 +45,7 @@ func TestReservedListsAreSortedCopies(t *testing.T) {
 		}
 		values[0] = "mutated"
 	}
-	if IsSlug("mutated") || IsField("mutated") || IsQuery("mutated") {
+	if IsApp("mutated") || IsSlug("mutated") || IsField("mutated") || IsQuery("mutated") {
 		t.Fatal("reserved list mutation changed package state")
 	}
 }

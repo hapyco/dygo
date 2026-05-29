@@ -1439,6 +1439,25 @@ func TestAppValidateCommandRejectsInvalidAppSet(t *testing.T) {
 	}
 }
 
+func TestAppValidateCommandRejectsReservedProjectAppName(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	t.Chdir(root)
+
+	writeCLIApp(t, filepath.Join(root, ".dygo", "apps", "core"), "core")
+	writeCLIApp(t, filepath.Join(root, "apps", "studio"), "studio")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"app", "validate"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(app validate) error = nil, want reserved app name error")
+	}
+	if !strings.Contains(err.Error(), `app name "studio" is reserved`) {
+		t.Fatalf("Run(app validate) error = %q, want reserved app name", err.Error())
+	}
+}
+
 func TestAppValidateCommandRejectsMissingProjectRoot(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -1727,7 +1746,7 @@ func TestEntityListCommand(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 
-	writeCLIApp(t, filepath.Join(root, "apps", "core"), "core")
+	writeCLIApp(t, filepath.Join(root, ".dygo", "apps", "core"), "core")
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
 	writeCLIEntity(t, cliEntityPath(root, "sales", "company"), `
 label: Company

@@ -22,7 +22,7 @@ paths:
 
 ## Fields
 
-`name` is required and must use kebab-case. This is the canonical app name used by dependency references and future CLI commands.
+`name` is required and must use kebab-case. This is the canonical app name used by dependency references and future CLI commands. Project-owned apps cannot use framework-reserved app names such as `core`, `studio`, or `localization`; those names are owned by framework-managed apps.
 
 `label` is required and is the human-facing app name.
 

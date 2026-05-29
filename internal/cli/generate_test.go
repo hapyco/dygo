@@ -178,6 +178,22 @@ func TestGenerateAppForceOnlyOverwritesGeneratedFiles(t *testing.T) {
 	}
 }
 
+func TestGenerateAppRejectsReservedAppName(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"generate", "app", "studio"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(generate app studio) error = nil, want reserved app name error")
+	}
+	if !strings.Contains(err.Error(), `app name "studio" is reserved`) {
+		t.Fatalf("Run(generate app studio) error = %q, want reserved app name", err.Error())
+	}
+}
+
 func readCLIFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)
