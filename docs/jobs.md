@@ -218,6 +218,8 @@ Decision candidates:
 - `job-execution.max-attempts` snapshots the Job's total allowed attempts at enqueue time. It is `1` when `retry` is missing.
 - `job-execution.retry` snapshots retry delay settings at enqueue time so later Job metadata changes do not change already queued executions.
 - Every Job must define `timeout`. Workers use it to set each execution lock and handler deadline.
+- Workers generate a readable ID on startup for `locked-by`: `<hostname>:<pid>:<short-random>`.
+- `locked-until` is set to `claimed-at + timeout`.
 - Store Studio-created schedules in Core `schedule` records, not `_schedules.yml`.
 - Keep `_schedules.yml` for app-defined schedules shipped with code in a later scheduler batch.
 - Enforce `idempotency-key` uniqueness per Job when present. Enqueueing the same Job with the same key returns the existing Job Execution instead of creating duplicate work.
