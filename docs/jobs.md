@@ -214,13 +214,13 @@ Decision candidates:
 - Store Studio-created schedules in Core `schedule` records, not `_schedules.yml`.
 - Keep `_schedules.yml` for app-defined schedules shipped with code in a later scheduler batch.
 - Enforce `idempotency-key` uniqueness per Job when present. Enqueueing the same Job with the same key returns the existing Job Execution instead of creating duplicate work.
+- `idempotency-key` is supplied at enqueue time, not in `job.yml`. It identifies the upstream cause or work item, such as `email:<email-id>`, `import:<import-id>`, `webhook-event:<event-id>`, or `schedule-occurrence:<occurrence-id>`.
+- The uniqueness scope is `job` plus `idempotency-key`. dygo enforces uniqueness; app and system code choose keys that represent the correct business cause.
+- Each Job Execution stores the Job identity and the caller-provided `idempotency-key`. Whoever enqueues the Job is responsible for making the key unique for that Job when duplicate prevention matters.
+- Good idempotency keys can include timestamps, stored UUIDs, Record IDs, provider event IDs, or schedule occurrence IDs. The key must be stable for the same intended work and different for new intended work.
 - MVP handlers return `error` only. Job Execution keeps nullable `result` JSON as reserved storage for future system/API use, but app SDK code does not write structured results in the first batch.
 - Jobs that produce durable output should create normal Records or files and rely on those as the real output.
 - Priority belongs to Job Executions, not `job.yml`, in the MVP. It defaults to `0`; callers may enqueue with a nonzero priority, and workers claim higher priority executions first.
-
-Open questions:
-
-- Decide whether this uses a partial unique index immediately or transactional enqueue logic until metadata constraints can express that shape.
 
 ## PostgreSQL Queue Semantics
 
@@ -386,4 +386,4 @@ Output decision:
 
 ## Discussion Queue
 
-- Decide whether idempotency uses a partial unique index immediately or transactional enqueue logic until metadata constraints can express that shape.
+- No open design questions for the first implementation batch.
