@@ -56,7 +56,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-30.
 - [x] #139 Add Core Job metadata and Postgres queue storage
 - [x] #140 Implement Job worker runtime, claiming, retries, and timeouts
 - [x] #141 Add SDK and internal Jobs APIs
-- [ ] #142 Add Job operations visibility and retry controls
+- [x] #142 Add Job operations visibility and retry controls
 - [ ] #143 Add job-backed importer foundation for data imports
 - [x] #211 Let developers write a simple Job `Run` function and have dygo wire it automatically
 - [x] #212 Add one command to create a new Job with `job.yml` and `run.go`

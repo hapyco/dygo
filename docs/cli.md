@@ -126,6 +126,11 @@ Generator boilerplate should live as embedded templates under `internal/generate
 - `dygo job execution run <app>/<job> --payload '{"example":true}'` - Queues with a JSON payload; omitted payload defaults to `{}`.
 - `dygo job execution run <app>/<job> --idempotency-key <key>` - Queues with a stable duplicate-prevention key.
 - `dygo job execution run <app>/<job> --env <environment>` - Queues against `development`, `staging`, or `production`.
+- `dygo job execution list` - Lists recent Job Executions from the selected environment database.
+- `dygo job execution list --limit 50` - Lists more recent executions; default limit is `20`.
+- `dygo job execution show <id-or-name>` - Shows payload, result, error, timing, lock, retry, and idempotency details for one execution.
+- `dygo job execution cancel <id-or-name>` - Cancels one queued execution; running or finished executions are not cancelled.
+- `dygo job execution retry <id-or-name> --idempotency-key <key>` - Queues a fresh manual retry for one failed execution using the old payload and the new key.
 
 `job execution run` enqueues durable work; it does not run the handler inline. Start `dygo worker` to process queued executions.
 

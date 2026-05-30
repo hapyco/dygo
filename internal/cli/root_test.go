@@ -133,9 +133,17 @@ func TestCommandSurfaceRegistersTargetCommands(t *testing.T) {
 		{"hook", "sync"},
 		{"job"},
 		{"job", "execution"},
+		{"job", "execution", "list"},
+		{"job", "execution", "show"},
 		{"job", "execution", "run"},
+		{"job", "execution", "cancel"},
+		{"job", "execution", "retry"},
 		{"job", "exec"},
+		{"job", "exec", "list"},
+		{"job", "exec", "show"},
 		{"job", "exec", "run"},
+		{"job", "exec", "cancel"},
+		{"job", "exec", "retry"},
 		{"generate"},
 		{"generate", "app"},
 		{"generate", "entity"},
@@ -209,6 +217,10 @@ func TestCommandSurfaceRejectsRemovedPublicPaths(t *testing.T) {
 		{"upgrade", "--install-dir", "/tmp/dygo"},
 		{"serve", "--studio-dev-url", "http://127.0.0.1:6791"},
 		{"job", "run"},
+		{"job", "list"},
+		{"job", "show"},
+		{"job", "cancel"},
+		{"job", "retry"},
 	}
 
 	for _, command := range commands {

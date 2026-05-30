@@ -9,6 +9,7 @@ Related tasks:
 - #141 Add SDK and internal Jobs APIs
 - #140 Implement Job worker runtime, claiming, retries, and timeouts
 - #31 Add worker command
+- #142 Add Job operations visibility and retry controls
 
 ## Goals
 
@@ -21,7 +22,7 @@ Related tasks:
 ## Non-Goals For This Batch
 
 - Recurring schedules and `dygo scheduler`; keep them for #32.
-- Studio retry/cancel/detail screens; keep them for #142.
+- Studio retry/cancel/detail screens; keep them for #216, #217, and #218.
 - Importer-specific jobs; keep them for #143.
 - External queue backends. PostgreSQL is the first durable backend.
 - Dynamic loading of Go source files. Jobs are compiled into the project runner, like hooks.
@@ -66,6 +67,17 @@ dygo worker --once
 ```
 
 `job execution run` creates a durable Job Execution in the database. It does not run the handler inline; a worker process still claims and executes it. The Job must be synced into Core records first with `dygo db migrate`. `dygo job exec run` is the short alias.
+
+Inspect and control executions from the database with:
+
+```sh
+dygo job execution list
+dygo job execution show <id-or-name>
+dygo job execution cancel <id-or-name>
+dygo job execution retry <id-or-name> --idempotency-key <key>
+```
+
+`list`, `show`, `cancel`, and `retry` read the selected environment database. `cancel` is queued-only in the MVP. `retry` is failed-only, copies the failed execution payload, and requires a new caller-provided idempotency key.
 
 Proposed `job.yml` shape:
 

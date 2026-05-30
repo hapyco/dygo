@@ -1,14 +1,19 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
+	"text/tabwriter"
+	"time"
 
 	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/jobs"
 	jobstore "github.com/hapyco/dygo/internal/jobs/store"
 	"github.com/hapyco/dygo/internal/queues"
 	"github.com/hapyco/dygo/internal/secrets"
@@ -18,16 +23,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type jobExecutionRunEnqueuer interface {
+type jobExecutionStore interface {
 	Enqueue(context.Context, string, string, json.RawMessage, jobstore.EnqueueOptions) (jobstore.Execution, error)
+	List(context.Context, jobstore.ListOptions) ([]jobstore.Execution, error)
+	Get(context.Context, string) (jobstore.Execution, error)
+	CancelQueued(context.Context, string, time.Time) (jobstore.Execution, error)
+	Retry(context.Context, string, string) (jobstore.Execution, error)
 }
 
-var openJobExecutionRunEnqueuer = func(ctx context.Context, databaseURL string, queueConfig queues.Config) (jobExecutionRunEnqueuer, func(), error) {
+var openJobExecutionStore = func(ctx context.Context, databaseURL string, queueConfig ...queues.Config) (jobExecutionStore, func(), error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		return nil, nil, err
 	}
-	store, err := jobstore.New(pool, queueConfig)
+	store, err := jobstore.New(pool, queueConfig...)
 	if err != nil {
 		pool.Close()
 		return nil, nil, err
@@ -61,6 +70,133 @@ func newJobExecutionCommand(ctx context.Context, stdout io.Writer) *cobra.Comman
 	}
 
 	cmd.AddCommand(newJobExecutionRunCommand(ctx, stdout))
+	cmd.AddCommand(newJobExecutionListCommand(ctx, stdout))
+	cmd.AddCommand(newJobExecutionShowCommand(ctx, stdout))
+	cmd.AddCommand(newJobExecutionCancelCommand(ctx, stdout))
+	cmd.AddCommand(newJobExecutionRetryCommand(ctx, stdout))
+	return cmd
+}
+
+func newJobExecutionListCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+	limit := 20
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List recent Job Executions",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if limit < 1 {
+				return fmt.Errorf("--limit must be greater than 0")
+			}
+			env, store, closeStore, err := jobExecutionStoreForCommand(ctx, envName, false)
+			if err != nil {
+				return err
+			}
+			defer closeStore()
+			executions, err := store.List(ctx, jobstore.ListOptions{Limit: limit})
+			if err != nil {
+				return jobExecutionCommandError(err)
+			}
+			if len(executions) == 0 {
+				if _, err := fmt.Fprintf(stdout, "No job executions found (%s).\n", env); err != nil {
+					return fmt.Errorf("write job execution list output: %w", err)
+				}
+				return nil
+			}
+			return writeJobExecutionList(stdout, executions)
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+	cmd.Flags().IntVar(&limit, "limit", limit, "Maximum number of Job Executions to show")
+
+	return cmd
+}
+
+func newJobExecutionShowCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+
+	cmd := &cobra.Command{
+		Use:   "show <id-or-name>",
+		Short: "Show one Job Execution",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			_, store, closeStore, err := jobExecutionStoreForCommand(ctx, envName, false)
+			if err != nil {
+				return err
+			}
+			defer closeStore()
+			execution, err := store.Get(ctx, args[0])
+			if err != nil {
+				return jobExecutionCommandError(err)
+			}
+			return writeJobExecutionShow(stdout, execution)
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+
+	return cmd
+}
+
+func newJobExecutionCancelCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+
+	cmd := &cobra.Command{
+		Use:   "cancel <id-or-name>",
+		Short: "Cancel a queued Job Execution",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			env, store, closeStore, err := jobExecutionStoreForCommand(ctx, envName, false)
+			if err != nil {
+				return err
+			}
+			defer closeStore()
+			execution, err := store.CancelQueued(ctx, args[0], time.Now().UTC())
+			if err != nil {
+				return jobExecutionCommandError(err)
+			}
+			if _, err := fmt.Fprintf(stdout, "job execution cancelled: id=%d name=%s status=%s (%s)\n", execution.ID, execution.Name, execution.Status, env); err != nil {
+				return fmt.Errorf("write job execution cancel output: %w", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+
+	return cmd
+}
+
+func newJobExecutionRetryCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+	idempotencyKey := ""
+
+	cmd := &cobra.Command{
+		Use:   "retry <id-or-name>",
+		Short: "Retry a failed Job Execution",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			if strings.TrimSpace(idempotencyKey) == "" {
+				return fmt.Errorf("--idempotency-key is required")
+			}
+			env, store, closeStore, err := jobExecutionStoreForCommand(ctx, envName, true)
+			if err != nil {
+				return err
+			}
+			defer closeStore()
+			execution, err := store.Retry(ctx, args[0], idempotencyKey)
+			if err != nil {
+				return jobExecutionCommandError(err)
+			}
+			return writeJobExecutionQueued(stdout, execution, env)
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+	cmd.Flags().StringVar(&idempotencyKey, "idempotency-key", idempotencyKey, "Stable duplicate-prevention key for the retried Job Execution")
+
 	return cmd
 }
 
@@ -82,29 +218,18 @@ func newJobExecutionRunCommand(ctx context.Context, stdout io.Writer) *cobra.Com
 			if err != nil {
 				return err
 			}
-			env, root, databaseURL, err := databaseInputs(envName)
+			env, store, closeStore, err := jobExecutionStoreForCommand(ctx, envName, true)
 			if err != nil {
 				return err
 			}
-			queueConfig, err := queues.Load(root)
-			if err != nil {
-				return err
-			}
-			enqueuer, closeEnqueuer, err := openJobExecutionRunEnqueuer(ctx, databaseURL, queueConfig)
-			if err != nil {
-				return db.SanitizeDatabaseError("connect job database", databaseURL, err)
-			}
-			defer closeEnqueuer()
-			execution, err := enqueuer.Enqueue(ctx, target.App, target.Name, payload, jobstore.EnqueueOptions{
+			defer closeStore()
+			execution, err := store.Enqueue(ctx, target.App, target.Name, payload, jobstore.EnqueueOptions{
 				IdempotencyKey: idempotencyKey,
 			})
 			if err != nil {
-				return jobExecutionRunCommandError(err)
+				return jobExecutionCommandError(err)
 			}
-			if _, err := fmt.Fprintf(stdout, "job execution queued: %s/%s id=%d name=%s queue=%s status=%s (%s)\n", execution.AppName, execution.JobName, execution.ID, execution.Name, execution.Queue, execution.Status, env); err != nil {
-				return fmt.Errorf("write job execution run output: %w", err)
-			}
-			return nil
+			return writeJobExecutionQueued(stdout, execution, env)
 		},
 	}
 
@@ -113,6 +238,95 @@ func newJobExecutionRunCommand(ctx context.Context, stdout io.Writer) *cobra.Com
 	cmd.Flags().StringVar(&idempotencyKey, "idempotency-key", idempotencyKey, "Stable duplicate-prevention key for this Job")
 
 	return cmd
+}
+
+func jobExecutionStoreForCommand(ctx context.Context, envName string, includeQueues bool) (string, jobExecutionStore, func(), error) {
+	env, root, databaseURL, err := databaseInputs(envName)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	if includeQueues {
+		queueConfig, err := queues.Load(root)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		store, closeStore, err := openJobExecutionStore(ctx, databaseURL, queueConfig)
+		if err != nil {
+			return "", nil, nil, db.SanitizeDatabaseError("connect job database", databaseURL, err)
+		}
+		return string(env), store, closeStore, nil
+	}
+	store, closeStore, err := openJobExecutionStore(ctx, databaseURL)
+	if err != nil {
+		return "", nil, nil, db.SanitizeDatabaseError("connect job database", databaseURL, err)
+	}
+	return string(env), store, closeStore, nil
+}
+
+func writeJobExecutionQueued(stdout io.Writer, execution jobstore.Execution, env string) error {
+	if _, err := fmt.Fprintf(stdout, "job execution queued: %s/%s id=%d name=%s queue=%s status=%s (%s)\n", execution.AppName, execution.JobName, execution.ID, execution.Name, execution.Queue, execution.Status, env); err != nil {
+		return fmt.Errorf("write job execution output: %w", err)
+	}
+	return nil
+}
+
+func writeJobExecutionList(stdout io.Writer, executions []jobstore.Execution) error {
+	table := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	if _, err := fmt.Fprintln(table, "ID\tNAME\tJOB\tSTATUS\tQUEUE\tATTEMPTS\tRUN_AFTER\tSTARTED_AT\tFINISHED_AT"); err != nil {
+		return fmt.Errorf("write job execution list header: %w", err)
+	}
+	for _, execution := range executions {
+		if _, err := fmt.Fprintf(table, "%d\t%s\t%s/%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			execution.ID,
+			execution.Name,
+			execution.AppName,
+			execution.JobName,
+			execution.Status,
+			execution.Queue,
+			formatJobExecutionAttempts(execution),
+			formatJobExecutionTime(execution.RunAfter),
+			formatOptionalJobExecutionTime(execution.StartedAt),
+			formatOptionalJobExecutionTime(execution.FinishedAt),
+		); err != nil {
+			return fmt.Errorf("write job execution list row: %w", err)
+		}
+	}
+	if err := table.Flush(); err != nil {
+		return fmt.Errorf("flush job execution list output: %w", err)
+	}
+	return nil
+}
+
+func writeJobExecutionShow(stdout io.Writer, execution jobstore.Execution) error {
+	lines := []struct {
+		label string
+		value string
+	}{
+		{"id", strconv.FormatInt(execution.ID, 10)},
+		{"name", emptyDash(execution.Name)},
+		{"job", execution.AppName + "/" + execution.JobName},
+		{"status", emptyDash(execution.Status)},
+		{"queue", emptyDash(execution.Queue)},
+		{"priority", strconv.Itoa(execution.Priority)},
+		{"attempts", formatJobExecutionAttempts(execution)},
+		{"run-after", formatJobExecutionTime(execution.RunAfter)},
+		{"started-at", formatOptionalJobExecutionTime(execution.StartedAt)},
+		{"finished-at", formatOptionalJobExecutionTime(execution.FinishedAt)},
+		{"locked-by", emptyDash(execution.LockedBy)},
+		{"locked-until", formatOptionalJobExecutionTime(execution.LockedUntil)},
+		{"idempotency-key", emptyDash(execution.IdempotencyKey)},
+		{"timeout", formatJobExecutionTimeout(execution.Timeout)},
+		{"retry", formatJobExecutionRetry(execution.Retry)},
+		{"payload", formatJobExecutionJSON(execution.Payload)},
+		{"result", formatJobExecutionJSON(execution.Result)},
+		{"error", emptyDash(execution.Error)},
+	}
+	for _, line := range lines {
+		if _, err := fmt.Fprintf(stdout, "%s: %s\n", line.label, line.value); err != nil {
+			return fmt.Errorf("write job execution show output: %w", err)
+		}
+	}
+	return nil
 }
 
 func parseJobExecutionRunPayload(value string) (json.RawMessage, error) {
@@ -126,7 +340,7 @@ func parseJobExecutionRunPayload(value string) (json.RawMessage, error) {
 	return json.RawMessage(payload), nil
 }
 
-func jobExecutionRunCommandError(err error) error {
+func jobExecutionCommandError(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "42P01" {
 		return fmt.Errorf("job schema is not ready; run dygo db migrate: %w", err)
@@ -135,4 +349,55 @@ func jobExecutionRunCommandError(err error) error {
 		return fmt.Errorf("%w; run dygo db migrate", err)
 	}
 	return err
+}
+
+func formatJobExecutionAttempts(execution jobstore.Execution) string {
+	return fmt.Sprintf("%d/%d", execution.Attempts, execution.MaxAttempts)
+}
+
+func formatJobExecutionTime(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.UTC().Format(time.RFC3339)
+}
+
+func formatOptionalJobExecutionTime(value *time.Time) string {
+	if value == nil {
+		return "-"
+	}
+	return formatJobExecutionTime(*value)
+}
+
+func formatJobExecutionTimeout(value time.Duration) string {
+	if value <= 0 {
+		return "-"
+	}
+	return value.String()
+}
+
+func formatJobExecutionRetry(retry *jobs.Retry) string {
+	if retry == nil {
+		return "-"
+	}
+	return fmt.Sprintf("attempts=%d initial-delay=%s max-delay=%s", retry.Attempts, retry.InitialDelay, retry.MaxDelay)
+}
+
+func formatJobExecutionJSON(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return "-"
+	}
+	var buffer bytes.Buffer
+	if err := json.Compact(&buffer, raw); err != nil {
+		return string(raw)
+	}
+	return buffer.String()
+}
+
+func emptyDash(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "-"
+	}
+	return value
 }

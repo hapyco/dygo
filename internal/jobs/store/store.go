@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,6 +38,11 @@ type EnqueueOptions struct {
 	IdempotencyKey string
 	Priority       int
 	RunAfter       time.Time
+}
+
+// ListOptions controls Job Execution listing.
+type ListOptions struct {
+	Limit int
 }
 
 // Execution is one durable Job Execution row.
@@ -156,6 +162,116 @@ func (s Store) Enqueue(ctx context.Context, appName string, jobName string, payl
 		return Execution{}, fmt.Errorf("commit job enqueue: %w", err)
 	}
 	return execution, nil
+}
+
+// List returns recent Job Executions, newest first.
+func (s Store) List(ctx context.Context, options ListOptions) ([]Execution, error) {
+	limit := options.Limit
+	if limit == 0 {
+		limit = 20
+	}
+	if limit < 1 {
+		return nil, fmt.Errorf("job execution list limit must be greater than 0")
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin job execution list: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx, `
+SELECT `+executionSelectColumns+`
+FROM "job_execution" e
+JOIN "job" j ON j.id = e.job_id
+ORDER BY e.id DESC
+LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query job executions: %w", err)
+	}
+	defer rows.Close()
+
+	var executions []Execution
+	for rows.Next() {
+		execution, err := scanExecution(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan job execution: %w", err)
+		}
+		executions = append(executions, execution)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan job executions: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit job execution list: %w", err)
+	}
+	return executions, nil
+}
+
+// Get returns one Job Execution by numeric id or execution name.
+func (s Store) Get(ctx context.Context, reference string) (Execution, error) {
+	reference = strings.TrimSpace(reference)
+	if reference == "" {
+		return Execution{}, fmt.Errorf("job execution id or name is required")
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Execution{}, fmt.Errorf("begin job execution lookup: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	execution, err := findExecutionByReference(ctx, tx, reference)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Execution{}, fmt.Errorf("job execution %q was not found", reference)
+		}
+		return Execution{}, fmt.Errorf("load job execution %q: %w", reference, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Execution{}, fmt.Errorf("commit job execution lookup: %w", err)
+	}
+	return execution, nil
+}
+
+// CancelQueued marks a queued Job Execution cancelled by id or name.
+func (s Store) CancelQueued(ctx context.Context, reference string, now time.Time) (Execution, error) {
+	reference = strings.TrimSpace(reference)
+	execution, err := s.Get(ctx, reference)
+	if err != nil {
+		return Execution{}, err
+	}
+	if execution.Status != jobs.StatusQueued {
+		return Execution{}, fmt.Errorf("job execution %q is %s; only queued executions can be cancelled", reference, execution.Status)
+	}
+	cancelled, err := s.Cancel(ctx, execution.ID, now)
+	if err != nil {
+		return Execution{}, err
+	}
+	if !cancelled {
+		return Execution{}, fmt.Errorf("job execution %q is no longer queued", reference)
+	}
+	finishedAt := now.UTC()
+	execution.Status = jobs.StatusCancelled
+	execution.FinishedAt = &finishedAt
+	return execution, nil
+}
+
+// Retry creates a new queued Job Execution from a failed execution's payload.
+func (s Store) Retry(ctx context.Context, reference string, idempotencyKey string) (Execution, error) {
+	reference = strings.TrimSpace(reference)
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if idempotencyKey == "" {
+		return Execution{}, fmt.Errorf("manual retry requires an idempotency key")
+	}
+	execution, err := s.Get(ctx, reference)
+	if err != nil {
+		return Execution{}, err
+	}
+	if execution.Status != jobs.StatusFailed {
+		return Execution{}, fmt.Errorf("job execution %q is %s; only failed executions can be retried", reference, execution.Status)
+	}
+	return s.Enqueue(ctx, execution.AppName, execution.JobName, execution.Payload, EnqueueOptions{
+		IdempotencyKey: idempotencyKey,
+	})
 }
 
 // RecoverExpired releases expired running executions for retry or final failure.
@@ -447,6 +563,25 @@ FROM "job_execution" e
 JOIN "job" j ON j.id = e.job_id
 WHERE e.id = $1`, id)
 	return scanExecution(row)
+}
+
+func findExecutionByName(ctx context.Context, tx pgx.Tx, name string) (Execution, error) {
+	row := tx.QueryRow(ctx, `
+SELECT `+executionSelectColumns+`
+FROM "job_execution" e
+JOIN "job" j ON j.id = e.job_id
+WHERE e.name = $1`, name)
+	return scanExecution(row)
+}
+
+func findExecutionByReference(ctx context.Context, tx pgx.Tx, reference string) (Execution, error) {
+	if id, err := strconv.ParseInt(reference, 10, 64); err == nil {
+		if id < 1 {
+			return Execution{}, fmt.Errorf("job execution id must be greater than 0")
+		}
+		return findExecutionByID(ctx, tx, id)
+	}
+	return findExecutionByName(ctx, tx, reference)
 }
 
 func findExecutionByIdempotency(ctx context.Context, tx pgx.Tx, jobID int64, idempotencyKey string) (Execution, bool, error) {
