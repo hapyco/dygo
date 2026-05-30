@@ -90,6 +90,45 @@ func TestGenerateEntityDryRunDoesNotWrite(t *testing.T) {
 	}
 }
 
+func TestGenerateEntityForcePreservesExistingHookFile(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIGoModule(t, root, "example.com/acme")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := Run(context.Background(), []string{"generate", "entity", "sales/lead"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("Run(generate entity) error = %v, want nil", err)
+	}
+
+	hookPath := filepath.Join(root, "apps", "sales", "entities", "lead", "hooks.go")
+	existing := `package hooks
+
+import "github.com/hapyco/dygo/pkg/sdk"
+
+func Register(registry sdk.RecordHookRegistry) error {
+	return nil
+}
+`
+	if err := os.WriteFile(hookPath, []byte(existing), 0o644); err != nil {
+		t.Fatalf("WriteFile(hooks.go) error = %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := Run(context.Background(), []string{"generate", "entity", "sales/lead", "--force"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("Run(generate entity --force) error = %v, want nil", err)
+	}
+	if got := readCLIFile(t, hookPath); got != existing {
+		t.Fatalf("hooks.go changed after generate entity --force:\n%s", got)
+	}
+	if !strings.Contains(stdout.String(), "hook: apps/sales/entities/lead/hooks.go (existing)") {
+		t.Fatalf("generate entity --force stdout = %q, want hook existing", stdout.String())
+	}
+}
+
 func TestGenerateJobCommandCreatesScaffold(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)

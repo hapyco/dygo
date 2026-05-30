@@ -104,7 +104,7 @@ Collection generators create metadata only. Collection rows do not get fixture s
 - `dygo generate collection <app>/<collection> --dry-run` - Prints collection metadata files that would be created or updated without writing.
 - `dygo generate collection <app>/<collection> --force` - Overwrites dygo-generated collection metadata only; custom files still fail.
 - `dygo generate hook <app>/<entity> --dry-run` - Prints hook scaffold and runner wiring changes without writing.
-- `dygo generate hook <app>/<entity> --force` - Overwrites dygo-generated hook scaffolding only; custom hook files still fail.
+- `dygo generate hook <app>/<entity> --force` - Refreshes generated runner wiring only; existing `hooks.go` files are developer-owned and are not overwritten.
 - `dygo generate job <app>/<job> --dry-run` - Prints Job scaffold and runner wiring changes without writing.
 - `dygo generate job <app>/<job> --force` - Refreshes dygo-generated Job metadata only; existing `run.go` files are developer-owned and are not overwritten.
 - `dygo generate fixture <app>/<entity> --dry-run` - Prints fixture skeleton files that would be created or updated without writing.
