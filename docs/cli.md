@@ -177,6 +177,8 @@ Secret names support root keys and dot-separated YAML paths, such as `DATABASE_U
 - `dygo worker --once` - Processes one available batch and exits.
 - `dygo worker --concurrency <n>` - Overrides configured queue concurrency for this worker process.
 
+Production deployments that use Jobs should run `dygo serve` and `dygo worker` as separate long-running processes. `dygo serve` does not process queued Job Executions.
+
 ## Deferred CLI Surface
 
 - `dygo scheduler` - Defer until schedule metadata and recurring job runtime exist.

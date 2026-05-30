@@ -64,14 +64,14 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-30.
 - [x] #213 Let developers run a Job manually for testing
 - [ ] #214 Let Studio users schedule Jobs like "every Monday at 9 AM"
 - [ ] #215 Let apps ship recurring schedules with code
-- [ ] #216 Show waiting, running, successful, failed, and cancelled Jobs in Studio
+- [x] #216 Show waiting, running, successful, failed, and cancelled Jobs in Studio
 - [ ] #217 Let Studio users retry a failed Job
 - [ ] #218 Let Studio users cancel a Job that has not started yet
 - [ ] #219 Let Studio users pause or disable a Job without deleting it
 - [ ] #220 Show friendly forms for Job inputs instead of raw JSON
-- [ ] #221 Show why a Job failed and when it will retry
+- [x] #221 Show why a Job failed and when it will retry
 - [ ] #222 Clean up old Job history automatically
-- [ ] #223 Make production setup clearly show that app server and worker both need to run
+- [x] #223 Make production setup clearly show that app server and worker both need to run
 - [ ] #224 Let workers pick up new Jobs instantly instead of waiting for the poll cycle
 - [ ] #225 Define removed `job.yml` retirement behavior for synced Core Job rows
 - [ ] #226 Add Core retention policy Entity for platform record cleanup

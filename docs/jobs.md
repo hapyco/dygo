@@ -442,6 +442,19 @@ Output decision:
 - Worker diagnostics and per-execution logs go to stderr.
 - Keep output plain ASCII and parseable.
 
+## Production Runtime
+
+Jobs are not processed by the web server process. Production deployments that use Jobs should run both:
+
+```txt
+web: dygo serve
+worker: dygo worker
+```
+
+`dygo serve` handles HTTP and Studio traffic. `dygo worker` handles queued Job Executions. The deployment tool is responsible for running, supervising, restarting, scaling, and collecting logs for those processes.
+
+Running only `dygo serve` leaves Job Executions queued in PostgreSQL until a worker process starts.
+
 ## Implementation Order
 
 1. Add `config/queues.yml` scaffold, reader, and validator with generated `default` queue.
