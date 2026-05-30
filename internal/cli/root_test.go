@@ -131,6 +131,8 @@ func TestCommandSurfaceRegistersTargetCommands(t *testing.T) {
 		{"hook", "list"},
 		{"hook", "validate"},
 		{"hook", "sync"},
+		{"job"},
+		{"job", "run"},
 		{"generate"},
 		{"generate", "app"},
 		{"generate", "entity"},
@@ -155,6 +157,7 @@ func TestCommandSurfaceRegistersTargetCommands(t *testing.T) {
 		{"secret", "edit"},
 		{"secret", "validate"},
 		{"secret", "rotate-key"},
+		{"worker"},
 	}
 
 	for _, command := range commands {

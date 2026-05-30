@@ -58,6 +58,15 @@ dygo generate job crm/send-welcome-email
 
 The command creates `job.yml`, creates a starter `run.go`, and updates the generated project runner so the Job is registered automatically.
 
+Queue one execution manually for testing with:
+
+```sh
+dygo job run crm/send-welcome-email --payload '{}'
+dygo worker --once
+```
+
+`job run` creates a durable Job Execution in the database. It does not run the handler inline; a worker process still claims and executes it. The Job must be synced into Core records first with `dygo db migrate`.
+
 Proposed `job.yml` shape:
 
 ```yaml

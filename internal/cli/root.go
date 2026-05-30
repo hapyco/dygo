@@ -191,6 +191,7 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newAppCommand(stdout))
 	root.AddCommand(newEntityCommand(stdout))
 	root.AddCommand(newHookCommand(stdout))
+	root.AddCommand(newJobCommand(ctx, stdout))
 	root.AddCommand(newGenerateCommand(stdout))
 	root.AddCommand(newRouteCommand(stdout))
 	root.AddCommand(newPermissionCommand(ctx, stdout, permission))

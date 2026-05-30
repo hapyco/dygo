@@ -116,6 +116,16 @@ Generators are non-interactive by default. They write when there are no conflict
 
 Generator boilerplate should live as embedded templates under `internal/generate/templates/`. The dygo binary should embed these templates at build time instead of reading template files from disk at runtime.
 
+## Jobs
+
+- `dygo job` - Groups Job operations.
+- `dygo job run <app>/<job>` - Queues one Job Execution for manual testing.
+- `dygo job run <app>/<job> --payload '{"example":true}'` - Queues with a JSON payload; omitted payload defaults to `{}`.
+- `dygo job run <app>/<job> --idempotency-key <key>` - Queues with a stable duplicate-prevention key.
+- `dygo job run <app>/<job> --env <environment>` - Queues against `development`, `staging`, or `production`.
+
+`job run` enqueues durable work; it does not run the handler inline. Start `dygo worker` to process queued executions.
+
 ## Routes
 
 - `dygo route` - Groups route registry inspection and validation commands.
@@ -152,9 +162,15 @@ Permission commands default to `--env development` and read live Core permission
 
 Secret names support root keys and dot-separated YAML paths, such as `DATABASE_URL` or `database.url`. `dygo secret get` prints only the raw value to stdout; errors and diagnostics go to stderr.
 
+## Worker
+
+- `dygo worker` - Runs Job workers for all registered queues.
+- `dygo worker --queue <queue>` - Runs workers for one registered queue; the flag may be repeated.
+- `dygo worker --once` - Processes one available batch and exits.
+- `dygo worker --concurrency <n>` - Overrides configured queue concurrency for this worker process.
+
 ## Deferred CLI Surface
 
-- `dygo worker` - Defer until the durable job runtime is designed and implemented.
 - `dygo scheduler` - Defer until schedule metadata and recurring job runtime exist.
 - Global `--json` - Defer until dygo has a consistent output contract for command results, validation errors, dry-run plans, prompts, redaction, and streaming commands.
 - Smart shell completions - Defer until command structure is implemented; start with filesystem/static completions for `--env`, `<app>`, `<app>/<entity>`, hook events, and completion shells.

@@ -60,8 +60,8 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-30.
 - [ ] #143 Add job-backed importer foundation for data imports
 - [x] #211 Let developers write a simple Job `Run` function and have dygo wire it automatically
 - [x] #212 Add one command to create a new Job with `job.yml` and `run.go`
-- [ ] Create `job.yml` schema for editor validation and autocomplete
-- [ ] #213 Let developers run a Job manually for testing
+- [x] Create `job.yml` schema for editor validation and autocomplete
+- [x] #213 Let developers run a Job manually for testing
 - [ ] #214 Let Studio users schedule Jobs like "every Monday at 9 AM"
 - [ ] #215 Let apps ship recurring schedules with code
 - [ ] #216 Show waiting, running, successful, failed, and cancelled Jobs in Studio
