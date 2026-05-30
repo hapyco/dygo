@@ -179,7 +179,7 @@ func TestBuildMetadataRecordsStoresJobMetadata(t *testing.T) {
 		t.Fatalf("job records count = %d, want 1", len(records.Jobs))
 	}
 	job := records.Jobs[0]
-	if job.Name != "sales.send-welcome-email" || job.Key != "send-welcome-email" || job.Label != "Send Welcome Email" || job.Queue != "email" || job.Timeout != "30s" || !job.Enabled {
+	if job.Name != "sales.send-welcome-email" || job.Key != "send-welcome-email" || job.Source != jobs.JobSourceFile || job.Label != "Send Welcome Email" || job.Queue != "email" || job.Timeout != "30s" || !job.Enabled || job.Retired {
 		t.Fatalf("job record = %+v, want synced sales job metadata", job)
 	}
 	for _, want := range []string{`"attempts":3`, `"initial-delay":"10s"`, `"max-delay":"5m"`} {

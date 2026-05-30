@@ -25,6 +25,15 @@ const (
 )
 
 const (
+	// JobSourceFile marks Jobs synced from apps/<app>/jobs/<job>/job.yml.
+	JobSourceFile = "file"
+	// JobSourceStudio marks Jobs created from Studio-owned database metadata.
+	JobSourceStudio = "studio"
+	// JobSourceSystem marks Jobs created by dygo/system-owned code.
+	JobSourceSystem = "system"
+)
+
+const (
 	StatusQueued    = "queued"
 	StatusRunning   = "running"
 	StatusSucceeded = "succeeded"

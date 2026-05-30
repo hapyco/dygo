@@ -46,6 +46,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-30.
 - [ ] #196 Add Studio command palette v2 with contextual actions and record search
 - [ ] #197 Add Studio multi-tab navigation support
 - [ ] #198 Add pinned section to Studio sidebar
+- [ ] Finalize Single Entity's storage model
 - [ ] #130 Define Record rename and system name behavior
 - [ ] #131 Add Studio form validation and field error mapping
 - [ ] #132 Design Studio record form layout metadata
@@ -73,7 +74,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-30.
 - [ ] #222 Clean up old Job history automatically
 - [x] #223 Make production setup clearly show that app server and worker both need to run
 - [ ] #224 Let workers pick up new Jobs instantly instead of waiting for the poll cycle
-- [ ] #225 Define removed `job.yml` retirement behavior for synced Core Job rows
+- [x] #225 Define removed `job.yml` retirement behavior for synced Core Job rows
 - [ ] #226 Add Core retention policy Entity for platform record cleanup
 - [ ] #144 Add Studio keyboard shortcut foundation
 - [ ] #199 Add custom Studio right-click context menus

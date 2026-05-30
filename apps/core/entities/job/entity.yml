@@ -20,6 +20,18 @@ fields:
     required: true
     index: true
 
+  - name: source
+    label: Source
+    type: select
+    required: true
+    default: file
+    index: true
+    options:
+      values:
+        - file
+        - studio
+        - system
+
   - name: label
     label: Label
     type: text
@@ -50,6 +62,13 @@ fields:
     type: boolean
     required: true
     default: true
+    index: true
+
+  - name: retired
+    label: Retired
+    type: boolean
+    required: true
+    default: false
     index: true
 
 constraints:

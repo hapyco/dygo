@@ -335,12 +335,15 @@ CREATE TABLE public.job (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     app_id bigint NOT NULL,
     key text NOT NULL,
+    source text DEFAULT 'file'::text NOT NULL,
     label text NOT NULL,
     description text,
     queue text DEFAULT 'default'::text NOT NULL,
     timeout text NOT NULL,
     retry jsonb,
-    enabled boolean DEFAULT true NOT NULL
+    enabled boolean DEFAULT true NOT NULL,
+    retired boolean DEFAULT false NOT NULL,
+    CONSTRAINT job_source_check CHECK ((source = ANY (ARRAY['file'::text, 'studio'::text, 'system'::text])))
 );
 
 
@@ -1257,6 +1260,20 @@ CREATE INDEX job_key_idx ON public.job USING btree (key);
 --
 
 CREATE INDEX job_queue_idx ON public.job USING btree (queue);
+
+
+--
+-- Name: job_retired_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_retired_idx ON public.job USING btree (retired);
+
+
+--
+-- Name: job_source_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_source_idx ON public.job USING btree (source);
 
 
 --

@@ -93,6 +93,7 @@ retry:
 Locked decisions:
 
 - Job key comes from the bundle folder name: `apps/<app>/jobs/<job>/job.yml`. There is no `name` field in `job.yml`.
+- `source`, `enabled`, and `retired` are Core `job` fields, not `job.yml` keys.
 - Job key must be kebab-case.
 - `label` is required.
 - `description` is optional.
@@ -191,18 +192,22 @@ Add Core `Job` metadata so dygo can persist discovered job definitions next to A
 
 Each discovered `apps/<app>/jobs/<job>/job.yml` syncs into one Core `job` record.
 
-`dygo db migrate` owns Job metadata sync. It reads and validates `apps/*/jobs/*/job.yml`, validates referenced queues against `config/queues.yml`, and upserts Core `job` records. Enqueue and worker runtime use synced Core records rather than scanning `job.yml` files on each operation.
+`dygo db migrate` owns Job metadata sync. It reads and validates `apps/*/jobs/*/job.yml`, validates referenced queues against `config/queues.yml`, and upserts Core `job` records with `source=file`. Enqueue and worker runtime use synced Core records rather than scanning `job.yml` files on each operation.
+
+If a file-backed `job.yml` disappears, migrate marks that Core `job` as retired instead of deleting it. Old Job Executions stay inspectable. If the file comes back, migrate clears the retired flag.
 
 Proposed Core `job` fields:
 
 - `app` link to Core App
 - `key` text, app-scoped job key
+- `source` select: `file`, `studio`, `system`
 - `label` text
 - `description` long text
 - `queue` text, default `default`
 - `timeout` text
 - `retry` json
 - `enabled` boolean, default true
+- `retired` boolean, default false
 
 Add Core `Job Execution` storage for durable queue state.
 
@@ -263,9 +268,9 @@ Locked decisions:
 - The uniqueness scope is `job` plus `idempotency-key`. dygo enforces uniqueness; app and system code choose keys that represent the correct business cause.
 - Each Job Execution stores the Job identity and the caller-provided `idempotency-key`. Whoever enqueues the Job is responsible for making the key unique for that Job when duplicate prevention matters.
 - Good idempotency keys can include timestamps, stored UUIDs, Record IDs, provider event IDs, or schedule occurrence IDs. The key must be stable for the same intended work and different for new intended work.
-- Disabled Jobs cannot create new Job Executions. Workers still run already-created Job Executions unless those executions are cancelled separately.
+- Disabled or retired Jobs cannot create new Job Executions. `enabled` is the human pause switch; `retired` is dygo's lifecycle state for file-backed Jobs whose `job.yml` was removed. Workers still run already-created Job Executions unless those executions are cancelled separately.
 - Enqueue requires a synced Core `job` record. Unknown app/job targets fail with an error such as `job crm/send-email is not registered`.
-- Enqueue validation errors include unknown Job, disabled Job, and invalid payload JSON. Unregistered queues in Job metadata are caught by Job metadata validation, `dygo doctor`, and `dygo db migrate`; unknown `dygo worker --queue` flags fail at worker startup. Idempotency duplicates return the existing Job Execution instead of failing.
+- Enqueue validation errors include unknown Job, disabled Job, retired Job, and invalid payload JSON. Unregistered queues in Job metadata are caught by Job metadata validation, `dygo doctor`, and `dygo db migrate`; unknown `dygo worker --queue` flags fail at worker startup. Idempotency duplicates return the existing Job Execution instead of failing.
 - MVP handlers return `error` only. Job Execution keeps nullable `result` JSON as reserved storage for future system/API use, but app SDK code does not write structured results in the first batch.
 - Jobs that produce durable output should create normal Records or files and rely on those as the real output.
 - Priority belongs to Job Executions, not `job.yml`, in the MVP. It defaults to `0`; callers may enqueue with a nonzero priority, and workers claim higher priority executions first.
@@ -469,4 +474,3 @@ Running only `dygo serve` leaves Job Executions queued in PostgreSQL until a wor
 ## Remaining Details
 
 - No open product decisions for the first implementation batch.
-- Implementation still needs migration/update behavior for removed `job.yml` files.

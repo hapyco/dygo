@@ -78,6 +78,7 @@ type jobRecord struct {
 	Timeout string
 	Retry   []byte
 	Enabled bool
+	Retired bool
 }
 
 // New returns a Store backed by db.
@@ -116,6 +117,9 @@ func (s Store) Enqueue(ctx context.Context, appName string, jobName string, payl
 	}
 	if !job.Enabled {
 		return Execution{}, fmt.Errorf("job %s/%s is disabled", appName, jobName)
+	}
+	if job.Retired {
+		return Execution{}, fmt.Errorf("job %s/%s is retired", appName, jobName)
 	}
 	if s.queues != nil && !s.queues.Has(job.Queue) {
 		return Execution{}, fmt.Errorf("job %s/%s references unregistered queue %q", appName, jobName, job.Queue)
@@ -512,10 +516,10 @@ WHERE id = $4`
 func loadJob(ctx context.Context, tx pgx.Tx, appName string, jobName string) (jobRecord, error) {
 	var job jobRecord
 	err := tx.QueryRow(ctx, `
-SELECT j.id, a.name, j.key, j.queue, j.timeout, j.retry, j.enabled
+SELECT j.id, a.name, j.key, j.queue, j.timeout, j.retry, j.enabled, j.retired
 FROM "job" j
 JOIN "app" a ON a.id = j.app_id
-WHERE a.name = $1 AND j.key = $2`, appName, jobName).Scan(&job.ID, &job.AppName, &job.Key, &job.Queue, &job.Timeout, &job.Retry, &job.Enabled)
+WHERE a.name = $1 AND j.key = $2`, appName, jobName).Scan(&job.ID, &job.AppName, &job.Key, &job.Queue, &job.Timeout, &job.Retry, &job.Enabled, &job.Retired)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return jobRecord{}, fmt.Errorf("job %s/%s is not registered", appName, jobName)

@@ -60,12 +60,14 @@ type jobRecord struct {
 	AppName     string
 	Name        string
 	Key         string
+	Source      string
 	Label       string
 	Description string
 	Queue       string
 	Timeout     string
 	Retry       []byte
 	Enabled     bool
+	Retired     bool
 }
 
 type fieldRecord struct {
@@ -168,8 +170,9 @@ RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity
 			return metadataPersistResult{}, err
 		}
 	}
-	// TODO(jobs): decide how removed job.yml files retire app-owned job rows
-	// without disabling future system-backed jobs that are created directly in Core.
+	if err := retireRemovedFileJobRecords(ctx, tx, appIDs, records.Jobs); err != nil {
+		return metadataPersistResult{}, err
+	}
 
 	for _, field := range records.Fields {
 		entityID, ok := entityIDs[entityKey(field.EntityAppName, field.EntityName)]
@@ -212,19 +215,60 @@ RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity
 }
 
 func persistJobRecord(ctx context.Context, tx pgx.Tx, appID int64, job jobRecord) error {
-	if _, err := tx.Exec(ctx, `
-INSERT INTO "job" (name, app_id, key, label, description, queue, timeout, retry, enabled)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	source := strings.TrimSpace(job.Source)
+	if source == "" {
+		source = jobs.JobSourceFile
+	}
+	tag, err := tx.Exec(ctx, `
+INSERT INTO "job" (name, app_id, key, source, label, description, queue, timeout, retry, enabled, retired)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (app_id, key) DO UPDATE
 SET name = EXCLUDED.name,
+	source = EXCLUDED.source,
 	label = EXCLUDED.label,
 	description = EXCLUDED.description,
 	queue = EXCLUDED.queue,
 	timeout = EXCLUDED.timeout,
 	retry = EXCLUDED.retry,
-	enabled = EXCLUDED.enabled,
-	updated_at = now()`, job.Name, appID, job.Key, job.Label, nullIfEmpty(job.Description), job.Queue, job.Timeout, job.Retry, job.Enabled); err != nil {
+	retired = false,
+	updated_at = now()
+WHERE "job"."source" = $12`, job.Name, appID, job.Key, source, job.Label, nullIfEmpty(job.Description), job.Queue, job.Timeout, job.Retry, job.Enabled, job.Retired, jobs.JobSourceFile)
+	if err != nil {
 		return fmt.Errorf("persist job metadata %s/%s: %w", job.AppName, job.Key, err)
+	}
+	if tag.RowsAffected() == 0 {
+		var existingSource string
+		if err := tx.QueryRow(ctx, `SELECT source FROM "job" WHERE app_id = $1 AND key = $2`, appID, job.Key).Scan(&existingSource); err != nil {
+			return fmt.Errorf("persist job metadata %s/%s: load existing job source: %w", job.AppName, job.Key, err)
+		}
+		return fmt.Errorf("persist job metadata %s/%s: existing job source %q cannot be overwritten by file-backed metadata", job.AppName, job.Key, existingSource)
+	}
+	return nil
+}
+
+func retireRemovedFileJobRecords(ctx context.Context, tx pgx.Tx, appIDs map[string]int64, records []jobRecord) error {
+	currentKeys := make(map[string][]string, len(appIDs))
+	for appName := range appIDs {
+		currentKeys[appName] = nil
+	}
+	for _, record := range records {
+		currentKeys[record.AppName] = append(currentKeys[record.AppName], record.Key)
+	}
+	for appName, appID := range appIDs {
+		keys := currentKeys[appName]
+		if keys == nil {
+			keys = []string{}
+		}
+		if _, err := tx.Exec(ctx, `
+UPDATE "job"
+SET retired = true,
+	updated_at = now()
+WHERE app_id = $1
+	AND source = $2
+	AND retired = false
+	AND NOT (key = ANY($3::text[]))`, appID, jobs.JobSourceFile, keys); err != nil {
+			return fmt.Errorf("retire removed job metadata for app %q: %w", appName, err)
+		}
 	}
 	return nil
 }
@@ -481,12 +525,14 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			AppName:     loaded.AppName,
 			Name:        recordName,
 			Key:         loaded.Job.Name,
+			Source:      jobs.JobSourceFile,
 			Label:       loaded.Job.Label,
 			Description: loaded.Job.Description,
 			Queue:       loaded.Job.EffectiveQueue(),
 			Timeout:     loaded.Job.Timeout,
 			Retry:       retryJSON,
 			Enabled:     true,
+			Retired:     false,
 		})
 	}
 	return records, nil
