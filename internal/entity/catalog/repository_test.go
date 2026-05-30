@@ -41,6 +41,8 @@ func TestRepositoryEntitiesValidate(t *testing.T) {
 		"entity",
 		"field",
 		"index",
+		"job",
+		"job-execution",
 		"language",
 		"naming-series",
 		"patch-run",

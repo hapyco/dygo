@@ -43,6 +43,8 @@ HTTP API - Network API used by clients
 ```txt
 Record hooks
 Record data access
+Job handlers
+Job enqueueing
 Project runner integration
 ```
 
@@ -69,12 +71,39 @@ Record access uses app-scoped Entity identity:
 
 Do not use route slugs as SDK Entity identity.
 
+## Jobs
+
+Generated Job files expose one `Run` function:
+
+```go
+func Run(ctx context.Context, job sdk.JobExecution) error {
+    return nil
+}
+```
+
+Job handlers and transactional Record hooks can enqueue durable background work:
+
+```go
+execution, err := dygo.Jobs.Enqueue(ctx, "crm", "send-welcome-email", payload, sdk.EnqueueOptions{
+    IdempotencyKey: "email:welcome:contact-42",
+    Priority:       0,
+    RunAfter:       time.Now().Add(10 * time.Minute),
+})
+```
+
+Job access uses app-scoped Job identity:
+
+```txt
+<app>, <job>
+```
+
+Do not use labels or routes as SDK Job identity.
+
 ## Future Surfaces
 
 ```txt
 dygo.Records       - Metadata-backed Record access
 dygo.Files         - Public/private file storage
-dygo.Jobs          - Background job enqueueing
 dygo.Permissions   - Permission checks
 dygo.Actor         - Current user/session identity
 dygo.Logger        - Structured app logging

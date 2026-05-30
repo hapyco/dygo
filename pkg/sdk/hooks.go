@@ -116,6 +116,8 @@ type RecordHook struct {
 
 	// Records performs metadata-backed Record reads and writes by app/entity identity in the current hook transaction.
 	Records RecordData
+	// Jobs enqueues durable background work in the current hook transaction when available.
+	Jobs JobData
 }
 
 // RecordHookContext is kept as an alias for older hook code. Prefer RecordHook.

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dygo.dev/schemas/job.schema.json",
+  "title": "dygo Job",
+  "description": "Schema for app-owned dygo job.yml files. Runtime validation in Go remains authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["label", "timeout"],
+  "properties": {
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-facing Job label."
+    },
+    "description": {
+      "type": "string"
+    },
+    "queue": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "default": "default",
+      "description": "Registered queue name. Omitted Jobs use default."
+    },
+    "timeout": {
+      "$ref": "#/$defs/duration",
+      "description": "Required handler deadline and worker lease duration."
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempts"],
+      "properties": {
+        "attempts": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "Total attempts, including the first try."
+        },
+        "initial-delay": {
+          "$ref": "#/$defs/duration",
+          "default": "10s"
+        },
+        "max-delay": {
+          "$ref": "#/$defs/duration",
+          "default": "5m"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "duration": {
+      "type": "string",
+      "minLength": 1,
+      "examples": ["30s", "5m", "1h30m"]
+    }
+  }
+}

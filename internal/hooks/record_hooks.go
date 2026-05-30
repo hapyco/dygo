@@ -7,6 +7,8 @@ import (
 
 	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/hookevents"
+	jobstore "github.com/hapyco/dygo/internal/jobs/store"
+	"github.com/hapyco/dygo/internal/sdkdata"
 	"github.com/hapyco/dygo/pkg/sdk"
 )
 
@@ -38,6 +40,14 @@ func (r recordHookRegistry) RegisterEntity(appName string, entity string, event 
 		return err
 	}
 	return r.registry.RegisterEntity(appName, entity, dbEvent, name, func(ctx context.Context, hookCtx db.RecordHookContext) error {
+		var jobs sdk.JobData
+		if beginner, ok := hookCtx.Queryer.(jobstore.Beginner); ok {
+			jobData, err := sdkdata.NewJobDataFromBeginner(beginner)
+			if err != nil {
+				return err
+			}
+			jobs = jobData
+		}
 		return fn(ctx, sdk.RecordHook{
 			Event:       sdk.RecordHookEvent(hookCtx.Event),
 			Operation:   hookCtx.Operation,
@@ -52,10 +62,8 @@ func (r recordHookRegistry) RegisterEntity(appName string, entity string, event 
 			NewRecord:   sdk.Record(hookCtx.NewRecord),
 			Changes:     hookCtx.Changes,
 			Snapshot:    sdk.Record(hookCtx.Snapshot),
-			Records: recordData{
-				queryer:       hookCtx.Queryer,
-				mutationHooks: db.RecordMutationHooksFrameworkOnly,
-			},
+			Records:     sdkdata.NewRecordDataWithHookPolicy(hookCtx.Queryer, db.RecordMutationHooksFrameworkOnly),
+			Jobs:        jobs,
 		})
 	})
 }
@@ -65,90 +73,4 @@ func recordHookEvent(event sdk.RecordHookEvent) (db.RecordHookEvent, error) {
 		return "", fmt.Errorf("record hook event %q is not supported", event)
 	}
 	return db.RecordHookEvent(event), nil
-}
-
-type recordData struct {
-	queryer       db.RecordQueryer
-	mutationHooks db.RecordMutationHookPolicy
-}
-
-func (d recordData) store() db.RecordStore {
-	return db.NewRecordStoreWithHookPolicy(d.queryer, d.mutationHooks)
-}
-
-func (d recordData) List(ctx context.Context, appName string, entity string, params sdk.RecordListParams) (sdk.RecordListResult, error) {
-	result, err := d.store().ListRecordsByIdentity(ctx, appName, entity, dbRecordListParams(params))
-	if err != nil {
-		return sdk.RecordListResult{}, err
-	}
-	return sdk.RecordListResult{
-		Records: sdkRecords(result.Records),
-		Limit:   result.Limit,
-		Offset:  result.Offset,
-		Count:   result.Count,
-	}, nil
-}
-
-func dbRecordListParams(params sdk.RecordListParams) db.RecordListParams {
-	converted := db.RecordListParams{
-		Limit:  params.Limit,
-		Offset: params.Offset,
-	}
-	if len(params.Filters) > 0 {
-		converted.Filters = make([]db.RecordFilter, len(params.Filters))
-		for i, filter := range params.Filters {
-			converted.Filters[i] = db.RecordFilter{Field: filter.Field, Operator: filter.Operator, Value: filter.Value}
-		}
-	}
-	if len(params.Sort) > 0 {
-		converted.Sort = make([]db.RecordSort, len(params.Sort))
-		for i, sortTerm := range params.Sort {
-			converted.Sort[i] = db.RecordSort{Field: sortTerm.Field, Desc: sortTerm.Desc}
-		}
-	}
-	return converted
-}
-
-func (d recordData) Get(ctx context.Context, appName string, entity string, id int64) (sdk.Record, error) {
-	record, err := d.store().GetRecordByIdentity(ctx, appName, entity, id)
-	if err != nil {
-		return nil, err
-	}
-	return sdk.Record(record), nil
-}
-
-func (d recordData) Find(ctx context.Context, appName string, entity string, match sdk.RecordInput) (sdk.Record, error) {
-	record, err := d.store().FindRecordByIdentity(ctx, appName, entity, db.RecordInput(match))
-	if err != nil {
-		return nil, err
-	}
-	return sdk.Record(record), nil
-}
-
-func (d recordData) Create(ctx context.Context, appName string, entity string, input sdk.RecordInput) (sdk.Record, error) {
-	record, err := d.store().CreateRecordByIdentity(ctx, appName, entity, db.RecordInput(input))
-	if err != nil {
-		return nil, err
-	}
-	return sdk.Record(record), nil
-}
-
-func (d recordData) Update(ctx context.Context, appName string, entity string, id int64, input sdk.RecordInput) (sdk.Record, error) {
-	record, err := d.store().UpdateRecordByIdentity(ctx, appName, entity, id, db.RecordInput(input))
-	if err != nil {
-		return nil, err
-	}
-	return sdk.Record(record), nil
-}
-
-func (d recordData) Delete(ctx context.Context, appName string, entity string, id int64) error {
-	return d.store().DeleteRecordByIdentity(ctx, appName, entity, id)
-}
-
-func sdkRecords(records []db.Record) []sdk.Record {
-	converted := make([]sdk.Record, len(records))
-	for i, record := range records {
-		converted[i] = sdk.Record(record)
-	}
-	return converted
 }

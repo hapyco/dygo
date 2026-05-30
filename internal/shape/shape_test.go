@@ -30,6 +30,7 @@ func TestCanonicalPaths(t *testing.T) {
 	tests := map[string]string{
 		AppDir("crm"):                       "apps/crm",
 		AppManifestPath("crm"):              "apps/crm/app.yml",
+		ConfigQueuesFile:                    "config/queues.yml",
 		AppEntitiesPath("crm"):              "apps/crm/entities",
 		AppCollectionDirPath("crm"):         "apps/crm/entities/_collections",
 		AppJobsPath("crm"):                  "apps/crm/jobs",

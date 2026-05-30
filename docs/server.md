@@ -40,6 +40,21 @@ dygo dev --studio-dev-url http://127.0.0.1:6791
 
 The server opens and pings PostgreSQL before it starts listening. It does not run `dygo db migrate` automatically; run metadata sync before serving runtime metadata.
 
+## Production Processes
+
+Production deployments that use Jobs need two long-running dygo processes:
+
+```txt
+web: dygo serve
+worker: dygo worker
+```
+
+`dygo serve` handles HTTP, Studio, auth, metadata, and Record APIs. It does not claim or run queued Job Executions.
+
+`dygo worker` claims queued Job Executions from PostgreSQL and runs compiled Job handlers. If the worker is not running, new Job Executions remain queued in the database until a worker starts.
+
+Deployment tools own process supervision, restarts, scaling, and log collection. dygo only defines the commands those tools should run.
+
 ## Health
 
 The first server surface is:

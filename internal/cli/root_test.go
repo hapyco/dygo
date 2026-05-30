@@ -15,6 +15,7 @@ import (
 	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/fixtures"
 	recordhooks "github.com/hapyco/dygo/internal/hooks"
+	jobruntime "github.com/hapyco/dygo/internal/jobs/runtime"
 	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/hapyco/dygo/internal/server"
 	"github.com/hapyco/dygo/internal/shape"
@@ -130,11 +131,29 @@ func TestCommandSurfaceRegistersTargetCommands(t *testing.T) {
 		{"hook", "list"},
 		{"hook", "validate"},
 		{"hook", "sync"},
+		{"job"},
+		{"job", "list"},
+		{"job", "show"},
+		{"job", "disable"},
+		{"job", "enable"},
+		{"job", "execution"},
+		{"job", "execution", "list"},
+		{"job", "execution", "show"},
+		{"job", "execution", "run"},
+		{"job", "execution", "cancel"},
+		{"job", "execution", "retry"},
+		{"job", "exec"},
+		{"job", "exec", "list"},
+		{"job", "exec", "show"},
+		{"job", "exec", "run"},
+		{"job", "exec", "cancel"},
+		{"job", "exec", "retry"},
 		{"generate"},
 		{"generate", "app"},
 		{"generate", "entity"},
 		{"generate", "collection"},
 		{"generate", "hook"},
+		{"generate", "job"},
 		{"generate", "fixture"},
 		{"generate", "test"},
 		{"g"},
@@ -153,6 +172,7 @@ func TestCommandSurfaceRegistersTargetCommands(t *testing.T) {
 		{"secret", "edit"},
 		{"secret", "validate"},
 		{"secret", "rotate-key"},
+		{"worker"},
 	}
 
 	for _, command := range commands {
@@ -200,6 +220,9 @@ func TestCommandSurfaceRejectsRemovedPublicPaths(t *testing.T) {
 		{"upgrade", "--project-only"},
 		{"upgrade", "--install-dir", "/tmp/dygo"},
 		{"serve", "--studio-dev-url", "http://127.0.0.1:6791"},
+		{"job", "run"},
+		{"job", "cancel"},
+		{"job", "retry"},
 	}
 
 	for _, command := range commands {
@@ -1527,6 +1550,8 @@ fields:
 		"PASS go toolchain:",
 		"PASS app manifests: 1 apps valid",
 		"PASS entity metadata: 1 entities valid",
+		"PASS queue config: 1 queues valid",
+		"PASS job metadata: 0 jobs valid",
 		"PASS route registry: 8 reserved routes, 1 entity routes, 0 conflicts",
 		"PASS fixture files: 0 files, 0 records valid",
 		"SKIP hook wiring: go.mod not found",
@@ -1539,6 +1564,97 @@ fields:
 		"PASS core fixtures: 2 roles and 17 permissions ready",
 		"PASS administrator account: Administrator account exists",
 		"dygo doctor passed",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
+func TestDoctorCommandReportsInvalidJobMetadata(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIJob(t, filepath.Join(root, "apps", "sales", "jobs", "send-email", "job.yml"), `
+label: Send Email
+queue: email
+timeout: 30s
+`)
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"doctor"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(doctor) error = nil, want invalid job metadata diagnostic")
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"PASS queue config: 1 queues valid",
+		"FAIL job metadata:",
+		`references unregistered queue "email"`,
+		"SKIP runtime database: config, secrets, or metadata are not ready",
+		"dygo doctor found 1 problem",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
+func TestDoctorCommandReportsMissingJobRunnerWiring(t *testing.T) {
+	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{
+		roleCount:       2,
+		permissionCount: 17,
+		adminExists:     true,
+	})
+	withDoctorSchemaSnapshotCheck(t, func(context.Context, string, string) error {
+		return nil
+	})
+
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIGoModule(t, root, "example.com/acme")
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIJob(t, filepath.Join(root, "apps", "sales", "jobs", "send-email", "job.yml"), `
+label: Send Email
+queue: default
+timeout: 30s
+`)
+	runFile := filepath.Join(root, "apps", "sales", "jobs", "send-email", "run.go")
+	if err := os.WriteFile(runFile, []byte(`package job
+
+import (
+	"context"
+
+	"github.com/hapyco/dygo/pkg/sdk"
+)
+
+func Run(ctx context.Context, job sdk.JobExecution) error {
+	return nil
+}
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile(run.go) error = %v", err)
+	}
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"doctor"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(doctor) error = nil, want missing Job runner wiring diagnostic")
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"PASS job metadata: 1 jobs valid",
+		"FAIL hook wiring: cmd/dygo/main.go is missing; run dygo hook sync",
+		"dygo doctor found 1 problem",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
@@ -2393,8 +2509,22 @@ func writeCLIProjectRoot(t *testing.T, root string) {
 	if err := os.WriteFile(filepath.Join(root, "dygo.yml"), []byte("name: test\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(dygo.yml) error = %v", err)
 	}
+	writeCLIQueues(t, root)
 	writeCLISchemaSnapshot(t, root)
 	writeCLIStudioCache(t, root)
+}
+
+func writeCLIQueues(t *testing.T, root string) {
+	t.Helper()
+
+	path := filepath.Join(root, "config", "queues.yml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(config) error = %v", err)
+	}
+	body := "queues:\n  - name: default\n    concurrency: 4\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("WriteFile(config/queues.yml) error = %v", err)
+	}
 }
 
 func writeCLISchemaSnapshot(t *testing.T, root string) {
@@ -2489,7 +2619,11 @@ func runWithOptionsForTest(ctx context.Context, args []string, stdin io.Reader, 
 	if err != nil {
 		return err
 	}
-	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, noopDatabaseRunner(), migrator, &fakeAdminSetupRunner{}, &fakeFixtureRunner{}, &fakePermissionRunner{}, recordHooks)
+	jobRegistry, err := jobruntime.NewRegistry(options.Jobs)
+	if err != nil {
+		return err
+	}
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, noopDatabaseRunner(), migrator, &fakeAdminSetupRunner{}, &fakeFixtureRunner{}, &fakePermissionRunner{}, recordHooks, jobRegistry)
 }
 
 func recordhooksForTest(registrars []sdk.RecordHookRegistrar) (*db.RecordHookRegistry, error) {
@@ -2812,6 +2946,17 @@ func writeCLIEntity(t *testing.T, path string, body string) {
 		t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(path), err)
 	}
 	if err := os.WriteFile(path, []byte(body+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+}
+
+func writeCLIJob(t *testing.T, path string, body string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(strings.TrimSpace(body)+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
 }

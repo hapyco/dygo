@@ -10,6 +10,7 @@ import (
 
 	"github.com/hapyco/dygo/internal/app/manifest"
 	"github.com/hapyco/dygo/internal/config"
+	"github.com/hapyco/dygo/internal/queues"
 	"github.com/hapyco/dygo/internal/secrets"
 )
 
@@ -47,6 +48,7 @@ func TestGenerateCreatesProjectSkeletonAndSecrets(t *testing.T) {
 		"apps/my-company/pages",
 		"apps/my-company/reports",
 		"apps/my-company/roles.yml",
+		"config/queues.yml",
 		"config/secrets/development.yml.age",
 		"config/secrets/staging.yml.age",
 		"config/secrets/production.yml.age",
@@ -67,6 +69,13 @@ func TestGenerateCreatesProjectSkeletonAndSecrets(t *testing.T) {
 
 	if _, err := config.Load(root); err != nil {
 		t.Fatalf("config.Load() error = %v, want generated config valid", err)
+	}
+	queueConfig, err := queues.Load(root)
+	if err != nil {
+		t.Fatalf("queues.Load() error = %v, want generated queue config valid", err)
+	}
+	if !queueConfig.Has("default") || len(queueConfig.Queues) != 1 || queueConfig.Queues[0].Concurrency != 4 {
+		t.Fatalf("queue config = %+v, want default queue concurrency 4", queueConfig)
 	}
 	app, err := manifest.LoadFile(filepath.Join(root, "apps", "my-company", "app.yml"))
 	if err != nil {
