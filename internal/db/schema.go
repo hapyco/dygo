@@ -126,10 +126,10 @@ func seedSingleEntityRecords(ctx context.Context, tx pgx.Tx, entities []catalog.
 	return nil
 }
 
-type metadataCatalog = project.Metadata
+type metadataCatalog = project.RuntimeMetadata
 
 func loadMetadataCatalog(root string) (metadataCatalog, error) {
-	metadata, err := project.LoadMetadata(root)
+	metadata, err := project.LoadRuntimeMetadata(root)
 	if err != nil {
 		return metadataCatalog{}, fmt.Errorf("load metadata for schema: %w", err)
 	}

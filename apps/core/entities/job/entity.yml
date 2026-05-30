@@ -1,0 +1,57 @@
+label: Job
+description: Runtime registry entry for an app-defined background Job.
+icon: briefcase-business
+is-system: true
+name:
+  strategy: format
+  format: "{app}.{key}"
+fields:
+  - name: app
+    label: App
+    type: link
+    required: true
+    index: true
+    options:
+      entity: app
+
+  - name: key
+    label: Key
+    type: text
+    required: true
+    index: true
+
+  - name: label
+    label: Label
+    type: text
+    required: true
+
+  - name: description
+    label: Description
+    type: long-text
+
+  - name: queue
+    label: Queue
+    type: text
+    required: true
+    default: default
+    index: true
+
+  - name: timeout
+    label: Timeout
+    type: text
+    required: true
+
+  - name: retry
+    label: Retry
+    type: json
+
+  - name: enabled
+    label: Enabled
+    type: boolean
+    required: true
+    default: true
+    index: true
+
+constraints:
+  - type: unique
+    fields: [app, key]

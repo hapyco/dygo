@@ -152,7 +152,7 @@ Locked decisions:
 - A Job whose `queue` names an unregistered queue is invalid.
 - `dygo worker` with no `--queue` flags processes all registered queues.
 - `dygo worker --queue email` processes only registered queue `email`; unknown queue flags fail at startup.
-- Queue validation belongs in job metadata validation, `dygo doctor`, and worker startup checks.
+- Queue validation belongs in job metadata validation, `dygo doctor`, and worker queue flag checks.
 - Defer other queue-specific settings such as rate limits, retention, and dead-letter policy.
 - Keep queue configuration opinionated: fewer choices, strong defaults, and minimal knobs in the MVP.
 
@@ -236,7 +236,7 @@ Locked decisions:
 - Good idempotency keys can include timestamps, stored UUIDs, Record IDs, provider event IDs, or schedule occurrence IDs. The key must be stable for the same intended work and different for new intended work.
 - Disabled Jobs cannot create new Job Executions. Workers still run already-created Job Executions unless those executions are cancelled separately.
 - Enqueue requires a synced Core `job` record. Unknown app/job targets fail with an error such as `job crm/send-email is not registered`.
-- Enqueue validation errors include unknown Job, disabled Job, invalid payload JSON, and unregistered queue metadata. Idempotency duplicates return the existing Job Execution instead of failing.
+- Enqueue validation errors include unknown Job, disabled Job, and invalid payload JSON. Unregistered queues in Job metadata are caught by Job metadata validation, `dygo doctor`, and `dygo db migrate`; unknown `dygo worker --queue` flags fail at worker startup. Idempotency duplicates return the existing Job Execution instead of failing.
 - MVP handlers return `error` only. Job Execution keeps nullable `result` JSON as reserved storage for future system/API use, but app SDK code does not write structured results in the first batch.
 - Jobs that produce durable output should create normal Records or files and rely on those as the real output.
 - Priority belongs to Job Executions, not `job.yml`, in the MVP. It defaults to `0`; callers may enqueue with a nonzero priority, and workers claim higher priority executions first.
@@ -360,7 +360,7 @@ Locked decisions:
 Proposed package split:
 
 ```txt
-internal/jobs/metadata       - job.yml reader and validator
+internal/jobs                - job.yml reader, validator, and shared Job metadata types
 internal/jobs/store          - PostgreSQL enqueue, claim, complete, fail
 internal/jobs/runtime        - registry and worker loop
 internal/cli                 - dygo worker command
@@ -424,4 +424,4 @@ Output decision:
 ## Remaining Details
 
 - No open product decisions for the first implementation batch.
-- Implementation still needs exact index names, queue validation error wording, and migration/update behavior for removed `job.yml` files.
+- Implementation still needs migration/update behavior for removed `job.yml` files.

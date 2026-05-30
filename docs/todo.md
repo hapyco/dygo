@@ -2,7 +2,7 @@
 
 Use this as a flat local staging list. Track progress with Markdown checkboxes; when we sync to GitHub later, create/update the matching issues and remove synced checked items from this file.
 
-Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
+Source: local staging list for `hapyco/dygo`, last updated on 2026-05-30.
 
 ## Open issues
 
@@ -12,7 +12,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #7 Add project documentation links
 - [ ] #21 Split field type registry files by responsibility
 - [ ] #24 Add role inheritance for hierarchical permissions
-- [ ] #31 Add worker command
+- [x] #31 Add worker command
 - [ ] #32 Add scheduler command
 - [ ] #33 Add site command group
 - [ ] #38 Add one-command local project setup
@@ -52,12 +52,13 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #133 Add Record tagging foundation
 - [ ] #134 Add Record todo foundation
 - [ ] #135 Add per-Record sharing foundation
-- [ ] #138 Design durable Jobs and Queues architecture
-- [ ] #139 Add Core Job metadata and Postgres queue storage
-- [ ] #140 Implement Job worker runtime, claiming, retries, and timeouts
-- [ ] #141 Add SDK and internal Jobs APIs
+- [x] #138 Design durable Jobs and Queues architecture
+- [x] #139 Add Core Job metadata and Postgres queue storage
+- [x] #140 Implement Job worker runtime, claiming, retries, and timeouts
+- [x] #141 Add SDK and internal Jobs APIs
 - [ ] #142 Add Job operations visibility and retry controls
 - [ ] #143 Add job-backed importer foundation for data imports
+- [ ] Define removed `job.yml` retirement behavior for synced Core Job rows
 - [ ] Add Core retention policy Entity for platform record cleanup
 - [ ] #144 Add Studio keyboard shortcut foundation
 - [ ] #199 Add custom Studio right-click context menus

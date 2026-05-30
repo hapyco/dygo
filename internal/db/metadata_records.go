@@ -11,6 +11,7 @@ import (
 	"github.com/hapyco/dygo/internal/entity/catalog"
 	"github.com/hapyco/dygo/internal/entity/fieldtype"
 	"github.com/hapyco/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/jobs"
 	namegen "github.com/hapyco/dygo/internal/naming"
 	"github.com/jackc/pgx/v5"
 	"gopkg.in/yaml.v3"
@@ -19,6 +20,7 @@ import (
 type metadataPersistResult struct {
 	Apps        int
 	Entities    int
+	Jobs        int
 	Fields      int
 	Indexes     int
 	Constraints int
@@ -27,6 +29,7 @@ type metadataPersistResult struct {
 type metadataRecordSet struct {
 	Apps        []appRecord
 	Entities    []entityRecord
+	Jobs        []jobRecord
 	Fields      []fieldRecord
 	Indexes     []indexRecord
 	Constraints []constraintRecord
@@ -51,6 +54,18 @@ type entityRecord struct {
 	IsSystem     bool
 	IsCollection bool
 	Naming       []byte
+}
+
+type jobRecord struct {
+	AppName     string
+	Name        string
+	Key         string
+	Label       string
+	Description string
+	Queue       string
+	Timeout     string
+	Retry       []byte
+	Enabled     bool
 }
 
 type fieldRecord struct {
@@ -144,6 +159,18 @@ RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity
 		entityIDs[entityKey(entity.AppName, entity.Key)] = id
 	}
 
+	for _, job := range records.Jobs {
+		appID, ok := appIDs[job.AppName]
+		if !ok {
+			return metadataPersistResult{}, fmt.Errorf("persist job metadata %q: app %q was not persisted", job.Key, job.AppName)
+		}
+		if err := persistJobRecord(ctx, tx, appID, job); err != nil {
+			return metadataPersistResult{}, err
+		}
+	}
+	// TODO(jobs): decide how removed job.yml files retire app-owned job rows
+	// without disabling future system-backed jobs that are created directly in Core.
+
 	for _, field := range records.Fields {
 		entityID, ok := entityIDs[entityKey(field.EntityAppName, field.EntityName)]
 		if !ok {
@@ -177,10 +204,29 @@ RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity
 	return metadataPersistResult{
 		Apps:        len(records.Apps),
 		Entities:    len(records.Entities),
+		Jobs:        len(records.Jobs),
 		Fields:      len(records.Fields),
 		Indexes:     len(records.Indexes),
 		Constraints: len(records.Constraints),
 	}, nil
+}
+
+func persistJobRecord(ctx context.Context, tx pgx.Tx, appID int64, job jobRecord) error {
+	if _, err := tx.Exec(ctx, `
+INSERT INTO "job" (name, app_id, key, label, description, queue, timeout, retry, enabled)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (app_id, key) DO UPDATE
+SET name = EXCLUDED.name,
+	label = EXCLUDED.label,
+	description = EXCLUDED.description,
+	queue = EXCLUDED.queue,
+	timeout = EXCLUDED.timeout,
+	retry = EXCLUDED.retry,
+	enabled = EXCLUDED.enabled,
+	updated_at = now()`, job.Name, appID, job.Key, job.Label, nullIfEmpty(job.Description), job.Queue, job.Timeout, job.Retry, job.Enabled); err != nil {
+		return fmt.Errorf("persist job metadata %s/%s: %w", job.AppName, job.Key, err)
+	}
+	return nil
 }
 
 func persistFieldRecord(ctx context.Context, tx pgx.Tx, entityID int64, field fieldRecord) error {
@@ -416,11 +462,39 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			})
 		}
 	}
+	for _, loaded := range metadata.Jobs {
+		retryJSON, err := jobRetryJSON(loaded.Job.EffectiveRetry())
+		if err != nil {
+			return metadataRecordSet{}, fmt.Errorf("build job metadata %s/%s retry: %w", loaded.AppName, loaded.Job.Name, err)
+		}
+		recordName, err := deterministicRecordNameFromValues("job", namings.Job, map[string]string{
+			"app":     loaded.AppName,
+			"key":     loaded.Job.Name,
+			"label":   loaded.Job.Label,
+			"queue":   loaded.Job.EffectiveQueue(),
+			"timeout": loaded.Job.Timeout,
+		})
+		if err != nil {
+			return metadataRecordSet{}, fmt.Errorf("build job metadata %s/%s name: %w", loaded.AppName, loaded.Job.Name, err)
+		}
+		records.Jobs = append(records.Jobs, jobRecord{
+			AppName:     loaded.AppName,
+			Name:        recordName,
+			Key:         loaded.Job.Name,
+			Label:       loaded.Job.Label,
+			Description: loaded.Job.Description,
+			Queue:       loaded.Job.EffectiveQueue(),
+			Timeout:     loaded.Job.Timeout,
+			Retry:       retryJSON,
+			Enabled:     true,
+		})
+	}
 	return records, nil
 }
 
 type metadataNamings struct {
 	Entity     schema.Naming
+	Job        schema.Naming
 	Field      schema.Naming
 	Index      schema.Naming
 	Constraint schema.Naming
@@ -429,6 +503,10 @@ type metadataNamings struct {
 func metadataRecordNamings(entities []catalog.LoadedEntity) metadataNamings {
 	return metadataNamings{
 		Entity: metadataCoreEntityNaming(entities, "entity", schema.Naming{
+			Strategy: schema.NamingStrategyFormat,
+			Format:   "{app}.{key}",
+		}),
+		Job: metadataCoreEntityNaming(entities, "job", schema.Naming{
 			Strategy: schema.NamingStrategyFormat,
 			Format:   "{app}.{key}",
 		}),
@@ -510,6 +588,17 @@ func entityNamingJSON(naming schema.Naming) ([]byte, error) {
 		Length:   naming.Length,
 		Pattern:  naming.Pattern,
 		Format:   naming.Format,
+	})
+}
+
+func jobRetryJSON(retry *jobs.Retry) ([]byte, error) {
+	if retry == nil {
+		return nil, nil
+	}
+	return json.Marshal(map[string]any{
+		"attempts":      retry.Attempts,
+		"initial-delay": retry.InitialDelay,
+		"max-delay":     retry.MaxDelay,
 	})
 }
 

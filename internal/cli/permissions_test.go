@@ -116,7 +116,7 @@ fields:
 }
 
 func runWithPermissionRunner(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, runner permissionRunner) error {
-	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, &fakeAdminSetupRunner{}, &fakeFixtureRunner{}, runner, nil)
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, noopServeRunner, noopDatabaseRunner(), &fakeSchemaSyncRunner{}, &fakeAdminSetupRunner{}, &fakeFixtureRunner{}, runner, nil, nil)
 }
 
 type fakePermissionRunner struct {
