@@ -18,11 +18,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type jobRunEnqueuer interface {
+type jobExecutionRunEnqueuer interface {
 	Enqueue(context.Context, string, string, json.RawMessage, jobstore.EnqueueOptions) (jobstore.Execution, error)
 }
 
-var openJobRunEnqueuer = func(ctx context.Context, databaseURL string, queueConfig queues.Config) (jobRunEnqueuer, func(), error) {
+var openJobExecutionRunEnqueuer = func(ctx context.Context, databaseURL string, queueConfig queues.Config) (jobExecutionRunEnqueuer, func(), error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		return nil, nil, err
@@ -45,11 +45,26 @@ func newJobCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(newJobRunCommand(ctx, stdout))
+	cmd.AddCommand(newJobExecutionCommand(ctx, stdout))
 	return cmd
 }
 
-func newJobRunCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+func newJobExecutionCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "execution",
+		Aliases: []string{"exec"},
+		Short:   "Manage Job Executions",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
+	}
+
+	cmd.AddCommand(newJobExecutionRunCommand(ctx, stdout))
+	return cmd
+}
+
+func newJobExecutionRunCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
 	payloadValue := "{}"
 	idempotencyKey := ""
@@ -63,7 +78,7 @@ func newJobRunCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			payload, err := parseJobRunPayload(payloadValue)
+			payload, err := parseJobExecutionRunPayload(payloadValue)
 			if err != nil {
 				return err
 			}
@@ -75,7 +90,7 @@ func newJobRunCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			enqueuer, closeEnqueuer, err := openJobRunEnqueuer(ctx, databaseURL, queueConfig)
+			enqueuer, closeEnqueuer, err := openJobExecutionRunEnqueuer(ctx, databaseURL, queueConfig)
 			if err != nil {
 				return db.SanitizeDatabaseError("connect job database", databaseURL, err)
 			}
@@ -84,10 +99,10 @@ func newJobRunCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 				IdempotencyKey: idempotencyKey,
 			})
 			if err != nil {
-				return jobRunCommandError(err)
+				return jobExecutionRunCommandError(err)
 			}
 			if _, err := fmt.Fprintf(stdout, "job execution queued: %s/%s id=%d name=%s queue=%s status=%s (%s)\n", execution.AppName, execution.JobName, execution.ID, execution.Name, execution.Queue, execution.Status, env); err != nil {
-				return fmt.Errorf("write job run output: %w", err)
+				return fmt.Errorf("write job execution run output: %w", err)
 			}
 			return nil
 		},
@@ -100,7 +115,7 @@ func newJobRunCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 	return cmd
 }
 
-func parseJobRunPayload(value string) (json.RawMessage, error) {
+func parseJobExecutionRunPayload(value string) (json.RawMessage, error) {
 	payload := strings.TrimSpace(value)
 	if payload == "" {
 		return nil, fmt.Errorf("job payload must be valid JSON")
@@ -111,7 +126,7 @@ func parseJobRunPayload(value string) (json.RawMessage, error) {
 	return json.RawMessage(payload), nil
 }
 
-func jobRunCommandError(err error) error {
+func jobExecutionRunCommandError(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "42P01" {
 		return fmt.Errorf("job schema is not ready; run dygo db migrate: %w", err)

@@ -15,7 +15,7 @@ import (
 	"github.com/hapyco/dygo/internal/secrets"
 )
 
-func TestJobRunCommandEnqueuesExecution(t *testing.T) {
+func TestJobExecutionRunCommandEnqueuesExecution(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIGoModule(t, root, "example.com/acme")
@@ -29,7 +29,7 @@ timeout: 30s
 `)
 	t.Chdir(root)
 
-	fake := &fakeJobRunEnqueuer{
+	fake := &fakeJobExecutionRunEnqueuer{
 		execution: jobstore.Execution{
 			ID:       42,
 			Name:     "manual-test",
@@ -40,13 +40,13 @@ timeout: 30s
 			Priority: 0,
 		},
 	}
-	withJobRunEnqueuer(t, fake)
+	withJobExecutionRunEnqueuer(t, fake)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"job", "run", "sales/send-email", "--payload", `{"email":"hi@example.com"}`, "--idempotency-key", "test-1"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"job", "execution", "run", "sales/send-email", "--payload", `{"email":"hi@example.com"}`, "--idempotency-key", "test-1"}, strings.NewReader(""), &stdout, &stderr)
 	if err != nil {
-		t.Fatalf("Run(job run) error = %v, want nil", err)
+		t.Fatalf("Run(job execution run) error = %v, want nil", err)
 	}
 	if fake.databaseURL != "postgres://user:secret-password@localhost:5432/dygo" {
 		t.Fatalf("databaseURL = %q, want configured secret", fake.databaseURL)
@@ -64,61 +64,104 @@ timeout: 30s
 		t.Fatalf("IdempotencyKey = %q, want test-1", fake.options.IdempotencyKey)
 	}
 	if stdout.String() != "job execution queued: sales/send-email id=42 name=manual-test queue=default status=queued (development)\n" {
-		t.Fatalf("job run stdout = %q, want queued output", stdout.String())
+		t.Fatalf("job execution run stdout = %q, want queued output", stdout.String())
 	}
 	if stderr.Len() != 0 {
-		t.Fatalf("job run stderr = %q, want empty", stderr.String())
+		t.Fatalf("job execution run stderr = %q, want empty", stderr.String())
 	}
 }
 
-func TestJobRunCommandRejectsInvalidPayloadBeforeConnecting(t *testing.T) {
+func TestJobExecRunAliasEnqueuesExecution(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIGoModule(t, root, "example.com/acme")
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIJob(t, filepath.Join(root, "apps", "sales", "jobs", "send-email", "job.yml"), `
+label: Send Email
+queue: default
+timeout: 30s
+`)
+	t.Chdir(root)
+
+	fake := &fakeJobExecutionRunEnqueuer{
+		execution: jobstore.Execution{
+			ID:      42,
+			Name:    "manual-test",
+			AppName: "sales",
+			JobName: "send-email",
+			Queue:   "default",
+			Status:  jobs.StatusQueued,
+		},
+	}
+	withJobExecutionRunEnqueuer(t, fake)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"job", "exec", "run", "sales/send-email"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(job exec run) error = %v, want nil", err)
+	}
+	if fake.appName != "sales" || fake.jobName != "send-email" {
+		t.Fatalf("job target = %s/%s, want sales/send-email", fake.appName, fake.jobName)
+	}
+	if string(fake.payload) != `{}` {
+		t.Fatalf("payload = %s, want default JSON object", fake.payload)
+	}
+	if stdout.String() != "job execution queued: sales/send-email id=42 name=manual-test queue=default status=queued (development)\n" {
+		t.Fatalf("job exec run stdout = %q, want queued output", stdout.String())
+	}
+}
+
+func TestJobExecutionRunCommandRejectsInvalidPayloadBeforeConnecting(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
 	t.Chdir(root)
 
-	fake := &fakeJobRunEnqueuer{}
-	withJobRunEnqueuer(t, fake)
+	fake := &fakeJobExecutionRunEnqueuer{}
+	withJobExecutionRunEnqueuer(t, fake)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"job", "run", "sales/send-email", "--payload", "{"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"job", "execution", "run", "sales/send-email", "--payload", "{"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil {
-		t.Fatal("Run(job run invalid payload) error = nil, want validation error")
+		t.Fatal("Run(job execution run invalid payload) error = nil, want validation error")
 	}
 	if !strings.Contains(err.Error(), "job payload must be valid JSON") {
-		t.Fatalf("Run(job run invalid payload) error = %q, want payload validation", err.Error())
+		t.Fatalf("Run(job execution run invalid payload) error = %q, want payload validation", err.Error())
 	}
 	if fake.opened != 0 {
 		t.Fatalf("opened = %d, want no database connection", fake.opened)
 	}
 }
 
-func TestJobRunCommandWrapsMissingRegisteredJob(t *testing.T) {
+func TestJobExecutionRunCommandWrapsMissingRegisteredJob(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
 	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
 	t.Chdir(root)
 
-	fake := &fakeJobRunEnqueuer{err: fmt.Errorf("job sales/send-email is not registered")}
-	withJobRunEnqueuer(t, fake)
+	fake := &fakeJobExecutionRunEnqueuer{err: fmt.Errorf("job sales/send-email is not registered")}
+	withJobExecutionRunEnqueuer(t, fake)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := Run(context.Background(), []string{"job", "run", "sales/send-email"}, strings.NewReader(""), &stdout, &stderr)
+	err := Run(context.Background(), []string{"job", "execution", "run", "sales/send-email"}, strings.NewReader(""), &stdout, &stderr)
 	if err == nil {
-		t.Fatal("Run(job run missing job) error = nil, want registration guidance")
+		t.Fatal("Run(job execution run missing job) error = nil, want registration guidance")
 	}
 	if !strings.Contains(err.Error(), "run dygo db migrate") {
-		t.Fatalf("Run(job run missing job) error = %q, want migrate guidance", err.Error())
+		t.Fatalf("Run(job execution run missing job) error = %q, want migrate guidance", err.Error())
 	}
 }
 
-func withJobRunEnqueuer(t *testing.T, fake *fakeJobRunEnqueuer) {
+func withJobExecutionRunEnqueuer(t *testing.T, fake *fakeJobExecutionRunEnqueuer) {
 	t.Helper()
-	previous := openJobRunEnqueuer
-	openJobRunEnqueuer = func(_ context.Context, databaseURL string, queueConfig queues.Config) (jobRunEnqueuer, func(), error) {
+	previous := openJobExecutionRunEnqueuer
+	openJobExecutionRunEnqueuer = func(_ context.Context, databaseURL string, queueConfig queues.Config) (jobExecutionRunEnqueuer, func(), error) {
 		fake.opened++
 		fake.databaseURL = databaseURL
 		fake.queueConfig = queueConfig
@@ -127,11 +170,11 @@ func withJobRunEnqueuer(t *testing.T, fake *fakeJobRunEnqueuer) {
 		}, nil
 	}
 	t.Cleanup(func() {
-		openJobRunEnqueuer = previous
+		openJobExecutionRunEnqueuer = previous
 	})
 }
 
-type fakeJobRunEnqueuer struct {
+type fakeJobExecutionRunEnqueuer struct {
 	opened      int
 	closed      int
 	databaseURL string
@@ -146,7 +189,7 @@ type fakeJobRunEnqueuer struct {
 	err       error
 }
 
-func (f *fakeJobRunEnqueuer) Enqueue(_ context.Context, appName string, jobName string, payload json.RawMessage, options jobstore.EnqueueOptions) (jobstore.Execution, error) {
+func (f *fakeJobExecutionRunEnqueuer) Enqueue(_ context.Context, appName string, jobName string, payload json.RawMessage, options jobstore.EnqueueOptions) (jobstore.Execution, error) {
 	f.appName = appName
 	f.jobName = jobName
 	f.payload = payload

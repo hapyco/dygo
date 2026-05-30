@@ -119,12 +119,15 @@ Generator boilerplate should live as embedded templates under `internal/generate
 ## Jobs
 
 - `dygo job` - Groups Job operations.
-- `dygo job run <app>/<job>` - Queues one Job Execution for manual testing.
-- `dygo job run <app>/<job> --payload '{"example":true}'` - Queues with a JSON payload; omitted payload defaults to `{}`.
-- `dygo job run <app>/<job> --idempotency-key <key>` - Queues with a stable duplicate-prevention key.
-- `dygo job run <app>/<job> --env <environment>` - Queues against `development`, `staging`, or `production`.
+- `dygo job execution` - Groups Job Execution operations.
+- `dygo job exec` - Short alias for `dygo job execution`.
+- `dygo job execution run <app>/<job>` - Queues one Job Execution for manual testing.
+- `dygo job exec run <app>/<job>` - Short alias for the same command.
+- `dygo job execution run <app>/<job> --payload '{"example":true}'` - Queues with a JSON payload; omitted payload defaults to `{}`.
+- `dygo job execution run <app>/<job> --idempotency-key <key>` - Queues with a stable duplicate-prevention key.
+- `dygo job execution run <app>/<job> --env <environment>` - Queues against `development`, `staging`, or `production`.
 
-`job run` enqueues durable work; it does not run the handler inline. Start `dygo worker` to process queued executions.
+`job execution run` enqueues durable work; it does not run the handler inline. Start `dygo worker` to process queued executions.
 
 ## Routes
 
