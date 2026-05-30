@@ -58,6 +58,20 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-30.
 - [x] #141 Add SDK and internal Jobs APIs
 - [ ] #142 Add Job operations visibility and retry controls
 - [ ] #143 Add job-backed importer foundation for data imports
+- [ ] Let developers write a simple Job `Run` function and have dygo wire it automatically
+- [ ] Add one command to create a new Job with `job.yml` and `run.go`
+- [ ] Let developers run a Job manually for testing
+- [ ] Let Studio users schedule Jobs like "every Monday at 9 AM"
+- [ ] Let apps ship recurring schedules with code
+- [ ] Show waiting, running, successful, failed, and cancelled Jobs in Studio
+- [ ] Let Studio users retry a failed Job
+- [ ] Let Studio users cancel a Job that has not started yet
+- [ ] Let Studio users pause or disable a Job without deleting it
+- [ ] Show friendly forms for Job inputs instead of raw JSON
+- [ ] Show why a Job failed and when it will retry
+- [ ] Clean up old Job history automatically
+- [ ] Make production setup clearly show that app server and worker both need to run
+- [ ] Let workers pick up new Jobs instantly instead of waiting for the poll cycle
 - [ ] Define removed `job.yml` retirement behavior for synced Core Job rows
 - [ ] Add Core retention policy Entity for platform record cleanup
 - [ ] #144 Add Studio keyboard shortcut foundation
