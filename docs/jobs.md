@@ -50,6 +50,14 @@ apps/<app>/jobs/_schedules.yml
 
 The scheduler batch will define and execute recurring jobs from `_schedules.yml`; this worker batch only runs explicitly enqueued Job Executions.
 
+Create the happy-path Job scaffold with:
+
+```sh
+dygo generate job crm/send-welcome-email
+```
+
+The command creates `job.yml`, creates a starter `run.go`, and updates the generated project runner so the Job is registered automatically.
+
 Proposed `job.yml` shape:
 
 ```yaml
@@ -90,7 +98,7 @@ Code-backed jobs:
 
 ```txt
 apps/crm/jobs/send-email/job.yml   - App-owned Job metadata
-apps/crm/jobs/send-email/run.go    - Compiled app-owned Job handler
+apps/crm/jobs/send-email/run.go    - App-owned Run function compiled into the project runner
 Core job row                       - Synced runtime metadata
 Core job-execution row             - Queued durable work
 dygo worker                        - Claims the row and calls the compiled handler
@@ -349,7 +357,8 @@ Locked decisions:
 
 - Keep the first SDK payload as `json.RawMessage`; typed helpers can come later.
 - Give jobs access to `Records` and `Jobs` so a job can read/write Records and enqueue follow-up work.
-- Register compiled jobs through `pkg/sdk/runtime.Options`, parallel to Record hook registrars.
+- Generated project runners wire `apps/<app>/jobs/<job>/run.go` automatically when it exposes `Run(ctx context.Context, job sdk.JobExecution) error`.
+- Custom project runners can still register compiled jobs through `pkg/sdk/runtime.Options`, parallel to Record hook registrars.
 - App identity for SDK calls remains `<app>, <job>`, not route or label.
 - Enqueue options stay small in the MVP: `idempotency-key`, `priority`, and `run-after`.
 - `run-after` schedules one Job Execution for a future time. Recurring work belongs to Schedule metadata, not enqueue options.
@@ -363,6 +372,8 @@ Proposed package split:
 internal/jobs                - job.yml reader, validator, and shared Job metadata types
 internal/jobs/store          - PostgreSQL enqueue, claim, complete, fail
 internal/jobs/runtime        - registry and worker loop
+internal/jobgen              - Job scaffold and runner wiring generator
+internal/runnergen           - shared generated project runner renderer
 internal/cli                 - dygo worker command
 pkg/sdk                      - public job types and registration API
 pkg/sdk/runtime              - project runner options for compiled jobs

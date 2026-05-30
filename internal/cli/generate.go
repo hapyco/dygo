@@ -7,6 +7,7 @@ import (
 
 	scaffold "github.com/hapyco/dygo/internal/generate"
 	"github.com/hapyco/dygo/internal/hookgen"
+	"github.com/hapyco/dygo/internal/jobgen"
 	"github.com/hapyco/dygo/internal/project"
 	"github.com/hapyco/dygo/internal/shape"
 	"github.com/spf13/cobra"
@@ -27,6 +28,7 @@ func newGenerateCommand(stdout io.Writer) *cobra.Command {
 	cmd.AddCommand(newGenerateEntityCommand(stdout))
 	cmd.AddCommand(newGenerateCollectionCommand(stdout))
 	cmd.AddCommand(newGenerateHookCommand(stdout))
+	cmd.AddCommand(newGenerateJobCommand(stdout))
 	cmd.AddCommand(newGenerateFixtureCommand(stdout))
 	cmd.AddCommand(newGenerateTestCommand(stdout))
 
@@ -185,6 +187,43 @@ func newGenerateHookCommand(stdout io.Writer) *cobra.Command {
 	return cmd
 }
 
+func newGenerateJobCommand(stdout io.Writer) *cobra.Command {
+	var dryRun bool
+	var force bool
+
+	cmd := &cobra.Command{
+		Use:   "job <app>/<job>",
+		Short: "Generate Job scaffold and runner wiring",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			target, err := shape.ParseAppRef(args[0])
+			if err != nil {
+				return err
+			}
+			root, err := workingRootPath()
+			if err != nil {
+				return err
+			}
+			result, err := jobgen.GenerateWithOptions(jobgen.GenerateOptions{
+				Root:    root,
+				AppName: target.App,
+				JobName: target.Name,
+				DryRun:  dryRun,
+				Force:   force,
+			})
+			if err != nil {
+				return fmt.Errorf("generate job: %w", err)
+			}
+			if _, err := fmt.Fprintf(stdout, "generated job for %s/%s\n", result.AppName, result.JobName); err != nil {
+				return fmt.Errorf("write generate output: %w", err)
+			}
+			return writeGenerateJobResult(stdout, root, result)
+		},
+	}
+	addScaffoldWriteFlags(cmd, &dryRun, &force)
+	return cmd
+}
+
 func newGenerateFixtureCommand(stdout io.Writer) *cobra.Command {
 	var dryRun bool
 	var force bool
@@ -286,6 +325,24 @@ func runnerResultStatus(result hookgen.Result) string {
 		return result.RunnerFileStatus
 	}
 	return writtenStatus(result.RunnerFileWritten)
+}
+
+func writeGenerateJobResult(stdout io.Writer, root string, result jobgen.Result) error {
+	lines := []struct {
+		label  string
+		path   string
+		status string
+	}{
+		{label: "job", path: result.JobFile, status: result.JobFileStatus},
+		{label: "run", path: result.RunFile, status: result.RunFileStatus},
+		{label: "runner", path: result.RunnerFile, status: result.RunnerFileStatus},
+	}
+	for _, line := range lines {
+		if _, err := fmt.Fprintf(stdout, "%s: %s (%s)\n", line.label, relToHooksRoot(root, line.path), line.status); err != nil {
+			return fmt.Errorf("write generate output: %w", err)
+		}
+	}
+	return nil
 }
 
 func writeGenerateHookDryRun(stdout io.Writer, root string, target shape.AppRef) error {

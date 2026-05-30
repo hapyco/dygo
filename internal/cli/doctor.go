@@ -20,6 +20,7 @@ import (
 	"github.com/hapyco/dygo/internal/project"
 	"github.com/hapyco/dygo/internal/queues"
 	routeplan "github.com/hapyco/dygo/internal/routes"
+	"github.com/hapyco/dygo/internal/runnergen"
 	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/studio"
@@ -226,9 +227,20 @@ func checkHookWiring(root string) doctorResult {
 		}
 		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: fmt.Sprintf("stat go.mod: %v", err)}
 	}
+	hooks, err := hookgen.Discover(root)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: err.Error()}
+	}
+	jobFiles, err := runnergen.DiscoverJobs(root)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: err.Error()}
+	}
 	if _, err := os.Stat(filepath.Join(root, "cmd", "dygo", "main.go")); err != nil {
 		if os.IsNotExist(err) {
-			return doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "generated runner not found"}
+			if len(hooks) == 0 && len(jobFiles) == 0 {
+				return doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "generated runner not found"}
+			}
+			return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: "cmd/dygo/main.go is missing; run dygo hook sync"}
 		}
 		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: fmt.Sprintf("stat generated runner: %v", err)}
 	}
@@ -239,11 +251,7 @@ func checkHookWiring(root string) doctorResult {
 	if len(problems) > 0 {
 		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: strings.Join(problems, "; ")}
 	}
-	hooks, err := hookgen.Discover(root)
-	if err != nil {
-		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: err.Error()}
-	}
-	return doctorResult{Status: doctorPass, Name: "hook wiring", Detail: fmt.Sprintf("%d hook files wired", len(hooks))}
+	return doctorResult{Status: doctorPass, Name: "hook wiring", Detail: fmt.Sprintf("%d hook files, %d jobs wired", len(hooks), len(jobFiles))}
 }
 
 func checkSchemaSnapshot(root string) doctorResult {

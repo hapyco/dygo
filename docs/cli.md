@@ -20,7 +20,7 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 
 `dygo dev` keeps the stable backend ready URL on stdout and writes local development diagnostics to stderr, including the project root, environment, Studio dev server startup, external Studio target when supplied, and Vite output. Loopback URLs are displayed as `localhost`, but dygo may still bind services to `127.0.0.1` for deterministic local-only networking. It must not print raw database URLs or decrypted secret values.
 
-`dygo doctor` checks root/config, queue config, secrets, database connectivity, schema snapshot state, app, Entity, and Job metadata, route conflicts, fixture validity, hook wiring, generated project runner, Studio assets, and first-run setup state.
+`dygo doctor` checks root/config, queue config, secrets, database connectivity, schema snapshot state, app, Entity, and Job metadata, route conflicts, fixture validity, hook and Job runner wiring, generated project runner, Studio assets, and first-run setup state.
 
 ## Database
 
@@ -71,8 +71,8 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 
 - `dygo hook` - Groups hook inspection and maintenance commands.
 - `dygo hook list` - Lists discovered hook packages, Entity hook files, runner wiring status, and compiled hook registrations when available.
-- `dygo hook validate` - Validates hook file conventions, Entity references, duplicate compiled hook IDs when available, generated registrars, and runner wiring.
-- `dygo hook sync` - Updates generated project runner wiring for discovered app hook packages without creating hook files.
+- `dygo hook validate` - Validates hook file conventions, Job `Run` files, generated registrars, and runner wiring.
+- `dygo hook sync` - Updates generated project runner wiring for discovered app hook and Job packages without creating hook or Job files.
 - `dygo hook sync --dry-run` - Prints runner wiring changes without writing.
 
 ## Generate
@@ -84,6 +84,7 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 - `dygo generate entity <app>/<entity>` - Generates the standard Entity bundle.
 - `dygo generate collection <app>/<collection>` - Generates reusable collection row Entity metadata.
 - `dygo generate hook <app>/<entity>` - Adds Entity hook scaffolding and project runner wiring to an existing Entity.
+- `dygo generate job <app>/<job>` - Adds Job metadata, a starter `run.go`, and project runner wiring.
 - `dygo generate fixture <app>/<entity>` - Adds a fixture skeleton to an existing Entity.
 - `dygo generate test <app>/<entity>` - Adds Go test boilerplate for an existing Entity.
 
@@ -104,6 +105,8 @@ Collection generators create metadata only. Collection rows do not get fixture s
 - `dygo generate collection <app>/<collection> --force` - Overwrites dygo-generated collection metadata only; custom files still fail.
 - `dygo generate hook <app>/<entity> --dry-run` - Prints hook scaffold and runner wiring changes without writing.
 - `dygo generate hook <app>/<entity> --force` - Overwrites dygo-generated hook scaffolding only; custom hook files still fail.
+- `dygo generate job <app>/<job> --dry-run` - Prints Job scaffold and runner wiring changes without writing.
+- `dygo generate job <app>/<job> --force` - Refreshes dygo-generated Job metadata only; existing `run.go` files are developer-owned and are not overwritten.
 - `dygo generate fixture <app>/<entity> --dry-run` - Prints fixture skeleton files that would be created or updated without writing.
 - `dygo generate fixture <app>/<entity> --force` - Overwrites dygo-generated fixture skeletons only; custom files still fail.
 - `dygo generate test <app>/<entity> --dry-run` - Prints Go test files that would be created or updated without writing.

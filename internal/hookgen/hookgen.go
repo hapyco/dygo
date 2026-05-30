@@ -2,23 +2,16 @@
 package hookgen
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
-	"go/ast"
-	"go/format"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/hapyco/dygo/internal/app/manifest"
 	"github.com/hapyco/dygo/internal/entity/catalog"
 	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/runnergen"
 	"github.com/hapyco/dygo/internal/shape"
 )
 
@@ -40,26 +33,10 @@ type Result struct {
 }
 
 // HookFile describes one discovered Entity hook file.
-type HookFile struct {
-	AppName     string
-	EntityName  string
-	Path        string
-	ImportPath  string
-	Alias       string
-	HasRegister bool
-	RunnerWired bool
-}
-
-type hookTarget struct {
-	AppName    string
-	EntityName string
-}
+type HookFile = runnergen.HookFile
 
 // RunnerUpdate describes a generated project runner update.
-type RunnerUpdate struct {
-	RunnerFile string
-	Source     []byte
-}
+type RunnerUpdate = runnergen.RunnerUpdate
 
 // GenerateOptions controls Entity hook scaffold generation.
 type GenerateOptions struct {
@@ -86,11 +63,11 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	if entityName == "" {
 		return Result{}, fmt.Errorf("entity name is required")
 	}
-	if err := requireGeneratedProjectRoot(root); err != nil {
+	if err := runnergen.RequireGeneratedProjectRoot(root); err != nil {
 		return Result{}, err
 	}
 
-	modulePath, err := readModulePath(root)
+	modulePath, err := runnergen.ReadModulePath(root)
 	if err != nil {
 		return Result{}, err
 	}
@@ -103,7 +80,7 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	if !ok {
 		return Result{}, fmt.Errorf("app %q not found", appName)
 	}
-	if !isProjectOwnedApp(root, app.Dir) {
+	if !runnergen.IsProjectOwnedApp(root, app.Dir) {
 		return Result{}, fmt.Errorf("app %q is not a project-owned app under apps/", appName)
 	}
 	entity, ok := findEntity(metadata.Entities, appName, entityName)
@@ -124,17 +101,12 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	if err := preflightPath(hookFile, wantRegularFile); err != nil {
 		return Result{}, err
 	}
-	if exists, hasRegister, err := inspectHookFile(hookFile); err != nil {
+	if exists, hasRegister, err := runnergen.InspectFunctionFile(hookFile, "Register"); err != nil {
 		return Result{}, err
 	} else if exists && !hasRegister {
 		return Result{}, fmt.Errorf("%s exists but does not expose Register(registry sdk.RecordHookRegistry) error", hookFile)
 	}
-	if err := preflightGeneratedFile(runnerFile, runnerManualSnippet(root, modulePath, appName, entityName, entityDir)); err != nil {
-		return Result{}, err
-	}
-
-	hookFiles, err := collectHookFiles(root, modulePath, metadata.Apps, metadata.Entities, hookTarget{AppName: appName, EntityName: entityName})
-	if err != nil {
+	if err := runnergen.PreflightGeneratedFile(runnerFile, runnergen.HookManualSnippet(root, modulePath, appName, entityName, entityDir)); err != nil {
 		return Result{}, err
 	}
 
@@ -142,7 +114,7 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	runnerSource, err := renderRunnerSource(hookFiles)
+	runnerUpdate, err := runnergen.Render(root, runnergen.RenderOptions{HookTarget: runnergen.HookTarget{AppName: appName, EntityName: entityName}})
 	if err != nil {
 		return Result{}, err
 	}
@@ -151,7 +123,7 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	runnerStatus, err := generatedFileStatus(runnerFile, runnerSource, options.DryRun)
+	runnerStatus, err := runnergen.GeneratedFileStatus(runnerFile, runnerUpdate.Source, options.DryRun)
 	if err != nil {
 		return Result{}, err
 	}
@@ -180,7 +152,7 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	if err := os.MkdirAll(filepath.Dir(runnerFile), 0o755); err != nil {
 		return Result{}, fmt.Errorf("create runner directory %s: %w", filepath.Dir(runnerFile), err)
 	}
-	written, err := writeFileIfChanged(runnerFile, runnerSource)
+	written, err := runnergen.WriteFileIfChanged(runnerFile, runnerUpdate.Source)
 	if err != nil {
 		return Result{}, err
 	}
@@ -193,72 +165,19 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 
 // RenderRunner renders the project runner for all app hooks that expose Register.
 func RenderRunner(root string) (RunnerUpdate, error) {
-	root = filepath.Clean(root)
-	if err := requireGeneratedProjectRoot(root); err != nil {
-		return RunnerUpdate{}, err
-	}
-	modulePath, err := readModulePath(root)
-	if err != nil {
-		return RunnerUpdate{}, err
-	}
-	metadata, err := project.LoadMetadata(root)
-	if err != nil {
-		return RunnerUpdate{}, err
-	}
-
-	runnerFile := filepath.Join(root, "cmd", "dygo", "main.go")
-	if err := preflightGeneratedFile(runnerFile, runnerUpgradeManualSnippet()); err != nil {
-		return RunnerUpdate{}, err
-	}
-	hookFiles, err := collectHookFiles(root, modulePath, metadata.Apps, metadata.Entities, hookTarget{})
-	if err != nil {
-		return RunnerUpdate{}, err
-	}
-	runnerSource, err := renderRunnerSource(hookFiles)
-	if err != nil {
-		return RunnerUpdate{}, err
-	}
-	return RunnerUpdate{RunnerFile: runnerFile, Source: runnerSource}, nil
+	return runnergen.Render(root, runnergen.RenderOptions{})
 }
 
 // UpdateRunner writes the generated project runner when its content changes.
 func UpdateRunner(root string) (RunnerUpdate, bool, error) {
-	update, err := RenderRunner(root)
-	if err != nil {
-		return RunnerUpdate{}, false, err
-	}
-	if err := os.MkdirAll(filepath.Dir(update.RunnerFile), 0o755); err != nil {
-		return RunnerUpdate{}, false, fmt.Errorf("create runner directory %s: %w", filepath.Dir(update.RunnerFile), err)
-	}
-	written, err := writeFileIfChanged(update.RunnerFile, update.Source)
-	if err != nil {
-		return RunnerUpdate{}, false, err
-	}
-	return update, written, nil
+	return runnergen.Update(root)
 }
 
 // Discover returns Entity hook files found in canonical Entity bundles.
 func Discover(root string) ([]HookFile, error) {
 	// TODO: include compiled hook registrations after project runners expose a
 	// cheap introspection mode that does not start the server.
-	root = filepath.Clean(root)
-	if err := requireGeneratedProjectRoot(root); err != nil {
-		return nil, err
-	}
-	modulePath, err := readModulePath(root)
-	if err != nil {
-		return nil, err
-	}
-	metadata, err := project.LoadMetadata(root)
-	if err != nil {
-		return nil, err
-	}
-	hookFiles, err := collectHookFiles(root, modulePath, metadata.Apps, metadata.Entities, hookTarget{})
-	if err != nil {
-		return nil, err
-	}
-	markRunnerWiring(filepath.Join(root, "cmd", "dygo", "main.go"), hookFiles)
-	return hookFiles, nil
+	return runnergen.DiscoverHooks(root)
 }
 
 // Validate reports static hook convention and runner wiring problems.
@@ -272,6 +191,15 @@ func Validate(root string) ([]string, error) {
 	for _, hook := range hookFiles {
 		if !hook.HasRegister {
 			problems = append(problems, fmt.Sprintf("%s: hook file must expose Register(registry sdk.RecordHookRegistry) error", filepath.ToSlash(hook.Path)))
+		}
+	}
+	jobFiles, err := runnergen.DiscoverJobs(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, job := range jobFiles {
+		if !job.HasRun {
+			problems = append(problems, fmt.Sprintf("%s: job runner file must expose Run(ctx context.Context, job sdk.JobExecution) error", filepath.ToSlash(job.Path)))
 		}
 	}
 	update, err := RenderRunner(root)
@@ -293,40 +221,6 @@ func Validate(root string) ([]string, error) {
 	return problems, nil
 }
 
-func requireGeneratedProjectRoot(root string) error {
-	marker := filepath.Join(root, project.MarkerFile)
-	info, err := os.Stat(marker)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("hook generation requires a dygo project root with %s", project.MarkerFile)
-		}
-		return fmt.Errorf("stat dygo project marker %s: %w", marker, err)
-	}
-	if info.IsDir() {
-		return fmt.Errorf("dygo project marker %s must be a file", marker)
-	}
-	return nil
-}
-
-func readModulePath(root string) (string, error) {
-	path := filepath.Join(root, "go.mod")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("read go module %s: %w", path, err)
-	}
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	for scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) >= 2 && fields[0] == "module" {
-			return fields[1], nil
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("scan go module %s: %w", path, err)
-	}
-	return "", fmt.Errorf("go module %s is missing a module directive", path)
-}
-
 func findApp(apps []manifest.LoadedApp, appName string) (manifest.LoadedApp, bool) {
 	for _, app := range apps {
 		if app.Manifest.Name == appName {
@@ -334,15 +228,6 @@ func findApp(apps []manifest.LoadedApp, appName string) (manifest.LoadedApp, boo
 		}
 	}
 	return manifest.LoadedApp{}, false
-}
-
-func isProjectOwnedApp(root string, appDir string) bool {
-	relative, err := filepath.Rel(root, appDir)
-	if err != nil {
-		return false
-	}
-	parts := strings.Split(filepath.ToSlash(relative), "/")
-	return len(parts) == 2 && parts[0] == "apps" && parts[1] != ""
 }
 
 func findEntity(entities []catalog.LoadedEntity, appName string, entityName string) (catalog.LoadedEntity, bool) {
@@ -382,27 +267,6 @@ func preflightPath(path string, want pathExpectation) error {
 	return nil
 }
 
-func preflightGeneratedFile(path string, manualSnippet string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("stat %s: %w", path, err)
-	}
-	if info.IsDir() || !info.Mode().IsRegular() {
-		return fmt.Errorf("%s must be a regular file", path)
-	}
-	generated, err := isGeneratedFile(path)
-	if err != nil {
-		return err
-	}
-	if !generated {
-		return fmt.Errorf("%s exists and is not dygo-generated; add wiring manually:\n%s", path, strings.TrimSpace(manualSnippet))
-	}
-	return nil
-}
-
 func hookFileStatus(path string, source []byte, options GenerateOptions) (string, error) {
 	existing, err := os.ReadFile(path)
 	if err != nil {
@@ -433,156 +297,8 @@ func hookFileStatus(path string, source []byte, options GenerateOptions) (string
 	return "updated", nil
 }
 
-func generatedFileStatus(path string, source []byte, dryRun bool) (string, error) {
-	existing, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if dryRun {
-				return "would create", nil
-			}
-			return "created", nil
-		}
-		return "", fmt.Errorf("read %s: %w", path, err)
-	}
-	if bytes.Equal(existing, source) {
-		return "unchanged", nil
-	}
-	if dryRun {
-		return "would update", nil
-	}
-	return "updated", nil
-}
-
-func isGeneratedFile(path string) (bool, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false, fmt.Errorf("read %s: %w", path, err)
-	}
-	source := string(data)
-	if strings.Contains(source, generatedHeader) {
-		return true, nil
-	}
-	return strings.Contains(source, "Code generated by dygo") && strings.Contains(source, "DO NOT EDIT."), nil
-}
-
-func collectHookFiles(root string, modulePath string, apps []manifest.LoadedApp, entities []catalog.LoadedEntity, target hookTarget) ([]HookFile, error) {
-	appsByName := map[string]manifest.LoadedApp{}
-	for _, app := range apps {
-		if isProjectOwnedApp(root, app.Dir) {
-			appsByName[app.Manifest.Name] = app
-		}
-	}
-
-	var hookFiles []HookFile
-	for _, entity := range entities {
-		if entity.IsCollection() {
-			continue
-		}
-		app, ok := appsByName[entity.AppName]
-		if !ok {
-			continue
-		}
-		hookPath := filepath.Join(filepath.Dir(entity.Path), shape.EntityHooksFile)
-		include := target.AppName == entity.AppName && target.EntityName == entity.Entity.Name
-		exists, hasRegister, err := inspectHookFile(hookPath)
-		if err != nil {
-			return nil, err
-		}
-		if include {
-			hasRegister = true
-		}
-		if !include && !exists {
-			continue
-		}
-		importPath, err := importPathForDir(root, modulePath, filepath.Dir(hookPath))
-		if err != nil {
-			return nil, err
-		}
-		hookFiles = append(hookFiles, HookFile{
-			AppName:     app.Manifest.Name,
-			EntityName:  entity.Entity.Name,
-			Path:        hookPath,
-			ImportPath:  importPath,
-			HasRegister: hasRegister,
-		})
-	}
-	sort.SliceStable(hookFiles, func(i, j int) bool {
-		if hookFiles[i].AppName != hookFiles[j].AppName {
-			return hookFiles[i].AppName < hookFiles[j].AppName
-		}
-		return hookFiles[i].EntityName < hookFiles[j].EntityName
-	})
-	assignImportAliases(hookFiles)
-	return hookFiles, nil
-}
-
-func inspectHookFile(hookPath string) (bool, bool, error) {
-	info, err := os.Stat(hookPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, false, nil
-		}
-		return false, false, fmt.Errorf("stat hook file %s: %w", hookPath, err)
-	}
-	if info.IsDir() || !info.Mode().IsRegular() {
-		return true, false, fmt.Errorf("%s must be a regular file", hookPath)
-	}
-
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, hookPath, nil, 0)
-	if err != nil {
-		return true, false, fmt.Errorf("parse hook file %s: %w", hookPath, err)
-	}
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if ok && fn.Recv == nil && fn.Name.Name == "Register" {
-			return true, true, nil
-		}
-	}
-	return true, false, nil
-}
-
-func importPathForDir(root string, modulePath string, dir string) (string, error) {
-	relative, err := filepath.Rel(root, dir)
-	if err != nil {
-		return "", fmt.Errorf("resolve hooks import path for %s: %w", dir, err)
-	}
-	if strings.HasPrefix(relative, "..") {
-		return "", fmt.Errorf("hooks directory %s is outside project root", dir)
-	}
-	return strings.TrimRight(modulePath, "/") + "/" + filepath.ToSlash(relative), nil
-}
-
-func markRunnerWiring(runnerFile string, hookFiles []HookFile) {
-	data, err := os.ReadFile(runnerFile)
-	if err != nil {
-		return
-	}
-	source := string(data)
-	for index := range hookFiles {
-		hookFiles[index].RunnerWired = strings.Contains(source, strconv.Quote(hookFiles[index].ImportPath)) && strings.Contains(source, hookFiles[index].Alias+".Register")
-	}
-}
-
-func assignImportAliases(hookFiles []HookFile) {
-	used := map[string]int{}
-	for index := range hookFiles {
-		base := lowerIdentifier(hookFiles[index].AppName+"-"+hookFiles[index].EntityName) + "hooks"
-		if base == "hooks" {
-			base = "entityhooks"
-		}
-		count := used[base]
-		used[base] = count + 1
-		if count == 0 {
-			hookFiles[index].Alias = base
-			continue
-		}
-		hookFiles[index].Alias = fmt.Sprintf("%s%d", base, count+1)
-	}
-}
-
 func renderEntityHookSource(appName string, entityName string) ([]byte, error) {
-	name := exportedIdentifier(entityName)
+	name := runnergen.ExportedIdentifier(entityName)
 	source := fmt.Sprintf(`%[8]s
 
 package hooks
@@ -625,69 +341,7 @@ func afterUpdate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
 	return nil
 }
 `, name, appName, entityName, entityName+"-before-create", entityName+"-after-create", entityName+"-before-update", entityName+"-after-update", generatedHeader)
-	return formatGoSource([]byte(source))
-}
-
-func renderRunnerSource(hookFiles []HookFile) ([]byte, error) {
-	var builder strings.Builder
-	builder.WriteString(generatedHeader)
-	builder.WriteString("\n\npackage main\n\n")
-	builder.WriteString("import (\n")
-	builder.WriteString("\t\"context\"\n")
-	builder.WriteString("\t\"fmt\"\n")
-	builder.WriteString("\t\"os\"\n")
-	builder.WriteString("\t\"os/signal\"\n")
-	builder.WriteString("\t\"syscall\"\n\n")
-	for _, hook := range hookFiles {
-		if !hook.HasRegister {
-			continue
-		}
-		builder.WriteString(fmt.Sprintf("\t%s %q\n", hook.Alias, hook.ImportPath))
-	}
-	builder.WriteString("\t\"github.com/hapyco/dygo/pkg/sdk\"\n")
-	builder.WriteString("\tdygoruntime \"github.com/hapyco/dygo/pkg/sdk/runtime\"\n")
-	builder.WriteString(")\n\n")
-	builder.WriteString("func main() {\n")
-	builder.WriteString("\tctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)\n")
-	builder.WriteString("\tdefer stop()\n\n")
-	builder.WriteString("\terr := dygoruntime.Run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr, dygoruntime.Options{\n")
-	builder.WriteString("\t\tRecordHooks: []sdk.RecordHookRegistrar{\n")
-	for _, hook := range hookFiles {
-		if !hook.HasRegister {
-			continue
-		}
-		builder.WriteString(fmt.Sprintf("\t\t\t%s.Register,\n", hook.Alias))
-	}
-	builder.WriteString("\t\t},\n")
-	builder.WriteString("\t})\n")
-	builder.WriteString("\tif err != nil {\n")
-	builder.WriteString("\t\tfmt.Fprintln(os.Stderr, err)\n")
-	builder.WriteString("\t\tos.Exit(1)\n")
-	builder.WriteString("\t}\n")
-	builder.WriteString("}\n")
-	return formatGoSource([]byte(builder.String()))
-}
-
-func formatGoSource(source []byte) ([]byte, error) {
-	formatted, err := format.Source(source)
-	if err != nil {
-		return nil, fmt.Errorf("format generated Go source: %w", err)
-	}
-	return formatted, nil
-}
-
-func writeFileIfChanged(path string, data []byte) (bool, error) {
-	existing, err := os.ReadFile(path)
-	if err == nil && bytes.Equal(existing, data) {
-		return false, nil
-	}
-	if err != nil && !os.IsNotExist(err) {
-		return false, fmt.Errorf("read %s: %w", path, err)
-	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return false, fmt.Errorf("write %s: %w", path, err)
-	}
-	return true, nil
+	return runnergen.FormatGoSource([]byte(source))
 }
 
 func writeStatus(written bool) string {
@@ -695,53 +349,4 @@ func writeStatus(written bool) string {
 		return "updated"
 	}
 	return "unchanged"
-}
-
-func runnerManualSnippet(root string, modulePath string, appName string, entityName string, entityDir string) string {
-	alias := lowerIdentifier(appName+"-"+entityName) + "hooks"
-	importPath, err := importPathForDir(root, modulePath, entityDir)
-	if err != nil {
-		importPath = strings.TrimRight(modulePath, "/") + "/" + filepath.ToSlash(filepath.Clean(entityDir))
-	}
-	if alias == "hooks" {
-		alias = "entityhooks"
-	}
-	return fmt.Sprintf(`import %s %q
-
-RecordHooks: []sdk.RecordHookRegistrar{%s.Register},`, alias, importPath, alias)
-}
-
-func runnerUpgradeManualSnippet() string {
-	return `cmd/dygo/main.go is custom. Import Entity hook packages manually and call pkg/sdk/runtime.Run with runtime.Options{RecordHooks: ...}.`
-}
-
-func exportedIdentifier(value string) string {
-	parts := strings.FieldsFunc(value, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
-	})
-	var builder strings.Builder
-	for _, part := range parts {
-		if part == "" {
-			continue
-		}
-		runes := []rune(part)
-		builder.WriteRune(unicode.ToUpper(runes[0]))
-		for _, r := range runes[1:] {
-			builder.WriteRune(r)
-		}
-	}
-	if builder.Len() == 0 {
-		return "Entity"
-	}
-	return builder.String()
-}
-
-func lowerIdentifier(value string) string {
-	var builder strings.Builder
-	for _, r := range value {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			builder.WriteRune(unicode.ToLower(r))
-		}
-	}
-	return builder.String()
 }

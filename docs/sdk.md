@@ -73,6 +73,14 @@ Do not use route slugs as SDK Entity identity.
 
 ## Jobs
 
+Generated Job files expose one `Run` function:
+
+```go
+func Run(ctx context.Context, job sdk.JobExecution) error {
+    return nil
+}
+```
+
 Job handlers and transactional Record hooks can enqueue durable background work:
 
 ```go

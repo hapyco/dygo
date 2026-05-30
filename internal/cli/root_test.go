@@ -136,6 +136,7 @@ func TestCommandSurfaceRegistersTargetCommands(t *testing.T) {
 		{"generate", "entity"},
 		{"generate", "collection"},
 		{"generate", "hook"},
+		{"generate", "job"},
 		{"generate", "fixture"},
 		{"generate", "test"},
 		{"g"},
@@ -1575,6 +1576,63 @@ timeout: 30s
 		"FAIL job metadata:",
 		`references unregistered queue "email"`,
 		"SKIP runtime database: config, secrets, or metadata are not ready",
+		"dygo doctor found 1 problem",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
+func TestDoctorCommandReportsMissingJobRunnerWiring(t *testing.T) {
+	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{
+		roleCount:       2,
+		permissionCount: 17,
+		adminExists:     true,
+	})
+	withDoctorSchemaSnapshotCheck(t, func(context.Context, string, string) error {
+		return nil
+	})
+
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIGoModule(t, root, "example.com/acme")
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	writeCLIJob(t, filepath.Join(root, "apps", "sales", "jobs", "send-email", "job.yml"), `
+label: Send Email
+queue: default
+timeout: 30s
+`)
+	runFile := filepath.Join(root, "apps", "sales", "jobs", "send-email", "run.go")
+	if err := os.WriteFile(runFile, []byte(`package job
+
+import (
+	"context"
+
+	"github.com/hapyco/dygo/pkg/sdk"
+)
+
+func Run(ctx context.Context, job sdk.JobExecution) error {
+	return nil
+}
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile(run.go) error = %v", err)
+	}
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"doctor"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(doctor) error = nil, want missing Job runner wiring diagnostic")
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"PASS job metadata: 1 jobs valid",
+		"FAIL hook wiring: cmd/dygo/main.go is missing; run dygo hook sync",
 		"dygo doctor found 1 problem",
 	} {
 		if !strings.Contains(output, want) {

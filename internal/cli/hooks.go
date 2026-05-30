@@ -94,7 +94,7 @@ func newHookSyncCommand(stdout io.Writer) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Update generated runner hook wiring",
+		Short: "Update generated runner app-code wiring",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			root, err := workingRootPath()

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hapyco/dygo/internal/runnergen"
 )
 
 func TestGenerateCreatesHookRegisterAndRunner(t *testing.T) {
@@ -41,7 +43,7 @@ func TestGenerateCreatesHookRegisterAndRunner(t *testing.T) {
 
 	runnerSource := readTestFile(t, filepath.Join(root, "cmd", "dygo", "main.go"))
 	for _, want := range []string{
-		generatedHeader,
+		runnergen.GeneratedHeader,
 		`salesleadhooks "example.com/acme/apps/sales/entities/lead"`,
 		"dygoruntime.Run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr",
 		"salesleadhooks.Register",
