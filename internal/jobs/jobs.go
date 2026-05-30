@@ -61,9 +61,9 @@ type Job struct {
 
 // Retry describes retry behavior for one Job.
 type Retry struct {
-	Attempts     int    `yaml:"attempts"`
-	InitialDelay string `yaml:"initial-delay,omitempty"`
-	MaxDelay     string `yaml:"max-delay,omitempty"`
+	Attempts     int    `json:"attempts" yaml:"attempts"`
+	InitialDelay string `json:"initial-delay,omitempty" yaml:"initial-delay,omitempty"`
+	MaxDelay     string `json:"max-delay,omitempty" yaml:"max-delay,omitempty"`
 }
 
 // EffectiveQueue returns the registered queue name for this Job.

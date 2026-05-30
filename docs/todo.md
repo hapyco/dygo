@@ -2,7 +2,7 @@
 
 Use this as a flat local staging list. Track progress with Markdown checkboxes; when we sync to GitHub later, create/update the matching issues and remove synced checked items from this file.
 
-Source: local staging list for `hapyco/dygo`, last updated on 2026-05-30.
+Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 
 ## Open issues
 
@@ -74,6 +74,10 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-30.
 - [ ] #222 Clean up old Job history automatically
 - [x] #223 Make production setup clearly show that app server and worker both need to run
 - [x] #224 Let workers pick up new Jobs instantly instead of waiting for the poll cycle
+- [x] Guard Job Execution completion and failure updates with claim identity
+- [x] Recover panics from Job handlers and record them as retryable failures
+- [x] Shorten active Job Execution leases when worker shutdown timeout expires
+- [x] Store Job retry delays with JSON keys the runtime can decode
 - [x] #225 Define removed `job.yml` retirement behavior for synced Core Job rows
 - [ ] #226 Add Core retention policy Entity for platform record cleanup
 - [ ] #144 Add Studio keyboard shortcut foundation

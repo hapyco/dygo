@@ -23,6 +23,9 @@ const (
 	notificationChannel = "dygo_job_execution_queued"
 )
 
+// ErrClaimLost means a worker is trying to update an execution it no longer owns.
+var ErrClaimLost = errors.New("job execution claim is no longer active")
+
 // Beginner is the PostgreSQL behavior needed by Store.
 type Beginner interface {
 	Begin(context.Context) (pgx.Tx, error)
@@ -536,8 +539,8 @@ WHERE status = $1
 	return &nextTime, nil
 }
 
-// Complete marks a running execution succeeded.
-func (s Store) Complete(ctx context.Context, id int64, result json.RawMessage, now time.Time) error {
+// Complete marks a running execution succeeded when the worker still owns the claim.
+func (s Store) Complete(ctx context.Context, execution Execution, result json.RawMessage, now time.Time) error {
 	if len(result) > 0 && !json.Valid(result) {
 		return fmt.Errorf("job result must be valid JSON")
 	}
@@ -549,18 +552,21 @@ SET status = $1,
 	locked_by = NULL,
 	locked_until = NULL,
 	updated_at = now()
-WHERE id = $4 AND status = $5`, jobs.StatusSucceeded, payloadOrNil(result), now, id, jobs.StatusRunning)
+WHERE id = $4
+  AND status = $5
+  AND locked_by = $6
+  AND attempts = $7`, jobs.StatusSucceeded, payloadOrNil(result), now, execution.ID, jobs.StatusRunning, execution.LockedBy, execution.Attempts)
 	if err != nil {
-		return fmt.Errorf("complete job execution %d: %w", id, err)
+		return fmt.Errorf("complete job execution %d: %w", execution.ID, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("job execution %d is not running", id)
+		return fmt.Errorf("complete job execution %d: %w", execution.ID, ErrClaimLost)
 	}
 	return nil
 }
 
-// Fail records a failed attempt and retries when attempts remain.
-func (s Store) Fail(ctx context.Context, id int64, message string, now time.Time) error {
+// Fail records a failed attempt and retries when attempts remain and the worker still owns the claim.
+func (s Store) Fail(ctx context.Context, execution Execution, message string, now time.Time) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin job failure: %w", err)
@@ -570,18 +576,25 @@ func (s Store) Fail(ctx context.Context, id int64, message string, now time.Time
 	var attempts int
 	var maxAttempts int
 	var retryRaw []byte
-	err = tx.QueryRow(ctx, `SELECT attempts, max_attempts, retry FROM "job_execution" WHERE id = $1 AND status = $2 FOR UPDATE`, id, jobs.StatusRunning).Scan(&attempts, &maxAttempts, &retryRaw)
+	err = tx.QueryRow(ctx, `
+SELECT attempts, max_attempts, retry
+FROM "job_execution"
+WHERE id = $1
+  AND status = $2
+  AND locked_by = $3
+  AND attempts = $4
+FOR UPDATE`, execution.ID, jobs.StatusRunning, execution.LockedBy, execution.Attempts).Scan(&attempts, &maxAttempts, &retryRaw)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("job execution %d is not running", id)
+			return fmt.Errorf("fail job execution %d: %w", execution.ID, ErrClaimLost)
 		}
-		return fmt.Errorf("load job execution %d for failure: %w", id, err)
+		return fmt.Errorf("load job execution %d for failure: %w", execution.ID, err)
 	}
 	retry, err := decodeRetry(retryRaw)
 	if err != nil {
-		return fmt.Errorf("decode retry for job execution %d: %w", id, err)
+		return fmt.Errorf("decode retry for job execution %d: %w", execution.ID, err)
 	}
-	if err := retryOrFail(ctx, tx, id, attempts, maxAttempts, retry, message, now); err != nil {
+	if err := retryOrFail(ctx, tx, execution.ID, attempts, maxAttempts, retry, message, now); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -590,14 +603,47 @@ func (s Store) Fail(ctx context.Context, id int64, message string, now time.Time
 	return nil
 }
 
-// FailFinal marks a running execution failed without retry.
-func (s Store) FailFinal(ctx context.Context, id int64, message string, now time.Time) error {
-	tag, err := execWithStatus(ctx, s.db, finalFailureSQL, jobs.StatusFailed, strings.TrimSpace(message), now, id)
+// FailFinal marks a running execution failed without retry when the worker still owns the claim.
+func (s Store) FailFinal(ctx context.Context, execution Execution, message string, now time.Time) error {
+	tag, err := execWithStatus(ctx, s.db, claimedFinalFailureSQL, jobs.StatusFailed, strings.TrimSpace(message), now, execution.ID, execution.LockedBy, execution.Attempts)
 	if err != nil {
-		return fmt.Errorf("fail job execution %d: %w", id, err)
+		return fmt.Errorf("fail job execution %d: %w", execution.ID, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("job execution %d was not updated", id)
+		return fmt.Errorf("fail job execution %d: %w", execution.ID, ErrClaimLost)
+	}
+	return nil
+}
+
+// ExpireClaim shortens an in-flight claim lease when a worker cannot finish shutdown cleanly.
+func (s Store) ExpireClaim(ctx context.Context, execution Execution, now time.Time) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin job claim expiry: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var queue string
+	err = tx.QueryRow(ctx, `
+UPDATE "job_execution"
+SET locked_until = $1,
+	updated_at = now()
+WHERE id = $2
+  AND status = $3
+  AND locked_by = $4
+  AND attempts = $5
+RETURNING queue`, now, execution.ID, jobs.StatusRunning, execution.LockedBy, execution.Attempts).Scan(&queue)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("expire job execution %d claim: %w", execution.ID, ErrClaimLost)
+		}
+		return fmt.Errorf("expire job execution %d claim: %w", execution.ID, err)
+	}
+	if err := notifyQueue(ctx, tx, queue); err != nil {
+		return fmt.Errorf("notify job queue %q: %w", queue, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit job claim expiry: %w", err)
 	}
 	return nil
 }
@@ -644,6 +690,19 @@ SET status = $1,
 	locked_until = NULL,
 	updated_at = now()
 WHERE id = $4`
+
+const claimedFinalFailureSQL = `
+UPDATE "job_execution"
+SET status = $1,
+	error = $2,
+	finished_at = $3,
+	locked_by = NULL,
+	locked_until = NULL,
+	updated_at = now()
+WHERE id = $4
+  AND status = 'running'
+  AND locked_by = $5
+  AND attempts = $6`
 
 const jobSelectColumns = `
 j.id, j.name, a.name, j.key, j.source, j.label, COALESCE(j.description, ''),

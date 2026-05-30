@@ -51,9 +51,10 @@ type Store interface {
 	RecoverExpired(context.Context, time.Time) (int, error)
 	Claim(context.Context, []string, int, string, time.Time) ([]jobstore.Execution, error)
 	NextRunAfter(context.Context, []string, time.Time) (*time.Time, error)
-	Complete(context.Context, int64, json.RawMessage, time.Time) error
-	Fail(context.Context, int64, string, time.Time) error
-	FailFinal(context.Context, int64, string, time.Time) error
+	Complete(context.Context, jobstore.Execution, json.RawMessage, time.Time) error
+	Fail(context.Context, jobstore.Execution, string, time.Time) error
+	FailFinal(context.Context, jobstore.Execution, string, time.Time) error
+	ExpireClaim(context.Context, jobstore.Execution, time.Time) error
 	Enqueue(context.Context, string, string, json.RawMessage, jobstore.EnqueueOptions) (jobstore.Execution, error)
 }
 
@@ -217,7 +218,7 @@ func (w Worker) runContinuous(ctx context.Context, options Options) (Result, err
 		return total.snapshot(), nil
 	case <-ctx.Done():
 		cancel()
-		waitForGroup(&wg, options.ShutdownTimeout)
+		wg.Wait()
 		waitForGroup(&listenerWG, options.ShutdownTimeout)
 		return total.snapshot(), nil
 	}
@@ -228,7 +229,7 @@ func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, 
 	var inFlight sync.WaitGroup
 	errs := make(chan error, 1)
 	slotReleased := make(chan struct{}, 1)
-	defer waitForGroup(&inFlight, options.ShutdownTimeout)
+	active := newActiveExecutions()
 
 	for {
 		available := queue.Concurrency - len(slots)
@@ -246,10 +247,12 @@ func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, 
 			for _, execution := range executions {
 				execution := execution
 				slots <- struct{}{}
+				active.add(execution)
 				inFlight.Add(1)
 				go func() {
 					defer inFlight.Done()
 					defer func() {
+						active.remove(execution.ID)
 						<-slots
 						signal(slotReleased)
 					}()
@@ -277,9 +280,11 @@ func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, 
 		select {
 		case <-ctx.Done():
 			stopTimer(timer)
+			w.shutdownActiveExecutions(ctx, &inFlight, active, options)
 			return ctx.Err()
 		case err := <-errs:
 			stopTimer(timer)
+			w.shutdownActiveExecutions(ctx, &inFlight, active, options)
 			return err
 		case <-slotReleased:
 			stopTimer(timer)
@@ -350,7 +355,11 @@ func (w Worker) runExecution(ctx context.Context, execution jobstore.Execution, 
 	if !ok {
 		message := fmt.Sprintf("missing job handler for %s/%s", execution.AppName, execution.JobName)
 		w.log("%s execution %d", message, execution.ID)
-		if err := w.Store.FailFinal(context.WithoutCancel(ctx), execution.ID, message, options.Now()); err != nil {
+		if err := w.Store.FailFinal(context.WithoutCancel(ctx), execution, message, options.Now()); err != nil {
+			if errors.Is(err, jobstore.ErrClaimLost) {
+				w.log("skipped stale failure for %s/%s execution %d attempt %d", execution.AppName, execution.JobName, execution.ID, execution.Attempts)
+				return Result{}, nil
+			}
 			return Result{Failed: 1}, err
 		}
 		return Result{Failed: 1}, nil
@@ -360,7 +369,7 @@ func (w Worker) runExecution(ctx context.Context, execution jobstore.Execution, 
 	executionCtx := context.WithoutCancel(ctx)
 	runCtx, cancel := context.WithTimeout(executionCtx, execution.Timeout)
 	defer cancel()
-	err := fn(runCtx, sdk.JobExecution{
+	err := runJobHandler(fn, runCtx, sdk.JobExecution{
 		ID:      execution.ID,
 		AppName: execution.AppName,
 		JobName: execution.JobName,
@@ -371,7 +380,11 @@ func (w Worker) runExecution(ctx context.Context, execution jobstore.Execution, 
 		Jobs:    sdkdata.NewJobData(w.Store),
 	})
 	if err == nil {
-		if err := w.Store.Complete(executionCtx, execution.ID, nil, options.Now()); err != nil {
+		if err := w.Store.Complete(executionCtx, execution, nil, options.Now()); err != nil {
+			if errors.Is(err, jobstore.ErrClaimLost) {
+				w.log("skipped stale success for %s/%s execution %d attempt %d", execution.AppName, execution.JobName, execution.ID, execution.Attempts)
+				return Result{}, nil
+			}
 			return Result{}, err
 		}
 		w.log("succeeded %s/%s execution %d", execution.AppName, execution.JobName, execution.ID)
@@ -381,11 +394,37 @@ func (w Worker) runExecution(ctx context.Context, execution jobstore.Execution, 
 	if runCtx.Err() == context.DeadlineExceeded {
 		message = "timeout"
 	}
-	if failErr := w.Store.Fail(executionCtx, execution.ID, message, options.Now()); failErr != nil {
+	if failErr := w.Store.Fail(executionCtx, execution, message, options.Now()); failErr != nil {
+		if errors.Is(failErr, jobstore.ErrClaimLost) {
+			w.log("skipped stale failure for %s/%s execution %d attempt %d", execution.AppName, execution.JobName, execution.ID, execution.Attempts)
+			return Result{}, nil
+		}
 		return Result{Failed: 1}, failErr
 	}
 	w.log("failed %s/%s execution %d: %s", execution.AppName, execution.JobName, execution.ID, message)
 	return Result{Failed: 1}, nil
+}
+
+func runJobHandler(fn sdk.JobFunc, ctx context.Context, execution sdk.JobExecution) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("panic: %v", recovered)
+		}
+	}()
+	return fn(ctx, execution)
+}
+
+func (w Worker) shutdownActiveExecutions(ctx context.Context, inFlight *sync.WaitGroup, active *activeExecutions, options Options) {
+	if waitForGroup(inFlight, options.ShutdownTimeout) {
+		return
+	}
+	expireCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), options.ShutdownTimeout)
+	defer cancel()
+	for _, execution := range active.snapshot() {
+		if err := w.Store.ExpireClaim(expireCtx, execution, options.Now()); err != nil && !errors.Is(err, jobstore.ErrClaimLost) {
+			w.log("expire claim for %s/%s execution %d attempt %d: %v", execution.AppName, execution.JobName, execution.ID, execution.Attempts, err)
+		}
+	}
 }
 
 func (w Worker) log(format string, args ...any) {
@@ -450,6 +489,37 @@ func (r *Result) add(other Result) {
 	r.Claimed += other.Claimed
 	r.Succeeded += other.Succeeded
 	r.Failed += other.Failed
+}
+
+type activeExecutions struct {
+	mu         sync.Mutex
+	executions map[int64]jobstore.Execution
+}
+
+func newActiveExecutions() *activeExecutions {
+	return &activeExecutions{executions: map[int64]jobstore.Execution{}}
+}
+
+func (a *activeExecutions) add(execution jobstore.Execution) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.executions[execution.ID] = execution
+}
+
+func (a *activeExecutions) remove(id int64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.executions, id)
+}
+
+func (a *activeExecutions) snapshot() []jobstore.Execution {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	executions := make([]jobstore.Execution, 0, len(a.executions))
+	for _, execution := range a.executions {
+		executions = append(executions, execution)
+	}
+	return executions
 }
 
 func waitForGroup(wg *sync.WaitGroup, timeout time.Duration) bool {

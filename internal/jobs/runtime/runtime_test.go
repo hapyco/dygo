@@ -141,6 +141,46 @@ func TestWorkerRunOnceRecordsHandlerFailure(t *testing.T) {
 	}
 }
 
+func TestWorkerRunOnceRecordsHandlerPanic(t *testing.T) {
+	now := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
+	store := &fakeStore{
+		claimed: []jobstore.Execution{{
+			ID:       47,
+			AppName:  "crm",
+			JobName:  "send-email",
+			Queue:    "default",
+			Attempts: 1,
+			Timeout:  time.Minute,
+		}},
+	}
+	registry, err := NewRegistry([]sdk.JobRegistrar{
+		func(registry sdk.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+				panic("nil template")
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v, want nil", err)
+	}
+
+	result, err := (Worker{Store: store, Registry: registry}).Run(context.Background(), Options{
+		Queues:   []Queue{{Name: "default", Concurrency: 1}},
+		WorkerID: "test-worker",
+		Once:     true,
+		Now:      func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if result.Claimed != 1 || result.Failed != 1 {
+		t.Fatalf("result = %+v, want one failed execution", result)
+	}
+	if len(store.failures) != 1 || store.failures[0].id != 47 || store.failures[0].message != "panic: nil template" {
+		t.Fatalf("failures = %#v, want panic recorded as handler failure", store.failures)
+	}
+}
+
 func TestWorkerRunContinuousNotificationWakesBeforePoll(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -259,6 +299,80 @@ func TestWorkerRunContinuousUsesNextRunAfterBeforePoll(t *testing.T) {
 	}
 }
 
+func TestWorkerRunContinuousExpiresActiveClaimAfterShutdownTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	handlerDone := make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+	}()
+	store := &fakeStore{
+		claimed: []jobstore.Execution{{
+			ID:       48,
+			AppName:  "crm",
+			JobName:  "slow-import",
+			Queue:    "default",
+			Attempts: 1,
+			Timeout:  time.Hour,
+		}},
+	}
+	registry, err := NewRegistry([]sdk.JobRegistrar{
+		func(registry sdk.JobRegistry) error {
+			return registry.RegisterJob("crm", "slow-import", func(context.Context, sdk.JobExecution) error {
+				defer close(handlerDone)
+				close(started)
+				<-release
+				return nil
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v, want nil", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := (Worker{Store: store, Registry: registry}).Run(ctx, Options{
+			Queues:          []Queue{{Name: "default", Concurrency: 1}},
+			WorkerID:        "test-worker",
+			PollInterval:    time.Hour,
+			ShutdownTimeout: 20 * time.Millisecond,
+		})
+		done <- err
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not start")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run() error = %v, want nil", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not finish after shutdown timeout")
+	}
+	if len(store.expired) != 1 || store.expired[0] != 48 {
+		t.Fatalf("expired = %#v, want execution 48 claim shortened", store.expired)
+	}
+	close(release)
+	released = true
+	select {
+	case <-handlerDone:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not finish after release")
+	}
+}
+
 type fakeStore struct {
 	mu            sync.Mutex
 	claimed       []jobstore.Execution
@@ -268,6 +382,7 @@ type fakeStore struct {
 	completed     []int64
 	failures      []fakeFailure
 	finalFailures []fakeFailure
+	expired       []int64
 }
 
 type fakeFailure struct {
@@ -304,24 +419,31 @@ func (s *fakeStore) NextRunAfter(context.Context, []string, time.Time) (*time.Ti
 	return s.nextRunAfter, nil
 }
 
-func (s *fakeStore) Complete(_ context.Context, id int64, _ json.RawMessage, _ time.Time) error {
+func (s *fakeStore) Complete(_ context.Context, execution jobstore.Execution, _ json.RawMessage, _ time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.completed = append(s.completed, id)
+	s.completed = append(s.completed, execution.ID)
 	return nil
 }
 
-func (s *fakeStore) Fail(_ context.Context, id int64, message string, _ time.Time) error {
+func (s *fakeStore) Fail(_ context.Context, execution jobstore.Execution, message string, _ time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.failures = append(s.failures, fakeFailure{id: id, message: message})
+	s.failures = append(s.failures, fakeFailure{id: execution.ID, message: message})
 	return nil
 }
 
-func (s *fakeStore) FailFinal(_ context.Context, id int64, message string, _ time.Time) error {
+func (s *fakeStore) FailFinal(_ context.Context, execution jobstore.Execution, message string, _ time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.finalFailures = append(s.finalFailures, fakeFailure{id: id, message: message})
+	s.finalFailures = append(s.finalFailures, fakeFailure{id: execution.ID, message: message})
+	return nil
+}
+
+func (s *fakeStore) ExpireClaim(_ context.Context, execution jobstore.Execution, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.expired = append(s.expired, execution.ID)
 	return nil
 }
 
