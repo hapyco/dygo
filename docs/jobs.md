@@ -79,6 +79,17 @@ dygo job execution retry <id-or-name> --idempotency-key <key>
 
 `list`, `show`, `cancel`, and `retry` read the selected environment database. `cancel` is queued-only in the MVP. `retry` is failed-only, copies the failed execution payload, and requires a new caller-provided idempotency key.
 
+Inspect and control registered Jobs with:
+
+```sh
+dygo job list
+dygo job show crm/send-welcome-email
+dygo job disable crm/send-welcome-email
+dygo job enable crm/send-welcome-email
+```
+
+`job list` shows registered Jobs, not executions. `disable` and `enable` only update the human-controlled `enabled` state. They do not cancel queued or running executions. `enable` fails for retired Jobs; restoring the `job.yml` and running `dygo db migrate` is what un-retires a file-backed Job.
+
 Proposed `job.yml` shape:
 
 ```yaml
@@ -269,6 +280,7 @@ Locked decisions:
 - Each Job Execution stores the Job identity and the caller-provided `idempotency-key`. Whoever enqueues the Job is responsible for making the key unique for that Job when duplicate prevention matters.
 - Good idempotency keys can include timestamps, stored UUIDs, Record IDs, provider event IDs, or schedule occurrence IDs. The key must be stable for the same intended work and different for new intended work.
 - Disabled or retired Jobs cannot create new Job Executions. `enabled` is the human pause switch; `retired` is dygo's lifecycle state for file-backed Jobs whose `job.yml` was removed. Workers still run already-created Job Executions unless those executions are cancelled separately.
+- `dygo job disable` sets `enabled=false`; `dygo job enable` sets `enabled=true` only when `retired=false`.
 - Enqueue requires a synced Core `job` record. Unknown app/job targets fail with an error such as `job crm/send-email is not registered`.
 - Enqueue validation errors include unknown Job, disabled Job, retired Job, and invalid payload JSON. Unregistered queues in Job metadata are caught by Job metadata validation, `dygo doctor`, and `dygo db migrate`; unknown `dygo worker --queue` flags fail at worker startup. Idempotency duplicates return the existing Job Execution instead of failing.
 - MVP handlers return `error` only. Job Execution keeps nullable `result` JSON as reserved storage for future system/API use, but app SDK code does not write structured results in the first batch.

@@ -45,6 +45,22 @@ type ListOptions struct {
 	Limit int
 }
 
+// Job is one registered background Job.
+type Job struct {
+	ID          int64
+	Name        string
+	AppName     string
+	Key         string
+	Source      string
+	Label       string
+	Description string
+	Queue       string
+	Timeout     string
+	Retry       *jobs.Retry
+	Enabled     bool
+	Retired     bool
+}
+
 // Execution is one durable Job Execution row.
 type Execution struct {
 	ID             int64
@@ -71,14 +87,18 @@ type Execution struct {
 }
 
 type jobRecord struct {
-	ID      int64
-	AppName string
-	Key     string
-	Queue   string
-	Timeout string
-	Retry   []byte
-	Enabled bool
-	Retired bool
+	ID          int64
+	Name        string
+	AppName     string
+	Key         string
+	Source      string
+	Label       string
+	Description string
+	Queue       string
+	Timeout     string
+	Retry       []byte
+	Enabled     bool
+	Retired     bool
 }
 
 // New returns a Store backed by db.
@@ -209,6 +229,73 @@ LIMIT $1`, limit)
 		return nil, fmt.Errorf("commit job execution list: %w", err)
 	}
 	return executions, nil
+}
+
+// ListJobs returns registered Jobs ordered by app and key.
+func (s Store) ListJobs(ctx context.Context) ([]Job, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin job list: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx, `
+SELECT `+jobSelectColumns+`
+FROM "job" j
+JOIN "app" a ON a.id = j.app_id
+ORDER BY a.name ASC, j.key ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("query jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var result []Job
+	for rows.Next() {
+		record, err := scanJobRecord(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan job: %w", err)
+		}
+		job, err := jobFromRecord(record)
+		if err != nil {
+			return nil, fmt.Errorf("decode job %s/%s: %w", record.AppName, record.Key, err)
+		}
+		result = append(result, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan jobs: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit job list: %w", err)
+	}
+	return result, nil
+}
+
+// GetJob returns one registered Job by app and key.
+func (s Store) GetJob(ctx context.Context, appName string, jobName string) (Job, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Job{}, fmt.Errorf("begin job lookup: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	record, err := loadJob(ctx, tx, appName, jobName)
+	if err != nil {
+		return Job{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Job{}, fmt.Errorf("commit job lookup: %w", err)
+	}
+	return jobFromRecord(record)
+}
+
+// DisableJob prevents future Job Executions from being enqueued.
+func (s Store) DisableJob(ctx context.Context, appName string, jobName string) (Job, error) {
+	return s.setJobEnabled(ctx, appName, jobName, false)
+}
+
+// EnableJob allows future Job Executions to be enqueued when the Job is not retired.
+func (s Store) EnableJob(ctx context.Context, appName string, jobName string) (Job, error) {
+	return s.setJobEnabled(ctx, appName, jobName, true)
 }
 
 // Get returns one Job Execution by numeric id or execution name.
@@ -513,13 +600,22 @@ SET status = $1,
 	updated_at = now()
 WHERE id = $4`
 
+const jobSelectColumns = `
+j.id, j.name, a.name, j.key, j.source, j.label, COALESCE(j.description, ''),
+j.queue, j.timeout, j.retry, j.enabled, j.retired`
+
 func loadJob(ctx context.Context, tx pgx.Tx, appName string, jobName string) (jobRecord, error) {
-	var job jobRecord
-	err := tx.QueryRow(ctx, `
-SELECT j.id, a.name, j.key, j.queue, j.timeout, j.retry, j.enabled, j.retired
+	appName = strings.TrimSpace(appName)
+	jobName = strings.TrimSpace(jobName)
+	if appName == "" || jobName == "" {
+		return jobRecord{}, fmt.Errorf("job app and name are required")
+	}
+	row := tx.QueryRow(ctx, `
+SELECT `+jobSelectColumns+`
 FROM "job" j
 JOIN "app" a ON a.id = j.app_id
-WHERE a.name = $1 AND j.key = $2`, appName, jobName).Scan(&job.ID, &job.AppName, &job.Key, &job.Queue, &job.Timeout, &job.Retry, &job.Enabled, &job.Retired)
+WHERE a.name = $1 AND j.key = $2`, appName, jobName)
+	job, err := scanJobRecord(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return jobRecord{}, fmt.Errorf("job %s/%s is not registered", appName, jobName)
@@ -527,6 +623,94 @@ WHERE a.name = $1 AND j.key = $2`, appName, jobName).Scan(&job.ID, &job.AppName,
 		return jobRecord{}, fmt.Errorf("load job %s/%s: %w", appName, jobName, err)
 	}
 	return job, nil
+}
+
+func loadJobForUpdate(ctx context.Context, tx pgx.Tx, appName string, jobName string) (jobRecord, error) {
+	appName = strings.TrimSpace(appName)
+	jobName = strings.TrimSpace(jobName)
+	if appName == "" || jobName == "" {
+		return jobRecord{}, fmt.Errorf("job app and name are required")
+	}
+	row := tx.QueryRow(ctx, `
+SELECT `+jobSelectColumns+`
+FROM "job" j
+JOIN "app" a ON a.id = j.app_id
+WHERE a.name = $1 AND j.key = $2
+FOR UPDATE OF j`, appName, jobName)
+	job, err := scanJobRecord(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return jobRecord{}, fmt.Errorf("job %s/%s is not registered", appName, jobName)
+		}
+		return jobRecord{}, fmt.Errorf("load job %s/%s: %w", appName, jobName, err)
+	}
+	return job, nil
+}
+
+func (s Store) setJobEnabled(ctx context.Context, appName string, jobName string, enabled bool) (Job, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Job{}, fmt.Errorf("begin job update: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	record, err := loadJobForUpdate(ctx, tx, appName, jobName)
+	if err != nil {
+		return Job{}, err
+	}
+	if enabled && record.Retired {
+		return Job{}, fmt.Errorf("job %s/%s is retired; restore its job.yml and run dygo db migrate before enabling it", record.AppName, record.Key)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE "job" SET enabled = $1, updated_at = now() WHERE id = $2`, enabled, record.ID); err != nil {
+		return Job{}, fmt.Errorf("update job %s/%s: %w", record.AppName, record.Key, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Job{}, fmt.Errorf("commit job update: %w", err)
+	}
+	record.Enabled = enabled
+	return jobFromRecord(record)
+}
+
+func scanJobRecord(row scanner) (jobRecord, error) {
+	var job jobRecord
+	if err := row.Scan(
+		&job.ID,
+		&job.Name,
+		&job.AppName,
+		&job.Key,
+		&job.Source,
+		&job.Label,
+		&job.Description,
+		&job.Queue,
+		&job.Timeout,
+		&job.Retry,
+		&job.Enabled,
+		&job.Retired,
+	); err != nil {
+		return jobRecord{}, err
+	}
+	return job, nil
+}
+
+func jobFromRecord(record jobRecord) (Job, error) {
+	retry, err := decodeRetry(record.Retry)
+	if err != nil {
+		return Job{}, err
+	}
+	return Job{
+		ID:          record.ID,
+		Name:        record.Name,
+		AppName:     record.AppName,
+		Key:         record.Key,
+		Source:      record.Source,
+		Label:       record.Label,
+		Description: record.Description,
+		Queue:       record.Queue,
+		Timeout:     record.Timeout,
+		Retry:       retry,
+		Enabled:     record.Enabled,
+		Retired:     record.Retired,
+	}, nil
 }
 
 func insertExecution(ctx context.Context, tx pgx.Tx, name string, job jobRecord, timeout time.Duration, retry *jobs.Retry, maxAttempts int, payload json.RawMessage, runAfter time.Time, idempotencyKey string, priority int) (Execution, error) {

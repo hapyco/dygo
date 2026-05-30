@@ -159,6 +159,193 @@ func TestJobExecutionRunCommandWrapsMissingRegisteredJob(t *testing.T) {
 	}
 }
 
+func TestJobListCommandPrintsEmptyResult(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeJobExecutionStore{}
+	withJobExecutionStore(t, fake)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"job", "list"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(job list) error = %v, want nil", err)
+	}
+	if stdout.String() != "No jobs found (development).\n" {
+		t.Fatalf("job list stdout = %q, want empty result", stdout.String())
+	}
+	if fake.listJobsCalls != 1 {
+		t.Fatalf("list jobs calls = %d, want 1", fake.listJobsCalls)
+	}
+}
+
+func TestJobListCommandPrintsRegisteredJobs(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeJobExecutionStore{
+		listJobsResult: []jobstore.Job{
+			{AppName: "crm", Key: "send-email", Source: jobs.JobSourceFile, Label: "Send Email", Queue: "default", Timeout: "30s", Enabled: true},
+			{AppName: "crm", Key: "weekly-report", Source: jobs.JobSourceStudio, Label: "Weekly Report", Queue: "reports", Timeout: "2m", Enabled: false},
+			{AppName: "sales", Key: "old-import", Source: jobs.JobSourceFile, Label: "Old Import", Queue: "default", Timeout: "5m", Enabled: true, Retired: true},
+		},
+	}
+	withJobExecutionStore(t, fake)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"job", "list"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(job list) error = %v, want nil", err)
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"APP    JOB            STATUS    SOURCE  QUEUE    TIMEOUT  LABEL",
+		"crm    send-email     active    file    default  30s      Send Email",
+		"crm    weekly-report  disabled  studio  reports  2m       Weekly Report",
+		"sales  old-import     retired   file    default  5m       Old Import",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("job list stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
+func TestJobShowCommandPrintsDetails(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeJobExecutionStore{
+		getJobResult: jobstore.Job{
+			ID:          7,
+			Name:        "crm.send-email",
+			AppName:     "crm",
+			Key:         "send-email",
+			Source:      jobs.JobSourceFile,
+			Label:       "Send Email",
+			Description: "Sends an email.",
+			Queue:       "default",
+			Timeout:     "30s",
+			Retry:       &jobs.Retry{Attempts: 3, InitialDelay: "10s", MaxDelay: "5m"},
+			Enabled:     true,
+		},
+	}
+	withJobExecutionStore(t, fake)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"job", "show", "crm/send-email"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(job show) error = %v, want nil", err)
+	}
+	if fake.getJobAppName != "crm" || fake.getJobName != "send-email" {
+		t.Fatalf("get job target = %s/%s, want crm/send-email", fake.getJobAppName, fake.getJobName)
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"id: 7",
+		"name: crm.send-email",
+		"app: crm",
+		"job: send-email",
+		"status: active",
+		"source: file",
+		"enabled: true",
+		"retired: false",
+		"label: Send Email",
+		"description: Sends an email.",
+		"queue: default",
+		"timeout: 30s",
+		"retry: attempts=3 initial-delay=10s max-delay=5m",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("job show stdout = %q, want substring %q", output, want)
+		}
+	}
+}
+
+func TestJobDisableCommandDisablesJob(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeJobExecutionStore{
+		disableJobResult: jobstore.Job{AppName: "crm", Key: "send-email", Enabled: false},
+	}
+	withJobExecutionStore(t, fake)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"job", "disable", "crm/send-email"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(job disable) error = %v, want nil", err)
+	}
+	if fake.disableJobAppName != "crm" || fake.disableJobName != "send-email" {
+		t.Fatalf("disable target = %s/%s, want crm/send-email", fake.disableJobAppName, fake.disableJobName)
+	}
+	if stdout.String() != "job disabled: crm/send-email status=disabled (development)\n" {
+		t.Fatalf("job disable stdout = %q, want disabled output", stdout.String())
+	}
+}
+
+func TestJobEnableCommandEnablesJob(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeJobExecutionStore{
+		enableJobResult: jobstore.Job{AppName: "crm", Key: "send-email", Enabled: true},
+	}
+	withJobExecutionStore(t, fake)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"job", "enable", "crm/send-email"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(job enable) error = %v, want nil", err)
+	}
+	if fake.enableJobAppName != "crm" || fake.enableJobName != "send-email" {
+		t.Fatalf("enable target = %s/%s, want crm/send-email", fake.enableJobAppName, fake.enableJobName)
+	}
+	if stdout.String() != "job enabled: crm/send-email status=active (development)\n" {
+		t.Fatalf("job enable stdout = %q, want enabled output", stdout.String())
+	}
+}
+
+func TestJobEnableCommandRejectsRetiredJob(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIConfig(t, root)
+	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, "postgres://user:secret-password@localhost:5432/dygo")
+	t.Chdir(root)
+
+	fake := &fakeJobExecutionStore{enableJobErr: fmt.Errorf("job crm/send-email is retired; restore its job.yml and run dygo db migrate before enabling it")}
+	withJobExecutionStore(t, fake)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"job", "enable", "crm/send-email"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run(job enable retired) error = nil, want retired failure")
+	}
+	if !strings.Contains(err.Error(), "restore its job.yml and run dygo db migrate") {
+		t.Fatalf("Run(job enable retired) error = %q, want restore guidance", err.Error())
+	}
+}
+
 func TestJobExecutionListCommandPrintsEmptyResult(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -489,6 +676,25 @@ type fakeJobExecutionStore struct {
 	databaseURL  string
 	queueConfigs []queues.Config
 
+	listJobsCalls  int
+	listJobsResult []jobstore.Job
+	listJobsErr    error
+
+	getJobAppName string
+	getJobName    string
+	getJobResult  jobstore.Job
+	getJobErr     error
+
+	disableJobAppName string
+	disableJobName    string
+	disableJobResult  jobstore.Job
+	disableJobErr     error
+
+	enableJobAppName string
+	enableJobName    string
+	enableJobResult  jobstore.Job
+	enableJobErr     error
+
 	appName string
 	jobName string
 	payload json.RawMessage
@@ -513,6 +719,41 @@ type fakeJobExecutionStore struct {
 
 	execution  jobstore.Execution
 	enqueueErr error
+}
+
+func (f *fakeJobExecutionStore) ListJobs(context.Context) ([]jobstore.Job, error) {
+	f.listJobsCalls++
+	if f.listJobsErr != nil {
+		return nil, f.listJobsErr
+	}
+	return f.listJobsResult, nil
+}
+
+func (f *fakeJobExecutionStore) GetJob(_ context.Context, appName string, jobName string) (jobstore.Job, error) {
+	f.getJobAppName = appName
+	f.getJobName = jobName
+	if f.getJobErr != nil {
+		return jobstore.Job{}, f.getJobErr
+	}
+	return f.getJobResult, nil
+}
+
+func (f *fakeJobExecutionStore) DisableJob(_ context.Context, appName string, jobName string) (jobstore.Job, error) {
+	f.disableJobAppName = appName
+	f.disableJobName = jobName
+	if f.disableJobErr != nil {
+		return jobstore.Job{}, f.disableJobErr
+	}
+	return f.disableJobResult, nil
+}
+
+func (f *fakeJobExecutionStore) EnableJob(_ context.Context, appName string, jobName string) (jobstore.Job, error) {
+	f.enableJobAppName = appName
+	f.enableJobName = jobName
+	if f.enableJobErr != nil {
+		return jobstore.Job{}, f.enableJobErr
+	}
+	return f.enableJobResult, nil
 }
 
 func (f *fakeJobExecutionStore) Enqueue(_ context.Context, appName string, jobName string, payload json.RawMessage, options jobstore.EnqueueOptions) (jobstore.Execution, error) {

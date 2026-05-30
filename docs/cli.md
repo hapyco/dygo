@@ -119,6 +119,10 @@ Generator boilerplate should live as embedded templates under `internal/generate
 ## Jobs
 
 - `dygo job` - Groups Job operations.
+- `dygo job list` - Lists registered Jobs from the selected environment database.
+- `dygo job show <app>/<job>` - Shows one registered Job's metadata and state.
+- `dygo job disable <app>/<job>` - Disables future enqueues for one Job without deleting metadata or history.
+- `dygo job enable <app>/<job>` - Re-enables future enqueues for one non-retired Job.
 - `dygo job execution` - Groups Job Execution operations.
 - `dygo job exec` - Short alias for `dygo job execution`.
 - `dygo job execution run <app>/<job>` - Queues one Job Execution for manual testing.

@@ -24,6 +24,10 @@ import (
 )
 
 type jobExecutionStore interface {
+	ListJobs(context.Context) ([]jobstore.Job, error)
+	GetJob(context.Context, string, string) (jobstore.Job, error)
+	DisableJob(context.Context, string, string) (jobstore.Job, error)
+	EnableJob(context.Context, string, string) (jobstore.Job, error)
 	Enqueue(context.Context, string, string, json.RawMessage, jobstore.EnqueueOptions) (jobstore.Execution, error)
 	List(context.Context, jobstore.ListOptions) ([]jobstore.Execution, error)
 	Get(context.Context, string) (jobstore.Execution, error)
@@ -54,7 +58,139 @@ func newJobCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 		},
 	}
 
+	cmd.AddCommand(newJobListCommand(ctx, stdout))
+	cmd.AddCommand(newJobShowCommand(ctx, stdout))
+	cmd.AddCommand(newJobDisableCommand(ctx, stdout))
+	cmd.AddCommand(newJobEnableCommand(ctx, stdout))
 	cmd.AddCommand(newJobExecutionCommand(ctx, stdout))
+	return cmd
+}
+
+func newJobListCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List registered Jobs",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			env, store, closeStore, err := jobExecutionStoreForCommand(ctx, envName, false)
+			if err != nil {
+				return err
+			}
+			defer closeStore()
+			jobs, err := store.ListJobs(ctx)
+			if err != nil {
+				return jobExecutionCommandError(err)
+			}
+			if len(jobs) == 0 {
+				if _, err := fmt.Fprintf(stdout, "No jobs found (%s).\n", env); err != nil {
+					return fmt.Errorf("write job list output: %w", err)
+				}
+				return nil
+			}
+			return writeJobList(stdout, jobs)
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+
+	return cmd
+}
+
+func newJobShowCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+
+	cmd := &cobra.Command{
+		Use:   "show <app>/<job>",
+		Short: "Show one registered Job",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			target, err := shape.ParseAppRef(args[0])
+			if err != nil {
+				return err
+			}
+			_, store, closeStore, err := jobExecutionStoreForCommand(ctx, envName, false)
+			if err != nil {
+				return err
+			}
+			defer closeStore()
+			job, err := store.GetJob(ctx, target.App, target.Name)
+			if err != nil {
+				return jobExecutionCommandError(err)
+			}
+			return writeJobShow(stdout, job)
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+
+	return cmd
+}
+
+func newJobDisableCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+
+	cmd := &cobra.Command{
+		Use:   "disable <app>/<job>",
+		Short: "Disable a registered Job",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			target, err := shape.ParseAppRef(args[0])
+			if err != nil {
+				return err
+			}
+			env, store, closeStore, err := jobExecutionStoreForCommand(ctx, envName, false)
+			if err != nil {
+				return err
+			}
+			defer closeStore()
+			job, err := store.DisableJob(ctx, target.App, target.Name)
+			if err != nil {
+				return jobExecutionCommandError(err)
+			}
+			if _, err := fmt.Fprintf(stdout, "job disabled: %s/%s status=%s (%s)\n", job.AppName, job.Key, formatJobStatus(job), env); err != nil {
+				return fmt.Errorf("write job disable output: %w", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+
+	return cmd
+}
+
+func newJobEnableCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+
+	cmd := &cobra.Command{
+		Use:   "enable <app>/<job>",
+		Short: "Enable a registered Job",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			target, err := shape.ParseAppRef(args[0])
+			if err != nil {
+				return err
+			}
+			env, store, closeStore, err := jobExecutionStoreForCommand(ctx, envName, false)
+			if err != nil {
+				return err
+			}
+			defer closeStore()
+			job, err := store.EnableJob(ctx, target.App, target.Name)
+			if err != nil {
+				return jobExecutionCommandError(err)
+			}
+			if _, err := fmt.Fprintf(stdout, "job enabled: %s/%s status=%s (%s)\n", job.AppName, job.Key, formatJobStatus(job), env); err != nil {
+				return fmt.Errorf("write job enable output: %w", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+
 	return cmd
 }
 
@@ -270,6 +406,57 @@ func writeJobExecutionQueued(stdout io.Writer, execution jobstore.Execution, env
 	return nil
 }
 
+func writeJobList(stdout io.Writer, jobs []jobstore.Job) error {
+	table := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	if _, err := fmt.Fprintln(table, "APP\tJOB\tSTATUS\tSOURCE\tQUEUE\tTIMEOUT\tLABEL"); err != nil {
+		return fmt.Errorf("write job list header: %w", err)
+	}
+	for _, job := range jobs {
+		if _, err := fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			job.AppName,
+			job.Key,
+			formatJobStatus(job),
+			emptyDash(job.Source),
+			emptyDash(job.Queue),
+			emptyDash(job.Timeout),
+			emptyDash(job.Label),
+		); err != nil {
+			return fmt.Errorf("write job list row: %w", err)
+		}
+	}
+	if err := table.Flush(); err != nil {
+		return fmt.Errorf("flush job list output: %w", err)
+	}
+	return nil
+}
+
+func writeJobShow(stdout io.Writer, job jobstore.Job) error {
+	lines := []struct {
+		label string
+		value string
+	}{
+		{"id", strconv.FormatInt(job.ID, 10)},
+		{"name", emptyDash(job.Name)},
+		{"app", emptyDash(job.AppName)},
+		{"job", emptyDash(job.Key)},
+		{"status", formatJobStatus(job)},
+		{"source", emptyDash(job.Source)},
+		{"enabled", strconv.FormatBool(job.Enabled)},
+		{"retired", strconv.FormatBool(job.Retired)},
+		{"label", emptyDash(job.Label)},
+		{"description", emptyDash(job.Description)},
+		{"queue", emptyDash(job.Queue)},
+		{"timeout", emptyDash(job.Timeout)},
+		{"retry", formatJobExecutionRetry(job.Retry)},
+	}
+	for _, line := range lines {
+		if _, err := fmt.Fprintf(stdout, "%s: %s\n", line.label, line.value); err != nil {
+			return fmt.Errorf("write job show output: %w", err)
+		}
+	}
+	return nil
+}
+
 func writeJobExecutionList(stdout io.Writer, executions []jobstore.Execution) error {
 	table := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	if _, err := fmt.Fprintln(table, "ID\tNAME\tJOB\tSTATUS\tQUEUE\tATTEMPTS\tRUN_AFTER\tSTARTED_AT\tFINISHED_AT"); err != nil {
@@ -349,6 +536,16 @@ func jobExecutionCommandError(err error) error {
 		return fmt.Errorf("%w; run dygo db migrate", err)
 	}
 	return err
+}
+
+func formatJobStatus(job jobstore.Job) string {
+	if job.Retired {
+		return "retired"
+	}
+	if !job.Enabled {
+		return "disabled"
+	}
+	return "active"
 }
 
 func formatJobExecutionAttempts(execution jobstore.Execution) string {

@@ -335,13 +335,13 @@ CREATE TABLE public.job (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     app_id bigint NOT NULL,
     key text NOT NULL,
-    source text DEFAULT 'file'::text NOT NULL,
     label text NOT NULL,
     description text,
     queue text DEFAULT 'default'::text NOT NULL,
     timeout text NOT NULL,
     retry jsonb,
     enabled boolean DEFAULT true NOT NULL,
+    source text DEFAULT 'file'::text NOT NULL,
     retired boolean DEFAULT false NOT NULL,
     CONSTRAINT job_source_check CHECK ((source = ANY (ARRAY['file'::text, 'studio'::text, 'system'::text])))
 );
