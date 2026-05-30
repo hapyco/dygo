@@ -171,6 +171,37 @@ func TestNewRecordHookRegistryExposesTransactionalRecordData(t *testing.T) {
 	}
 }
 
+func TestNewRecordHookRegistryExposesJobDataForTransactionalHooks(t *testing.T) {
+	t.Parallel()
+
+	queryer := &beginnerRecordQueryer{failingRecordQueryer: &failingRecordQueryer{err: errors.New("unused")}}
+	var hasJobs bool
+	registry, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
+		func(registry sdk.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "enqueue-background-work", func(_ context.Context, dygo sdk.RecordHook) error {
+				hasJobs = dygo.Jobs != nil
+				return nil
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRecordHookRegistry() error = %v, want nil", err)
+	}
+
+	err = registry.Run(context.Background(), db.RecordHookContext{
+		Event:   db.RecordBeforeCreate,
+		AppName: "sales",
+		Entity:  "lead",
+		Queryer: queryer,
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if !hasJobs {
+		t.Fatal("RecordHook.Jobs = nil, want transactional job data")
+	}
+}
+
 func TestRecordDataListPassesFiltersAndSortThroughHookQueryer(t *testing.T) {
 	t.Parallel()
 
@@ -373,6 +404,14 @@ func (q *failingRecordQueryer) QueryRow(_ context.Context, sql string, args ...a
 
 func (q *failingRecordQueryer) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
 	return pgconn.CommandTag{}, q.err
+}
+
+type beginnerRecordQueryer struct {
+	*failingRecordQueryer
+}
+
+func (q *beginnerRecordQueryer) Begin(context.Context) (pgx.Tx, error) {
+	return nil, nil
 }
 
 type failingRow struct {

@@ -1,0 +1,126 @@
+label: Job Execution
+description: Durable queued execution of a background Job.
+icon: list-checks
+is-system: true
+name:
+  strategy: random
+fields:
+  - name: job
+    label: Job
+    type: link
+    required: true
+    index: true
+    options:
+      entity: job
+
+  - name: app-name
+    label: App Name
+    type: text
+    required: true
+    index: true
+
+  - name: job-name
+    label: Job Name
+    type: text
+    required: true
+    index: true
+
+  - name: queue
+    label: Queue
+    type: text
+    required: true
+    index: true
+
+  - name: status
+    label: Status
+    type: select
+    required: true
+    default: queued
+    index: true
+    options:
+      values:
+        - queued
+        - running
+        - succeeded
+        - failed
+        - cancelled
+
+  - name: priority
+    label: Priority
+    type: int
+    default: 0
+    index: true
+
+  - name: payload
+    label: Payload
+    type: json
+
+  - name: result
+    label: Result
+    type: json
+
+  - name: error
+    label: Error
+    type: long-text
+
+  - name: attempts
+    label: Attempts
+    type: int
+    required: true
+    default: 0
+
+  - name: max-attempts
+    label: Max Attempts
+    type: int
+    required: true
+
+  - name: retry
+    label: Retry
+    type: json
+
+  - name: run-after
+    label: Run After
+    type: datetime
+    required: true
+    index: true
+
+  - name: started-at
+    label: Started At
+    type: datetime
+
+  - name: finished-at
+    label: Finished At
+    type: datetime
+    index: true
+
+  - name: locked-by
+    label: Locked By
+    type: text
+
+  - name: locked-until
+    label: Locked Until
+    type: datetime
+    index: true
+
+  - name: idempotency-key
+    label: Idempotency Key
+    type: text
+
+  - name: actor
+    label: Actor
+    type: link
+    index: true
+    options:
+      entity: user
+      foreign-key: false
+
+indexes:
+  - name: job-execution-claim
+    fields: [status, queue, run-after, priority]
+
+  - name: job-execution-recovery
+    fields: [status, locked-until]
+
+constraints:
+  - type: unique
+    fields: [job, idempotency-key]

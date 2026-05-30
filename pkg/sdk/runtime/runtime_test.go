@@ -51,3 +51,21 @@ func TestRunReturnsRecordHookRegistrarErrors(t *testing.T) {
 		t.Fatalf("Run(version) error = %q, want hook configuration context", err.Error())
 	}
 }
+
+func TestRunReturnsJobRegistrarErrors(t *testing.T) {
+	t.Parallel()
+
+	err := Run(context.Background(), []string{"version"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, Options{
+		Jobs: []sdk.JobRegistrar{
+			func(sdk.JobRegistry) error {
+				return errors.New("boom")
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("Run(version) error = nil, want registrar error")
+	}
+	if !strings.Contains(err.Error(), "configure jobs") || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("Run(version) error = %q, want job configuration context", err.Error())
+	}
+}

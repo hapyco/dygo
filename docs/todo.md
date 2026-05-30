@@ -2,7 +2,7 @@
 
 Use this as a flat local staging list. Track progress with Markdown checkboxes; when we sync to GitHub later, create/update the matching issues and remove synced checked items from this file.
 
-Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
+Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 
 ## Open issues
 
@@ -12,7 +12,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #7 Add project documentation links
 - [ ] #21 Split field type registry files by responsibility
 - [ ] #24 Add role inheritance for hierarchical permissions
-- [ ] #31 Add worker command
+- [x] #31 Add worker command
 - [ ] #32 Add scheduler command
 - [ ] #33 Add site command group
 - [ ] #38 Add one-command local project setup
@@ -29,6 +29,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #194 Add Studio theming support and dark mode
 - [ ] #88 Add post-transaction Record hooks
 - [ ] #89 Design hook priority and override policy
+- [ ] #210 Add compiled hook registration discovery path for non-runtime hook introspection
 - [ ] #98 Add secrets rotation recovery diagnostics
 - [ ] #99 Design production secrets recipients and provider support
 - [ ] #103 Design actor-aware hook data access modes
@@ -45,18 +46,42 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #196 Add Studio command palette v2 with contextual actions and record search
 - [ ] #197 Add Studio multi-tab navigation support
 - [ ] #198 Add pinned section to Studio sidebar
+- [ ] Finalize Single Entity's storage model
 - [ ] #130 Define Record rename and system name behavior
 - [ ] #131 Add Studio form validation and field error mapping
 - [ ] #132 Design Studio record form layout metadata
 - [ ] #133 Add Record tagging foundation
 - [ ] #134 Add Record todo foundation
 - [ ] #135 Add per-Record sharing foundation
-- [ ] #138 Design durable Jobs and Queues architecture
-- [ ] #139 Add Core Job metadata and Postgres queue storage
-- [ ] #140 Implement Job worker runtime, claiming, retries, and timeouts
-- [ ] #141 Add SDK and internal Jobs APIs
-- [ ] #142 Add Job operations visibility and retry controls
+- [x] #138 Design durable Jobs and Queues architecture
+- [x] #139 Add Core Job metadata and Postgres queue storage
+- [x] #140 Implement Job worker runtime, claiming, retries, and timeouts
+- [x] #141 Add SDK and internal Jobs APIs
+- [x] #142 Add Job operations visibility and retry controls
 - [ ] #143 Add job-backed importer foundation for data imports
+- [x] #211 Let developers write a simple Job `Run` function and have dygo wire it automatically
+- [x] #212 Add one command to create a new Job with `job.yml` and `run.go`
+- [x] Create `job.yml` schema for editor validation and autocomplete
+- [x] #213 Let developers run a Job manually for testing
+- [ ] #214 Let Studio users schedule Jobs like "every Monday at 9 AM"
+- [ ] #215 Let apps ship recurring schedules with code
+- [x] #216 Show waiting, running, successful, failed, and cancelled Jobs in Studio
+- [ ] #217 Let Studio users retry a failed Job
+- [ ] #218 Let Studio users cancel a Job that has not started yet
+- [x] #219 Let Studio users pause or disable a Job without deleting it
+- [ ] #220 Show friendly forms for Job inputs instead of raw JSON
+- [x] #221 Show why a Job failed and when it will retry
+- [ ] #222 Clean up old Job history automatically
+- [x] #223 Make production setup clearly show that app server and worker both need to run
+- [x] #224 Let workers pick up new Jobs instantly instead of waiting for the poll cycle
+- [x] Guard Job Execution completion and failure updates with claim identity
+- [x] Recover panics from Job handlers and record them as retryable failures
+- [x] Shorten active Job Execution leases when worker shutdown timeout expires
+- [x] Store Job retry delays with JSON keys the runtime can decode
+- [ ] Treat late successful Job handler returns after timeout as timeout failures
+- [ ] Pass worker shutdown cancellation to Job handlers while preserving uncancelled DB finalization
+- [x] #225 Define removed `job.yml` retirement behavior for synced Core Job rows
+- [ ] #226 Add Core retention policy Entity for platform record cleanup
 - [ ] #144 Add Studio keyboard shortcut foundation
 - [ ] #199 Add custom Studio right-click context menus
 - [ ] #145 Add Studio Kanban view for Records
@@ -67,7 +92,10 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #162 Watch field type behavior contract shape
 - [ ] #169 Expose trusted system record writer API for app code
 - [ ] #171 Support environment-oriented fixtures
+- [ ] #227 Cache fetched-link traversal in record fetch to reuse shared path prefixes
+- [ ] #228 Add Link on-delete policies in metadata and schema planning (restrict/cascade/set-null)
 - [ ] #176 Add dygo repair for generated project artifacts
+- [ ] #229 Make entity generation and hook runner writes atomic to avoid partial scaffolds
 - [ ] #179 Add Core Preference entity for per-user UI and app state
 - [ ] #182 Polish Studio page header shell
 - [ ] #183 Polish Studio toolbar shell
@@ -80,6 +108,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-29.
 - [ ] #189 Polish Studio filter dirty state
 - [ ] #190 Canonicalize invalid Studio filter URLs
 - [ ] #201 Extract Studio record-list URL query canonicalization helper
+- [ ] #230 Debounce record-list route updates for filter changes to reduce replace churn
 - [ ] #192 Support filtered Link field records
 - [ ] #202 Add saved filters for Studio record lists
 

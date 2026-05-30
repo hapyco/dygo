@@ -20,7 +20,7 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 
 `dygo dev` keeps the stable backend ready URL on stdout and writes local development diagnostics to stderr, including the project root, environment, Studio dev server startup, external Studio target when supplied, and Vite output. Loopback URLs are displayed as `localhost`, but dygo may still bind services to `127.0.0.1` for deterministic local-only networking. It must not print raw database URLs or decrypted secret values.
 
-`dygo doctor` checks root/config, secrets, database connectivity, schema snapshot state, app and Entity metadata, route conflicts, fixture validity, hook wiring, generated project runner, Studio assets, and first-run setup state.
+`dygo doctor` checks root/config, queue config, secrets, database connectivity, schema snapshot state, app, Entity, and Job metadata, route conflicts, fixture validity, hook and Job runner wiring, generated project runner, Studio assets, and first-run setup state.
 
 ## Database
 
@@ -71,8 +71,8 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 
 - `dygo hook` - Groups hook inspection and maintenance commands.
 - `dygo hook list` - Lists discovered hook packages, Entity hook files, runner wiring status, and compiled hook registrations when available.
-- `dygo hook validate` - Validates hook file conventions, Entity references, duplicate compiled hook IDs when available, generated registrars, and runner wiring.
-- `dygo hook sync` - Updates generated project runner wiring for discovered app hook packages without creating hook files.
+- `dygo hook validate` - Validates hook file conventions, Job `Run` files, generated registrars, and runner wiring.
+- `dygo hook sync` - Updates generated project runner wiring for discovered app hook and Job packages without creating hook or Job files.
 - `dygo hook sync --dry-run` - Prints runner wiring changes without writing.
 
 ## Generate
@@ -84,6 +84,7 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 - `dygo generate entity <app>/<entity>` - Generates the standard Entity bundle.
 - `dygo generate collection <app>/<collection>` - Generates reusable collection row Entity metadata.
 - `dygo generate hook <app>/<entity>` - Adds Entity hook scaffolding and project runner wiring to an existing Entity.
+- `dygo generate job <app>/<job>` - Adds Job metadata, a starter `run.go`, and project runner wiring.
 - `dygo generate fixture <app>/<entity>` - Adds a fixture skeleton to an existing Entity.
 - `dygo generate test <app>/<entity>` - Adds Go test boilerplate for an existing Entity.
 
@@ -103,7 +104,9 @@ Collection generators create metadata only. Collection rows do not get fixture s
 - `dygo generate collection <app>/<collection> --dry-run` - Prints collection metadata files that would be created or updated without writing.
 - `dygo generate collection <app>/<collection> --force` - Overwrites dygo-generated collection metadata only; custom files still fail.
 - `dygo generate hook <app>/<entity> --dry-run` - Prints hook scaffold and runner wiring changes without writing.
-- `dygo generate hook <app>/<entity> --force` - Overwrites dygo-generated hook scaffolding only; custom hook files still fail.
+- `dygo generate hook <app>/<entity> --force` - Refreshes generated runner wiring only; existing `hooks.go` files are developer-owned and are not overwritten.
+- `dygo generate job <app>/<job> --dry-run` - Prints Job scaffold and runner wiring changes without writing.
+- `dygo generate job <app>/<job> --force` - Refreshes dygo-generated Job metadata only; existing `run.go` files are developer-owned and are not overwritten.
 - `dygo generate fixture <app>/<entity> --dry-run` - Prints fixture skeleton files that would be created or updated without writing.
 - `dygo generate fixture <app>/<entity> --force` - Overwrites dygo-generated fixture skeletons only; custom files still fail.
 - `dygo generate test <app>/<entity> --dry-run` - Prints Go test files that would be created or updated without writing.
@@ -112,6 +115,28 @@ Collection generators create metadata only. Collection rows do not get fixture s
 Generators are non-interactive by default. They write when there are no conflicts, skip unchanged generated files, and fail on custom-file conflicts with a clear message.
 
 Generator boilerplate should live as embedded templates under `internal/generate/templates/`. The dygo binary should embed these templates at build time instead of reading template files from disk at runtime.
+
+## Jobs
+
+- `dygo job` - Groups Job operations.
+- `dygo job list` - Lists registered Jobs from the selected environment database.
+- `dygo job show <app>/<job>` - Shows one registered Job's metadata and state.
+- `dygo job disable <app>/<job>` - Disables future enqueues for one Job without deleting metadata or history.
+- `dygo job enable <app>/<job>` - Re-enables future enqueues for one non-retired Job.
+- `dygo job execution` - Groups Job Execution operations.
+- `dygo job exec` - Short alias for `dygo job execution`.
+- `dygo job execution run <app>/<job>` - Queues one Job Execution for manual testing.
+- `dygo job exec run <app>/<job>` - Short alias for the same command.
+- `dygo job execution run <app>/<job> --payload '{"example":true}'` - Queues with a JSON payload; omitted payload defaults to `{}`.
+- `dygo job execution run <app>/<job> --idempotency-key <key>` - Queues with a stable duplicate-prevention key.
+- `dygo job execution run <app>/<job> --env <environment>` - Queues against `development`, `staging`, or `production`.
+- `dygo job execution list` - Lists recent Job Executions from the selected environment database.
+- `dygo job execution list --limit 50` - Lists more recent executions; default limit is `20`.
+- `dygo job execution show <id-or-name>` - Shows payload, result, error, timing, lock, retry, and idempotency details for one execution.
+- `dygo job execution cancel <id-or-name>` - Cancels one queued execution; running or finished executions are not cancelled.
+- `dygo job execution retry <id-or-name> --idempotency-key <key>` - Queues a fresh manual retry for one failed execution using the old payload and the new key.
+
+`job execution run` enqueues durable work; it does not run the handler inline. Start `dygo worker` to process queued executions.
 
 ## Routes
 
@@ -149,9 +174,19 @@ Permission commands default to `--env development` and read live Core permission
 
 Secret names support root keys and dot-separated YAML paths, such as `DATABASE_URL` or `database.url`. `dygo secret get` prints only the raw value to stdout; errors and diagnostics go to stderr.
 
+## Worker
+
+- `dygo worker` - Runs Job workers for all registered queues.
+- `dygo worker --queue <queue>` - Runs workers for one registered queue; the flag may be repeated.
+- `dygo worker --once` - Processes one available batch and exits.
+- `dygo worker --concurrency <n>` - Overrides configured queue concurrency for this worker process.
+- `dygo worker --poll-only` - Disables PostgreSQL notifications and only polls for queued executions.
+- `dygo worker --poll-interval <duration>` - Sets the fallback polling interval; defaults to `60s`.
+
+Production deployments that use Jobs should run `dygo serve` and `dygo worker` as separate long-running processes. `dygo serve` does not process queued Job Executions.
+
 ## Deferred CLI Surface
 
-- `dygo worker` - Defer until the durable job runtime is designed and implemented.
 - `dygo scheduler` - Defer until schedule metadata and recurring job runtime exist.
 - Global `--json` - Defer until dygo has a consistent output contract for command results, validation errors, dry-run plans, prompts, redaction, and streaming commands.
 - Smart shell completions - Defer until command structure is implemented; start with filesystem/static completions for `--env`, `<app>`, `<app>/<entity>`, hook events, and completion shells.

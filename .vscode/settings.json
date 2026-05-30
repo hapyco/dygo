@@ -16,6 +16,10 @@
       "apps/*/entities/*/fixtures.yml",
       ".dygo/apps/*/entities/*/fixtures.yml"
     ],
+    "./schemas/job.schema.json": [
+      "apps/*/jobs/*/job.yml",
+      ".dygo/apps/*/jobs/*/job.yml"
+    ],
     "./schemas/patch.schema.json": [
       "apps/*/patches/*.yml",
       ".dygo/apps/*/patches/*.yml"

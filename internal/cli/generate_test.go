@@ -90,6 +90,107 @@ func TestGenerateEntityDryRunDoesNotWrite(t *testing.T) {
 	}
 }
 
+func TestGenerateEntityForcePreservesExistingHookFile(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIGoModule(t, root, "example.com/acme")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := Run(context.Background(), []string{"generate", "entity", "sales/lead"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("Run(generate entity) error = %v, want nil", err)
+	}
+
+	hookPath := filepath.Join(root, "apps", "sales", "entities", "lead", "hooks.go")
+	existing := `package hooks
+
+import "github.com/hapyco/dygo/pkg/sdk"
+
+func Register(registry sdk.RecordHookRegistry) error {
+	return nil
+}
+`
+	if err := os.WriteFile(hookPath, []byte(existing), 0o644); err != nil {
+		t.Fatalf("WriteFile(hooks.go) error = %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := Run(context.Background(), []string{"generate", "entity", "sales/lead", "--force"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("Run(generate entity --force) error = %v, want nil", err)
+	}
+	if got := readCLIFile(t, hookPath); got != existing {
+		t.Fatalf("hooks.go changed after generate entity --force:\n%s", got)
+	}
+	if !strings.Contains(stdout.String(), "hook: apps/sales/entities/lead/hooks.go (existing)") {
+		t.Fatalf("generate entity --force stdout = %q, want hook existing", stdout.String())
+	}
+}
+
+func TestGenerateJobCommandCreatesScaffold(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIGoModule(t, root, "example.com/acme")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"generate", "job", "sales/send-email"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(generate job) error = %v, want nil", err)
+	}
+	for _, want := range []string{
+		"generated job for sales/send-email",
+		"job: apps/sales/jobs/send-email/job.yml (created)",
+		"run: apps/sales/jobs/send-email/run.go (created)",
+		"runner: cmd/dygo/main.go (created)",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("generate job stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	for _, path := range []string{
+		"apps/sales/jobs/send-email/job.yml",
+		"apps/sales/jobs/send-email/run.go",
+		"cmd/dygo/main.go",
+	} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(path))); err != nil {
+			t.Fatalf("Stat(%s) error = %v, want generated file", path, err)
+		}
+	}
+}
+
+func TestGenerateJobDryRunDoesNotWrite(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIGoModule(t, root, "example.com/acme")
+	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
+	t.Chdir(root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := Run(context.Background(), []string{"generate", "job", "sales/send-email", "--dry-run"}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run(generate job --dry-run) error = %v, want nil", err)
+	}
+	for _, want := range []string{
+		"generated job for sales/send-email",
+		"job: apps/sales/jobs/send-email/job.yml (would create)",
+		"run: apps/sales/jobs/send-email/run.go (would create)",
+		"runner: cmd/dygo/main.go (would create)",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("generate job --dry-run stdout = %q, want substring %q", stdout.String(), want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "apps", "sales", "jobs", "send-email", "job.yml")); !os.IsNotExist(err) {
+		t.Fatalf("dry-run job stat error = %v, want missing generated file", err)
+	}
+}
+
 func TestGenerateCollectionFixtureAndTestCommands(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)

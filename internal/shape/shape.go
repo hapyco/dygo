@@ -13,6 +13,7 @@ const (
 
 	AppsDir          = "apps"
 	ConfigDir        = "config"
+	ConfigQueuesFile = "config/queues.yml"
 	ConfigSecretsDir = "config/secrets"
 	DatabaseDir      = "db"
 	SchemaSnapshot   = "db/schema.sql"

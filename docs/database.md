@@ -144,7 +144,7 @@ Safe operations include creating missing metadata tables, adding safe metadata c
 
 Existing early-development databases created before system Record names may report a missing `name` system column. That is treated as unsupported drift because dygo cannot safely invent stable names for existing rows without an explicit patch or reset.
 
-After the schema plan succeeds, `dygo db migrate` upserts discovered Apps, Entities, Fields, Indexes, and Constraints into the Core metadata tables. This gives later runtime APIs and Studio a database-backed metadata registry while the YAML files remain the source of truth.
+After the schema plan succeeds, `dygo db migrate` upserts discovered Apps, Entities, Jobs, Fields, Indexes, and Constraints into the Core metadata tables. This gives later runtime APIs and Studio a database-backed metadata registry while the YAML files remain the source of truth. File-backed Jobs whose `job.yml` was removed are marked retired, not deleted, so old Job Executions remain inspectable.
 
 App-owned fixtures are applied by `dygo db migrate` and can also be applied explicitly with `dygo fixture apply`. See [Fixtures](fixtures.md) for the fixture file shape.
 

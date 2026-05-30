@@ -9,6 +9,7 @@ import (
 	"github.com/hapyco/dygo/internal/entity/catalog"
 	"github.com/hapyco/dygo/internal/entity/fieldtype"
 	"github.com/hapyco/dygo/internal/entity/schema"
+	"github.com/hapyco/dygo/internal/jobs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -146,6 +147,45 @@ func TestBuildMetadataRecordsUsesCoreMetadataNamingFormats(t *testing.T) {
 	}
 	if got := records.Constraints[0].RecordName; got != "sales.invoice.invoice-customer-key" {
 		t.Fatalf("invoice constraint record name = %q, want sales.invoice.invoice-customer-key", got)
+	}
+}
+
+func TestBuildMetadataRecordsStoresJobMetadata(t *testing.T) {
+	records, err := buildMetadataRecords(metadataCatalog{
+		Apps: []manifest.LoadedApp{
+			{Manifest: manifest.Manifest{Name: "sales", Label: "Sales", Version: "0.1.0"}},
+		},
+		Entities: []catalog.LoadedEntity{
+			metadataNamingEntity("job", schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{app}.{key}"}),
+		},
+		Jobs: []jobs.LoadedJob{
+			{
+				AppName: "sales",
+				Job: jobs.Job{
+					Name:        "send-welcome-email",
+					Label:       "Send Welcome Email",
+					Description: "Sends a welcome email.",
+					Queue:       "email",
+					Timeout:     "30s",
+					Retry:       &jobs.Retry{Attempts: 3},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildMetadataRecords() error = %v, want nil", err)
+	}
+	if len(records.Jobs) != 1 {
+		t.Fatalf("job records count = %d, want 1", len(records.Jobs))
+	}
+	job := records.Jobs[0]
+	if job.Name != "sales.send-welcome-email" || job.Key != "send-welcome-email" || job.Source != jobs.JobSourceFile || job.Label != "Send Welcome Email" || job.Queue != "email" || job.Timeout != "30s" || !job.Enabled || job.Retired {
+		t.Fatalf("job record = %+v, want synced sales job metadata", job)
+	}
+	for _, want := range []string{`"attempts":3`, `"initial-delay":"10s"`, `"max-delay":"5m"`} {
+		if !strings.Contains(string(job.Retry), want) {
+			t.Fatalf("job retry = %s, want %s", job.Retry, want)
+		}
 	}
 }
 

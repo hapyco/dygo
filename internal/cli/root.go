@@ -20,6 +20,7 @@ import (
 	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/fixtures"
 	recordhooks "github.com/hapyco/dygo/internal/hooks"
+	jobruntime "github.com/hapyco/dygo/internal/jobs/runtime"
 	"github.com/hapyco/dygo/internal/server"
 	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/studio"
@@ -59,6 +60,7 @@ type schemaSyncRunner interface {
 // Options configures dygo CLI runtime extensions.
 type Options struct {
 	RecordHooks []sdk.RecordHookRegistrar
+	Jobs        []sdk.JobRegistrar
 }
 
 var startStudioDevServer = startStudioDevServerProcess
@@ -75,7 +77,11 @@ func RunWithOptions(ctx context.Context, args []string, stdin io.Reader, stdout,
 	if err != nil {
 		return fmt.Errorf("configure record hooks: %w", err)
 	}
-	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, defaultPermissionRunner{}, recordHooks)
+	jobRegistry, err := jobruntime.NewRegistry(options.Jobs)
+	if err != nil {
+		return fmt.Errorf("configure jobs: %w", err)
+	}
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, defaultPermissionRunner{}, recordHooks, jobRegistry)
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, checkDatabase databaseChecker) error {
@@ -92,11 +98,11 @@ func runWithServicesAndSetup(ctx context.Context, args []string, stdin io.Reader
 }
 
 func runWithServicesAndSetupAndFixtures(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner) error {
-	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, database, sync, setup, fixture, defaultPermissionRunner{}, nil)
+	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, database, sync, setup, fixture, defaultPermissionRunner{}, nil, nil)
 }
 
-func runWithServicesAndSetupAndFixturesAndHooks(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, permission permissionRunner, recordHooks *db.RecordHookRegistry) error {
-	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup, fixture, permission, recordHooks)
+func runWithServicesAndSetupAndFixturesAndHooks(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, permission permissionRunner, recordHooks *db.RecordHookRegistry, jobRegistry *jobruntime.Registry) error {
+	cmd, err := newRootCommand(ctx, stdin, stdout, stderr, serve, database, sync, setup, fixture, permission, recordHooks, jobRegistry)
 	if err != nil {
 		return err
 	}
@@ -117,10 +123,14 @@ func NewRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	if err != nil {
 		return nil, fmt.Errorf("configure record hooks: %w", err)
 	}
-	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, defaultPermissionRunner{}, recordHooks)
+	jobRegistry, err := jobruntime.NewRegistry(nil)
+	if err != nil {
+		return nil, fmt.Errorf("configure jobs: %w", err)
+	}
+	return newRootCommand(ctx, stdin, stdout, stderr, server.Serve, db.NewManager(migrator), migrator, defaultAdminSetupRunner{}, defaultFixtureRunner{recordHooks: recordHooks}, defaultPermissionRunner{}, recordHooks, jobRegistry)
 }
 
-func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, permission permissionRunner, recordHooks *db.RecordHookRegistry) (*cobra.Command, error) {
+func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, serve serveRunner, database databaseRunner, sync schemaSyncRunner, setup adminSetupRunner, fixture fixtureRunner, permission permissionRunner, recordHooks *db.RecordHookRegistry, jobRegistry *jobruntime.Registry) (*cobra.Command, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
 	}
@@ -181,10 +191,12 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 	root.AddCommand(newAppCommand(stdout))
 	root.AddCommand(newEntityCommand(stdout))
 	root.AddCommand(newHookCommand(stdout))
+	root.AddCommand(newJobCommand(ctx, stdout))
 	root.AddCommand(newGenerateCommand(stdout))
 	root.AddCommand(newRouteCommand(stdout))
 	root.AddCommand(newPermissionCommand(ctx, stdout, permission))
 	root.AddCommand(newSecretCommand(ctx, stdin, stdout, stderr))
+	root.AddCommand(newWorkerCommand(ctx, stdout, stderr, recordHooks, jobRegistry))
 
 	return root, nil
 }

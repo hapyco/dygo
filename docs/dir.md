@@ -42,7 +42,7 @@ project/                         - Generated dygo project root
   config/                        - Project config files
     secrets/                     - Encrypted environment secrets
     storage.yml                  - Future storage config
-    queues.yml                   - Future queue config
+    queues.yml                   - Queue registry and concurrency config
     logging.yml                  - Future logging config
   .dygo/                         - Local ignored runtime state
     apps/                        - Cached first-party assets

@@ -96,6 +96,7 @@ func TestKebabNamePatternsMatchRuntime(t *testing.T) {
 	appSchema := readJSONSchema(t, "app.schema.json")
 	entitySchema := readJSONSchema(t, "entity.schema.json")
 	fixtureSchema := readJSONSchema(t, "fixture.schema.json")
+	jobSchema := readJSONSchema(t, "job.schema.json")
 	patchSchema := readJSONSchema(t, "patch.schema.json")
 
 	assertPattern(t, schemaObject(t, appSchema, "properties", "name"), fieldtype.NamePattern, "app name")
@@ -104,7 +105,18 @@ func TestKebabNamePatternsMatchRuntime(t *testing.T) {
 	assertPattern(t, schemaObject(t, fixtureSchema, "properties", "entity"), fieldtype.NamePattern, "fixture entity")
 	assertPattern(t, schemaObject(t, schemaObject(t, fixtureSchema, "properties"), "match", "items"), fieldtype.NamePattern, "fixture match")
 	assertPattern(t, schemaObject(t, schemaObject(t, fixtureSchema, "$defs"), "record", "propertyNames"), fieldtype.NamePattern, "fixture record field")
+	assertPattern(t, schemaObject(t, jobSchema, "properties", "queue"), fieldtype.NamePattern, "job queue")
 	assertPattern(t, schemaObject(t, schemaObject(t, patchSchema, "$defs"), "kebabName"), fieldtype.NamePattern, "patch kebabName")
+}
+
+func TestJobSchemaContractsMatchRuntime(t *testing.T) {
+	schema := readJSONSchema(t, "job.schema.json")
+
+	assertSameStringSet(t, schemaStringEnum(t, schema, "required"), []string{"label", "timeout"})
+	retry := schemaObject(t, schema, "properties", "retry")
+	assertSameStringSet(t, schemaStringEnum(t, retry, "required"), []string{"attempts"})
+	attempts := schemaObject(t, retry, "properties", "attempts")
+	assertNumber(t, attempts["minimum"], 2, "retry attempts minimum")
 }
 
 func TestPatchSchemaContractsMatchRuntime(t *testing.T) {

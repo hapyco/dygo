@@ -325,6 +325,89 @@ ALTER TABLE public.index ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: job; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.job (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    app_id bigint NOT NULL,
+    key text NOT NULL,
+    label text NOT NULL,
+    description text,
+    queue text DEFAULT 'default'::text NOT NULL,
+    timeout text NOT NULL,
+    retry jsonb,
+    enabled boolean DEFAULT true NOT NULL,
+    source text DEFAULT 'file'::text NOT NULL,
+    retired boolean DEFAULT false NOT NULL,
+    CONSTRAINT job_source_check CHECK ((source = ANY (ARRAY['file'::text, 'studio'::text, 'system'::text])))
+);
+
+
+--
+-- Name: job_execution; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.job_execution (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    job_id bigint NOT NULL,
+    app_name text NOT NULL,
+    job_name text NOT NULL,
+    queue text NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    priority integer DEFAULT 0,
+    payload jsonb,
+    result jsonb,
+    error text,
+    attempts integer DEFAULT 0 NOT NULL,
+    max_attempts integer NOT NULL,
+    retry jsonb,
+    run_after timestamp with time zone NOT NULL,
+    started_at timestamp with time zone,
+    finished_at timestamp with time zone,
+    locked_by text,
+    locked_until timestamp with time zone,
+    idempotency_key text,
+    actor_id bigint,
+    CONSTRAINT job_execution_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text])))
+);
+
+
+--
+-- Name: job_execution_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.job_execution ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.job_execution_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: job_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.job ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.job_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: language; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -740,6 +823,54 @@ ALTER TABLE ONLY public.index
 
 
 --
+-- Name: job job_app_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.job
+    ADD CONSTRAINT job_app_key_key UNIQUE (app_id, key);
+
+
+--
+-- Name: job_execution job_execution_job_idempotency_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.job_execution
+    ADD CONSTRAINT job_execution_job_idempotency_key_key UNIQUE (job_id, idempotency_key);
+
+
+--
+-- Name: job_execution job_execution_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.job_execution
+    ADD CONSTRAINT job_execution_name_key UNIQUE (name);
+
+
+--
+-- Name: job_execution job_execution_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.job_execution
+    ADD CONSTRAINT job_execution_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: job job_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.job
+    ADD CONSTRAINT job_name_key UNIQUE (name);
+
+
+--
+-- Name: job job_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.job
+    ADD CONSTRAINT job_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: language language_code_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1020,6 +1151,132 @@ CREATE INDEX index_index_name_idx ON public.index USING btree (index_name);
 
 
 --
+-- Name: job_app_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_app_id_idx ON public.job USING btree (app_id);
+
+
+--
+-- Name: job_enabled_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_enabled_idx ON public.job USING btree (enabled);
+
+
+--
+-- Name: job_execution_actor_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_actor_id_idx ON public.job_execution USING btree (actor_id);
+
+
+--
+-- Name: job_execution_app_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_app_name_idx ON public.job_execution USING btree (app_name);
+
+
+--
+-- Name: job_execution_claim; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_claim ON public.job_execution USING btree (status, queue, run_after, priority);
+
+
+--
+-- Name: job_execution_finished_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_finished_at_idx ON public.job_execution USING btree (finished_at);
+
+
+--
+-- Name: job_execution_job_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_job_id_idx ON public.job_execution USING btree (job_id);
+
+
+--
+-- Name: job_execution_job_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_job_name_idx ON public.job_execution USING btree (job_name);
+
+
+--
+-- Name: job_execution_locked_until_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_locked_until_idx ON public.job_execution USING btree (locked_until);
+
+
+--
+-- Name: job_execution_priority_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_priority_idx ON public.job_execution USING btree (priority);
+
+
+--
+-- Name: job_execution_queue_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_queue_idx ON public.job_execution USING btree (queue);
+
+
+--
+-- Name: job_execution_recovery; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_recovery ON public.job_execution USING btree (status, locked_until);
+
+
+--
+-- Name: job_execution_run_after_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_run_after_idx ON public.job_execution USING btree (run_after);
+
+
+--
+-- Name: job_execution_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_execution_status_idx ON public.job_execution USING btree (status);
+
+
+--
+-- Name: job_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_key_idx ON public.job USING btree (key);
+
+
+--
+-- Name: job_queue_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_queue_idx ON public.job USING btree (queue);
+
+
+--
+-- Name: job_retired_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_retired_idx ON public.job USING btree (retired);
+
+
+--
+-- Name: job_source_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX job_source_idx ON public.job USING btree (source);
+
+
+--
 -- Name: language_enabled_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1171,6 +1428,22 @@ ALTER TABLE ONLY public.field
 
 ALTER TABLE ONLY public.index
     ADD CONSTRAINT index_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id);
+
+
+--
+-- Name: job job_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.job
+    ADD CONSTRAINT job_app_id_fkey FOREIGN KEY (app_id) REFERENCES public.app(id);
+
+
+--
+-- Name: job_execution job_execution_job_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.job_execution
+    ADD CONSTRAINT job_execution_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.job(id);
 
 
 --

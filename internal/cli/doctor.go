@@ -18,7 +18,9 @@ import (
 	"github.com/hapyco/dygo/internal/health"
 	"github.com/hapyco/dygo/internal/hookgen"
 	"github.com/hapyco/dygo/internal/project"
+	"github.com/hapyco/dygo/internal/queues"
 	routeplan "github.com/hapyco/dygo/internal/routes"
+	"github.com/hapyco/dygo/internal/runnergen"
 	"github.com/hapyco/dygo/internal/secrets"
 	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/studio"
@@ -86,6 +88,8 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 		results = append(results,
 			doctorResult{Status: doctorSkip, Name: "app manifests", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "entity metadata", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "queue config", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "job metadata", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "route registry", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "fixture files", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "project root not found"},
@@ -105,6 +109,13 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 		entities, entityResult = checkEntityMetadata(apps)
 	}
 	results = append(results, entityResult)
+	queueConfig, queueResult := checkQueueConfig(root)
+	results = append(results, queueResult)
+	jobResult := doctorResult{Status: doctorSkip, Name: "job metadata", Detail: "app manifests or queue config are invalid"}
+	if appResult.Status == doctorPass && queueResult.Status == doctorPass {
+		jobResult = checkJobMetadata(apps, queueConfig)
+	}
+	results = append(results, jobResult)
 	if appResult.Status == doctorPass && entityResult.Status == doctorPass {
 		results = append(results,
 			checkRouteRegistry(entities),
@@ -127,7 +138,7 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 	secretsResult := checkSecretsLayout(root)
 	results = append(results, secretsResult)
 
-	if appResult.Status == doctorPass && entityResult.Status == doctorPass && configResult.Status == doctorPass && secretsResult.Status == doctorPass {
+	if appResult.Status == doctorPass && entityResult.Status == doctorPass && queueResult.Status == doctorPass && jobResult.Status == doctorPass && configResult.Status == doctorPass && secretsResult.Status == doctorPass {
 		results = append(results, checkRuntimeReadiness(ctx, root)...)
 	} else {
 		results = append(results, doctorResult{Status: doctorSkip, Name: "runtime database", Detail: "config, secrets, or metadata are not ready"})
@@ -173,6 +184,22 @@ func checkEntityMetadata(apps []manifest.LoadedApp) ([]catalog.LoadedEntity, doc
 	return entities, doctorResult{Status: doctorPass, Name: "entity metadata", Detail: fmt.Sprintf("%d entities valid", len(entities))}
 }
 
+func checkQueueConfig(root string) (queues.Config, doctorResult) {
+	queueConfig, err := project.LoadQueues(root)
+	if err != nil {
+		return queues.Config{}, doctorResult{Status: doctorFail, Name: "queue config", Detail: err.Error()}
+	}
+	return queueConfig, doctorResult{Status: doctorPass, Name: "queue config", Detail: fmt.Sprintf("%d queues valid", len(queueConfig.Queues))}
+}
+
+func checkJobMetadata(apps []manifest.LoadedApp, queueConfig queues.Config) doctorResult {
+	jobs, err := project.LoadJobs(apps, queueConfig)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "job metadata", Detail: err.Error()}
+	}
+	return doctorResult{Status: doctorPass, Name: "job metadata", Detail: fmt.Sprintf("%d jobs valid", len(jobs))}
+}
+
 func checkRouteRegistry(entities []catalog.LoadedEntity) doctorResult {
 	result, err := routeplan.Validate(entities)
 	if err != nil {
@@ -200,9 +227,20 @@ func checkHookWiring(root string) doctorResult {
 		}
 		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: fmt.Sprintf("stat go.mod: %v", err)}
 	}
+	hooks, err := hookgen.Discover(root)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: err.Error()}
+	}
+	jobFiles, err := runnergen.DiscoverJobs(root)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: err.Error()}
+	}
 	if _, err := os.Stat(filepath.Join(root, "cmd", "dygo", "main.go")); err != nil {
 		if os.IsNotExist(err) {
-			return doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "generated runner not found"}
+			if len(hooks) == 0 && len(jobFiles) == 0 {
+				return doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "generated runner not found"}
+			}
+			return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: "cmd/dygo/main.go is missing; run dygo hook sync"}
 		}
 		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: fmt.Sprintf("stat generated runner: %v", err)}
 	}
@@ -213,11 +251,7 @@ func checkHookWiring(root string) doctorResult {
 	if len(problems) > 0 {
 		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: strings.Join(problems, "; ")}
 	}
-	hooks, err := hookgen.Discover(root)
-	if err != nil {
-		return doctorResult{Status: doctorFail, Name: "hook wiring", Detail: err.Error()}
-	}
-	return doctorResult{Status: doctorPass, Name: "hook wiring", Detail: fmt.Sprintf("%d hook files wired", len(hooks))}
+	return doctorResult{Status: doctorPass, Name: "hook wiring", Detail: fmt.Sprintf("%d hook files, %d jobs wired", len(hooks), len(jobFiles))}
 }
 
 func checkSchemaSnapshot(root string) doctorResult {
