@@ -73,7 +73,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-30.
 - [x] #221 Show why a Job failed and when it will retry
 - [ ] #222 Clean up old Job history automatically
 - [x] #223 Make production setup clearly show that app server and worker both need to run
-- [ ] #224 Let workers pick up new Jobs instantly instead of waiting for the poll cycle
+- [x] #224 Let workers pick up new Jobs instantly instead of waiting for the poll cycle
 - [x] #225 Define removed `job.yml` retirement behavior for synced Core Job rows
 - [ ] #226 Add Core retention policy Entity for platform record cleanup
 - [ ] #144 Add Studio keyboard shortcut foundation

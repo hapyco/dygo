@@ -324,6 +324,14 @@ Locked decisions:
 - Jobs that should not run after becoming stale should validate freshness in their handler or use an idempotency key tied to the business event. Future metadata can add an explicit stale-after setting if this becomes common.
 - Defer a first-class `stale-after` field. It is too much policy for the MVP; handlers own business freshness checks.
 
+Worker wake-up decisions:
+
+- Send a PostgreSQL notification when a Job Execution is newly queued or requeued for retry.
+- Notification payload is the queue name, such as `default`.
+- Notifications only wake workers; the database eligibility rule above remains the source of truth.
+- Keep a 60s fallback poll so workers keep running if notifications are unavailable or missed.
+- Keep a next `run_after` timer because PostgreSQL does not notify again when a future timestamp becomes due.
+
 ## Retry Policy
 
 Default behavior:
@@ -436,7 +444,8 @@ Proposed flags:
 - `--env development`
 - `--queue <name>`, repeatable
 - `--concurrency <n>`
-- `--poll-interval 2s`
+- `--poll-interval 60s`
+- `--poll-only`
 - `--once`
 - `--shutdown-timeout 30s`
 
@@ -447,8 +456,12 @@ Behavior:
 - Start worker pools from effective queue concurrency.
 - If `--concurrency` is omitted, use each queue's `concurrency` from `config/queues.yml`.
 - If `--concurrency` is explicitly passed, use that value for each selected queue in this worker process.
-- With no `--queue` flags, poll all registered queues until the process context is cancelled.
-- With one or more `--queue` flags, poll only those registered queues.
+- With no `--queue` flags, process all registered queues until the process context is cancelled.
+- With one or more `--queue` flags, process only those registered queues.
+- Listen for PostgreSQL Job Execution notifications by default, then claim ready rows from the database.
+- Use `--poll-interval` as the fallback polling interval when notifications are missed or unavailable.
+- Use `--poll-only` to disable notifications and rely on polling only.
+- Keep one next `run_after` timer per queue so delayed retries and future executions wake when due instead of waiting for the fallback poll.
 - Finish in-flight jobs during graceful shutdown until `--shutdown-timeout`.
 - With `--once`, claim and run currently available job executions, then exit. This is useful for tests, local debugging, and one-shot maintenance.
 - `--once` does one batch only: connect to the database, recover expired running executions, claim up to the effective concurrency for the selected queues, run them, persist success/failure/retry state, and exit cleanly. If no executions are available, exit cleanly.

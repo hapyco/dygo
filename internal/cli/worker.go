@@ -21,6 +21,7 @@ import (
 
 type workerPool interface {
 	jobstore.Beginner
+	jobstore.ListenerPool
 	db.RecordQueryer
 	Close()
 }
@@ -33,9 +34,10 @@ func newWorkerCommand(ctx context.Context, stdout, stderr io.Writer, recordHooks
 	envName := string(secrets.EnvironmentDevelopment)
 	queueNames := []string{}
 	concurrency := 0
-	pollInterval := 2 * time.Second
+	pollInterval := jobruntime.DefaultPollInterval
 	shutdownTimeout := 30 * time.Second
 	once := false
+	pollOnly := false
 
 	cmd := &cobra.Command{
 		Use:   "worker",
@@ -68,6 +70,15 @@ func newWorkerCommand(ctx context.Context, stdout, stderr io.Writer, recordHooks
 			if err != nil {
 				return fmt.Errorf("create worker id: %w", err)
 			}
+			var listener jobruntime.NotificationListener
+			if !once && !pollOnly {
+				listener, err = jobstore.NewListener(ctx, pool)
+				if err != nil {
+					if _, writeErr := fmt.Fprintf(stderr, "dygo worker: job notifications unavailable; polling every %s: %v\n", pollInterval, err); writeErr != nil {
+						return fmt.Errorf("write worker output: %w", writeErr)
+					}
+				}
+			}
 			if _, err := fmt.Fprintf(stdout, "dygo worker: queues %s (%s)\n", workerQueueList(selectedQueues), env); err != nil {
 				return fmt.Errorf("write worker output: %w", err)
 			}
@@ -78,11 +89,13 @@ func newWorkerCommand(ctx context.Context, stdout, stderr io.Writer, recordHooks
 				RecordHooks: recordHooks,
 				Stderr:      stderr,
 			}).Run(ctx, jobruntime.Options{
-				Queues:          selectedQueues,
-				WorkerID:        workerID,
-				PollInterval:    pollInterval,
-				ShutdownTimeout: shutdownTimeout,
-				Once:            once,
+				Queues:               selectedQueues,
+				WorkerID:             workerID,
+				PollInterval:         pollInterval,
+				ShutdownTimeout:      shutdownTimeout,
+				Once:                 once,
+				PollOnly:             pollOnly,
+				NotificationListener: listener,
 			})
 			if err != nil {
 				return workerCommandError(err)
@@ -100,6 +113,7 @@ func newWorkerCommand(ctx context.Context, stdout, stderr io.Writer, recordHooks
 	cmd.Flags().StringArrayVar(&queueNames, "queue", nil, "Queue to process; may be repeated")
 	cmd.Flags().IntVar(&concurrency, "concurrency", concurrency, "Override concurrency for each selected queue")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", pollInterval, "How often to poll for queued executions")
+	cmd.Flags().BoolVar(&pollOnly, "poll-only", pollOnly, "Poll for queued executions without PostgreSQL notifications")
 	cmd.Flags().BoolVar(&once, "once", once, "Run one available batch and exit")
 	cmd.Flags().DurationVar(&shutdownTimeout, "shutdown-timeout", shutdownTimeout, "How long to wait for running executions during shutdown")
 

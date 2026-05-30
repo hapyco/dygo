@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -140,8 +141,130 @@ func TestWorkerRunOnceRecordsHandlerFailure(t *testing.T) {
 	}
 }
 
+func TestWorkerRunContinuousNotificationWakesBeforePoll(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	firstClaimed := make(chan struct{}, 1)
+	store := &fakeStore{
+		claimBatches: [][]jobstore.Execution{
+			nil,
+			{{
+				ID:          45,
+				AppName:     "crm",
+				JobName:     "send-email",
+				Queue:       "default",
+				Attempts:    1,
+				MaxAttempts: 1,
+				Timeout:     time.Minute,
+			}},
+		},
+		claimSignal: firstClaimed,
+	}
+	listener := newFakeListener()
+	registry, err := NewRegistry([]sdk.JobRegistrar{
+		func(registry sdk.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+				cancel()
+				return nil
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v, want nil", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := (Worker{Store: store, Registry: registry}).Run(ctx, Options{
+			Queues:               []Queue{{Name: "default", Concurrency: 1}},
+			WorkerID:             "test-worker",
+			PollInterval:         time.Hour,
+			NotificationListener: listener,
+		})
+		done <- err
+	}()
+
+	select {
+	case <-firstClaimed:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not make initial claim")
+	}
+	listener.Notify("default")
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run() error = %v, want nil", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not wake from notification")
+	}
+	if len(store.completed) != 1 || store.completed[0] != 45 {
+		t.Fatalf("completed = %#v, want execution 45", store.completed)
+	}
+}
+
+func TestWorkerRunContinuousUsesNextRunAfterBeforePoll(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	now := time.Now().UTC()
+	store := &fakeStore{
+		claimBatches: [][]jobstore.Execution{
+			nil,
+			{{
+				ID:          46,
+				AppName:     "crm",
+				JobName:     "send-email",
+				Queue:       "default",
+				Attempts:    1,
+				MaxAttempts: 1,
+				Timeout:     time.Minute,
+			}},
+		},
+		nextRunAfter: ptrTime(now.Add(20 * time.Millisecond)),
+	}
+	registry, err := NewRegistry([]sdk.JobRegistrar{
+		func(registry sdk.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+				cancel()
+				return nil
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v, want nil", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := (Worker{Store: store, Registry: registry}).Run(ctx, Options{
+			Queues:       []Queue{{Name: "default", Concurrency: 1}},
+			WorkerID:     "test-worker",
+			PollInterval: time.Hour,
+			Now:          func() time.Time { return time.Now().UTC() },
+		})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run() error = %v, want nil", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not wake from next run_after")
+	}
+	if len(store.completed) != 1 || store.completed[0] != 46 {
+		t.Fatalf("completed = %#v, want execution 46", store.completed)
+	}
+}
+
 type fakeStore struct {
+	mu            sync.Mutex
 	claimed       []jobstore.Execution
+	claimBatches  [][]jobstore.Execution
+	claimSignal   chan struct{}
+	nextRunAfter  *time.Time
 	completed     []int64
 	failures      []fakeFailure
 	finalFailures []fakeFailure
@@ -157,26 +280,83 @@ func (s *fakeStore) RecoverExpired(context.Context, time.Time) (int, error) {
 }
 
 func (s *fakeStore) Claim(_ context.Context, _ []string, _ int, _ string, _ time.Time) ([]jobstore.Execution, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.claimSignal != nil {
+		select {
+		case s.claimSignal <- struct{}{}:
+		default:
+		}
+	}
+	if len(s.claimBatches) > 0 {
+		claimed := s.claimBatches[0]
+		s.claimBatches = s.claimBatches[1:]
+		return claimed, nil
+	}
 	claimed := s.claimed
 	s.claimed = nil
 	return claimed, nil
 }
 
+func (s *fakeStore) NextRunAfter(context.Context, []string, time.Time) (*time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.nextRunAfter, nil
+}
+
 func (s *fakeStore) Complete(_ context.Context, id int64, _ json.RawMessage, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.completed = append(s.completed, id)
 	return nil
 }
 
 func (s *fakeStore) Fail(_ context.Context, id int64, message string, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.failures = append(s.failures, fakeFailure{id: id, message: message})
 	return nil
 }
 
 func (s *fakeStore) FailFinal(_ context.Context, id int64, message string, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.finalFailures = append(s.finalFailures, fakeFailure{id: id, message: message})
 	return nil
 }
 
 func (s *fakeStore) Enqueue(context.Context, string, string, json.RawMessage, jobstore.EnqueueOptions) (jobstore.Execution, error) {
 	return jobstore.Execution{}, nil
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
+}
+
+type fakeListener struct {
+	notifications chan string
+	closeOnce     sync.Once
+}
+
+func newFakeListener() *fakeListener {
+	return &fakeListener{notifications: make(chan string, 1)}
+}
+
+func (l *fakeListener) Notify(queue string) {
+	l.notifications <- queue
+}
+
+func (l *fakeListener) Wait(ctx context.Context) (string, error) {
+	select {
+	case queue := <-l.notifications:
+		return queue, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+func (l *fakeListener) Close() {
+	l.closeOnce.Do(func() {
+		close(l.notifications)
+	})
 }

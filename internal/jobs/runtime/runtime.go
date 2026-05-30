@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	defaultPollInterval    = 2 * time.Second
+	// DefaultPollInterval is the worker fallback interval when notifications are unavailable.
+	DefaultPollInterval    = 60 * time.Second
 	defaultShutdownTimeout = 30 * time.Second
 )
 
@@ -49,20 +50,29 @@ type Worker struct {
 type Store interface {
 	RecoverExpired(context.Context, time.Time) (int, error)
 	Claim(context.Context, []string, int, string, time.Time) ([]jobstore.Execution, error)
+	NextRunAfter(context.Context, []string, time.Time) (*time.Time, error)
 	Complete(context.Context, int64, json.RawMessage, time.Time) error
 	Fail(context.Context, int64, string, time.Time) error
 	FailFinal(context.Context, int64, string, time.Time) error
 	Enqueue(context.Context, string, string, json.RawMessage, jobstore.EnqueueOptions) (jobstore.Execution, error)
 }
 
+// NotificationListener waits for PostgreSQL queue notifications.
+type NotificationListener interface {
+	Wait(context.Context) (string, error)
+	Close()
+}
+
 // Options configures one worker process.
 type Options struct {
-	Queues          []Queue
-	WorkerID        string
-	PollInterval    time.Duration
-	ShutdownTimeout time.Duration
-	Once            bool
-	Now             func() time.Time
+	Queues               []Queue
+	WorkerID             string
+	PollInterval         time.Duration
+	ShutdownTimeout      time.Duration
+	Once                 bool
+	PollOnly             bool
+	NotificationListener NotificationListener
+	Now                  func() time.Time
 }
 
 // Result summarizes worker activity.
@@ -175,14 +185,24 @@ func (w Worker) runContinuous(ctx context.Context, options Options) (Result, err
 	var total safeResult
 	errs := make(chan error, len(options.Queues))
 	var wg sync.WaitGroup
+	var listenerWG sync.WaitGroup
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	wakeups := newQueueWakeups(options.Queues)
+	defer wakeups.close()
+	if options.NotificationListener != nil && !options.PollOnly {
+		listenerWG.Add(1)
+		go func() {
+			defer listenerWG.Done()
+			w.runNotificationFanout(runCtx, options.NotificationListener, wakeups, options)
+		}()
+	}
 	for _, queue := range options.Queues {
 		queue := queue
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- w.runQueueLoop(runCtx, queue, options, &total)
+			errs <- w.runQueueLoop(runCtx, queue, options, &total, wakeups.channel(queue.Name))
 		}()
 	}
 
@@ -190,6 +210,7 @@ func (w Worker) runContinuous(ctx context.Context, options Options) (Result, err
 	case err := <-errs:
 		cancel()
 		wg.Wait()
+		waitForGroup(&listenerWG, options.ShutdownTimeout)
 		if err != nil && !errorsIsContext(err) {
 			return total.snapshot(), err
 		}
@@ -197,16 +218,16 @@ func (w Worker) runContinuous(ctx context.Context, options Options) (Result, err
 	case <-ctx.Done():
 		cancel()
 		waitForGroup(&wg, options.ShutdownTimeout)
+		waitForGroup(&listenerWG, options.ShutdownTimeout)
 		return total.snapshot(), nil
 	}
 }
 
-func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, total *safeResult) error {
-	ticker := time.NewTicker(options.PollInterval)
-	defer ticker.Stop()
+func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, total *safeResult, wakeup <-chan struct{}) error {
 	slots := make(chan struct{}, queue.Concurrency)
 	var inFlight sync.WaitGroup
 	errs := make(chan error, 1)
+	slotReleased := make(chan struct{}, 1)
 	defer waitForGroup(&inFlight, options.ShutdownTimeout)
 
 	for {
@@ -228,7 +249,10 @@ func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, 
 				inFlight.Add(1)
 				go func() {
 					defer inFlight.Done()
-					defer func() { <-slots }()
+					defer func() {
+						<-slots
+						signal(slotReleased)
+					}()
 					result, err := w.runExecution(ctx, execution, options)
 					total.add(result)
 					if err != nil {
@@ -240,13 +264,52 @@ func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, 
 				}()
 			}
 		}
+		waitFor := options.PollInterval
+		if available > 0 {
+			now := options.Now()
+			next, err := w.Store.NextRunAfter(ctx, []string{queue.Name}, now)
+			if err != nil {
+				return err
+			}
+			waitFor = soonerDuration(waitFor, next, now)
+		}
+		timer := time.NewTimer(waitFor)
 		select {
 		case <-ctx.Done():
+			stopTimer(timer)
 			return ctx.Err()
 		case err := <-errs:
+			stopTimer(timer)
 			return err
-		case <-ticker.C:
+		case <-slotReleased:
+			stopTimer(timer)
+		case _, ok := <-wakeup:
+			stopTimer(timer)
+			if !ok {
+				wakeup = nil
+			}
+		case <-timer.C:
 		}
+	}
+}
+
+func (w Worker) runNotificationFanout(ctx context.Context, listener NotificationListener, wakeups *queueWakeups, options Options) {
+	defer listener.Close()
+	defer wakeups.close()
+	for {
+		queue, err := listener.Wait(ctx)
+		if err != nil {
+			if !errorsIsContext(err) {
+				w.log("job notifications unavailable; polling every %s: %v", options.PollInterval, err)
+			}
+			return
+		}
+		queue = strings.TrimSpace(queue)
+		if queue == "" {
+			wakeups.wakeAll()
+			continue
+		}
+		wakeups.wake(queue)
 	}
 }
 
@@ -341,7 +404,7 @@ func normalizeOptions(options Options) Options {
 		}
 	}
 	if options.PollInterval <= 0 {
-		options.PollInterval = defaultPollInterval
+		options.PollInterval = DefaultPollInterval
 	}
 	if options.ShutdownTimeout <= 0 {
 		options.ShutdownTimeout = defaultShutdownTimeout
@@ -407,4 +470,91 @@ func waitForGroup(wg *sync.WaitGroup, timeout time.Duration) bool {
 
 func errorsIsContext(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func soonerDuration(fallback time.Duration, next *time.Time, now time.Time) time.Duration {
+	if next == nil {
+		return fallback
+	}
+	waitFor := next.Sub(now)
+	if waitFor < 0 {
+		waitFor = 0
+	}
+	if waitFor < fallback {
+		return waitFor
+	}
+	return fallback
+}
+
+func stopTimer(timer *time.Timer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+}
+
+func signal(ch chan<- struct{}) {
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
+}
+
+type queueWakeups struct {
+	mu       sync.RWMutex
+	channels map[string]chan struct{}
+	closed   bool
+}
+
+func newQueueWakeups(queues []Queue) *queueWakeups {
+	wakeups := &queueWakeups{channels: map[string]chan struct{}{}}
+	for _, queue := range queues {
+		if _, ok := wakeups.channels[queue.Name]; !ok {
+			wakeups.channels[queue.Name] = make(chan struct{}, 1)
+		}
+	}
+	return wakeups
+}
+
+func (w *queueWakeups) channel(queue string) <-chan struct{} {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.channels[queue]
+}
+
+func (w *queueWakeups) wake(queue string) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if w.closed {
+		return
+	}
+	ch := w.channels[queue]
+	if ch != nil {
+		signal(ch)
+	}
+}
+
+func (w *queueWakeups) wakeAll() {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if w.closed {
+		return
+	}
+	for _, ch := range w.channels {
+		signal(ch)
+	}
+}
+
+func (w *queueWakeups) close() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return
+	}
+	for _, ch := range w.channels {
+		close(ch)
+	}
+	w.closed = true
 }

@@ -180,6 +180,8 @@ Secret names support root keys and dot-separated YAML paths, such as `DATABASE_U
 - `dygo worker --queue <queue>` - Runs workers for one registered queue; the flag may be repeated.
 - `dygo worker --once` - Processes one available batch and exits.
 - `dygo worker --concurrency <n>` - Overrides configured queue concurrency for this worker process.
+- `dygo worker --poll-only` - Disables PostgreSQL notifications and only polls for queued executions.
+- `dygo worker --poll-interval <duration>` - Sets the fallback polling interval; defaults to `60s`.
 
 Production deployments that use Jobs should run `dygo serve` and `dygo worker` as separate long-running processes. `dygo serve` does not process queued Job Executions.
 

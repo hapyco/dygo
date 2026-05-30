@@ -20,6 +20,7 @@ import (
 
 const (
 	executionNameLength = 16
+	notificationChannel = "dygo_job_execution_queued"
 )
 
 // Beginner is the PostgreSQL behavior needed by Store.
@@ -178,9 +179,14 @@ func (s Store) Enqueue(ctx context.Context, appName string, jobName string, payl
 	if err != nil {
 		return Execution{}, fmt.Errorf("generate job execution name: %w", err)
 	}
-	execution, err := insertExecution(ctx, tx, name, job, timeout, retry, maxAttempts, payloadOrNil(payload), runAfter, idempotencyKey, options.Priority)
+	execution, inserted, err := insertExecution(ctx, tx, name, job, timeout, retry, maxAttempts, payloadOrNil(payload), runAfter, idempotencyKey, options.Priority)
 	if err != nil {
 		return Execution{}, fmt.Errorf("enqueue job %s/%s: %w", appName, jobName, err)
+	}
+	if inserted {
+		if err := notifyQueue(ctx, tx, execution.Queue); err != nil {
+			return Execution{}, fmt.Errorf("notify job queue %q: %w", execution.Queue, err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Execution{}, fmt.Errorf("commit job enqueue: %w", err)
@@ -491,6 +497,45 @@ LIMIT $4`, jobs.StatusQueued, now, queueNames, limit)
 	return executions, nil
 }
 
+// NextRunAfter returns the earliest future queued execution for selected queues.
+func (s Store) NextRunAfter(ctx context.Context, queueNames []string, now time.Time) (*time.Time, error) {
+	queueNames = normalizeQueueNames(queueNames)
+	if len(queueNames) == 0 {
+		return nil, nil
+	}
+	if s.queues != nil {
+		for _, queue := range queueNames {
+			if !s.queues.Has(queue) {
+				return nil, fmt.Errorf("queue %q is not registered", queue)
+			}
+		}
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin next job run lookup: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var next sql.NullTime
+	if err := tx.QueryRow(ctx, `
+SELECT MIN(run_after)
+FROM "job_execution"
+WHERE status = $1
+  AND queue = ANY($2)
+  AND run_after > $3`, jobs.StatusQueued, queueNames, now).Scan(&next); err != nil {
+		return nil, fmt.Errorf("query next job run: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit next job run lookup: %w", err)
+	}
+	if !next.Valid {
+		return nil, nil
+	}
+	nextTime := next.Time.UTC()
+	return &nextTime, nil
+}
+
 // Complete marks a running execution succeeded.
 func (s Store) Complete(ctx context.Context, id int64, result json.RawMessage, now time.Time) error {
 	if len(result) > 0 && !json.Valid(result) {
@@ -713,10 +758,10 @@ func jobFromRecord(record jobRecord) (Job, error) {
 	}, nil
 }
 
-func insertExecution(ctx context.Context, tx pgx.Tx, name string, job jobRecord, timeout time.Duration, retry *jobs.Retry, maxAttempts int, payload json.RawMessage, runAfter time.Time, idempotencyKey string, priority int) (Execution, error) {
+func insertExecution(ctx context.Context, tx pgx.Tx, name string, job jobRecord, timeout time.Duration, retry *jobs.Retry, maxAttempts int, payload json.RawMessage, runAfter time.Time, idempotencyKey string, priority int) (Execution, bool, error) {
 	retryRaw, err := encodeRetry(retry)
 	if err != nil {
-		return Execution{}, err
+		return Execution{}, false, err
 	}
 	var id int64
 	err = tx.QueryRow(ctx, `
@@ -727,21 +772,21 @@ RETURNING id`, name, job.ID, job.AppName, job.Key, job.Queue, jobs.StatusQueued,
 	if errors.Is(err, pgx.ErrNoRows) && idempotencyKey != "" {
 		execution, ok, findErr := findExecutionByIdempotency(ctx, tx, job.ID, idempotencyKey)
 		if findErr != nil {
-			return Execution{}, findErr
+			return Execution{}, false, findErr
 		}
 		if ok {
-			return execution, nil
+			return execution, false, nil
 		}
 	}
 	if err != nil {
-		return Execution{}, err
+		return Execution{}, false, err
 	}
 	execution, err := findExecutionByID(ctx, tx, id)
 	if err != nil {
-		return Execution{}, err
+		return Execution{}, false, err
 	}
 	execution.Timeout = timeout
-	return execution, nil
+	return execution, true, nil
 }
 
 func findExecutionByID(ctx context.Context, tx pgx.Tx, id int64) (Execution, error) {
@@ -859,7 +904,8 @@ func retryOrFail(ctx context.Context, tx pgx.Tx, id int64, attempts int, maxAtte
 		if err != nil {
 			return fmt.Errorf("compute retry delay for job execution %d: %w", id, err)
 		}
-		if _, err := tx.Exec(ctx, `
+		var queue string
+		if err := tx.QueryRow(ctx, `
 UPDATE "job_execution"
 SET status = $1,
 	error = $2,
@@ -867,8 +913,12 @@ SET status = $1,
 	locked_by = NULL,
 	locked_until = NULL,
 	updated_at = now()
-WHERE id = $4`, jobs.StatusQueued, message, now.Add(delay), id); err != nil {
+WHERE id = $4
+RETURNING queue`, jobs.StatusQueued, message, now.Add(delay), id).Scan(&queue); err != nil {
 			return fmt.Errorf("queue retry for job execution %d: %w", id, err)
+		}
+		if err := notifyQueue(ctx, tx, queue); err != nil {
+			return fmt.Errorf("notify job queue %q: %w", queue, err)
 		}
 		return nil
 	}
@@ -935,6 +985,11 @@ func execWithStatus(ctx context.Context, db Beginner, sql string, args ...any) (
 		return pgconn.CommandTag{}, err
 	}
 	return tag, nil
+}
+
+func notifyQueue(ctx context.Context, tx pgx.Tx, queue string) error {
+	_, err := tx.Exec(ctx, `SELECT pg_notify($1, $2)`, notificationChannel, queue)
+	return err
 }
 
 func payloadOrNil(payload json.RawMessage) json.RawMessage {
