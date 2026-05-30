@@ -59,21 +59,26 @@ queue: default
 timeout: 30s
 retry:
   attempts: 3
-  initial-delay: 10s
-  max-delay: 5m
 ```
 
-Decision candidates:
+Locked decisions:
 
+- Job key comes from the bundle folder name: `apps/<app>/jobs/<job>/job.yml`. There is no `name` field in `job.yml`.
+- Job key must be kebab-case.
+- `label` is required.
+- `description` is optional.
 - Use kebab-case metadata keys, matching the rest of dygo metadata.
 - Store durations as strings accepted by Go duration parsing, such as `30s` and `5m`.
 - Treat missing `queue` as `default`.
 - Require `queue` to reference a queue registered in `config/queues.yml`.
 - Require `timeout`; it must be a positive duration.
 - Treat missing `retry` as no retries, one attempt only.
+- If `retry` exists, `retry.attempts` is required and must be at least `2`.
 - `retry.attempts` is total attempts, including the first try.
-- `retry.initial-delay` is the first retry delay.
-- `retry.max-delay` is the exponential retry delay cap.
+- `retry.initial-delay` is optional; default `10s`.
+- `retry.max-delay` is optional; default `5m`.
+- Retry delays must be positive, and `retry.max-delay` must be greater than or equal to `retry.initial-delay`.
+- Do not include a `strategy` field in the MVP. Exponential is the only retry behavior.
 - Payloads are JSON. Payload may be empty, but when provided it must be valid JSON.
 - Defer payload schema validation. The first implementation stores JSON payloads and lets handler code validate and decode them.
 
@@ -135,7 +140,7 @@ Job metadata references a registered queue:
 queue: default
 ```
 
-Decision candidates:
+Locked decisions:
 
 - `config/queues.yml` is the queue registry for the project.
 - `default` is generated automatically and should be present in every project.
@@ -156,6 +161,8 @@ Decision candidates:
 Add Core `Job` metadata so dygo can persist discovered job definitions next to App, Entity, Field, Permission, and Patch metadata.
 
 Each discovered `apps/<app>/jobs/<job>/job.yml` syncs into one Core `job` record.
+
+`dygo db migrate` owns Job metadata sync. It reads and validates `apps/*/jobs/*/job.yml`, validates referenced queues against `config/queues.yml`, and upserts Core `job` records. Enqueue and worker runtime use synced Core records rather than scanning `job.yml` files on each operation.
 
 Proposed Core `job` fields:
 
@@ -208,7 +215,7 @@ Proposed Core `schedule` fields:
 
 Schedules create Job Executions; workers do not run schedules directly.
 
-Decision candidates:
+Locked decisions:
 
 - Use `Job Execution` everywhere as the official concept name. Use `run` as a verb, such as "run a job execution".
 - Keep attempt history out of the MVP. Store the latest error on `job-execution`; add `job-attempt` later if Studio needs detailed timelines.
@@ -227,6 +234,9 @@ Decision candidates:
 - The uniqueness scope is `job` plus `idempotency-key`. dygo enforces uniqueness; app and system code choose keys that represent the correct business cause.
 - Each Job Execution stores the Job identity and the caller-provided `idempotency-key`. Whoever enqueues the Job is responsible for making the key unique for that Job when duplicate prevention matters.
 - Good idempotency keys can include timestamps, stored UUIDs, Record IDs, provider event IDs, or schedule occurrence IDs. The key must be stable for the same intended work and different for new intended work.
+- Disabled Jobs cannot create new Job Executions. Workers still run already-created Job Executions unless those executions are cancelled separately.
+- Enqueue requires a synced Core `job` record. Unknown app/job targets fail with an error such as `job crm/send-email is not registered`.
+- Enqueue validation errors include unknown Job, disabled Job, invalid payload JSON, and unregistered queue metadata. Idempotency duplicates return the existing Job Execution instead of failing.
 - MVP handlers return `error` only. Job Execution keeps nullable `result` JSON as reserved storage for future system/API use, but app SDK code does not write structured results in the first batch.
 - Jobs that produce durable output should create normal Records or files and rely on those as the real output.
 - Priority belongs to Job Executions, not `job.yml`, in the MVP. It defaults to `0`; callers may enqueue with a nonzero priority, and workers claim higher priority executions first.
@@ -253,7 +263,7 @@ LIMIT $2
 
 The claim transaction updates matching rows to `running`, sets `locked-by`, sets `locked-until`, increments `attempts`, and returns the claimed executions.
 
-Decision candidates:
+Locked decisions:
 
 - Use `FOR UPDATE SKIP LOCKED` for multi-worker safety.
 - A job execution is eligible when `status = queued` and `run-after <= now()`.
@@ -263,6 +273,7 @@ Decision candidates:
 - On failure before `max-attempts`, set `status = queued`, compute a future `run-after`, store `error`, and clear lock fields.
 - On final failure, set `status = failed`, `finished-at`, store `error`, and clear lock fields.
 - On timeout, treat the execution's current attempt as failed with error kind `timeout`.
+- If no compiled handler is registered for the Job, mark the execution `failed` immediately with a missing-handler error. Do not retry missing handlers.
 - Each worker runs a recovery step before claiming new work. The recovery step finds `running` executions with `locked-until` in the past, then retries or fails them based on remaining attempts.
 - Jobs that should not run after becoming stale should validate freshness in their handler or use an idempotency key tied to the business event. Future metadata can add an explicit stale-after setting if this becomes common.
 - Defer a first-class `stale-after` field. It is too much policy for the MVP; handlers own business freshness checks.
@@ -287,7 +298,7 @@ delay = min(delay, retry.max-delay)
 
 Jitter can be added later; keep the first version deterministic unless we see contention.
 
-Decision candidates:
+Locked decisions:
 
 - `attempts` increments when a worker claims an execution.
 - An execution with `attempts == max-attempts` after failure becomes terminal `failed`.
@@ -334,7 +345,7 @@ type JobData interface {
 }
 ```
 
-Decision candidates:
+Locked decisions:
 
 - Keep the first SDK payload as `json.RawMessage`; typed helpers can come later.
 - Give jobs access to `Records` and `Jobs` so a job can read/write Records and enqueue follow-up work.
@@ -357,7 +368,7 @@ pkg/sdk                      - public job types and registration API
 pkg/sdk/runtime              - project runner options for compiled jobs
 ```
 
-Decision candidates:
+Locked decisions:
 
 - Keep blocking operations context-aware.
 - Keep the store interface small enough for worker tests without a live database.
@@ -375,7 +386,7 @@ Proposed flags:
 
 - `--env development`
 - `--queue <name>`, repeatable
-- `--concurrency 4`
+- `--concurrency <n>`
 - `--poll-interval 2s`
 - `--once`
 - `--shutdown-timeout 30s`
@@ -383,12 +394,15 @@ Proposed flags:
 Behavior:
 
 - Use the same project root and database secret resolution as `dygo serve`, `dygo dev`, and `dygo db`.
-- Start a fixed-size worker pool.
+- Require a migrated database with Core job tables present. `dygo worker` does not auto-migrate; if the schema is missing, fail with guidance to run `dygo db migrate`.
+- Start worker pools from effective queue concurrency.
+- If `--concurrency` is omitted, use each queue's `concurrency` from `config/queues.yml`.
+- If `--concurrency` is explicitly passed, use that value for each selected queue in this worker process.
 - With no `--queue` flags, poll all registered queues until the process context is cancelled.
 - With one or more `--queue` flags, poll only those registered queues.
 - Finish in-flight jobs during graceful shutdown until `--shutdown-timeout`.
 - With `--once`, claim and run currently available job executions, then exit. This is useful for tests, local debugging, and one-shot maintenance.
-- `--once` does one batch only: connect to the database, recover expired running executions, claim up to `--concurrency` available executions, run them, persist success/failure/retry state, and exit cleanly. If no executions are available, exit cleanly.
+- `--once` does one batch only: connect to the database, recover expired running executions, claim up to the effective concurrency for the selected queues, run them, persist success/failure/retry state, and exit cleanly. If no executions are available, exit cleanly.
 
 Output decision:
 
@@ -407,6 +421,7 @@ Output decision:
 7. Add `dygo worker` command.
 8. Update docs and todo status after the implementation is verified.
 
-## Discussion Queue
+## Remaining Details
 
-- No open design questions for the first implementation batch.
+- No open product decisions for the first implementation batch.
+- Implementation still needs exact index names, queue validation error wording, and migration/update behavior for removed `job.yml` files.
