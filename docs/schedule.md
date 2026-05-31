@@ -1,6 +1,6 @@
 # Schedules
 
-This file tracks the recurring Schedule decisions before implementation.
+This file tracks the recurring Schedule design and runtime behavior.
 
 Related tasks:
 
@@ -43,7 +43,7 @@ Schedules live in:
 apps/<app>/jobs/_schedules.yml
 ```
 
-Proposed shape:
+Shape:
 
 ```yaml
 schedules:
@@ -106,13 +106,15 @@ When `next-run-at <= now`, a worker:
 4. updates `last-run-at`
 5. calculates and stores the next `next-run-at`
 
-Proposed idempotency key:
+Idempotency key:
 
 ```txt
 schedule:<app>/<schedule-name>:<due-time-rfc3339>
 ```
 
 If the worker was down and missed multiple occurrences, the MVP creates one late execution, then advances to the next future cron time. It does not backfill every missed occurrence.
+
+If the target Job is disabled when a Schedule becomes due, the worker records `last-error`, does not create a Job Execution, and advances to the next future cron time. Disabling a Job is treated as an operational pause, not a reason for metadata sync to fail.
 
 Worker wake-up rules:
 
@@ -123,7 +125,7 @@ Worker wake-up rules:
 
 ## Core Schedule Fields
 
-Proposed Core `schedule` fields:
+Core `schedule` fields:
 
 - `app` link to Core App
 - `key` text
@@ -154,27 +156,33 @@ Indexes:
 
 ## Cron Parser
 
-Current repo state: there is no cron parser dependency in `go.mod`.
-
-Recommendation:
-
-- Use a small parser dependency instead of hand-rolling cron parsing.
-- Prefer `github.com/robfig/cron/v3` for MVP.
+- Use `github.com/robfig/cron/v3` instead of hand-rolling cron parsing.
 - Use only parser/schedule calculation APIs, not its in-process job runner.
 - Accept standard 5-field cron only: minute, hour, day-of-month, month, day-of-week.
 - Do not accept seconds fields or `@every` interval descriptors in the MVP.
-- Allow named weekdays/months such as `MON` only if the selected cron parser supports them directly.
+- Allow named weekdays/months such as `MON` and `JAN`; `github.com/robfig/cron/v3` supports them directly.
 - Do not add custom Dygo aliases or custom cron name translation.
 
-## Implementation Plan
+## Testing And Diagnosis
 
-1. Add Core `schedule` entity metadata.
-2. Add `internal/schedules` parser and validation for `_schedules.yml`.
-3. Add schedule schema for editor validation.
-4. Sync file-backed Schedules during `dygo db migrate`.
-5. Add schedule store methods for claiming due Schedules and advancing `next-run-at`.
-6. Extend `dygo worker` to check due Schedules and enqueue Job Executions.
-7. Update docs and todo status.
+Schedule timing is tested with injected worker time instead of waiting for wall-clock time.
+
+Focused runtime tests prove that:
+
+- `dygo worker --once` checks due Schedules before claiming Job Executions.
+- the continuous worker wakes for the next Schedule `next-run-at`, not only the 60s fallback poll.
+- cron calculation uses the Schedule timezone.
+- Schedule occurrence idempotency keys use the due occurrence time.
+
+Manual local check:
+
+```sh
+dygo db migrate
+dygo worker --once
+dygo job execution list
+```
+
+`dygo worker --once` creates executions for due Schedules, claims one available batch, persists the result, and exits.
 
 ## Open Questions
 

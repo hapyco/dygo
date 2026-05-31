@@ -49,8 +49,10 @@ type Worker struct {
 // Store is the durable queue behavior the worker needs.
 type Store interface {
 	RecoverExpired(context.Context, time.Time) (int, error)
+	RunDueSchedules(context.Context, []string, string, time.Time, int) (int, error)
 	Claim(context.Context, []string, int, string, time.Time) ([]jobstore.Execution, error)
 	NextRunAfter(context.Context, []string, time.Time) (*time.Time, error)
+	NextScheduleRunAt(context.Context, []string, time.Time) (*time.Time, error)
 	Complete(context.Context, jobstore.Execution, json.RawMessage, time.Time) error
 	Fail(context.Context, jobstore.Execution, string, time.Time) error
 	FailFinal(context.Context, jobstore.Execution, string, time.Time) error
@@ -79,6 +81,7 @@ type Options struct {
 // Result summarizes worker activity.
 type Result struct {
 	Recovered int
+	Scheduled int
 	Claimed   int
 	Succeeded int
 	Failed    int
@@ -235,6 +238,10 @@ func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, 
 		available := queue.Concurrency - len(slots)
 		if available > 0 {
 			now := options.Now()
+			scheduled, err := w.Store.RunDueSchedules(ctx, []string{queue.Name}, options.WorkerID, now, available)
+			if err != nil {
+				return err
+			}
 			recovered, err := w.Store.RecoverExpired(ctx, now)
 			if err != nil {
 				return err
@@ -243,7 +250,7 @@ func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, 
 			if err != nil {
 				return err
 			}
-			total.add(Result{Recovered: recovered, Claimed: len(executions)})
+			total.add(Result{Recovered: recovered, Scheduled: scheduled, Claimed: len(executions)})
 			for _, execution := range executions {
 				execution := execution
 				slots <- struct{}{}
@@ -275,6 +282,11 @@ func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, 
 				return err
 			}
 			waitFor = soonerDuration(waitFor, next, now)
+			nextSchedule, err := w.Store.NextScheduleRunAt(ctx, []string{queue.Name}, now)
+			if err != nil {
+				return err
+			}
+			waitFor = soonerDuration(waitFor, nextSchedule, now)
 		}
 		timer := time.NewTimer(waitFor)
 		select {
@@ -320,15 +332,19 @@ func (w Worker) runNotificationFanout(ctx context.Context, listener Notification
 
 func (w Worker) runQueueBatch(ctx context.Context, queue Queue, options Options) (Result, error) {
 	now := options.Now()
+	scheduled, err := w.Store.RunDueSchedules(ctx, []string{queue.Name}, options.WorkerID, now, queue.Concurrency)
+	if err != nil {
+		return Result{}, err
+	}
 	recovered, err := w.Store.RecoverExpired(ctx, now)
 	if err != nil {
 		return Result{}, err
 	}
 	executions, err := w.Store.Claim(ctx, []string{queue.Name}, queue.Concurrency, options.WorkerID, now)
 	if err != nil {
-		return Result{Recovered: recovered}, err
+		return Result{Recovered: recovered, Scheduled: scheduled}, err
 	}
-	result := Result{Recovered: recovered, Claimed: len(executions)}
+	result := Result{Recovered: recovered, Scheduled: scheduled, Claimed: len(executions)}
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var firstErr error
@@ -486,6 +502,7 @@ func (r *safeResult) snapshot() Result {
 
 func (r *Result) add(other Result) {
 	r.Recovered += other.Recovered
+	r.Scheduled += other.Scheduled
 	r.Claimed += other.Claimed
 	r.Succeeded += other.Succeeded
 	r.Failed += other.Failed

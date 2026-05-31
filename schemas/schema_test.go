@@ -98,6 +98,7 @@ func TestKebabNamePatternsMatchRuntime(t *testing.T) {
 	fixtureSchema := readJSONSchema(t, "fixture.schema.json")
 	jobSchema := readJSONSchema(t, "job.schema.json")
 	patchSchema := readJSONSchema(t, "patch.schema.json")
+	scheduleSchema := readJSONSchema(t, "schedule.schema.json")
 
 	assertPattern(t, schemaObject(t, appSchema, "properties", "name"), fieldtype.NamePattern, "app name")
 	assertPattern(t, schemaObject(t, schemaObject(t, appSchema, "properties"), "dependencies", "items"), fieldtype.NamePattern, "app dependency")
@@ -107,6 +108,7 @@ func TestKebabNamePatternsMatchRuntime(t *testing.T) {
 	assertPattern(t, schemaObject(t, schemaObject(t, fixtureSchema, "$defs"), "record", "propertyNames"), fieldtype.NamePattern, "fixture record field")
 	assertPattern(t, schemaObject(t, jobSchema, "properties", "queue"), fieldtype.NamePattern, "job queue")
 	assertPattern(t, schemaObject(t, schemaObject(t, patchSchema, "$defs"), "kebabName"), fieldtype.NamePattern, "patch kebabName")
+	assertPattern(t, schemaObject(t, schemaObject(t, scheduleSchema, "$defs"), "kebabName"), fieldtype.NamePattern, "schedule kebabName")
 }
 
 func TestJobSchemaContractsMatchRuntime(t *testing.T) {
@@ -117,6 +119,18 @@ func TestJobSchemaContractsMatchRuntime(t *testing.T) {
 	assertSameStringSet(t, schemaStringEnum(t, retry, "required"), []string{"attempts"})
 	attempts := schemaObject(t, retry, "properties", "attempts")
 	assertNumber(t, attempts["minimum"], 2, "retry attempts minimum")
+}
+
+func TestScheduleSchemaContractsMatchRuntime(t *testing.T) {
+	schema := readJSONSchema(t, "schedule.schema.json")
+	assertSameStringSet(t, schemaStringEnum(t, schema, "required"), []string{"schedules"})
+
+	schedule := schemaObject(t, schemaObject(t, schema, "$defs"), "schedule")
+	assertSameStringSet(t, schemaStringEnum(t, schedule, "required"), []string{"name", "label", "cron", "timezone", "job"})
+	properties := schemaObject(t, schedule, "properties")
+	if _, ok := properties["payload"]; ok {
+		t.Fatal("schedule schema includes payload, want explicit Jobs instead")
+	}
 }
 
 func TestPatchSchemaContractsMatchRuntime(t *testing.T) {

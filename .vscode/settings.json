@@ -20,6 +20,10 @@
       "apps/*/jobs/*/job.yml",
       ".dygo/apps/*/jobs/*/job.yml"
     ],
+    "./schemas/schedule.schema.json": [
+      "apps/*/jobs/_schedules.yml",
+      ".dygo/apps/*/jobs/_schedules.yml"
+    ],
     "./schemas/patch.schema.json": [
       "apps/*/patches/*.yml",
       ".dygo/apps/*/patches/*.yml"

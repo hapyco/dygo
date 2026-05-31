@@ -1,6 +1,6 @@
 # Jobs And Queues
 
-This file tracks the durable Jobs and Queues decisions before implementation.
+This file tracks the durable Jobs, Queues, and worker decisions.
 
 Related tasks:
 
@@ -21,7 +21,6 @@ Related tasks:
 
 ## Non-Goals For This Batch
 
-- Recurring schedules and `dygo scheduler`; keep them for #32.
 - Studio retry/cancel/detail screens; keep them for #216, #217, and #218.
 - Importer-specific jobs; keep them for #143.
 - External queue backends. PostgreSQL is the first durable backend.
@@ -49,7 +48,7 @@ apps/<app>/jobs/<job>/run.go
 apps/<app>/jobs/_schedules.yml
 ```
 
-The scheduler batch will define and execute recurring jobs from `_schedules.yml`; this worker batch only runs explicitly enqueued Job Executions.
+Recurring app-owned schedules are defined in `_schedules.yml`; `dygo worker` turns due Schedule occurrences into normal Job Executions.
 
 Create the happy-path Job scaffold with:
 
@@ -244,18 +243,25 @@ Proposed Core `job-execution` fields:
 - `idempotency-key` text
 - `actor` optional link to Core User
 
-Add Core `Schedule` metadata later for recurring work.
+Add Core `Schedule` metadata for recurring work.
 
-Proposed Core `schedule` fields:
+Core `schedule` fields:
 
-- `job` link to Core Job
+- `app` link to Core App
+- `key` text
+- `source` select: `file`, `studio`, `system`
 - `label` text
-- `enabled` boolean, default true
+- `description` long text
+- `cron` text
 - `timezone` text
-- `rule` json
-- `payload` json
+- `job` link to Core Job
+- `job-app-name` text snapshot
+- `job-name` text snapshot
+- `enabled` boolean, default true
+- `retired` boolean, default false
 - `next-run-at` datetime
 - `last-run-at` datetime
+- `last-error` long text
 - `actor` optional link to Core User
 
 Schedules create Job Executions; workers do not run schedules directly.
@@ -273,7 +279,9 @@ Locked decisions:
 - Workers generate a readable ID on startup for `locked-by`: `<hostname>:<pid>:<short-random>`.
 - `locked-until` is set to `claimed-at + timeout`.
 - Store Studio-created schedules in Core `schedule` records, not `_schedules.yml`.
-- Keep `_schedules.yml` for app-defined schedules shipped with code in a later scheduler batch.
+- Keep `_schedules.yml` for app-defined schedules shipped with code.
+- File-backed Schedules sync with `source=file`; removing a file-backed Schedule retires the Core row instead of deleting it.
+- Schedule occurrences use deterministic idempotency keys shaped as `schedule:<app>/<schedule-name>:<due-time-rfc3339>`.
 - Enforce `idempotency-key` uniqueness per Job when present. Enqueueing the same Job with the same key returns the existing Job Execution instead of creating duplicate work.
 - `idempotency-key` is supplied at enqueue time, not in `job.yml`. It identifies the upstream cause or work item, such as `email:<email-id>`, `import:<import-id>`, `webhook-event:<event-id>`, or `schedule-occurrence:<occurrence-id>`.
 - The uniqueness scope is `job` plus `idempotency-key`. dygo enforces uniqueness; app and system code choose keys that represent the correct business cause.
@@ -461,10 +469,10 @@ Behavior:
 - Listen for PostgreSQL Job Execution notifications by default, then claim ready rows from the database.
 - Use `--poll-interval` as the fallback polling interval when notifications are missed or unavailable.
 - Use `--poll-only` to disable notifications and rely on polling only.
-- Keep one next `run_after` timer per queue so delayed retries and future executions wake when due instead of waiting for the fallback poll.
+- Keep one next `run_after` timer and one next Schedule `next-run-at` timer per queue so delayed retries, future executions, and recurring Schedules wake when due instead of waiting for the fallback poll.
 - Finish in-flight jobs during graceful shutdown until `--shutdown-timeout`.
-- With `--once`, claim and run currently available job executions, then exit. This is useful for tests, local debugging, and one-shot maintenance.
-- `--once` does one batch only: connect to the database, recover expired running executions, claim up to the effective concurrency for the selected queues, run them, persist success/failure/retry state, and exit cleanly. If no executions are available, exit cleanly.
+- With `--once`, create executions for due Schedules, claim and run currently available Job Executions, then exit. This is useful for tests, local debugging, and one-shot maintenance.
+- `--once` does one batch only: connect to the database, check due Schedules, recover expired running executions, claim up to the effective concurrency for the selected queues, run them, persist success/failure/retry state, and exit cleanly. If no executions are available, exit cleanly.
 
 Output decision:
 

@@ -9,6 +9,7 @@ import (
 	"github.com/hapyco/dygo/internal/entity/fieldtype"
 	"github.com/hapyco/dygo/internal/jobs"
 	"github.com/hapyco/dygo/internal/queues"
+	"github.com/hapyco/dygo/internal/schedules"
 )
 
 // Metadata is the validated app and Entity context for one dygo project.
@@ -19,10 +20,11 @@ type Metadata struct {
 
 // RuntimeMetadata is the validated metadata context used by runtime schema sync.
 type RuntimeMetadata struct {
-	Apps     []manifest.LoadedApp
-	Entities []catalog.LoadedEntity
-	Queues   queues.Config
-	Jobs     []jobs.LoadedJob
+	Apps      []manifest.LoadedApp
+	Entities  []catalog.LoadedEntity
+	Queues    queues.Config
+	Jobs      []jobs.LoadedJob
+	Schedules []schedules.LoadedSchedule
 }
 
 // LoadApps discovers and validates app manifests for a project root.
@@ -61,6 +63,15 @@ func LoadJobs(apps []manifest.LoadedApp, queueConfig queues.Config) ([]jobs.Load
 	return loaded, nil
 }
 
+// LoadSchedules validates Schedule metadata for already loaded apps and Jobs.
+func LoadSchedules(apps []manifest.LoadedApp, loadedJobs []jobs.LoadedJob) ([]schedules.LoadedSchedule, error) {
+	loaded, err := schedules.New(apps, loadedJobs).Validate()
+	if err != nil {
+		return nil, fmt.Errorf("validate schedules: %w", err)
+	}
+	return loaded, nil
+}
+
 // LoadMetadata loads the validated app and Entity metadata context for a project root.
 func LoadMetadata(root string) (Metadata, error) {
 	apps, err := LoadApps(root)
@@ -92,5 +103,9 @@ func LoadRuntimeMetadata(root string) (RuntimeMetadata, error) {
 	if err != nil {
 		return RuntimeMetadata{}, err
 	}
-	return RuntimeMetadata{Apps: apps, Entities: entities, Queues: queueConfig, Jobs: loadedJobs}, nil
+	loadedSchedules, err := LoadSchedules(apps, loadedJobs)
+	if err != nil {
+		return RuntimeMetadata{}, err
+	}
+	return RuntimeMetadata{Apps: apps, Entities: entities, Queues: queueConfig, Jobs: loadedJobs, Schedules: loadedSchedules}, nil
 }

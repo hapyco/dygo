@@ -13,7 +13,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #21 Split field type registry files by responsibility
 - [ ] #24 Add role inheritance for hierarchical permissions
 - [x] #31 Add worker command
-- [ ] #32 Add scheduler command
+- [x] #32 Add scheduler behavior to workers
 - [ ] #33 Add site command group
 - [ ] #38 Add one-command local project setup
 - [ ] #51 Add Studio metadata browser
@@ -64,7 +64,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [x] #233 Create `job.yml` schema for editor validation and autocomplete
 - [x] #213 Let developers run a Job manually for testing
 - [ ] #214 Let Studio users schedule Jobs like "every Monday at 9 AM"
-- [ ] #215 Let apps ship recurring schedules with code
+- [x] #215 Let apps ship recurring schedules with code
 - [x] #216 Show waiting, running, successful, failed, and cancelled Jobs in Studio
 - [ ] #217 Let Studio users retry a failed Job
 - [ ] #218 Let Studio users cancel a Job that has not started yet

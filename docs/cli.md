@@ -176,18 +176,17 @@ Secret names support root keys and dot-separated YAML paths, such as `DATABASE_U
 
 ## Worker
 
-- `dygo worker` - Runs Job workers for all registered queues.
+- `dygo worker` - Runs Job workers and checks due Schedules for all registered queues.
 - `dygo worker --queue <queue>` - Runs workers for one registered queue; the flag may be repeated.
-- `dygo worker --once` - Processes one available batch and exits.
+- `dygo worker --once` - Checks due Schedules, processes one available batch, and exits.
 - `dygo worker --concurrency <n>` - Overrides configured queue concurrency for this worker process.
 - `dygo worker --poll-only` - Disables PostgreSQL notifications and only polls for queued executions.
 - `dygo worker --poll-interval <duration>` - Sets the fallback polling interval; defaults to `60s`.
 
-Production deployments that use Jobs should run `dygo serve` and `dygo worker` as separate long-running processes. `dygo serve` does not process queued Job Executions.
+Production deployments that use Jobs or Schedules should run `dygo serve` and `dygo worker` as separate long-running processes. `dygo serve` does not process queued Job Executions or due Schedules.
 
 ## Deferred CLI Surface
 
-- `dygo scheduler` - Defer until schedule metadata and recurring job runtime exist.
 - Global `--json` - Defer until dygo has a consistent output contract for command results, validation errors, dry-run plans, prompts, redaction, and streaming commands.
 - Smart shell completions - Defer until command structure is implemented; start with filesystem/static completions for `--env`, `<app>`, `<app>/<entity>`, hook events, and completion shells.
 

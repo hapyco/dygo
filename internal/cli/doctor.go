@@ -17,6 +17,7 @@ import (
 	"github.com/hapyco/dygo/internal/fixtures"
 	"github.com/hapyco/dygo/internal/health"
 	"github.com/hapyco/dygo/internal/hookgen"
+	"github.com/hapyco/dygo/internal/jobs"
 	"github.com/hapyco/dygo/internal/project"
 	"github.com/hapyco/dygo/internal/queues"
 	routeplan "github.com/hapyco/dygo/internal/routes"
@@ -90,6 +91,7 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 			doctorResult{Status: doctorSkip, Name: "entity metadata", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "queue config", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "job metadata", Detail: "project root not found"},
+			doctorResult{Status: doctorSkip, Name: "schedule metadata", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "route registry", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "fixture files", Detail: "project root not found"},
 			doctorResult{Status: doctorSkip, Name: "hook wiring", Detail: "project root not found"},
@@ -111,11 +113,17 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 	results = append(results, entityResult)
 	queueConfig, queueResult := checkQueueConfig(root)
 	results = append(results, queueResult)
+	var loadedJobs []jobs.LoadedJob
 	jobResult := doctorResult{Status: doctorSkip, Name: "job metadata", Detail: "app manifests or queue config are invalid"}
 	if appResult.Status == doctorPass && queueResult.Status == doctorPass {
-		jobResult = checkJobMetadata(apps, queueConfig)
+		loadedJobs, jobResult = checkJobMetadata(apps, queueConfig)
 	}
 	results = append(results, jobResult)
+	scheduleResult := doctorResult{Status: doctorSkip, Name: "schedule metadata", Detail: "app manifests or job metadata are invalid"}
+	if appResult.Status == doctorPass && jobResult.Status == doctorPass {
+		scheduleResult = checkScheduleMetadata(apps, loadedJobs)
+	}
+	results = append(results, scheduleResult)
 	if appResult.Status == doctorPass && entityResult.Status == doctorPass {
 		results = append(results,
 			checkRouteRegistry(entities),
@@ -138,7 +146,7 @@ func runDoctor(ctx context.Context, stdout io.Writer) error {
 	secretsResult := checkSecretsLayout(root)
 	results = append(results, secretsResult)
 
-	if appResult.Status == doctorPass && entityResult.Status == doctorPass && queueResult.Status == doctorPass && jobResult.Status == doctorPass && configResult.Status == doctorPass && secretsResult.Status == doctorPass {
+	if appResult.Status == doctorPass && entityResult.Status == doctorPass && queueResult.Status == doctorPass && jobResult.Status == doctorPass && scheduleResult.Status == doctorPass && configResult.Status == doctorPass && secretsResult.Status == doctorPass {
 		results = append(results, checkRuntimeReadiness(ctx, root)...)
 	} else {
 		results = append(results, doctorResult{Status: doctorSkip, Name: "runtime database", Detail: "config, secrets, or metadata are not ready"})
@@ -192,12 +200,20 @@ func checkQueueConfig(root string) (queues.Config, doctorResult) {
 	return queueConfig, doctorResult{Status: doctorPass, Name: "queue config", Detail: fmt.Sprintf("%d queues valid", len(queueConfig.Queues))}
 }
 
-func checkJobMetadata(apps []manifest.LoadedApp, queueConfig queues.Config) doctorResult {
-	jobs, err := project.LoadJobs(apps, queueConfig)
+func checkJobMetadata(apps []manifest.LoadedApp, queueConfig queues.Config) ([]jobs.LoadedJob, doctorResult) {
+	loadedJobs, err := project.LoadJobs(apps, queueConfig)
 	if err != nil {
-		return doctorResult{Status: doctorFail, Name: "job metadata", Detail: err.Error()}
+		return nil, doctorResult{Status: doctorFail, Name: "job metadata", Detail: err.Error()}
 	}
-	return doctorResult{Status: doctorPass, Name: "job metadata", Detail: fmt.Sprintf("%d jobs valid", len(jobs))}
+	return loadedJobs, doctorResult{Status: doctorPass, Name: "job metadata", Detail: fmt.Sprintf("%d jobs valid", len(loadedJobs))}
+}
+
+func checkScheduleMetadata(apps []manifest.LoadedApp, loadedJobs []jobs.LoadedJob) doctorResult {
+	schedules, err := project.LoadSchedules(apps, loadedJobs)
+	if err != nil {
+		return doctorResult{Status: doctorFail, Name: "schedule metadata", Detail: err.Error()}
+	}
+	return doctorResult{Status: doctorPass, Name: "schedule metadata", Detail: fmt.Sprintf("%d schedules valid", len(schedules))}
 }
 
 func checkRouteRegistry(entities []catalog.LoadedEntity) doctorResult {
