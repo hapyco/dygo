@@ -122,7 +122,17 @@ apps/*/entities/_collections/*/entity.yml
   desired table schema
 ```
 
-During `dygo db migrate`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/` is the source for Core tables such as `app`, `activity`, `entity`, `field`, `index`, `constraint`, `naming-series`, `patch-run`, `user`, `role`, `permission`, and `session`.
+Runtime metadata also includes app-owned Jobs and Schedules:
+
+```txt
+apps/*/jobs/*/job.yml
+apps/*/jobs/_schedules.yml
+config/queues.yml
+```
+
+Job and Schedule files do not create per-Job tables. They sync into Core metadata records after the Entity schema plan succeeds.
+
+During `dygo db migrate`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/` is the source for Core tables such as `app`, `activity`, `entity`, `field`, `index`, `constraint`, `job`, `job-execution`, `schedule`, `naming-series`, `patch-run`, `user`, `role`, `permission`, and `session`.
 
 Preview metadata sync:
 
@@ -144,7 +154,9 @@ Safe operations include creating missing metadata tables, adding safe metadata c
 
 Existing early-development databases created before system Record names may report a missing `name` system column. That is treated as unsupported drift because dygo cannot safely invent stable names for existing rows without an explicit patch or reset.
 
-After the schema plan succeeds, `dygo db migrate` upserts discovered Apps, Entities, Jobs, Fields, Indexes, and Constraints into the Core metadata tables. This gives later runtime APIs and Studio a database-backed metadata registry while the YAML files remain the source of truth. File-backed Jobs whose `job.yml` was removed are marked retired, not deleted, so old Job Executions remain inspectable.
+After the schema plan succeeds, `dygo db migrate` upserts discovered Apps, Entities, Fields, Indexes, Constraints, Jobs, and Schedules into the Core metadata tables. This gives runtime APIs, workers, and Studio a database-backed metadata registry while the YAML files remain the source of truth.
+
+File-backed Jobs whose `job.yml` was removed are marked retired, not deleted, so old Job Executions remain inspectable. File-backed Schedules removed from `_schedules.yml` are also marked retired instead of being deleted.
 
 App-owned fixtures are applied by `dygo db migrate` and can also be applied explicitly with `dygo fixture apply`. See [Fixtures](fixtures.md) for the fixture file shape.
 

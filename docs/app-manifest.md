@@ -2,7 +2,7 @@
 
 Every dygo app is described by an `app.yml` file at the app root.
 
-The manifest is intentionally small in v1. It identifies the app, names its dependencies, and records the standard app-relative paths dygo should read later.
+The manifest is intentionally small in v1. It identifies the app, names its dependencies, and records the standard app-relative paths dygo can read as app features grow.
 
 ## Example
 
@@ -22,7 +22,7 @@ paths:
 
 ## Fields
 
-`name` is required and must use kebab-case. This is the canonical app name used by dependency references and future CLI commands. Project-owned apps cannot use framework-reserved app names such as `core`, `studio`, or `localization`; those names are owned by framework-managed apps.
+`name` is required and must use kebab-case. This is the canonical app name used by dependency references and CLI commands. Project-owned apps cannot use framework-reserved app names such as `core`, `studio`, or `localization`; those names are owned by framework-managed apps.
 
 `label` is required and is the human-facing app name.
 
@@ -60,10 +60,10 @@ These commands can be run from nested directories. The CLI walks upward to find 
 
 Entity-owned files such as `entity.yml`, `fixtures.yml`, `hooks.go`, `permissions.yml`, and `views.yml` live inside the Entity bundle under `entities/<entity>/`. Compiled hook registration is documented in [Record Hooks](record-hooks.md).
 
-## V1 Boundaries
+## Current Boundaries
 
-The app manifest loader is internal for now.
+The app manifest is currently a framework-owned metadata input.
 
-The manifest does not include an app `type` field yet. Core and Studio bootstrap rules will be defined by later tasks.
+The manifest does not include an app `type` field. Core and Studio bootstrap rules are handled by framework code.
 
 The manifest does not fetch, install, migrate, or write to the database. It only gives dygo a validated description of app metadata on disk.

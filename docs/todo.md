@@ -1,6 +1,6 @@
-# Dygo Todo
+# Roadmap
 
-Use this as a flat local staging list. Track progress with Markdown checkboxes; when we sync to GitHub later, create/update the matching issues and remove synced checked items from this file.
+This page tracks local issue status for the dygo repository. Keep the issue numbers and checkbox state aligned with the current work before syncing to GitHub.
 
 Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 

@@ -121,15 +121,19 @@ The first Record API is also generic and metadata-powered:
 GET    /api/v1/records/{entity}?limit=50&offset=0&status:eq=Open&sort=-created-at,name
 GET    /api/v1/records/{entity}/{id}
 GET    /api/v1/records/{entity}/name/{name}
+GET    /api/v1/records/{entity}/single
 GET    /api/v1/records/{entity}/{id}/activity?limit=50&offset=0
 POST   /api/v1/records/{entity}
 PATCH  /api/v1/records/{entity}/{id}
+PATCH  /api/v1/records/{entity}/single
 DELETE /api/v1/records/{entity}/{id}
 ```
 
 Record APIs read persisted Core metadata to map Entity slugs, Field names, and storage columns. `{entity}` is the slug, defaulting to the file-derived Entity key. Run `dygo db migrate` before serving Records so metadata tables and Entity storage tables are in sync.
 
 `GET /api/v1/records/{entity}/name/{name}` returns one Record by system `name`; URL-encode `{name}` as a path segment.
+
+For Single Entities, use `GET /api/v1/records/{entity}/single` and `PATCH /api/v1/records/{entity}/single`. Normal list, create, and delete operations are not valid for Single Entities.
 
 Record request bodies use a `data` envelope:
 
@@ -151,7 +155,14 @@ List responses include pagination metadata:
 {"data":[],"meta":{"limit":50,"offset":0,"count":0}}
 ```
 
-Record lists support direct `field:operator=value` params and multi-field sorting through `sort`. Empty checks use `field:empty` or `field:not-empty`; range checks use `start..end` as the value. `limit`, `offset`, and `sort` are reserved query params. Sorting uses `-field` for descending order and appends `id ASC` as a deterministic tie-breaker. Saved views, field-level permissions, row-level filters, and richer Studio list UI are future layers.
+Record lists support direct `field:operator=value` params and multi-field sorting through `sort`. Empty checks use `field:empty` or `field:not-empty`; range checks use `start..end` as the value. `limit`, `offset`, and `sort` are reserved query params. Sorting uses `-field` for descending order and appends `id ASC` as a deterministic tie-breaker.
+
+Coming soon:
+
+- saved views
+- field-level permissions
+- row-level filters
+- richer Studio list UI
 
 `PATCH` is the update operation and only changes fields provided in the request body. `DELETE` performs a hard delete in v1.
 

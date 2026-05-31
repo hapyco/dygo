@@ -1,8 +1,8 @@
 # Metadata Authoring
 
-dygo includes JSON Schemas for the YAML files that define apps, Entities, fixtures, Jobs, and project config.
+dygo includes JSON Schemas for the YAML files that define apps, Entities, fixtures, Jobs, Schedules, patches, and project config.
 
-These schemas help editors and agents suggest valid keys and catch obvious shape mistakes while writing metadata. They are not the runtime source of truth. The Go validators behind `dygo app validate`, `dygo entity validate`, fixture apply, and config loading remain authoritative.
+These schemas help editors and agents suggest valid keys and catch obvious shape mistakes while writing metadata. They are not the runtime source of truth. The Go validators behind `dygo app validate`, `dygo entity validate`, fixture apply, Job and Schedule loading, patch loading, and config loading remain authoritative.
 
 ## Files
 
@@ -11,6 +11,8 @@ schemas/app.schema.json       app.yml manifests
 schemas/entity.schema.json    Entity metadata
 schemas/fixture.schema.json   app-owned fixtures
 schemas/job.schema.json       app-owned Jobs
+schemas/schedule.schema.json  app-owned Schedules
+schemas/patch.schema.json     explicit app patches
 schemas/config.schema.json    dygo.yml
 ```
 
@@ -23,6 +25,8 @@ apps/*/entities/_collections/*.yml
 apps/*/entities/_collections/*/entity.yml
 apps/*/entities/*/fixtures.yml
 apps/*/jobs/*/job.yml
+apps/*/jobs/_schedules.yml
+apps/*/patches/*.yml
 dygo.yml
 ```
 

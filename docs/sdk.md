@@ -1,66 +1,76 @@
 # App SDK
 
-The App SDK is the public Go package app code can compile against.
-
-```txt
-pkg/dygo/     - Future public app-facing Go API
-pkg/sdk/      - Current public app-facing Go API
-internal/     - Private framework implementation
-```
-
-`pkg/dygo` is the intended public package name. It keeps app code readable without import aliases:
-
-```go
-import "github.com/hapyco/dygo/pkg/dygo"
-
-func BeforeCreate(ctx context.Context, hook dygo.RecordHook) error {
-	return nil
-}
-```
-
-This document is named `sdk.md` for now because it defines the app developer SDK sprint. The public concept can be called the Go API in user-facing docs. HTTP API documentation should live separately.
-
-Use the App SDK from:
-
-```txt
-hooks        - Record lifecycle behavior
-jobs         - Background work
-pages        - Custom page actions
-reports      - Custom report queries
-workflows    - Future workflow actions
-patches      - Future app migrations
-```
-
-## SDK Vs API
-
-```txt
-Go API   - Go code imported by dygo apps
-HTTP API - Network API used by clients
-```
-
-## Current Surface
-
-```txt
-Record hooks
-Record data access
-Job handlers
-Job enqueueing
-Project runner integration
-```
+The App SDK is the Go package app code compiles against:
 
 ```go
 import "github.com/hapyco/dygo/pkg/sdk"
 ```
 
-## Record Access
+Everything under `internal/` is private framework implementation. App-owned hooks and Jobs should only depend on `pkg/sdk` and normal Go packages.
 
-App code reads and writes metadata-backed Records through `dygo.Records`.
+The current supported package is `pkg/sdk`. A shorter `pkg/dygo` import path is coming soon if the public Go API graduates from the current SDK shape.
+
+## SDK Vs HTTP API
+
+```txt
+Go SDK   - Go code imported by dygo apps
+HTTP API - Network API used by clients and Studio
+```
+
+App SDK code is trusted server-side code. It does not run the same permission path as a browser or HTTP client calling the dygo HTTP API.
+
+## Current Surface
+
+The current SDK exposes:
+
+- Record lifecycle hook types and registration
+- transactional Record reads and writes inside hooks
+- durable Job handler types and registration
+- Job enqueueing from hooks and Jobs
+- project runner integration types
+
+## Record Hooks
+
+Record hooks register functions for Entity lifecycle events:
 
 ```go
-record, err := dygo.Records.Get(ctx, "crm", "lead", 42)
-created, err := dygo.Records.Create(ctx, "crm", "activity", input)
-updated, err := dygo.Records.Update(ctx, "crm", "lead", 42, input)
-err := dygo.Records.Delete(ctx, "crm", "lead", 42)
+func Register(registry sdk.RecordHookRegistry) error {
+	return registry.RegisterEntity("crm", "contact", sdk.RecordAfterCreate, "send-welcome", SendWelcome)
+}
+
+func SendWelcome(ctx context.Context, hook sdk.RecordHook) error {
+	return nil
+}
+```
+
+Supported events:
+
+```txt
+before-validate
+validate
+before-create
+after-create
+before-update
+after-update
+before-delete
+after-delete
+```
+
+Hooks receive `sdk.RecordHook`, which includes the Entity identity, current input, old/new Record snapshots, changes, and SDK services.
+
+## Record Access
+
+Hooks read and write metadata-backed Records through `hook.Records`:
+
+```go
+record, err := hook.Records.Get(ctx, "crm", "contact", 42)
+created, err := hook.Records.Create(ctx, "crm", "activity", sdk.RecordInput{
+	"subject": json.RawMessage(`"Welcome"`),
+})
+updated, err := hook.Records.Update(ctx, "crm", "contact", 42, sdk.RecordInput{
+	"status": json.RawMessage(`"Active"`),
+})
+err := hook.Records.Delete(ctx, "crm", "contact", 42)
 ```
 
 Record access uses app-scoped Entity identity:
@@ -71,25 +81,29 @@ Record access uses app-scoped Entity identity:
 
 Do not use route slugs as SDK Entity identity.
 
+Hook Record writes run dygo framework hooks, such as Activity, but do not re-enter app hooks.
+
 ## Jobs
 
 Generated Job files expose one `Run` function:
 
 ```go
 func Run(ctx context.Context, job sdk.JobExecution) error {
-    return nil
+	return nil
 }
 ```
 
 Job handlers and transactional Record hooks can enqueue durable background work:
 
 ```go
-execution, err := dygo.Jobs.Enqueue(ctx, "crm", "send-welcome-email", payload, sdk.EnqueueOptions{
-    IdempotencyKey: "email:welcome:contact-42",
-    Priority:       0,
-    RunAfter:       time.Now().Add(10 * time.Minute),
+execution, err := job.Jobs.Enqueue(ctx, "crm", "send-welcome-email", payload, sdk.EnqueueOptions{
+	IdempotencyKey: "email:welcome:contact-42",
+	Priority:       0,
+	RunAfter:       time.Now().Add(10 * time.Minute),
 })
 ```
+
+Inside a Record hook, use `hook.Jobs.Enqueue` with the same arguments.
 
 Job access uses app-scoped Job identity:
 
@@ -99,26 +113,25 @@ Job access uses app-scoped Job identity:
 
 Do not use labels or routes as SDK Job identity.
 
-## Future Surfaces
-
-```txt
-dygo.Records       - Metadata-backed Record access
-dygo.Files         - Public/private file storage
-dygo.Permissions   - Permission checks
-dygo.Actor         - Current user/session identity
-dygo.Logger        - Structured app logging
-dygo.Config        - App/runtime config reads
-dygo.Secrets       - Controlled secret reads
-dygo.Metadata      - Entity and Field metadata reads
-```
-
 ## Runtime Rules
 
 ```txt
-hooks    - Run inside the current Record transaction
-jobs     - Run outside user requests
-pages    - Run inside request context
-reports  - Run inside report request context
+hooks   - run inside the current Record transaction
+jobs    - run outside user requests
+pages   - coming soon
+reports - coming soon
 ```
 
-App SDK code is trusted server-side code. It does not mean the same thing as a browser or HTTP client calling the dygo HTTP API.
+## Coming Soon
+
+Planned SDK surfaces include:
+
+```txt
+dygo.Files         - public/private file storage
+dygo.Permissions   - permission checks
+dygo.Actor         - current user/session identity
+dygo.Logger        - structured app logging
+dygo.Config        - app/runtime config reads
+dygo.Secrets       - controlled secret reads
+dygo.Metadata      - Entity and Field metadata reads
+```

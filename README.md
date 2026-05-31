@@ -6,134 +6,111 @@
 [![Contributions](https://img.shields.io/badge/contributions-paused-lightgrey)](CONTRIBUTING.md)
 [![Issues](https://img.shields.io/badge/issues-GitHub-2ea44f)](https://github.com/hapyco/dygo/issues)
 
-dygo is a source-available framework for building serious business software in Go.
+dygo is a source-available Go framework for building serious business software.
 
-It is designed for business processes, internal operating systems, enterprise applications, and workflow-heavy products where permissions, metadata-driven schema, audit trails, observability, background jobs, secure configuration, and a consistent Studio UI matter from day one.
-
-The goal is speed with structure: builders should focus on business logic while dygo handles the platform foundation.
-
-## License
-
-dygo is released under the [O'Saasy License](LICENSE). It is free to use, modify, self-host, and build with, but competing hosted, managed, SaaS, or cloud services where dygo itself is the primary value are reserved for the original licensor.
+It gives business apps a conventional platform foundation: metadata-driven PostgreSQL schema, encrypted configuration, session auth, permissions, generic Record APIs, Record hooks, durable Jobs, recurring Schedules, and a first-party Studio UI.
 
 ## Status
 
-dygo is in early framework development.
+dygo is in early framework development. The repository contains the framework module, CLI, project generator, metadata validators, PostgreSQL schema sync, Core metadata registry, session auth, generic Record APIs, Record permission enforcement, compiled Record hooks, durable Jobs, recurring Schedules, and worker runtime.
 
-The current repository contains the first Go module, CLI entrypoint, config defaults, HTTP server, encrypted credentials, app/entity metadata validation, PostgreSQL schema sync, Core metadata registry, metadata API, session auth, generic Record API foundation with system Record naming, Record permission enforcement, and a compiled Record hook SDK. The framework APIs are not stable yet.
+Framework APIs and file formats may still change before the first stable release.
 
-## Install
+## Quick Start
 
-The intended installer is:
+Install dygo:
 
 ```sh
 curl -fsSL https://dygo.dev/install | sh
 ```
 
-Until `dygo.dev/install` is wired, use:
+Until `dygo.dev/install` is wired, use the repository-hosted installer:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/hapyco/dygo/main/scripts/install.sh | sh
 ```
 
-## CLI
-
-See [dygo CLI](docs/cli.md) for the command surface.
-
-`dygo dev` starts dygo on `127.0.0.1:6790` for local development. In this source checkout it also starts the Studio development asset server internally and proxies Studio through the same dygo origin.
-
-The default server address is:
-
-```txt
-127.0.0.1:6790
-```
-
-The first HTTP endpoints are:
-
-```txt
-GET /health
-POST /api/v1/auth/login
-POST /api/v1/auth/logout
-GET /api/v1/auth/me
-GET /api/v1/apps
-GET /api/v1/apps/{app}
-GET /api/v1/entities
-GET /api/v1/entities/{entity}/meta
-GET /api/v1/records/{entity}
-GET /api/v1/records/{entity}/{id}
-GET /api/v1/records/{entity}/name/{name}
-GET /api/v1/records/{entity}/{id}/activity
-POST /api/v1/records/{entity}
-PATCH /api/v1/records/{entity}/{id}
-DELETE /api/v1/records/{entity}/{id}
-```
-
-The API endpoints are generic and metadata-powered; dygo does not create separate handlers for each Entity. `{entity}` is the Entity route slug, defaulting to the file-derived Entity key.
-
-Metadata and Record APIs require an authenticated Studio session. Metadata visibility is permission-aware, and Record routes check Entity actions through the permission engine.
-
-Scoped Record Activity is read through the target Record route and checked against the target Entity's `read` permission.
-
-Project-aware commands discover the dygo root by walking upward from the current directory. Generated projects use `dygo.yml` as the root marker and runtime config file; the framework repository is also recognized during development.
-
-`dygo new <name>` creates a project with one app under `apps/`, a project-local `cmd/dygo` runner, encrypted secrets, a development `DATABASE_URL` secret, and cached Studio UI assets when the running dygo build has them. It does not create a database, run schema sync, apply fixtures, or create the first Administrator; run the printed first-run commands before opening Studio.
-
-## Development
-
-Requirements:
-
-- Go 1.26.2+
-
-Verify the repo:
+Create and run a project:
 
 ```sh
-go test ./...
-go test -race ./...
-go vet ./...
+dygo new my-system
+cd my-system
+dygo db migrate
+dygo setup
+dygo dev
 ```
 
-## Project Shape
+`dygo dev` starts the local server on `http://localhost:6790/`. In this source checkout it also starts the Studio Vite server and proxies Studio through the same dygo origin.
 
-```txt
-cmd/dygo/          executable entrypoint
-internal/cli/      private CLI implementation
-internal/config/   private config defaults and loading code
-internal/db/       private PostgreSQL code
-apps/              first-party dygo apps such as core and Studio
-config/            committed project support files
-.dygo/             generated local state, cached apps, logs, temp files, and local secret keys
-db/                generated schema snapshot
-docs/              framework documentation
+## What You Build With
+
+- Apps live under `apps/<app>` and describe business modules.
+- Entities define metadata-backed Records, fields, indexes, constraints, permissions, hooks, fixtures, and route slugs.
+- `dygo db migrate` compares metadata with PostgreSQL, applies safe schema changes, syncs Core metadata records, applies fixtures, and refreshes `db/schema.sql`.
+- Studio renders global app surfaces from metadata.
+- Jobs run durable background work through PostgreSQL-backed Job Executions.
+- Schedules create Job Executions from app-owned cron metadata.
+
+## Common Commands
+
+```sh
+dygo generate app crm
+dygo generate entity crm/contact
+dygo generate job crm/send-welcome-email
+
+dygo app validate
+dygo entity validate
+dygo doctor
+
+dygo db migrate
+dygo dev
+dygo serve
+dygo worker
 ```
 
-## Docs
+See [CLI](docs/cli.md) for the full command surface.
+
+## Documentation
 
 - [Documentation Index](docs/index.md)
 - [Installation](docs/installation.md)
 - [CLI](docs/cli.md)
-- [Doctrine](docs/doctrine.md)
-- [Nomenclature](docs/nomenclature.md)
 - [App Model](docs/app-model.md)
-- [App Manifest](docs/app-manifest.md)
 - [Entity Metadata](docs/entity-metadata.md)
-- [Metadata Authoring](docs/metadata-authoring.md)
-- [Config](docs/config.md)
 - [Database](docs/database.md)
-- [Explicit Patches](docs/patches.md)
-- [Fixtures](docs/fixtures.md)
-- [Server](docs/server.md)
-- [Auth](docs/auth.md)
 - [Records](docs/records.md)
-- [App SDK](docs/sdk.md)
+- [Record Hooks](docs/record-hooks.md)
+- [Jobs](docs/jobs.md)
+- [Queues And Workers](docs/queues.md)
+- [Schedules](docs/schedule.md)
+- [Server](docs/server.md)
 - [Studio](docs/studio.md)
+- [App SDK](docs/sdk.md)
 - [Encrypted Secrets](docs/secrets.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security Policy](SECURITY.md)
+
+## Repository Development
+
+Requirements:
+
+- Go 1.26.2+
+- PostgreSQL for database-backed commands and runtime tests
+- Node.js only when working on Studio UI assets
+
+Useful focused checks:
+
+```sh
+go test ./cmd/dygo ./pkg/... ./internal/... ./schemas
+go vet ./...
+```
+
+## License
+
+dygo is released under the [O'Saasy License](LICENSE). It is free to use, modify, self-host, and build with, but competing hosted, managed, SaaS, or cloud services where dygo itself is the primary value are reserved for the original licensor.
+
+## Security
+
+Report possible security vulnerabilities privately through the [Security Policy](SECURITY.md).
 
 ## Issues
 
-Open issue tracking lives in the GitHub issue list:
-
-- [dygo issues](https://github.com/hapyco/dygo/issues)
-
-Repository and issue-tracking metadata for maintainers and agents lives in [config/github.yml](config/github.yml).
+Open issue tracking lives in [GitHub Issues](https://github.com/hapyco/dygo/issues). Repository and issue-tracking metadata for maintainers and agents lives in [config/github.yml](config/github.yml).

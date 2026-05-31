@@ -183,4 +183,4 @@ Secrets can only be changed through `dygo secret edit` and read through `dygo se
 
 `.dygo/secrets/master.key` is intentionally project-local for now. Sharing it, backing it up, and injecting it into deployment environments are operational concerns outside this first implementation.
 
-dygo still uses one local root key for development, staging, and production. Per-environment recipients, KMS, Vault, and other external production secret providers are future work.
+dygo still uses one local root key for development, staging, and production. Per-environment recipients, KMS, Vault, and other external production secret providers are coming soon.

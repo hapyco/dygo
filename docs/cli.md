@@ -1,6 +1,6 @@
 # dygo CLI
 
-This document describes the dygo CLI surface after the CLI cleanup work. Deferred commands and future extensions are listed separately.
+This document describes the dygo CLI command surface. Commands that are intentionally not part of the current surface are listed under [Coming Soon](#coming-soon).
 
 ## Root
 
@@ -20,7 +20,7 @@ This document describes the dygo CLI surface after the CLI cleanup work. Deferre
 
 `dygo dev` keeps the stable backend ready URL on stdout and writes local development diagnostics to stderr, including the project root, environment, Studio dev server startup, external Studio target when supplied, and Vite output. Loopback URLs are displayed as `localhost`, but dygo may still bind services to `127.0.0.1` for deterministic local-only networking. It must not print raw database URLs or decrypted secret values.
 
-`dygo doctor` checks root/config, queue config, secrets, database connectivity, schema snapshot state, app, Entity, and Job metadata, route conflicts, fixture validity, hook and Job runner wiring, generated project runner, Studio assets, and first-run setup state.
+`dygo doctor` checks root/config, queue config, secrets, database connectivity, schema snapshot state, app, Entity, Job, and Schedule metadata, route conflicts, fixture validity, hook and Job runner wiring, generated project runner, Studio assets, and first-run setup state.
 
 ## Database
 
@@ -114,7 +114,7 @@ Collection generators create metadata only. Collection rows do not get fixture s
 
 Generators are non-interactive by default. They write when there are no conflicts, skip unchanged generated files, and fail on custom-file conflicts with a clear message.
 
-Generator boilerplate should live as embedded templates under `internal/generate/templates/`. The dygo binary should embed these templates at build time instead of reading template files from disk at runtime.
+Generator boilerplate lives as embedded templates under `internal/generate/templates/`. The dygo binary embeds these templates at build time instead of reading template files from disk at runtime.
 
 ## Jobs
 
@@ -157,7 +157,7 @@ Generator boilerplate should live as embedded templates under `internal/generate
 - `dygo permission explain <app>/<entity> <action> --user <email-or-id>` - Explains the live permission decision for one user.
 - `dygo permission explain <app>/<entity> <action> --role <role>` - Explains the live permission decision for one role.
 
-Permission commands default to `--env development` and read live Core permission Records from the configured database. The CLI should share the same internal permission verification methods used by the server/runtime so command answers match API and Studio authorization behavior.
+Permission commands default to `--env development` and read live Core permission Records from the configured database. They use the same internal permission verification methods as the server/runtime so command answers match API and Studio authorization behavior.
 
 ## Secrets
 
@@ -185,10 +185,10 @@ Secret names support root keys and dot-separated YAML paths, such as `DATABASE_U
 
 Production deployments that use Jobs or Schedules should run `dygo serve` and `dygo worker` as separate long-running processes. `dygo serve` does not process queued Job Executions or due Schedules.
 
-## Deferred CLI Surface
+## Coming Soon
 
-- Global `--json` - Defer until dygo has a consistent output contract for command results, validation errors, dry-run plans, prompts, redaction, and streaming commands.
-- Smart shell completions - Defer until command structure is implemented; start with filesystem/static completions for `--env`, `<app>`, `<app>/<entity>`, hook events, and completion shells.
+- Global `--json` - Coming after dygo has a consistent output contract for command results, validation errors, dry-run plans, prompts, redaction, and streaming commands.
+- Smart shell completions - Coming after the command structure is more stable; the first version should cover `--env`, `<app>`, `<app>/<entity>`, hook events, and completion shells.
 
 ## Out Of Band Binary Updates
 

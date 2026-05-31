@@ -194,4 +194,13 @@ update -> update
 delete -> delete
 ```
 
-Administrator users are privileged through the permission engine. Sharing, row-level filtering, owner rules, field-level permissions, saved views, and richer Studio list UI are future layers on the same engine.
+Administrator users are privileged through the permission engine.
+
+Coming soon on the same engine:
+
+- sharing
+- row-level filtering
+- owner rules
+- field-level permissions
+- saved views
+- richer Studio list UI
