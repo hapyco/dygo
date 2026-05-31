@@ -46,7 +46,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #196 Add Studio command palette v2 with contextual actions and record search
 - [ ] #197 Add Studio multi-tab navigation support
 - [ ] #198 Add pinned section to Studio sidebar
-- [ ] Finalize Single Entity's storage model
+- [ ] #232 Finalize Single Entity's storage model
 - [ ] #130 Define Record rename and system name behavior
 - [ ] #131 Add Studio form validation and field error mapping
 - [ ] #132 Design Studio record form layout metadata
@@ -61,7 +61,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #143 Add job-backed importer foundation for data imports
 - [x] #211 Let developers write a simple Job `Run` function and have dygo wire it automatically
 - [x] #212 Add one command to create a new Job with `job.yml` and `run.go`
-- [x] Create `job.yml` schema for editor validation and autocomplete
+- [x] #233 Create `job.yml` schema for editor validation and autocomplete
 - [x] #213 Let developers run a Job manually for testing
 - [ ] #214 Let Studio users schedule Jobs like "every Monday at 9 AM"
 - [ ] #215 Let apps ship recurring schedules with code
@@ -74,12 +74,12 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #222 Clean up old Job history automatically
 - [x] #223 Make production setup clearly show that app server and worker both need to run
 - [x] #224 Let workers pick up new Jobs instantly instead of waiting for the poll cycle
-- [x] Guard Job Execution completion and failure updates with claim identity
-- [x] Recover panics from Job handlers and record them as retryable failures
-- [x] Shorten active Job Execution leases when worker shutdown timeout expires
-- [x] Store Job retry delays with JSON keys the runtime can decode
-- [ ] Treat late successful Job handler returns after timeout as timeout failures
-- [ ] Pass worker shutdown cancellation to Job handlers while preserving uncancelled DB finalization
+- [x] #234 Guard Job Execution completion and failure updates with claim identity
+- [x] #235 Recover panics from Job handlers and record them as retryable failures
+- [x] #236 Shorten active Job Execution leases when worker shutdown timeout expires
+- [x] #237 Store Job retry delays with JSON keys the runtime can decode
+- [ ] #238 Treat late successful Job handler returns after timeout as timeout failures
+- [ ] #239 Pass worker shutdown cancellation to Job handlers while preserving uncancelled DB finalization
 - [x] #225 Define removed `job.yml` retirement behavior for synced Core Job rows
 - [ ] #226 Add Core retention policy Entity for platform record cleanup
 - [ ] #144 Add Studio keyboard shortcut foundation
