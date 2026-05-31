@@ -64,7 +64,7 @@ func (s Store) RunDueSchedules(ctx context.Context, queueNames []string, workerI
 	return len(due), nil
 }
 
-// NextScheduleRunAt returns the earliest future Schedule occurrence for selected queues.
+// NextScheduleRunAt returns the earliest due or future Schedule occurrence for selected queues.
 func (s Store) NextScheduleRunAt(ctx context.Context, queueNames []string, now time.Time) (*time.Time, error) {
 	queueNames, err := s.scheduleQueueNames(queueNames)
 	if err != nil {
@@ -88,8 +88,7 @@ JOIN "job" j ON j.id = s.job_id
 WHERE s.enabled = true
   AND s.retired = false
   AND s.next_run_at IS NOT NULL
-  AND s.next_run_at > $1
-  AND j.queue = ANY($2)`, now.UTC(), queueNames).Scan(&next); err != nil {
+  AND j.queue = ANY($1)`, queueNames).Scan(&next); err != nil {
 		return nil, fmt.Errorf("query next schedule run: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {

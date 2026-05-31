@@ -78,6 +78,9 @@ func NextRunAt(cronExpr string, timezone string, after time.Time) (time.Time, er
 	if err != nil {
 		return time.Time{}, fmt.Errorf("timezone %q is invalid: %w", timezone, err)
 	}
+	if hasCronTimezonePrefix(cronExpr) {
+		return time.Time{}, fmt.Errorf("cron %q must not include CRON_TZ or TZ because timezone is configured separately", cronExpr)
+	}
 	schedule, err := cronParser.Parse("CRON_TZ=" + location.String() + " " + strings.TrimSpace(cronExpr))
 	if err != nil {
 		return time.Time{}, fmt.Errorf("cron %q is invalid: %w", cronExpr, err)
@@ -205,7 +208,7 @@ func (f File) Validate() error {
 }
 
 func validateSchedule(prefix string, schedule Schedule, problems *[]string) {
-	if !fieldtype.IsName(strings.TrimSpace(schedule.Name)) {
+	if !fieldtype.IsName(schedule.Name) {
 		*problems = append(*problems, fmt.Sprintf("%s.name %q must be kebab-case", prefix, schedule.Name))
 	}
 	if strings.TrimSpace(schedule.Label) == "" {
@@ -213,6 +216,8 @@ func validateSchedule(prefix string, schedule Schedule, problems *[]string) {
 	}
 	if strings.TrimSpace(schedule.Cron) == "" {
 		*problems = append(*problems, prefix+".cron is required")
+	} else if hasCronTimezonePrefix(schedule.Cron) {
+		*problems = append(*problems, fmt.Sprintf("%s.cron must not include CRON_TZ or TZ; use timezone instead", prefix))
 	} else if _, err := cronParser.Parse(strings.TrimSpace(schedule.Cron)); err != nil {
 		*problems = append(*problems, fmt.Sprintf("%s.cron %q is invalid: %v", prefix, schedule.Cron, err))
 	}
@@ -226,6 +231,15 @@ func validateSchedule(prefix string, schedule Schedule, problems *[]string) {
 	} else if _, err := schedule.JobRef(); err != nil {
 		*problems = append(*problems, prefix+"."+err.Error())
 	}
+}
+
+func hasCronTimezonePrefix(cronExpr string) bool {
+	fields := strings.Fields(strings.TrimSpace(cronExpr))
+	if len(fields) == 0 {
+		return false
+	}
+	first := strings.ToUpper(fields[0])
+	return strings.HasPrefix(first, "CRON_TZ=") || strings.HasPrefix(first, "TZ=")
 }
 
 func validateCatalog(schedules []LoadedSchedule, loadedJobs []jobs.LoadedJob) error {

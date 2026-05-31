@@ -62,6 +62,34 @@ schedules:
 	}
 }
 
+func TestDecodeRejectsCronTimezonePrefix(t *testing.T) {
+	_, err := Decode([]byte(`
+schedules:
+  - name: weekly-report
+    label: Weekly Report
+    cron: "CRON_TZ=UTC 0 9 * * MON"
+    timezone: Asia/Karachi
+    job: sales/send-weekly-report
+`))
+	if err == nil || !strings.Contains(err.Error(), "must not include CRON_TZ or TZ") {
+		t.Fatalf("Decode() error = %v, want cron timezone prefix rejection", err)
+	}
+}
+
+func TestDecodeRejectsPaddedScheduleName(t *testing.T) {
+	_, err := Decode([]byte(`
+schedules:
+  - name: " weekly-report "
+    label: Weekly Report
+    cron: "0 9 * * MON"
+    timezone: Asia/Karachi
+    job: sales/send-weekly-report
+`))
+	if err == nil || !strings.Contains(err.Error(), `name " weekly-report " must be kebab-case`) {
+		t.Fatalf("Decode() error = %v, want padded name rejection", err)
+	}
+}
+
 func TestNextRunAtUsesScheduleTimezone(t *testing.T) {
 	after := time.Date(2026, 6, 1, 3, 59, 0, 0, time.UTC)
 	next, err := NextRunAt("0 9 * * MON", "Asia/Karachi", after)
@@ -71,6 +99,13 @@ func TestNextRunAtUsesScheduleTimezone(t *testing.T) {
 	want := time.Date(2026, 6, 1, 4, 0, 0, 0, time.UTC)
 	if !next.Equal(want) {
 		t.Fatalf("NextRunAt() = %s, want %s", next, want)
+	}
+}
+
+func TestNextRunAtRejectsCronTimezonePrefix(t *testing.T) {
+	_, err := NextRunAt("TZ=UTC 0 9 * * MON", "Asia/Karachi", time.Date(2026, 6, 1, 3, 59, 0, 0, time.UTC))
+	if err == nil || !strings.Contains(err.Error(), "must not include CRON_TZ or TZ") {
+		t.Fatalf("NextRunAt() error = %v, want timezone prefix rejection", err)
 	}
 }
 

@@ -45,6 +45,9 @@
         "cron": {
           "type": "string",
           "minLength": 1,
+          "not": {
+            "pattern": "^(?:[Cc][Rr][Oo][Nn]_[Tt][Zz]|[Tt][Zz])="
+          },
           "description": "Standard 5-field cron expression: minute hour day-of-month month day-of-week.",
           "examples": ["0 9 * * MON"]
         },

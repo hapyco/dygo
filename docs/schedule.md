@@ -75,6 +75,7 @@ Rules:
 
 - Use standard 5-field cron.
 - Named weekdays and months, such as `MON` and `JAN`, are accepted by the cron parser.
+- Do not include `CRON_TZ=` or `TZ=` in `cron`; use the separate `timezone` field.
 - Seconds fields are not accepted.
 - `@every` interval descriptors are not accepted.
 - dygo does not add custom cron aliases or custom name translation.
