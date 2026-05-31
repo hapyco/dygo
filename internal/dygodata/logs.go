@@ -67,7 +67,11 @@ func logInput(entry dygo.LogEntry) (db.RecordInput, error) {
 }
 
 func logString(value string) json.RawMessage {
-	return json.RawMessage(strconv.Quote(value))
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return json.RawMessage(`""`)
+	}
+	return encoded
 }
 
 func logInt(value int64) json.RawMessage {

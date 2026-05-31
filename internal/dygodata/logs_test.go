@@ -50,3 +50,31 @@ func TestLogInputMapsEntryToCoreRecordInput(t *testing.T) {
 		t.Fatalf("metadata = %#v, want batch", metadata)
 	}
 }
+
+func TestLogInputEncodesStringsAsJSON(t *testing.T) {
+	title := "\x1b[31mCustomer import failed\x1b[0m"
+	message := "line one\nline two"
+
+	input, err := logInput(dygo.LogEntry{
+		Type:    dygo.TypeError,
+		Source:  dygo.SourceHook,
+		Title:   title,
+		Message: message,
+	})
+	if err != nil {
+		t.Fatalf("logInput() error = %v, want nil", err)
+	}
+
+	for key, want := range map[string]string{
+		"title":   title,
+		"message": message,
+	} {
+		var got string
+		if err := json.Unmarshal(input[key], &got); err != nil {
+			t.Fatalf("input[%q] decode error = %v", key, err)
+		}
+		if got != want {
+			t.Fatalf("input[%q] = %q, want %q", key, got, want)
+		}
+	}
+}

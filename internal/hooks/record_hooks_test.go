@@ -356,6 +356,59 @@ func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
 	}
 }
 
+func TestRecordHookLogsUseLogQueryerOutsideRecordQueryer(t *testing.T) {
+	t.Parallel()
+
+	recordQueryer := newUserRecordDataMutationQueryer(userRecordRow("a@example.com", "A User", true))
+	logQueryer := newLogRecordDataMutationQueryer()
+	hookErr := errors.New("blocked by hook")
+	var recordErr error
+	registry, err := NewRecordHookRegistry([]dygo.RecordHookRegistrar{
+		func(registry dygo.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", dygo.RecordBeforeCreate, "log-and-reject", func(ctx context.Context, hook dygo.RecordHook) error {
+				_, recordErr = hook.Records.Create(ctx, "core", "user", dygo.RecordInput{
+					"email":     json.RawMessage(`"a@example.com"`),
+					"full-name": json.RawMessage(`"A User"`),
+				})
+				dygo.Error(ctx, "Lead hook failed", hookErr)
+				return hookErr
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRecordHookRegistry() error = %v, want nil", err)
+	}
+
+	err = registry.Run(context.Background(), db.RecordHookContext{
+		Event:      db.RecordBeforeCreate,
+		Operation:  dygo.RecordOperationCreate,
+		AppName:    "sales",
+		Entity:     "lead",
+		Queryer:    recordQueryer,
+		LogQueryer: logQueryer,
+	})
+	if err == nil || !strings.Contains(err.Error(), hookErr.Error()) {
+		t.Fatalf("Run() error = %v, want hook error", err)
+	}
+	if recordErr != nil {
+		t.Fatalf("hook.Records.Create() error = %v, want nil", recordErr)
+	}
+	if !recordQueryer.queriedSQLContaining(`INSERT INTO "user"`) {
+		t.Fatalf("record queries = %#v, want hook record write through record queryer", recordQueryer.queries)
+	}
+	if recordQueryer.executedSQLContaining(`INSERT INTO "log"`) {
+		t.Fatalf("record exec SQL = %#v, want no Log insert through record queryer", recordQueryer.execSQL)
+	}
+	if !logQueryer.executedSQLContaining(`INSERT INTO "log"`) {
+		t.Fatalf("log exec SQL = %#v, want Log insert through log queryer", logQueryer.execSQL)
+	}
+	for _, want := range []any{"Error", "Hook", "Lead hook failed", hookErr.Error()} {
+		if !logQueryer.executedArg(want) {
+			t.Fatalf("log exec args = %#v, want %q", logQueryer.execArg, want)
+		}
+	}
+}
+
 func allRecordHookEvents() []dygo.RecordHookEvent {
 	return dygo.SupportedRecordHookEvents()
 }
@@ -455,6 +508,17 @@ func newUserRecordDataMutationQueryer(recordRows ...[]any) *recordDataMutationQu
 	return queryer
 }
 
+func newLogRecordDataMutationQueryer() *recordDataMutationQueryer {
+	return &recordDataMutationQueryer{
+		row: newRecordDataMutationRow(int64(2), "core.log", "log", "log", "Log", "Diagnostic log", "file-text", false, false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core"),
+		rows: []pgx.Rows{
+			newRecordDataMutationRows(hookLogFieldRows()),
+			newRecordDataMutationRows(nil),
+			newRecordDataMutationRows(nil),
+		},
+	}
+}
+
 func userRecordRow(email string, fullName string, enabled bool) []any {
 	now := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	return []any{int64(7), email, now, now, email, fullName, enabled}
@@ -464,6 +528,9 @@ func (q *recordDataMutationQueryer) Query(_ context.Context, sql string, args ..
 	q.queries = append(q.queries, sql)
 	q.args = append(q.args, args)
 	if rows, ok := hookActivityMetadataRows(sql, args...); ok {
+		return rows, nil
+	}
+	if rows, ok := hookLogMetadataRows(sql, args...); ok {
 		return rows, nil
 	}
 	if len(q.rows) == 0 {
@@ -479,6 +546,15 @@ func (q *recordDataMutationQueryer) QueryRow(_ context.Context, sql string, args
 	q.rowArgs = append(q.rowArgs, args)
 	if isHookActivityMetadataQuery(sql, args...) {
 		return newRecordDataMutationRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core")
+	}
+	if isHookLogMetadataQuery(sql, args...) {
+		return newRecordDataMutationRow(int64(2), "core.log", "log", "log", "Log", "Diagnostic log", "file-text", false, false, false, []byte(`{"strategy":"random","length":16}`), "core", "Core")
+	}
+	if strings.Contains(sql, `SELECT "id" FROM "app"`) && len(args) == 1 && args[0] == "sales" {
+		return newRecordDataMutationRow(int64(20))
+	}
+	if strings.Contains(sql, `SELECT "id" FROM "entity"`) && len(args) == 1 && args[0] == "sales.lead" {
+		return newRecordDataMutationRow(int64(30))
 	}
 	if strings.Contains(sql, `SELECT "id" FROM "entity"`) && len(args) == 1 && args[0] == "core.user" {
 		return newRecordDataMutationRow(int64(10))
@@ -512,11 +588,38 @@ func (q *recordDataMutationQueryer) executedSQLContaining(fragment string) bool 
 	return false
 }
 
+func (q *recordDataMutationQueryer) queriedSQLContaining(fragment string) bool {
+	for _, sql := range q.queries {
+		if strings.Contains(sql, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func (q *recordDataMutationQueryer) executedArg(want any) bool {
+	for _, args := range q.execArg {
+		for _, got := range args {
+			if got == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func isHookActivityMetadataQuery(sql string, args ...any) bool {
 	return strings.Contains(sql, `WHERE a.name = $1 AND e.key = $2`) &&
 		len(args) == 2 &&
 		args[0] == "core" &&
 		args[1] == "activity"
+}
+
+func isHookLogMetadataQuery(sql string, args ...any) bool {
+	return strings.Contains(sql, `WHERE a.name = $1 AND e.key = $2`) &&
+		len(args) == 2 &&
+		args[0] == "core" &&
+		args[1] == "log"
 }
 
 func hookActivityMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
@@ -539,6 +642,31 @@ func hookActivityMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
 		return newRecordDataMutationRows(nil), true
 	default:
 		return nil, false
+	}
+}
+
+func hookLogMetadataRows(sql string, args ...any) (pgx.Rows, bool) {
+	if len(args) != 1 || args[0] != int64(2) {
+		return nil, false
+	}
+	switch {
+	case strings.Contains(sql, `FROM "field"`):
+		return newRecordDataMutationRows(hookLogFieldRows()), true
+	case strings.Contains(sql, `FROM "index"`), strings.Contains(sql, `FROM "constraint"`):
+		return newRecordDataMutationRows(nil), true
+	default:
+		return nil, false
+	}
+}
+
+func hookLogFieldRows() [][]any {
+	return [][]any{
+		{int64(301), "type", "Type", "select", true, false, false, nil, nil, nil, 1, []byte(`{"values":["Debug","Info","Warning","Error","Panic"]}`)},
+		{int64(302), "source", "Source", "select", true, false, false, nil, nil, nil, 2, []byte(`{"values":["Framework","SDK","HTTP","Job","Hook","CLI","Studio"]}`)},
+		{int64(303), "app", "App", "link", false, false, false, nil, nil, nil, 3, []byte(`{"entity":"app","foreign-key":false}`)},
+		{int64(304), "title", "Title", "text", true, false, false, nil, nil, nil, 4, nil},
+		{int64(305), "message", "Message", "long-text", false, false, false, nil, nil, nil, 5, nil},
+		{int64(306), "reference-entity", "Reference Entity", "link", false, false, false, nil, nil, nil, 6, []byte(`{"entity":"entity","foreign-key":false}`)},
 	}
 }
 

@@ -1566,6 +1566,37 @@ func TestRecordStoreHookErrorPreventsMutation(t *testing.T) {
 	}
 }
 
+func TestRecordStoreHookLogQueryerStaysOutsideMutationTransaction(t *testing.T) {
+	queryer := newUserRecordQueryer()
+	transactional := &fakeTransactionalRecordQueryer{fakeRecordQueryer: queryer}
+	registry := NewRecordHookRegistry()
+	var hookQueryer RecordQueryer
+	var hookLogQueryer RecordQueryer
+	mustRegisterRecordHook(registry.RegisterEntity("core", "user", RecordBeforeCreate, "observe-queryers", func(_ context.Context, hookCtx RecordHookContext) error {
+		hookQueryer = hookCtx.Queryer
+		hookLogQueryer = hookCtx.LogQueryer
+		return errors.New("blocked by test hook")
+	}))
+
+	_, err := NewRecordStoreWithHooks(transactional, registry).CreateRecord(context.Background(), "user", recordInput(map[string]string{
+		"email":     `"a@example.com"`,
+		"full-name": `"A User"`,
+	}))
+	assertRecordError(t, err, RecordErrorValidation, "")
+	if transactional.tx == nil {
+		t.Fatal("transaction was not opened")
+	}
+	if !transactional.tx.rolledBack {
+		t.Fatal("transaction rolledBack = false, want rollback after hook error")
+	}
+	if hookQueryer != transactional.tx {
+		t.Fatalf("hook Queryer = %T, want active transaction %T", hookQueryer, transactional.tx)
+	}
+	if hookLogQueryer != transactional {
+		t.Fatalf("hook LogQueryer = %T, want outer queryer %T", hookLogQueryer, transactional)
+	}
+}
+
 func TestRecordStoreValidationErrors(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -70,8 +70,8 @@ func (r recordHookRegistry) RegisterEntity(appName string, entity string, event 
 }
 
 func withRecordHookLogContext(ctx context.Context, hookCtx db.RecordHookContext) context.Context {
-	if hookCtx.Queryer != nil {
-		ctx = dygo.WithLogWriter(ctx, dygodata.NewLogData(hookCtx.Queryer))
+	if hookCtx.LogQueryer != nil {
+		ctx = dygo.WithLogWriter(ctx, dygodata.NewLogData(hookCtx.LogQueryer))
 	}
 	defaults := dygo.LogContext{
 		Source:              dygo.SourceHook,
