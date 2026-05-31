@@ -32,52 +32,76 @@ Proposed fields:
 
 | Field | Type | Required | Purpose |
 | --- | --- | --- | --- |
-| `type` | `select` | yes | Log type such as `debug`, `info`, `warning`, `error`, or `panic`. |
-| `source` | `select` | yes | Where the Log came from, such as `framework`, `sdk`, `http`, `job`, `hook`, `cli`, `worker`, or `studio`. |
-| `title` | `text` | yes | Short human-facing summary. |
-| `message` | `long-text` | no | Longer explanation or plain text detail. |
-| `error` | `long-text` | no | Error string, stack trace, or traceback text. |
+| `type` | `select` | yes | Log type, matching the common logger idea of severity or level. Stored values should be `Debug`, `Info`, `Warning`, `Error`, and `Panic`. |
+| `source` | `select` | yes | Runtime surface that wrote the Log, such as `framework`, `sdk`, `http`, `job`, `hook`, `cli`, or `studio`. |
+| `title` | `text` | yes | Short human-facing summary. Simple SDK calls should map their message here. |
+| `message` | `long-text` | no | Optional longer body or explanation when the title is not enough. |
+| `error` | `long-text` | no | Error string plus stack trace or traceback text when available. |
 | `trace-id` | `text` | no | Correlation ID shared across request, Job, hook, and nested work. |
 | `reference-entity` | `link` | no | Optional Core Entity reference for the related Record type. |
 | `reference-record-id` | `bigint` | no | Optional internal Record ID for the related Record. |
 | `reference-record-name` | `text` | no | Optional stable Record name for the related Record. |
 | `actor` | `link` | no | Optional User that caused the event. |
-| `metadata` | `json` | no | Structured context that does not deserve first-class fields yet. |
+| `metadata` | `json` | no | Structured attributes, tags, and context that do not deserve first-class fields yet. |
 
-`reference-entity` and `actor` should use `foreign-key: false` so old Logs survive target deletion, the same pattern used by Activity history.
+All Log `link` fields should use `foreign-key: false` so old Logs survive target deletion, the same pattern used by Activity history.
 
-Expected indexes:
+Do not add custom indexes in the first pass. Logs should start with the normal Core Record storage shape, and dygo should add indexes later only after Studio usage shows a repeated access pattern that needs one.
 
-| Index | Fields | Purpose |
-| --- | --- | --- |
-| `by-type-created` | `type`, `created-at` | Filter recent errors, warnings, or info Logs. |
-| `by-source-created` | `source`, `created-at` | Inspect one runtime surface. |
-| `by-trace` | `trace-id` | Follow a request or Job across multiple Logs. |
-| `by-reference` | `reference-entity`, `reference-record-id` | Show Logs related to one Record. |
+## Field Review
+
+Common loggers and observability tools converge on a small set of concepts:
+
+- level or severity
+- message or body
+- timestamp
+- source, logger, scope, or resource
+- error or exception details
+- trace correlation
+- structured attributes, tags, or context
+- user context for application errors
+
+The proposed Log fields cover those concepts without making the Entity too wide:
+
+| Common concept | dygo field |
+| --- | --- |
+| level or severity | `type` |
+| message or body | `title`, optionally `message` |
+| timestamp | Core Record `created-at` |
+| source, logger, scope, or resource | `source`, optionally `metadata` |
+| error, exception, stack trace, or traceback | `error` |
+| trace correlation | `trace-id` |
+| structured attributes, tags, or context | `metadata` |
+| user context | `actor`, optionally `metadata` |
+| related object | `reference-entity`, `reference-record-id`, `reference-record-name` |
+
+Do not add dedicated v1 fields for `span-id`, `environment`, `release`, `logger`, `request-path`, `status-code`, `fingerprint`, or breadcrumbs. Put those in `metadata` until dygo has a clear Studio workflow that needs first-class filtering or display.
 
 ## Types
 
 Initial Log types:
 
 ```txt
-debug
-info
-warning
-error
-panic
+Debug
+Info
+Warning
+Error
+Panic
 ```
 
-`debug` is for local or temporary detail. It should be easy to disable or retain for a shorter time.
+These are the exact select values stored in the database. SDK helpers and constants should map to these title-case values so app code does not need to pass raw strings.
 
-`info` is for useful operational breadcrumbs.
+`Debug` is for local or temporary detail. It should be easy to disable when a writer does not need that level of detail.
 
-`warning` is for recoverable problems that may need attention.
+`Info` is for useful operational breadcrumbs.
 
-`error` is for failed operations.
+`Warning` is for recoverable problems that may need attention.
 
-`panic` is for recovered crashes or unrecoverable code paths that dygo managed to capture.
+`Error` is for failed operations.
 
-The type list can grow later, but v1 should stay small so Studio filters and retention policies remain simple.
+`Panic` is for recovered crashes or unrecoverable code paths that dygo managed to capture.
+
+The type list can grow later, but v1 should stay small so Studio filters remain simple.
 
 ## SDK
 
@@ -86,17 +110,22 @@ The SDK should make writing Logs simple. App code should not need to know the Co
 Intended ergonomic shape:
 
 ```go
-sdk.Info(ctx, "Customer import started")
-sdk.Error(ctx, "Customer import failed", err)
+dygo.Debug(ctx, "Resolved pricing rule")
+dygo.Info(ctx, "Customer import started")
+dygo.Warning(ctx, "Stripe rate limit hit")
+dygo.Error(ctx, "Customer import failed", err)
+dygo.Panic(ctx, "Recovered hook panic", recovered)
 ```
+
+The public package name should be `dygo`, not `sdk`, once the public SDK import path is renamed.
 
 Structured options can add context without making the common path noisy:
 
 ```go
-sdk.Error(ctx, "Customer import failed", err,
-	sdk.WithTraceID(traceID),
-	sdk.WithReference("crm", "customer", customerID),
-	sdk.WithMetadata("batch", batchName),
+dygo.Error(ctx, "Customer import failed", err,
+	dygo.WithTraceID(traceID),
+	dygo.WithReference("crm", "customer", customerID),
+	dygo.WithMetadata("batch", batchName),
 )
 ```
 
@@ -110,8 +139,8 @@ Inside hooks and Jobs, dygo should attach context automatically when available:
 The SDK should also expose a structured form for advanced cases:
 
 ```go
-sdk.Log(ctx, sdk.LogEntry{
-	Type:    sdk.LogError,
+dygo.Log(ctx, dygo.LogEntry{
+	Type:    dygo.TypeError,
 	Title:   "Payment sync failed",
 	Error:   err,
 	TraceID: traceID,
@@ -121,6 +150,18 @@ sdk.Log(ctx, sdk.LogEntry{
 	},
 })
 ```
+
+The structured `LogEntry.Type` constants should be named after the field, not the Entity:
+
+```go
+dygo.TypeDebug
+dygo.TypeInfo
+dygo.TypeWarning
+dygo.TypeError
+dygo.TypePanic
+```
+
+This keeps the common helpers short (`dygo.Error`) while avoiding a Go package namespace conflict with the type constants.
 
 ## Framework Use
 
@@ -149,35 +190,6 @@ The screenshot reference from Frappe's Error Log is useful for the detail page s
 
 Later Studio can add dedicated Log screens, but the first version should work through the generic metadata-driven Record UI.
 
-## Retention
-
-Logs can grow quickly. The first implementation should plan for retention even if cleanup lands later.
-
-Suggested default retention:
-
-| Type | Default retention |
-| --- | --- |
-| `debug` | 7 days |
-| `info` | 30 days |
-| `warning` | 90 days |
-| `error` | 180 days |
-| `panic` | 365 days |
-
-Retention should eventually connect to the Core retention policy Entity rather than hard-coded cleanup rules.
-
-## Privacy
-
-Logs may contain sensitive data. The SDK and framework writers must avoid storing secrets, password values, session tokens, API keys, raw cookies, or full database URLs.
-
-Rules:
-
-- redact known secret values before writing a Log
-- prefer stable IDs, names, and trace IDs over full payload dumps
-- keep request bodies out of Logs by default
-- treat `metadata` as operator-visible application data, not a private vault
-
-If an error string contains a known secret or database URL, dygo should sanitize it before persistence.
-
 ## Boundaries
 
 Logs are not Activity. They are not a compliance-grade Audit Log. They are not a replacement for local development console output.
@@ -186,7 +198,7 @@ Logs are persisted operational diagnostics. They should be queryable, filterable
 
 Activity stays focused on human-meaningful Record history.
 
-Audit Log remains a future compliance/security feature with stricter immutability, access rules, and retention requirements.
+Audit Log remains a future compliance/security feature with stricter immutability, access rules, and lifecycle requirements.
 
 Local console logging remains useful while developing, especially before the database is available.
 
@@ -199,5 +211,3 @@ Recommended first pass:
 3. Add SDK helpers for `Debug`, `Info`, `Warning`, `Error`, and structured `Log`.
 4. Add framework writers for recovered panics and Job failures.
 5. Expose Logs through the generic Record API and Studio list/detail UI.
-6. Add retention cleanup after Core retention policy support exists.
-
