@@ -11,6 +11,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #5 Create the opinions directory
 - [ ] #7 Add project documentation links
 - [ ] #21 Split field type registry files by responsibility
+- [ ] Rename Entity metadata files from `entity.yml` to `<entity>.entity.yml` in one repo-wide pass
 - [ ] #24 Add role inheritance for hierarchical permissions
 - [ ] Document fixture-first permission setup for app roles and Entity grants
 - [ ] Remove stale `permissions.yml` references until a dedicated loader exists
