@@ -1,6 +1,6 @@
 # Roadmap
 
-This page tracks local issue status for the dygo repository. Keep the issue numbers and checkbox state aligned with the current work before syncing to GitHub.
+This page tracks local issue status for the dygo repository. Keep only active (unchecked) tasks here; once a task is done and synced on GitHub, remove it from this file.
 
 Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 
@@ -16,8 +16,6 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #243 Document fixture-first permission setup for app roles and Entity grants
 - [ ] #244 Remove stale `permissions.yml` references until a dedicated loader exists
 - [ ] #245 Add permission fixture scaffolding when generating new app Entities
-- [x] #31 Add worker command
-- [x] #32 Add scheduler command
 - [ ] #33 Add site command group
 - [ ] #38 Add one-command local project setup
 - [ ] #51 Add Studio metadata browser
@@ -57,34 +55,12 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #133 Add Record tagging foundation
 - [ ] #134 Add Record todo foundation
 - [ ] #135 Add per-Record sharing foundation
-- [x] #138 Design durable Jobs and Queues architecture
-- [x] #139 Add Core Job metadata and Postgres queue storage
-- [x] #140 Implement Job worker runtime, claiming, retries, and timeouts
-- [x] #141 Add SDK and internal Jobs APIs
-- [x] #142 Add Job operations visibility and retry controls
 - [ ] #143 Add job-backed importer foundation for data imports
-- [x] #211 Let developers write a simple Job `Run` function and have dygo wire it automatically
-- [x] #212 Add one command to create a new Job with `job.yml` and `run.go`
-- [x] #233 Create `job.yml` schema for editor validation and autocomplete
-- [x] #213 Let developers run a Job manually for testing
 - [ ] #214 Let Studio users schedule Jobs like "every Monday at 9 AM"
-- [x] #215 Let apps ship recurring schedules with code
-- [x] #216 Show waiting, running, successful, failed, and cancelled Jobs in Studio
 - [ ] #217 Let Studio users retry a failed Job
 - [ ] #218 Let Studio users cancel a Job that has not started yet
-- [x] #219 Let Studio users pause or disable a Job without deleting it
 - [ ] #220 Show friendly forms for Job inputs instead of raw JSON
-- [x] #221 Show why a Job failed and when it will retry
 - [ ] #222 Clean up old Job history automatically
-- [x] #223 Make production setup clearly show that app server and worker both need to run
-- [x] #224 Let workers pick up new Jobs instantly instead of waiting for the poll cycle
-- [x] #234 Guard Job Execution completion and failure updates with claim identity
-- [x] #235 Recover panics from Job handlers and record them as retryable failures
-- [x] #236 Shorten active Job Execution leases when worker shutdown timeout expires
-- [x] #237 Store Job retry delays with JSON keys the runtime can decode
-- [x] #238 Treat late successful Job handler returns after timeout as timeout failures
-- [x] #239 Pass worker shutdown cancellation to Job handlers while preserving uncancelled DB finalization
-- [x] #225 Define removed `job.yml` retirement behavior for synced Core Job rows
 - [ ] #226 Add Core retention policy Entity for platform record cleanup
 - [ ] #144 Add Studio keyboard shortcut foundation
 - [ ] #199 Add custom Studio right-click context menus
@@ -105,14 +81,10 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #183 Polish Studio toolbar shell
 - [ ] #184 Polish Studio sidebar shell
 - [ ] #200 Polish Studio record list sidebar and activity rail
-- [x] #185 Add Studio record-list request race protection
 - [ ] #186 Add Studio clear-filters action
 - [ ] #187 Add typed Studio filter value controls
 - [ ] #188 Add searchable Studio filter field picker
 - [ ] #189 Polish Studio filter dirty state
-- [x] #190 Canonicalize invalid Studio filter URLs
-- [x] #201 Extract Studio record-list URL query canonicalization helper
-- [x] #230 Debounce record-list route updates for filter changes to reduce replace churn
 - [ ] #192 Support filtered Link field records
 - [ ] #202 Add saved filters for Studio record lists
 - [ ] #246 Add Studio DOM freeze support
@@ -123,21 +95,3 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #251 Add webhook sending support in Studio and framework
 - [ ] #252 Add Studio chart styles and options
 - [ ] #253 Add Studio action sound feedback
-
-## Done
-
-- [x] #150 Reject framework-reserved app names in projects
-- [x] #151 Make local console logging verbose, including Vite output
-- [x] #117 Add Studio Record filtering UI and query sync
-- [x] #178 Add Studio user-menu Reload action
-- [x] #180 Add Studio record list sort toolbar control
-- [x] #181 Add Studio record page sidebar
-- [x] #125 Build Studio command palette actions and search
-- [x] #154 Support Link field traversal and fetch-from Entity field options
-- [x] #203 Move Studio metadata queries from Pinia to TanStack Query
-- [x] #204 Move Studio platform config from Pinia to TanStack Query
-- [x] #205 Move Studio record form reads and mutations to TanStack Query
-- [x] #206 Reduce Studio Pinia stores to shell and local UI state
-- [x] #207 Simplify Studio reload and logout with TanStack Query cache operations
-- [x] #208 Adopt @vueuse/core for Studio local UI utilities
-- [x] #209 Use VueUse keyboard helpers for Studio command menu
