@@ -78,8 +78,8 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [x] #235 Recover panics from Job handlers and record them as retryable failures
 - [x] #236 Shorten active Job Execution leases when worker shutdown timeout expires
 - [x] #237 Store Job retry delays with JSON keys the runtime can decode
-- [ ] #238 Treat late successful Job handler returns after timeout as timeout failures
-- [ ] #239 Pass worker shutdown cancellation to Job handlers while preserving uncancelled DB finalization
+- [x] #238 Treat late successful Job handler returns after timeout as timeout failures
+- [x] #239 Pass worker shutdown cancellation to Job handlers while preserving uncancelled DB finalization
 - [x] #225 Define removed `job.yml` retirement behavior for synced Core Job rows
 - [ ] #226 Add Core retention policy Entity for platform record cleanup
 - [ ] #144 Add Studio keyboard shortcut foundation

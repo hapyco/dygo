@@ -382,8 +382,8 @@ func (w Worker) runExecution(ctx context.Context, execution jobstore.Execution, 
 	}
 
 	w.log("running %s/%s execution %d attempt %d", execution.AppName, execution.JobName, execution.ID, execution.Attempts)
-	executionCtx := context.WithoutCancel(ctx)
-	runCtx, cancel := context.WithTimeout(executionCtx, execution.Timeout)
+	finalizeCtx := context.WithoutCancel(ctx)
+	runCtx, cancel := context.WithTimeout(ctx, execution.Timeout)
 	defer cancel()
 	err := runJobHandler(fn, runCtx, sdk.JobExecution{
 		ID:      execution.ID,
@@ -395,8 +395,11 @@ func (w Worker) runExecution(ctx context.Context, execution jobstore.Execution, 
 		Records: sdkdata.NewRecordData(w.Queryer, w.RecordHooks),
 		Jobs:    sdkdata.NewJobData(w.Store),
 	})
+	if err == nil && runCtx.Err() == context.DeadlineExceeded {
+		err = context.DeadlineExceeded
+	}
 	if err == nil {
-		if err := w.Store.Complete(executionCtx, execution, nil, options.Now()); err != nil {
+		if err := w.Store.Complete(finalizeCtx, execution, nil, options.Now()); err != nil {
 			if errors.Is(err, jobstore.ErrClaimLost) {
 				w.log("skipped stale success for %s/%s execution %d attempt %d", execution.AppName, execution.JobName, execution.ID, execution.Attempts)
 				return Result{}, nil
@@ -410,7 +413,7 @@ func (w Worker) runExecution(ctx context.Context, execution jobstore.Execution, 
 	if runCtx.Err() == context.DeadlineExceeded {
 		message = "timeout"
 	}
-	if failErr := w.Store.Fail(executionCtx, execution, message, options.Now()); failErr != nil {
+	if failErr := w.Store.Fail(finalizeCtx, execution, message, options.Now()); failErr != nil {
 		if errors.Is(failErr, jobstore.ErrClaimLost) {
 			w.log("skipped stale failure for %s/%s execution %d attempt %d", execution.AppName, execution.JobName, execution.ID, execution.Attempts)
 			return Result{}, nil

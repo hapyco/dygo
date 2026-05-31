@@ -223,6 +223,50 @@ func TestWorkerRunOnceRecordsHandlerPanic(t *testing.T) {
 	}
 }
 
+func TestWorkerRunOnceTreatsLateSuccessAfterTimeoutAsFailure(t *testing.T) {
+	now := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
+	store := &fakeStore{
+		claimed: []jobstore.Execution{{
+			ID:       50,
+			AppName:  "crm",
+			JobName:  "slow-email",
+			Queue:    "default",
+			Attempts: 1,
+			Timeout:  10 * time.Millisecond,
+		}},
+	}
+	registry, err := NewRegistry([]sdk.JobRegistrar{
+		func(registry sdk.JobRegistry) error {
+			return registry.RegisterJob("crm", "slow-email", func(context.Context, sdk.JobExecution) error {
+				time.Sleep(25 * time.Millisecond)
+				return nil
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v, want nil", err)
+	}
+
+	result, err := (Worker{Store: store, Registry: registry}).Run(context.Background(), Options{
+		Queues:   []Queue{{Name: "default", Concurrency: 1}},
+		WorkerID: "test-worker",
+		Once:     true,
+		Now:      func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if result.Claimed != 1 || result.Failed != 1 || result.Succeeded != 0 {
+		t.Fatalf("result = %+v, want late success recorded as timeout failure", result)
+	}
+	if len(store.completed) != 0 {
+		t.Fatalf("completed = %#v, want no completion after timeout", store.completed)
+	}
+	if len(store.failures) != 1 || store.failures[0].id != 50 || store.failures[0].message != "timeout" {
+		t.Fatalf("failures = %#v, want timeout failure", store.failures)
+	}
+}
+
 func TestWorkerRunContinuousNotificationWakesBeforePoll(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -467,6 +511,70 @@ func TestWorkerRunContinuousExpiresActiveClaimAfterShutdownTimeout(t *testing.T)
 	case <-handlerDone:
 	case <-time.After(time.Second):
 		t.Fatal("handler did not finish after release")
+	}
+}
+
+func TestWorkerRunContinuousPassesShutdownCancellationToHandler(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	store := &fakeStore{
+		claimed: []jobstore.Execution{{
+			ID:       51,
+			AppName:  "crm",
+			JobName:  "slow-import",
+			Queue:    "default",
+			Attempts: 1,
+			Timeout:  time.Hour,
+		}},
+	}
+	registry, err := NewRegistry([]sdk.JobRegistrar{
+		func(registry sdk.JobRegistry) error {
+			return registry.RegisterJob("crm", "slow-import", func(ctx context.Context, _ sdk.JobExecution) error {
+				close(started)
+				<-ctx.Done()
+				close(cancelled)
+				return ctx.Err()
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v, want nil", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := (Worker{Store: store, Registry: registry}).Run(ctx, Options{
+			Queues:          []Queue{{Name: "default", Concurrency: 1}},
+			WorkerID:        "test-worker",
+			PollInterval:    time.Hour,
+			ShutdownTimeout: time.Second,
+		})
+		done <- err
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not start")
+	}
+	cancel()
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not observe shutdown cancellation")
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run() error = %v, want nil", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not finish after handler observed cancellation")
+	}
+	if len(store.failures) != 1 || store.failures[0].id != 51 || !strings.Contains(store.failures[0].message, "context canceled") {
+		t.Fatalf("failures = %#v, want context canceled failure", store.failures)
 	}
 }
 
