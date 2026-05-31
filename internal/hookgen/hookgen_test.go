@@ -29,15 +29,15 @@ func TestGenerateCreatesHookRegisterAndRunner(t *testing.T) {
 		t.Fatalf("hook source = %q, want developer-owned starter without generated ownership header", hookSource)
 	}
 	for _, want := range []string{
-		"func Register(registry sdk.RecordHookRegistry) error",
-		`sdk.RecordBeforeCreate, "lead-before-create", beforeCreateLead`,
-		`sdk.RecordAfterCreate, "lead-after-create", afterCreateLead`,
-		`sdk.RecordBeforeUpdate, "lead-before-update", beforeUpdateLead`,
-		`sdk.RecordAfterUpdate, "lead-after-update", afterUpdateLead`,
-		"func beforeCreateLead(ctx context.Context, dygo sdk.RecordHook) error",
-		"func afterCreateLead(ctx context.Context, dygo sdk.RecordHook) error",
-		"func beforeUpdateLead(ctx context.Context, dygo sdk.RecordHook) error",
-		"func afterUpdateLead(ctx context.Context, dygo sdk.RecordHook) error",
+		"func Register(registry dygo.RecordHookRegistry) error",
+		`dygo.RecordBeforeCreate, "lead-before-create", beforeCreateLead`,
+		`dygo.RecordAfterCreate, "lead-after-create", afterCreateLead`,
+		`dygo.RecordBeforeUpdate, "lead-before-update", beforeUpdateLead`,
+		`dygo.RecordAfterUpdate, "lead-after-update", afterUpdateLead`,
+		"func beforeCreateLead(ctx context.Context, hook dygo.RecordHook) error",
+		"func afterCreateLead(ctx context.Context, hook dygo.RecordHook) error",
+		"func beforeUpdateLead(ctx context.Context, hook dygo.RecordHook) error",
+		"func afterUpdateLead(ctx context.Context, hook dygo.RecordHook) error",
 	} {
 		if !strings.Contains(hookSource, want) {
 			t.Fatalf("hook source = %q, want substring %q", hookSource, want)
@@ -105,7 +105,7 @@ func TestGenerateFailsSafelyForExistingHookWithoutRegister(t *testing.T) {
 	if err == nil {
 		t.Fatal("Generate() error = nil, want existing hook error")
 	}
-	for _, want := range []string{"hooks.go exists but does not expose Register", "sdk.RecordHookRegistry"} {
+	for _, want := range []string{"hooks.go exists but does not expose Register", "dygo.RecordHookRegistry"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Generate() error = %q, want substring %q", err.Error(), want)
 		}
@@ -142,7 +142,7 @@ func TestGenerateUsesEntityBundleAndKebabEntityName(t *testing.T) {
 	}
 
 	hookSource := readTestFile(t, filepath.Join(root, "apps", "sales", "entities", "lead-status", "hooks.go"))
-	for _, want := range []string{"func Register(registry sdk.RecordHookRegistry) error", "beforeCreateLeadStatus", "afterCreateLeadStatus", "beforeUpdateLeadStatus", "afterUpdateLeadStatus"} {
+	for _, want := range []string{"func Register(registry dygo.RecordHookRegistry) error", "beforeCreateLeadStatus", "afterCreateLeadStatus", "beforeUpdateLeadStatus", "afterUpdateLeadStatus"} {
 		if !strings.Contains(hookSource, want) {
 			t.Fatalf("hook source = %q, want substring %q", hookSource, want)
 		}
@@ -159,9 +159,9 @@ func TestGeneratePreservesExistingEntityHookFile(t *testing.T) {
 	writeTestEntity(t, root, "sales", "lead")
 	existing := `package hooks
 
-import "github.com/hapyco/dygo/pkg/sdk"
+import "github.com/hapyco/dygo/pkg/dygo"
 
-func Register(registry sdk.RecordHookRegistry) error {
+func Register(registry dygo.RecordHookRegistry) error {
 	return nil
 }
 `
@@ -192,9 +192,9 @@ func TestGeneratePreservesLegacyGeneratedHeaderHookFile(t *testing.T) {
 
 package hooks
 
-import "github.com/hapyco/dygo/pkg/sdk"
+import "github.com/hapyco/dygo/pkg/dygo"
 
-func Register(registry sdk.RecordHookRegistry) error {
+func Register(registry dygo.RecordHookRegistry) error {
 	return nil
 }
 `

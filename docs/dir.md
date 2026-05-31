@@ -119,7 +119,7 @@ dygo/                           - Framework repository root
     core/                       - Core platform app
     studio/                     - Studio web app
   pkg/                          - Public Go API surface
-    sdk/                        - App hook and Job SDK
+    dygo/                       - App hook, Job, and logging API
   config/                       - Framework runtime config files
     secrets/                    - Encrypted dev secrets
     github.yml                  - GitHub repository and project board metadata

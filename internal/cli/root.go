@@ -24,7 +24,7 @@ import (
 	"github.com/hapyco/dygo/internal/server"
 	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/studio"
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 	"github.com/spf13/cobra"
 )
 
@@ -59,8 +59,8 @@ type schemaSyncRunner interface {
 
 // Options configures dygo CLI runtime extensions.
 type Options struct {
-	RecordHooks []sdk.RecordHookRegistrar
-	Jobs        []sdk.JobRegistrar
+	RecordHooks []dygo.RecordHookRegistrar
+	Jobs        []dygo.JobRegistrar
 }
 
 var startStudioDevServer = startStudioDevServerProcess

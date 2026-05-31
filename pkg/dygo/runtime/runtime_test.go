@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
 func TestRunAppliesRecordHookRegistrars(t *testing.T) {
@@ -16,8 +16,8 @@ func TestRunAppliesRecordHookRegistrars(t *testing.T) {
 	called := false
 	var stdout bytes.Buffer
 	err := Run(context.Background(), []string{"version"}, strings.NewReader(""), &stdout, &bytes.Buffer{}, Options{
-		RecordHooks: []sdk.RecordHookRegistrar{
-			func(sdk.RecordHookRegistry) error {
+		RecordHooks: []dygo.RecordHookRegistrar{
+			func(dygo.RecordHookRegistry) error {
 				called = true
 				return nil
 			},
@@ -38,8 +38,8 @@ func TestRunReturnsRecordHookRegistrarErrors(t *testing.T) {
 	t.Parallel()
 
 	err := Run(context.Background(), []string{"version"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, Options{
-		RecordHooks: []sdk.RecordHookRegistrar{
-			func(sdk.RecordHookRegistry) error {
+		RecordHooks: []dygo.RecordHookRegistrar{
+			func(dygo.RecordHookRegistry) error {
 				return errors.New("boom")
 			},
 		},
@@ -56,8 +56,8 @@ func TestRunReturnsJobRegistrarErrors(t *testing.T) {
 	t.Parallel()
 
 	err := Run(context.Background(), []string{"version"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, Options{
-		Jobs: []sdk.JobRegistrar{
-			func(sdk.JobRegistry) error {
+		Jobs: []dygo.JobRegistrar{
+			func(dygo.JobRegistry) error {
 				return errors.New("boom")
 			},
 		},

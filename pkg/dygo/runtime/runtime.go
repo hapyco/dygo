@@ -6,13 +6,13 @@ import (
 	"io"
 
 	"github.com/hapyco/dygo/internal/cli"
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
 // Options configures the compiled dygo runtime.
 type Options struct {
-	RecordHooks []sdk.RecordHookRegistrar
-	Jobs        []sdk.JobRegistrar
+	RecordHooks []dygo.RecordHookRegistrar
+	Jobs        []dygo.JobRegistrar
 }
 
 // Run executes the dygo CLI with compiled app extensions.

@@ -50,19 +50,19 @@ package hooks
 import (
 	"context"
 
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
-func Register(registry sdk.RecordHookRegistry) error {
-	return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "normalize-lead", normalizeLead)
+func Register(registry dygo.RecordHookRegistry) error {
+	return registry.RegisterEntity("sales", "lead", dygo.RecordBeforeCreate, "normalize-lead", normalizeLead)
 }
 
-func normalizeLead(ctx context.Context, hook sdk.RecordHook) error {
+func normalizeLead(ctx context.Context, hook dygo.RecordHook) error {
 	return nil
 }
 ```
 
-The generated project runner imports each Entity hook package and calls dygo through `pkg/sdk/runtime`:
+The generated project runner imports each Entity hook package and calls dygo through `pkg/dygo/runtime`:
 
 ```go
 package main
@@ -75,8 +75,8 @@ import (
 	"syscall"
 
 	crmleadhooks "example.com/my-project/apps/crm/entities/lead"
-	"github.com/hapyco/dygo/pkg/sdk"
-	dygoruntime "github.com/hapyco/dygo/pkg/sdk/runtime"
+	"github.com/hapyco/dygo/pkg/dygo"
+	dygoruntime "github.com/hapyco/dygo/pkg/dygo/runtime"
 )
 
 func main() {
@@ -84,7 +84,7 @@ func main() {
 	defer stop()
 
 	err := dygoruntime.Run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr, dygoruntime.Options{
-		RecordHooks: []sdk.RecordHookRegistrar{crmleadhooks.Register},
+		RecordHooks: []dygo.RecordHookRegistrar{crmleadhooks.Register},
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -134,7 +134,7 @@ Avoid external side effects in v1 hooks unless they are safe to repeat or compen
 
 App hooks run after framework global hooks for the same Record event.
 
-`dygo dev`, `dygo serve`, and `dygo fixture apply` use the compiled hook registry when run through a project binary built with `pkg/sdk/runtime`.
+`dygo dev`, `dygo serve`, and `dygo fixture apply` use the compiled hook registry when run through a project binary built with `pkg/dygo/runtime`.
 
 The stock `cmd/dygo` binary only includes framework hooks.
 

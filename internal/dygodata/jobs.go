@@ -1,11 +1,11 @@
-package sdkdata
+package dygodata
 
 import (
 	"context"
 	"encoding/json"
 
 	jobstore "github.com/hapyco/dygo/internal/jobs/store"
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
 type jobEnqueuer interface {
@@ -17,12 +17,12 @@ type JobData struct {
 	store jobEnqueuer
 }
 
-// NewJobData returns SDK JobData backed by a durable Job store.
+// NewJobData returns dygo JobData backed by a durable Job store.
 func NewJobData(store jobEnqueuer) JobData {
 	return JobData{store: store}
 }
 
-// NewJobDataFromBeginner returns SDK JobData backed by the current transaction or pool.
+// NewJobDataFromBeginner returns dygo JobData backed by the current transaction or pool.
 func NewJobDataFromBeginner(beginner jobstore.Beginner) (JobData, error) {
 	store, err := jobstore.New(beginner)
 	if err != nil {
@@ -32,16 +32,16 @@ func NewJobDataFromBeginner(beginner jobstore.Beginner) (JobData, error) {
 }
 
 // Enqueue creates one durable Job Execution.
-func (d JobData) Enqueue(ctx context.Context, appName string, jobName string, payload json.RawMessage, options sdk.EnqueueOptions) (sdk.JobExecution, error) {
+func (d JobData) Enqueue(ctx context.Context, appName string, jobName string, payload json.RawMessage, options dygo.EnqueueOptions) (dygo.JobExecution, error) {
 	execution, err := d.store.Enqueue(ctx, appName, jobName, payload, jobstore.EnqueueOptions{
 		IdempotencyKey: options.IdempotencyKey,
 		Priority:       options.Priority,
 		RunAfter:       options.RunAfter,
 	})
 	if err != nil {
-		return sdk.JobExecution{}, err
+		return dygo.JobExecution{}, err
 	}
-	return sdk.JobExecution{
+	return dygo.JobExecution{
 		ID:      execution.ID,
 		AppName: execution.AppName,
 		JobName: execution.JobName,

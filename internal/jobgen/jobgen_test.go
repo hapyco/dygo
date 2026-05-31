@@ -31,7 +31,7 @@ func TestGenerateCreatesJobRunAndRunner(t *testing.T) {
 	}
 
 	runSource := readTestFile(t, filepath.Join(root, "apps", "sales", "jobs", "send-email", "run.go"))
-	for _, want := range []string{"package job", "func Run(ctx context.Context, job sdk.JobExecution) error", "TODO(sales/send-email): implement job behavior"} {
+	for _, want := range []string{"package job", "func Run(ctx context.Context, job dygo.JobExecution) error", "TODO(sales/send-email): implement job behavior"} {
 		if !strings.Contains(runSource, want) {
 			t.Fatalf("run.go = %q, want substring %q", runSource, want)
 		}
@@ -40,7 +40,7 @@ func TestGenerateCreatesJobRunAndRunner(t *testing.T) {
 	runnerSource := readTestFile(t, filepath.Join(root, "cmd", "dygo", "main.go"))
 	for _, want := range []string{
 		`salessendemailjob "example.com/acme/apps/sales/jobs/send-email"`,
-		"Jobs: []sdk.JobRegistrar{",
+		"Jobs: []dygo.JobRegistrar{",
 		`return registry.RegisterJob("sales", "send-email", salessendemailjob.Run)`,
 	} {
 		if !strings.Contains(runnerSource, want) {
@@ -78,10 +78,10 @@ timeout: 30s
 import (
 	"context"
 
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
-func Run(ctx context.Context, job sdk.JobExecution) error {
+func Run(ctx context.Context, job dygo.JobExecution) error {
 	return nil
 }
 `
@@ -112,7 +112,7 @@ func TestGenerateFailsForExistingRunWithoutRunFunction(t *testing.T) {
 	if err == nil {
 		t.Fatal("Generate() error = nil, want missing Run error")
 	}
-	if !strings.Contains(err.Error(), "does not expose Run(ctx context.Context, job sdk.JobExecution) error") {
+	if !strings.Contains(err.Error(), "does not expose Run(ctx context.Context, job dygo.JobExecution) error") {
 		t.Fatalf("Generate() error = %q, want missing Run message", err.Error())
 	}
 	assertPathMissing(t, filepath.Join(root, "cmd", "dygo", "main.go"))
@@ -132,8 +132,8 @@ func TestHookGenerationPreservesJobRunnerWiring(t *testing.T) {
 
 	runnerSource := readTestFile(t, filepath.Join(root, "cmd", "dygo", "main.go"))
 	for _, want := range []string{
-		"RecordHooks: []sdk.RecordHookRegistrar{",
-		"Jobs: []sdk.JobRegistrar{",
+		"RecordHooks: []dygo.RecordHookRegistrar{",
+		"Jobs: []dygo.JobRegistrar{",
 		"salesleadhooks.Register",
 		`return registry.RegisterJob("sales", "send-email", salessendemailjob.Run)`,
 	} {

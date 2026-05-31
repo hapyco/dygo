@@ -79,7 +79,7 @@ Business-specific behavior should live in apps built on top of dygo.
 
 Use `internal/` for dygo implementation details.
 
-Only expose stable public APIs through `pkg/sdk/`.
+Only expose stable public APIs through `pkg/dygo/`.
 
 ### 3. Everything important should be observable
 

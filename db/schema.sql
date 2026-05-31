@@ -436,6 +436,45 @@ ALTER TABLE public.language ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: log; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.log (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    type text NOT NULL,
+    source text NOT NULL,
+    app_id bigint,
+    title text NOT NULL,
+    message text,
+    trace_id text,
+    reference_entity_id bigint,
+    reference_record_id bigint,
+    reference_record_name text,
+    actor_id bigint,
+    metadata jsonb,
+    CONSTRAINT log_source_check CHECK ((source = ANY (ARRAY['Framework'::text, 'SDK'::text, 'HTTP'::text, 'Job'::text, 'Hook'::text, 'CLI'::text, 'Studio'::text]))),
+    CONSTRAINT log_type_check CHECK ((type = ANY (ARRAY['Debug'::text, 'Info'::text, 'Warning'::text, 'Error'::text, 'Panic'::text])))
+);
+
+
+--
+-- Name: log_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.log ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.log_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: naming_series; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -554,6 +593,49 @@ CREATE TABLE public.role (
 
 ALTER TABLE public.role ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME public.role_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: schedule; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.schedule (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    app_id bigint NOT NULL,
+    key text NOT NULL,
+    source text DEFAULT 'file'::text NOT NULL,
+    label text NOT NULL,
+    description text,
+    cron text NOT NULL,
+    timezone text NOT NULL,
+    job_id bigint NOT NULL,
+    job_app_name text NOT NULL,
+    job_name text NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
+    retired boolean DEFAULT false NOT NULL,
+    next_run_at timestamp with time zone,
+    last_run_at timestamp with time zone,
+    last_error text,
+    actor_id bigint,
+    CONSTRAINT schedule_source_check CHECK ((source = ANY (ARRAY['file'::text, 'studio'::text, 'system'::text])))
+);
+
+
+--
+-- Name: schedule_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.schedule ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.schedule_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -895,6 +977,22 @@ ALTER TABLE ONLY public.language
 
 
 --
+-- Name: log log_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.log
+    ADD CONSTRAINT log_name_key UNIQUE (name);
+
+
+--
+-- Name: log log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.log
+    ADD CONSTRAINT log_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: naming_series naming_series_key_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -972,6 +1070,30 @@ ALTER TABLE ONLY public.role
 
 ALTER TABLE ONLY public.role
     ADD CONSTRAINT role_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: schedule schedule_app_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schedule
+    ADD CONSTRAINT schedule_app_key_key UNIQUE (app_id, key);
+
+
+--
+-- Name: schedule schedule_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schedule
+    ADD CONSTRAINT schedule_name_key UNIQUE (name);
+
+
+--
+-- Name: schedule schedule_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schedule
+    ADD CONSTRAINT schedule_pkey PRIMARY KEY (id);
 
 
 --
@@ -1333,6 +1455,83 @@ CREATE INDEX role_enabled_idx ON public.role USING btree (enabled);
 
 
 --
+-- Name: schedule_actor_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_actor_id_idx ON public.schedule USING btree (actor_id);
+
+
+--
+-- Name: schedule_app_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_app_id_idx ON public.schedule USING btree (app_id);
+
+
+--
+-- Name: schedule_due; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_due ON public.schedule USING btree (enabled, retired, next_run_at);
+
+
+--
+-- Name: schedule_enabled_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_enabled_idx ON public.schedule USING btree (enabled);
+
+
+--
+-- Name: schedule_job_app_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_job_app_name_idx ON public.schedule USING btree (job_app_name);
+
+
+--
+-- Name: schedule_job_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_job_id_idx ON public.schedule USING btree (job_id);
+
+
+--
+-- Name: schedule_job_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_job_name_idx ON public.schedule USING btree (job_name);
+
+
+--
+-- Name: schedule_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_key_idx ON public.schedule USING btree (key);
+
+
+--
+-- Name: schedule_next_run_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_next_run_at_idx ON public.schedule USING btree (next_run_at);
+
+
+--
+-- Name: schedule_retired_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_retired_idx ON public.schedule USING btree (retired);
+
+
+--
+-- Name: schedule_source_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX schedule_source_idx ON public.schedule USING btree (source);
+
+
+--
 -- Name: session_status_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1476,6 +1675,22 @@ ALTER TABLE ONLY public.permission
 
 ALTER TABLE ONLY public.permission
     ADD CONSTRAINT permission_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.role(id);
+
+
+--
+-- Name: schedule schedule_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schedule
+    ADD CONSTRAINT schedule_app_id_fkey FOREIGN KEY (app_id) REFERENCES public.app(id);
+
+
+--
+-- Name: schedule schedule_job_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schedule
+    ADD CONSTRAINT schedule_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.job(id);
 
 
 --

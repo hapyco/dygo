@@ -3,12 +3,12 @@
 The App SDK is the Go package app code compiles against:
 
 ```go
-import "github.com/hapyco/dygo/pkg/sdk"
+import "github.com/hapyco/dygo/pkg/dygo"
 ```
 
-Everything under `internal/` is private framework implementation. App-owned hooks and Jobs should only depend on `pkg/sdk` and normal Go packages.
+Everything under `internal/` is private framework implementation. App-owned hooks and Jobs should only depend on `pkg/dygo` and normal Go packages.
 
-The current supported package is `pkg/sdk`. A shorter `pkg/dygo` import path is coming soon if the public Go API graduates from the current SDK shape.
+The supported public package is `pkg/dygo`.
 
 ## SDK Vs HTTP API
 
@@ -27,6 +27,7 @@ The current SDK exposes:
 - transactional Record reads and writes inside hooks
 - durable Job handler types and registration
 - Job enqueueing from hooks and Jobs
+- best-effort and strict persisted Log helpers
 - project runner integration types
 
 ## Record Hooks
@@ -34,11 +35,11 @@ The current SDK exposes:
 Record hooks register functions for Entity lifecycle events:
 
 ```go
-func Register(registry sdk.RecordHookRegistry) error {
-	return registry.RegisterEntity("crm", "contact", sdk.RecordAfterCreate, "send-welcome", SendWelcome)
+func Register(registry dygo.RecordHookRegistry) error {
+	return registry.RegisterEntity("crm", "contact", dygo.RecordAfterCreate, "send-welcome", SendWelcome)
 }
 
-func SendWelcome(ctx context.Context, hook sdk.RecordHook) error {
+func SendWelcome(ctx context.Context, hook dygo.RecordHook) error {
 	return nil
 }
 ```
@@ -56,7 +57,7 @@ before-delete
 after-delete
 ```
 
-Hooks receive `sdk.RecordHook`, which includes the Entity identity, current input, old/new Record snapshots, changes, and SDK services.
+Hooks receive `dygo.RecordHook`, which includes the Entity identity, current input, old/new Record snapshots, changes, and SDK services.
 
 ## Record Access
 
@@ -64,10 +65,10 @@ Hooks read and write metadata-backed Records through `hook.Records`:
 
 ```go
 record, err := hook.Records.Get(ctx, "crm", "contact", 42)
-created, err := hook.Records.Create(ctx, "crm", "activity", sdk.RecordInput{
+created, err := hook.Records.Create(ctx, "crm", "activity", dygo.RecordInput{
 	"subject": json.RawMessage(`"Welcome"`),
 })
-updated, err := hook.Records.Update(ctx, "crm", "contact", 42, sdk.RecordInput{
+updated, err := hook.Records.Update(ctx, "crm", "contact", 42, dygo.RecordInput{
 	"status": json.RawMessage(`"Active"`),
 })
 err := hook.Records.Delete(ctx, "crm", "contact", 42)
@@ -88,7 +89,7 @@ Hook Record writes run dygo framework hooks, such as Activity, but do not re-ent
 Generated Job files expose one `Run` function:
 
 ```go
-func Run(ctx context.Context, job sdk.JobExecution) error {
+func Run(ctx context.Context, job dygo.JobExecution) error {
 	return nil
 }
 ```
@@ -96,7 +97,7 @@ func Run(ctx context.Context, job sdk.JobExecution) error {
 Job handlers and transactional Record hooks can enqueue durable background work:
 
 ```go
-execution, err := job.Jobs.Enqueue(ctx, "crm", "send-welcome-email", payload, sdk.EnqueueOptions{
+execution, err := job.Jobs.Enqueue(ctx, "crm", "send-welcome-email", payload, dygo.EnqueueOptions{
 	IdempotencyKey: "email:welcome:contact-42",
 	Priority:       0,
 	RunAfter:       time.Now().Add(10 * time.Minute),
@@ -112,6 +113,17 @@ Job access uses app-scoped Job identity:
 ```
 
 Do not use labels or routes as SDK Job identity.
+
+## Logs
+
+App code can write persisted diagnostic Logs through package helpers:
+
+```go
+dygo.Info(ctx, "Customer import started")
+dygo.Error(ctx, "Customer import failed", err)
+```
+
+The helper functions are best-effort. Use `dygo.Log(ctx, dygo.LogEntry{...})` when code needs to handle persistence errors. See [Logs](logs.md) for the Log Entity contract and field mapping.
 
 ## Runtime Rules
 
@@ -130,7 +142,6 @@ Planned SDK surfaces include:
 dygo.Files         - public/private file storage
 dygo.Permissions   - permission checks
 dygo.Actor         - current user/session identity
-dygo.Logger        - structured app logging
 dygo.Config        - app/runtime config reads
 dygo.Secrets       - controlled secret reads
 dygo.Metadata      - Entity and Field metadata reads

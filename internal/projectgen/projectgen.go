@@ -354,7 +354,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	dygoruntime "github.com/hapyco/dygo/pkg/sdk/runtime"
+	dygoruntime "github.com/hapyco/dygo/pkg/dygo/runtime"
 )
 
 func main() {

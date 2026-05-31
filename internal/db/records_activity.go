@@ -85,6 +85,7 @@ func (s RecordStore) withRecordMutation(ctx context.Context, fn func(RecordStore
 	}
 	txStore := NewRecordStoreWithHooks(tx, s.hooks)
 	txStore.allowSystemMutations = s.allowSystemMutations
+	txStore.logQueryer = s.logQueryer
 	record, err := fn(txStore)
 	if err != nil {
 		_ = tx.Rollback(ctx)

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	jobstore "github.com/hapyco/dygo/internal/jobs/store"
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
 func TestWorkerRunOnceCompletesRegisteredJob(t *testing.T) {
@@ -27,9 +27,9 @@ func TestWorkerRunOnceCompletesRegisteredJob(t *testing.T) {
 			Payload:     json.RawMessage(`{"email":"a@example.com"}`),
 		}},
 	}
-	registry, err := NewRegistry([]sdk.JobRegistrar{
-		func(registry sdk.JobRegistry) error {
-			return registry.RegisterJob("crm", "send-email", func(_ context.Context, execution sdk.JobExecution) error {
+	registry, err := NewRegistry([]dygo.JobRegistrar{
+		func(registry dygo.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(_ context.Context, execution dygo.JobExecution) error {
 				if execution.ID != 42 || execution.AppName != "crm" || execution.JobName != "send-email" || execution.Attempt != 1 {
 					t.Fatalf("job execution = %+v, want claimed execution context", execution)
 				}
@@ -78,9 +78,9 @@ func TestWorkerRunOnceEnqueuesDueSchedulesBeforeClaim(t *testing.T) {
 			Timeout:     time.Minute,
 		}},
 	}
-	registry, err := NewRegistry([]sdk.JobRegistrar{
-		func(registry sdk.JobRegistry) error {
-			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+	registry, err := NewRegistry([]dygo.JobRegistrar{
+		func(registry dygo.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, dygo.JobExecution) error {
 				return nil
 			})
 		},
@@ -155,9 +155,9 @@ func TestWorkerRunOnceRecordsHandlerFailure(t *testing.T) {
 			Timeout:  time.Minute,
 		}},
 	}
-	registry, err := NewRegistry([]sdk.JobRegistrar{
-		func(registry sdk.JobRegistry) error {
-			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+	registry, err := NewRegistry([]dygo.JobRegistrar{
+		func(registry dygo.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, dygo.JobExecution) error {
 				return errors.New("smtp unavailable")
 			})
 		},
@@ -195,9 +195,9 @@ func TestWorkerRunOnceRecordsHandlerPanic(t *testing.T) {
 			Timeout:  time.Minute,
 		}},
 	}
-	registry, err := NewRegistry([]sdk.JobRegistrar{
-		func(registry sdk.JobRegistry) error {
-			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+	registry, err := NewRegistry([]dygo.JobRegistrar{
+		func(registry dygo.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, dygo.JobExecution) error {
 				panic("nil template")
 			})
 		},
@@ -235,9 +235,9 @@ func TestWorkerRunOnceTreatsLateSuccessAfterTimeoutAsFailure(t *testing.T) {
 			Timeout:  10 * time.Millisecond,
 		}},
 	}
-	registry, err := NewRegistry([]sdk.JobRegistrar{
-		func(registry sdk.JobRegistry) error {
-			return registry.RegisterJob("crm", "slow-email", func(context.Context, sdk.JobExecution) error {
+	registry, err := NewRegistry([]dygo.JobRegistrar{
+		func(registry dygo.JobRegistry) error {
+			return registry.RegisterJob("crm", "slow-email", func(context.Context, dygo.JobExecution) error {
 				time.Sleep(25 * time.Millisecond)
 				return nil
 			})
@@ -287,9 +287,9 @@ func TestWorkerRunContinuousNotificationWakesBeforePoll(t *testing.T) {
 		claimSignal: firstClaimed,
 	}
 	listener := newFakeListener()
-	registry, err := NewRegistry([]sdk.JobRegistrar{
-		func(registry sdk.JobRegistry) error {
-			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+	registry, err := NewRegistry([]dygo.JobRegistrar{
+		func(registry dygo.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, dygo.JobExecution) error {
 				cancel()
 				return nil
 			})
@@ -349,9 +349,9 @@ func TestWorkerRunContinuousUsesNextRunAfterBeforePoll(t *testing.T) {
 		},
 		nextRunAfter: ptrTime(now.Add(20 * time.Millisecond)),
 	}
-	registry, err := NewRegistry([]sdk.JobRegistrar{
-		func(registry sdk.JobRegistry) error {
-			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+	registry, err := NewRegistry([]dygo.JobRegistrar{
+		func(registry dygo.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, dygo.JobExecution) error {
 				cancel()
 				return nil
 			})
@@ -404,9 +404,9 @@ func TestWorkerRunContinuousUsesNextScheduleRunAtBeforePoll(t *testing.T) {
 		},
 		nextScheduleRunAt: ptrTime(now.Add(20 * time.Millisecond)),
 	}
-	registry, err := NewRegistry([]sdk.JobRegistrar{
-		func(registry sdk.JobRegistry) error {
-			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+	registry, err := NewRegistry([]dygo.JobRegistrar{
+		func(registry dygo.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, dygo.JobExecution) error {
 				cancel()
 				return nil
 			})
@@ -462,9 +462,9 @@ func TestWorkerRunContinuousExpiresActiveClaimAfterShutdownTimeout(t *testing.T)
 			Timeout:  time.Hour,
 		}},
 	}
-	registry, err := NewRegistry([]sdk.JobRegistrar{
-		func(registry sdk.JobRegistry) error {
-			return registry.RegisterJob("crm", "slow-import", func(context.Context, sdk.JobExecution) error {
+	registry, err := NewRegistry([]dygo.JobRegistrar{
+		func(registry dygo.JobRegistry) error {
+			return registry.RegisterJob("crm", "slow-import", func(context.Context, dygo.JobExecution) error {
 				defer close(handlerDone)
 				close(started)
 				<-release
@@ -529,9 +529,9 @@ func TestWorkerRunContinuousPassesShutdownCancellationToHandler(t *testing.T) {
 			Timeout:  time.Hour,
 		}},
 	}
-	registry, err := NewRegistry([]sdk.JobRegistrar{
-		func(registry sdk.JobRegistry) error {
-			return registry.RegisterJob("crm", "slow-import", func(ctx context.Context, _ sdk.JobExecution) error {
+	registry, err := NewRegistry([]dygo.JobRegistrar{
+		func(registry dygo.JobRegistry) error {
+			return registry.RegisterJob("crm", "slow-import", func(ctx context.Context, _ dygo.JobExecution) error {
 				close(started)
 				<-ctx.Done()
 				close(cancelled)

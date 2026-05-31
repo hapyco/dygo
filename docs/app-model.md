@@ -90,7 +90,7 @@ Entity metadata uses singular keys only. Studio record URLs use `route.slug`, de
 
 Every Record also has a system `name` generated from Entity `name` metadata. Apps can choose manual names, random names, format names, or series names. The numeric `id` remains dygo's internal primary key.
 
-Hooks are app-owned Go code inside Entity bundles. A file such as `entities/lead/hooks.go` belongs to Entity `lead`. dygo validates this convention, but the code must still be compiled into a project runner through `pkg/sdk/runtime`; dygo does not dynamically load Go source files.
+Hooks are app-owned Go code inside Entity bundles. A file such as `entities/lead/hooks.go` belongs to Entity `lead`. dygo validates this convention, but the code must still be compiled into a project runner through `pkg/dygo/runtime`; dygo does not dynamically load Go source files.
 
 Patches are app-owned lifecycle changes for unsafe transitions that metadata cannot infer, such as renames, drops, destructive type changes, and data backfills. See [Explicit Patches](patches.md) for the v1 runner workflow.
 

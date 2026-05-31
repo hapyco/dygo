@@ -46,6 +46,8 @@ type RecordHookContext struct {
 
 	// Queryer is the current mutation queryer, usually the active transaction.
 	Queryer RecordQueryer
+	// LogQueryer writes diagnostic Logs outside the current mutation transaction.
+	LogQueryer RecordQueryer
 }
 
 // RecordHookRegistry stores global and Entity-scoped Record lifecycle hooks.

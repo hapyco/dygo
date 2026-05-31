@@ -49,6 +49,7 @@ type RecordQueryer interface {
 // RecordStore reads and mutates Records through persisted Entity metadata.
 type RecordStore struct {
 	queryer              RecordQueryer
+	logQueryer           RecordQueryer
 	metadata             MetadataReader
 	hooks                *RecordHookRegistry
 	allowSystemMutations bool
@@ -132,7 +133,7 @@ func NewRecordStoreWithHookPolicy(queryer RecordQueryer, policy RecordMutationHo
 
 // NewRecordStoreWithHooks returns a Record store backed by queryer and hooks.
 func NewRecordStoreWithHooks(queryer RecordQueryer, hooks *RecordHookRegistry) RecordStore {
-	return RecordStore{queryer: queryer, metadata: NewMetadataReader(queryer), hooks: hooks}
+	return RecordStore{queryer: queryer, logQueryer: queryer, metadata: NewMetadataReader(queryer), hooks: hooks}
 }
 
 // ListRecords returns one deterministic page of Records for entity.
@@ -861,6 +862,7 @@ func (s RecordStore) runRecordHooks(ctx context.Context, hookCtx RecordHookConte
 		return nil
 	}
 	hookCtx.Queryer = s.queryer
+	hookCtx.LogQueryer = s.logQueryer
 	return s.hooks.Run(ctx, hookCtx)
 }
 
