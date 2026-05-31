@@ -49,7 +49,8 @@ const emit = defineEmits<{
 const route = useRoute()
 const router = useRouter()
 const platformConfigQuery = usePlatformConfigQuery()
-const ID_SEARCH_DEBOUNCE_MS = 700
+const ID_SEARCH_DEBOUNCE_MS = 500
+const FILTER_ROUTE_REPLACE_DEBOUNCE_MS = 250
 const LIST_SIDEBAR_STORAGE_KEY = 'dygo.studio.records.listSidebarOpen'
 const PAGE_SIZE_STORAGE_KEY = 'dygo.studio.records.pageSize'
 const DEFAULT_RECORD_LIST_SORT: DataTableSort = { key: 'created-at', direction: 'desc' }
@@ -78,6 +79,7 @@ let nextFilterTokenId = 1
 let currentEntity = ''
 let currentListQuerySignature = ''
 let unmounted = false
+let recordListRouteReplaceScheduleVersion = 0
 let keepViewOptionsOpenTimer: ReturnType<typeof setTimeout> | undefined
 let suppressViewOptionsClose = false
 
@@ -260,13 +262,8 @@ const hasMore = computed(() => (
 const showToolbar = computed(() => (
   rows.value.length > 0 || listQuery.value.filters.length > 0 || idSearch.value !== '' || filterTokens.value.length > 0
 ))
-const scheduleIDSearchApply = useDebounceFn(() => {
-  if (unmounted) {
-    return
-  }
-
-  replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
-}, ID_SEARCH_DEBOUNCE_MS)
+const debouncedFilterRecordListRouteReplace = useDebounceFn(applyScheduledRecordListRouteReplace, FILTER_ROUTE_REPLACE_DEBOUNCE_MS)
+const debouncedIDSearchRecordListRouteReplace = useDebounceFn(applyScheduledRecordListRouteReplace, ID_SEARCH_DEBOUNCE_MS)
 watch(
   recordListPolicy,
   (policy) => {
@@ -292,6 +289,7 @@ watch(
   ] as const,
   () => {
     if (currentEntity !== props.entity) {
+      clearScheduledRecordListRouteReplace()
       selectedRowKeys.value = []
       currentEntity = props.entity
     }
@@ -299,6 +297,7 @@ watch(
     const query = routeRecordListQuery()
     const listQuerySignature = recordListStateSignature(query)
     if (currentListQuerySignature !== '' && currentListQuerySignature !== listQuerySignature) {
+      clearScheduledRecordListRouteReplace()
       selectedRowKeys.value = []
     }
     currentListQuerySignature = listQuerySignature
@@ -314,6 +313,7 @@ watch(
 
 onBeforeUnmount(() => {
   unmounted = true
+  clearScheduledRecordListRouteReplace()
   clearKeepViewOptionsOpenTimer()
 })
 
@@ -333,7 +333,7 @@ function updateSelectedRowKeys(value: DataTableRowKey[]) {
 }
 
 function updateSort(value: DataTableSort | null) {
-  replaceRecordListRoute(appliedRecordFilters(), defaultRecordListSortEquals(value) ? null : value)
+  replaceRecordListRouteNow(appliedRecordFilters(), defaultRecordListSortEquals(value) ? null : value)
 }
 
 function toggleListSidebar() {
@@ -395,7 +395,7 @@ function selectFilterField(key: string) {
   ]
   nextFilterTokenId += 1
   if (appliesImmediately) {
-    replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
+    scheduleRecordListRouteReplace(appliedRecordFilters(), listQuery.value.sort)
   }
 }
 
@@ -406,11 +406,11 @@ function updateIDSearch(value: string) {
     return
   }
 
-  void scheduleIDSearchApply()
+  scheduleRecordListRouteReplace(appliedRecordFilters(), listQuery.value.sort, ID_SEARCH_DEBOUNCE_MS)
 }
 
 function applyIDSearch() {
-  replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
+  replaceRecordListRouteNow(appliedRecordFilters(), listQuery.value.sort)
 }
 
 function updateFilterOperator(id: number, operator: string) {
@@ -428,7 +428,7 @@ function updateFilterOperator(id: number, operator: string) {
       appliedValue: appliesImmediately ? normalizeFilterValue(value) : '',
     }
   })
-  replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
+  scheduleRecordListRouteReplace(appliedRecordFilters(), listQuery.value.sort)
 }
 
 function updateFilterValue(id: number, value: string, applyImmediately = false) {
@@ -437,11 +437,11 @@ function updateFilterValue(id: number, value: string, applyImmediately = false) 
   ))
 
   if (applyImmediately) {
-    applyFilter(id)
+    applyFilter(id, { debounce: true })
   }
 }
 
-function applyFilter(id: number) {
+function applyFilter(id: number, options: { debounce?: boolean } = {}) {
   const filter = filterTokens.value.find((candidate) => candidate.id === id)
   if (!filter) {
     return
@@ -457,12 +457,17 @@ function applyFilter(id: number) {
     ))
   }
 
-  replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
+  if (options.debounce) {
+    scheduleRecordListRouteReplace(appliedRecordFilters(), listQuery.value.sort)
+    return
+  }
+
+  replaceRecordListRouteNow(appliedRecordFilters(), listQuery.value.sort)
 }
 
 function removeFilter(id: number) {
   filterTokens.value = filterTokens.value.filter((filter) => filter.id !== id)
-  replaceRecordListRoute(appliedRecordFilters(), listQuery.value.sort)
+  replaceRecordListRouteNow(appliedRecordFilters(), listQuery.value.sort)
 }
 
 function showAllColumns() {
@@ -629,8 +634,40 @@ function clearKeepViewOptionsOpenTimer() {
   suppressViewOptionsClose = false
 }
 
+function scheduleRecordListRouteReplace(filters: RecordListFilter[], sort: DataTableSort | null, delay = FILTER_ROUTE_REPLACE_DEBOUNCE_MS) {
+  const version = nextRecordListRouteReplaceScheduleVersion()
+  const nextFilters = cloneRecordListFilters(filters)
+  const nextSort = cloneRecordListSort(sort)
+  const debouncedReplace = delay === ID_SEARCH_DEBOUNCE_MS
+    ? debouncedIDSearchRecordListRouteReplace
+    : debouncedFilterRecordListRouteReplace
+
+  void debouncedReplace(version, nextFilters, nextSort)
+}
+
+function replaceRecordListRouteNow(filters: RecordListFilter[], sort: DataTableSort | null) {
+  clearScheduledRecordListRouteReplace()
+  replaceRecordListRoute(filters, sort)
+}
+
+function clearScheduledRecordListRouteReplace() {
+  recordListRouteReplaceScheduleVersion += 1
+}
+
+function nextRecordListRouteReplaceScheduleVersion(): number {
+  recordListRouteReplaceScheduleVersion += 1
+  return recordListRouteReplaceScheduleVersion
+}
+
+function applyScheduledRecordListRouteReplace(version: number, filters: RecordListFilter[], sort: DataTableSort | null) {
+  if (unmounted || version !== recordListRouteReplaceScheduleVersion) {
+    return
+  }
+
+  replaceRecordListRoute(filters, sort)
+}
+
 function replaceRecordListRoute(filters: RecordListFilter[], sort: DataTableSort | null) {
-  // TODO(filters): debounce route replacement once list filters become heavier than the current metadata-backed query.
   const nextQuery = buildRecordListRouteQuery({ filters, sort })
   if (recordListRouteQueriesEqual(route.query, nextQuery)) {
     return
@@ -696,6 +733,14 @@ function recordListRouteSchema() {
 
 function defaultRecordListSortEquals(sort: DataTableSort | null): boolean {
   return sort?.key === DEFAULT_RECORD_LIST_SORT.key && sort.direction === DEFAULT_RECORD_LIST_SORT.direction
+}
+
+function cloneRecordListFilters(filters: RecordListFilter[]): RecordListFilter[] {
+  return filters.map((filter) => ({ ...filter }))
+}
+
+function cloneRecordListSort(sort: DataTableSort | null): DataTableSort | null {
+  return sort ? { ...sort } : null
 }
 
 function syncFilterControlsFromRoute(filters: RecordListFilter[]) {

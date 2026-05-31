@@ -101,14 +101,14 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #183 Polish Studio toolbar shell
 - [ ] #184 Polish Studio sidebar shell
 - [ ] #200 Polish Studio record list sidebar and activity rail
-- [ ] #185 Add Studio record-list request race protection
+- [x] #185 Add Studio record-list request race protection
 - [ ] #186 Add Studio clear-filters action
 - [ ] #187 Add typed Studio filter value controls
 - [ ] #188 Add searchable Studio filter field picker
 - [ ] #189 Polish Studio filter dirty state
-- [ ] #190 Canonicalize invalid Studio filter URLs
-- [ ] #201 Extract Studio record-list URL query canonicalization helper
-- [ ] #230 Debounce record-list route updates for filter changes to reduce replace churn
+- [x] #190 Canonicalize invalid Studio filter URLs
+- [x] #201 Extract Studio record-list URL query canonicalization helper
+- [x] #230 Debounce record-list route updates for filter changes to reduce replace churn
 - [ ] #192 Support filtered Link field records
 - [ ] #202 Add saved filters for Studio record lists
 
