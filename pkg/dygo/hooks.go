@@ -1,5 +1,5 @@
-// Package sdk exposes the public extension points app code can compile against.
-package sdk
+// Package dygo exposes the public extension points app code can compile against.
+package dygo
 
 import (
 	"context"

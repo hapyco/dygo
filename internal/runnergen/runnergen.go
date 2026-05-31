@@ -503,9 +503,9 @@ func RenderSource(hookFiles []HookFile, jobFiles []JobFile) ([]byte, error) {
 		builder.WriteString(fmt.Sprintf("\t%s %q\n", job.Alias, job.ImportPath))
 	}
 	if len(wiredHooks) > 0 || len(wiredJobs) > 0 {
-		builder.WriteString("\t\"github.com/hapyco/dygo/pkg/sdk\"\n")
+		builder.WriteString("\t\"github.com/hapyco/dygo/pkg/dygo\"\n")
 	}
-	builder.WriteString("\tdygoruntime \"github.com/hapyco/dygo/pkg/sdk/runtime\"\n")
+	builder.WriteString("\tdygoruntime \"github.com/hapyco/dygo/pkg/dygo/runtime\"\n")
 	builder.WriteString(")\n\n")
 	builder.WriteString("func main() {\n")
 	builder.WriteString("\tctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)\n")
@@ -516,16 +516,16 @@ func RenderSource(hookFiles []HookFile, jobFiles []JobFile) ([]byte, error) {
 	} else {
 		builder.WriteString(", dygoruntime.Options{\n")
 		if len(wiredHooks) > 0 {
-			builder.WriteString("\t\tRecordHooks: []sdk.RecordHookRegistrar{\n")
+			builder.WriteString("\t\tRecordHooks: []dygo.RecordHookRegistrar{\n")
 			for _, hook := range wiredHooks {
 				builder.WriteString(fmt.Sprintf("\t\t\t%s.Register,\n", hook.Alias))
 			}
 			builder.WriteString("\t\t},\n")
 		}
 		if len(wiredJobs) > 0 {
-			builder.WriteString("\t\tJobs: []sdk.JobRegistrar{\n")
+			builder.WriteString("\t\tJobs: []dygo.JobRegistrar{\n")
 			for _, job := range wiredJobs {
-				builder.WriteString("\t\t\tfunc(registry sdk.JobRegistry) error {\n")
+				builder.WriteString("\t\t\tfunc(registry dygo.JobRegistry) error {\n")
 				builder.WriteString(fmt.Sprintf("\t\t\t\treturn registry.RegisterJob(%q, %q, %s.Run)\n", job.AppName, job.JobName, job.Alias))
 				builder.WriteString("\t\t\t},\n")
 			}
@@ -577,7 +577,7 @@ func HookManualSnippet(root string, modulePath string, appName string, entityNam
 	}
 	return fmt.Sprintf(`import %s %q
 
-RecordHooks: []sdk.RecordHookRegistrar{%s.Register},`, alias, importPath, alias)
+RecordHooks: []dygo.RecordHookRegistrar{%s.Register},`, alias, importPath, alias)
 }
 
 // JobManualSnippet returns wiring help for a custom project runner.
@@ -592,8 +592,8 @@ func JobManualSnippet(root string, modulePath string, appName string, jobName st
 	}
 	return fmt.Sprintf(`import %s %q
 
-Jobs: []sdk.JobRegistrar{
-	func(registry sdk.JobRegistry) error {
+Jobs: []dygo.JobRegistrar{
+	func(registry dygo.JobRegistry) error {
 		return registry.RegisterJob(%q, %q, %s.Run)
 	},
 },`, alias, importPath, appName, jobName, alias)
@@ -601,7 +601,7 @@ Jobs: []sdk.JobRegistrar{
 
 // UpgradeManualSnippet returns generic wiring help for custom runners.
 func UpgradeManualSnippet() string {
-	return `cmd/dygo/main.go is custom. Import app hook and Job packages manually and call pkg/sdk/runtime.Run with runtime.Options{RecordHooks: ..., Jobs: ...}.`
+	return `cmd/dygo/main.go is custom. Import app hook and Job packages manually and call pkg/dygo/runtime.Run with runtime.Options{RecordHooks: ..., Jobs: ...}.`
 }
 
 // ExportedIdentifier returns a Go exported identifier from a kebab key.

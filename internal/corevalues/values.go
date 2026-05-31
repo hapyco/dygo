@@ -107,3 +107,45 @@ func ActivityStatuses() []string {
 		ActivityStatusFailed,
 	}
 }
+
+const (
+	LogTypeDebug   = "Debug"
+	LogTypeInfo    = "Info"
+	LogTypeWarning = "Warning"
+	LogTypeError   = "Error"
+	LogTypePanic   = "Panic"
+)
+
+// LogTypes returns Core log type values in metadata order.
+func LogTypes() []string {
+	return []string{
+		LogTypeDebug,
+		LogTypeInfo,
+		LogTypeWarning,
+		LogTypeError,
+		LogTypePanic,
+	}
+}
+
+const (
+	LogSourceFramework = "Framework"
+	LogSourceSDK       = "SDK"
+	LogSourceHTTP      = "HTTP"
+	LogSourceJob       = "Job"
+	LogSourceHook      = "Hook"
+	LogSourceCLI       = "CLI"
+	LogSourceStudio    = "Studio"
+)
+
+// LogSources returns Core log source values in metadata order.
+func LogSources() []string {
+	return []string{
+		LogSourceFramework,
+		LogSourceSDK,
+		LogSourceHTTP,
+		LogSourceJob,
+		LogSourceHook,
+		LogSourceCLI,
+		LogSourceStudio,
+	}
+}

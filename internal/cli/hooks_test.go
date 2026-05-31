@@ -114,9 +114,9 @@ fields:
 
 package hooks
 
-import "github.com/hapyco/dygo/pkg/sdk"
+import "github.com/hapyco/dygo/pkg/dygo"
 
-func Register(registry sdk.RecordHookRegistry) error { return nil }
+func Register(registry dygo.RecordHookRegistry) error { return nil }
 `
 	if err := os.WriteFile(hookPath, []byte(generatedHook), 0o644); err != nil {
 		t.Fatalf("WriteFile(hooks.go) error = %v", err)

@@ -136,7 +136,7 @@ dygo.Error(ctx, "Customer import failed", err)
 dygo.Panic(ctx, "Recovered hook panic", recovered)
 ```
 
-The public package name should be `dygo`, not `sdk`, once the public SDK import path is renamed.
+The public package name is `dygo`.
 
 The helper functions are best-effort and should not return errors. Logging should add visibility without forcing every app call site into log-persistence error handling.
 
@@ -176,7 +176,7 @@ Inside hooks and Jobs, dygo should attach context automatically when available:
 The SDK should also expose a structured form for advanced cases:
 
 ```go
-err := dygo.Log(ctx, dygo.LogEntry{
+logErr := dygo.Log(ctx, dygo.LogEntry{
 	Type:    dygo.TypeError,
 	Title:   "Payment sync failed",
 	Message: err.Error(),
@@ -249,8 +249,7 @@ Local console logging remains useful while developing, especially before the dat
 
 Recommended first pass:
 
-1. Rename the public SDK package and import path from `pkg/sdk` to `pkg/dygo`, without keeping a compatibility shim.
-2. Add Core `log` Entity metadata.
-3. Add SDK helpers for `Debug`, `Info`, `Warning`, `Error`, and structured `Log`.
-4. Dogfood Logs with recovered panic writers first.
-5. Expose Logs through the generic Record API and Studio list/detail UI.
+1. Add Core `log` Entity metadata.
+2. Add dygo helpers for `Debug`, `Info`, `Warning`, `Error`, and structured `Log`.
+3. Dogfood Logs with recovered panic writers first.
+4. Expose Logs through the generic Record API and Studio list/detail UI.

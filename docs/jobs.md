@@ -39,10 +39,10 @@ package job
 import (
 	"context"
 
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
-func Run(ctx context.Context, job sdk.JobExecution) error {
+func Run(ctx context.Context, job dygo.JobExecution) error {
 	return nil
 }
 ```
@@ -53,7 +53,7 @@ Generated runner wiring registers the handler by app and Job key:
 registry.RegisterJob("crm", "send-welcome-email", crmsendwelcomeemailjob.Run)
 ```
 
-Custom project runners can register Jobs through `pkg/sdk/runtime.Options`, parallel to Record hook registrars.
+Custom project runners can register Jobs through `pkg/dygo/runtime.Options`, parallel to Record hook registrars.
 
 ## job.yml Reference
 
@@ -267,8 +267,8 @@ internal/jobs                - job.yml reader, validator, and shared Job metadat
 internal/jobgen              - Job scaffold and runner wiring generator
 internal/runnergen           - shared generated project runner renderer
 internal/cli                 - Job commands
-pkg/sdk                      - public Job types and registration API
-pkg/sdk/runtime              - project runner options for compiled Jobs
+pkg/dygo                      - public Job types and registration API
+pkg/dygo/runtime              - project runner options for compiled Jobs
 ```
 
 ## Coming Soon

@@ -19,7 +19,7 @@ Use this index to find the right document for the task. The docs are kept in the
 - [Metadata Authoring](metadata-authoring.md) explains JSON Schemas and editor support for dygo YAML files.
 - [Fixtures](fixtures.md) explains app-owned seed Records and `dygo fixture apply`.
 - [Record Hooks](record-hooks.md) explains compiled app Record hooks and the `entities/<entity>/hooks.go` convention.
-- [App SDK](sdk.md) explains the Go package app code uses for hooks, Jobs, and Record access.
+- [App SDK](sdk.md) explains the Go package app code uses for hooks, Jobs, Record access, and Logs.
 
 ## Run The Platform
 

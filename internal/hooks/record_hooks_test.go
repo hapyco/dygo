@@ -12,7 +12,7 @@ import (
 
 	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/hookevents"
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -21,17 +21,17 @@ func TestNewRecordHookRegistryAppliesRegistrarsInOrder(t *testing.T) {
 	t.Parallel()
 
 	var order []string
-	registry, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
-		func(registry sdk.RecordHookRegistry) error {
-			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "first", func(_ context.Context, dygo sdk.RecordHook) error {
-				order = append(order, "first:"+dygo.Entity)
-				dygo.Input["status"] = json.RawMessage(`"qualified"`)
+	registry, err := NewRecordHookRegistry([]dygo.RecordHookRegistrar{
+		func(registry dygo.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", dygo.RecordBeforeCreate, "first", func(_ context.Context, hook dygo.RecordHook) error {
+				order = append(order, "first:"+hook.Entity)
+				hook.Input["status"] = json.RawMessage(`"qualified"`)
 				return nil
 			})
 		},
-		func(registry sdk.RecordHookRegistry) error {
-			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "second", func(_ context.Context, dygo sdk.RecordHook) error {
-				order = append(order, "second:"+string(dygo.Event))
+		func(registry dygo.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", dygo.RecordBeforeCreate, "second", func(_ context.Context, hook dygo.RecordHook) error {
+				order = append(order, "second:"+string(hook.Event))
 				return nil
 			})
 		},
@@ -43,7 +43,7 @@ func TestNewRecordHookRegistryAppliesRegistrarsInOrder(t *testing.T) {
 	input := db.RecordInput{"status": json.RawMessage(`"new"`)}
 	err = registry.Run(context.Background(), db.RecordHookContext{
 		Event:       db.RecordBeforeCreate,
-		Operation:   sdk.RecordOperationCreate,
+		Operation:   dygo.RecordOperationCreate,
 		EntityID:    7,
 		AppName:     "sales",
 		Entity:      "lead",
@@ -64,7 +64,7 @@ func TestNewRecordHookRegistryAppliesRegistrarsInOrder(t *testing.T) {
 
 func TestRecordHookEventMapsAllSDKEvents(t *testing.T) {
 	t.Parallel()
-	sdkEvents := sdk.SupportedRecordHookEvents()
+	sdkEvents := dygo.SupportedRecordHookEvents()
 	specs := hookevents.Specs()
 	if len(sdkEvents) != len(specs) {
 		t.Fatalf("SDK events = %#v, specs = %#v; want matching counts", sdkEvents, specs)
@@ -74,10 +74,10 @@ func TestRecordHookEventMapsAllSDKEvents(t *testing.T) {
 		t.Run(spec.Name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := sdkEvents[index]; got != sdk.RecordHookEvent(spec.Name) {
+			if got := sdkEvents[index]; got != dygo.RecordHookEvent(spec.Name) {
 				t.Fatalf("SDK event %d = %q, want %q", index, got, spec.Name)
 			}
-			got, err := recordHookEvent(sdk.RecordHookEvent(spec.Name))
+			got, err := recordHookEvent(dygo.RecordHookEvent(spec.Name))
 			if err != nil {
 				t.Fatalf("recordHookEvent(%q) error = %v, want nil", spec.Name, err)
 			}
@@ -91,9 +91,9 @@ func TestRecordHookEventMapsAllSDKEvents(t *testing.T) {
 func TestNewRecordHookRegistryRejectsUnsupportedSDKEvent(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
-		func(registry sdk.RecordHookRegistry) error {
-			return registry.RegisterEntity("sales", "lead", sdk.RecordHookEvent("after-save"), "legacy-save", func(context.Context, sdk.RecordHook) error {
+	_, err := NewRecordHookRegistry([]dygo.RecordHookRegistrar{
+		func(registry dygo.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", dygo.RecordHookEvent("after-save"), "legacy-save", func(context.Context, dygo.RecordHook) error {
 				return nil
 			})
 		},
@@ -114,8 +114,8 @@ func TestNewRecordHookRegistryRejectsUnsupportedSDKEvent(t *testing.T) {
 func TestNewRecordHookRegistryReturnsRegistrarErrors(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
-		func(sdk.RecordHookRegistry) error {
+	_, err := NewRecordHookRegistry([]dygo.RecordHookRegistrar{
+		func(dygo.RecordHookRegistry) error {
 			return errors.New("boom")
 		},
 	})
@@ -132,13 +132,13 @@ func TestNewRecordHookRegistryExposesTransactionalRecordData(t *testing.T) {
 
 	queryer := &failingRecordQueryer{err: errors.New("metadata lookup failed")}
 	var dataErr error
-	registry, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
-		func(registry sdk.RecordHookRegistry) error {
-			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "read-related-record", func(ctx context.Context, dygo sdk.RecordHook) error {
-				if dygo.Records == nil {
+	registry, err := NewRecordHookRegistry([]dygo.RecordHookRegistrar{
+		func(registry dygo.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", dygo.RecordBeforeCreate, "read-related-record", func(ctx context.Context, hook dygo.RecordHook) error {
+				if hook.Records == nil {
 					return errors.New("record data service is nil")
 				}
-				_, dataErr = dygo.Records.Get(ctx, "sales", "lead", 42)
+				_, dataErr = hook.Records.Get(ctx, "sales", "lead", 42)
 				return nil
 			})
 		},
@@ -149,7 +149,7 @@ func TestNewRecordHookRegistryExposesTransactionalRecordData(t *testing.T) {
 
 	err = registry.Run(context.Background(), db.RecordHookContext{
 		Event:     db.RecordBeforeCreate,
-		Operation: sdk.RecordOperationCreate,
+		Operation: dygo.RecordOperationCreate,
 		AppName:   "sales",
 		Entity:    "lead",
 		Queryer:   queryer,
@@ -176,10 +176,10 @@ func TestNewRecordHookRegistryExposesJobDataForTransactionalHooks(t *testing.T) 
 
 	queryer := &beginnerRecordQueryer{failingRecordQueryer: &failingRecordQueryer{err: errors.New("unused")}}
 	var hasJobs bool
-	registry, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
-		func(registry sdk.RecordHookRegistry) error {
-			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "enqueue-background-work", func(_ context.Context, dygo sdk.RecordHook) error {
-				hasJobs = dygo.Jobs != nil
+	registry, err := NewRecordHookRegistry([]dygo.RecordHookRegistrar{
+		func(registry dygo.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", dygo.RecordBeforeCreate, "enqueue-background-work", func(_ context.Context, hook dygo.RecordHook) error {
+				hasJobs = hook.Jobs != nil
 				return nil
 			})
 		},
@@ -206,14 +206,14 @@ func TestRecordDataListPassesFiltersAndSortThroughHookQueryer(t *testing.T) {
 	t.Parallel()
 
 	queryer := newUserRecordDataMutationQueryer(userRecordRow("a@example.com", "A User", true))
-	var result sdk.RecordListResult
+	var result dygo.RecordListResult
 	var listErr error
-	registry, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
-		func(registry sdk.RecordHookRegistry) error {
-			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "list-users", func(ctx context.Context, dygo sdk.RecordHook) error {
-				result, listErr = dygo.Records.List(ctx, "core", "user", sdk.RecordListParams{
-					Filters: []sdk.RecordFilter{{Field: "enabled", Operator: "eq", Value: "true"}},
-					Sort:    []sdk.RecordSort{{Field: "full-name", Desc: true}},
+	registry, err := NewRecordHookRegistry([]dygo.RecordHookRegistrar{
+		func(registry dygo.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", dygo.RecordBeforeCreate, "list-users", func(ctx context.Context, hook dygo.RecordHook) error {
+				result, listErr = hook.Records.List(ctx, "core", "user", dygo.RecordListParams{
+					Filters: []dygo.RecordFilter{{Field: "enabled", Operator: "eq", Value: "true"}},
+					Sort:    []dygo.RecordSort{{Field: "full-name", Desc: true}},
 				})
 				return nil
 			})
@@ -225,7 +225,7 @@ func TestRecordDataListPassesFiltersAndSortThroughHookQueryer(t *testing.T) {
 
 	err = registry.Run(context.Background(), db.RecordHookContext{
 		Event:     db.RecordBeforeCreate,
-		Operation: sdk.RecordOperationCreate,
+		Operation: dygo.RecordOperationCreate,
 		AppName:   "sales",
 		Entity:    "lead",
 		Queryer:   queryer,
@@ -259,15 +259,15 @@ func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
 	tests := []struct {
 		name    string
 		queryer func() *recordDataMutationQueryer
-		mutate  func(context.Context, sdk.RecordHook) error
+		mutate  func(context.Context, dygo.RecordHook) error
 	}{
 		{
 			name: "create",
 			queryer: func() *recordDataMutationQueryer {
 				return newUserRecordDataMutationQueryer(userRecordRow("a@example.com", "A User", true))
 			},
-			mutate: func(ctx context.Context, dygo sdk.RecordHook) error {
-				_, err := dygo.Records.Create(ctx, "core", "user", sdk.RecordInput{
+			mutate: func(ctx context.Context, hook dygo.RecordHook) error {
+				_, err := hook.Records.Create(ctx, "core", "user", dygo.RecordInput{
 					"email":     json.RawMessage(`"a@example.com"`),
 					"full-name": json.RawMessage(`"A User"`),
 				})
@@ -282,8 +282,8 @@ func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
 					userRecordRow("a@example.com", "Renamed User", true),
 				)
 			},
-			mutate: func(ctx context.Context, dygo sdk.RecordHook) error {
-				_, err := dygo.Records.Update(ctx, "core", "user", 7, sdk.RecordInput{
+			mutate: func(ctx context.Context, hook dygo.RecordHook) error {
+				_, err := hook.Records.Update(ctx, "core", "user", 7, dygo.RecordInput{
 					"full-name": json.RawMessage(`"Renamed User"`),
 				})
 				return err
@@ -296,8 +296,8 @@ func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
 				queryer.execTags = []pgconn.CommandTag{pgconn.NewCommandTag("DELETE 1")}
 				return queryer
 			},
-			mutate: func(ctx context.Context, dygo sdk.RecordHook) error {
-				return dygo.Records.Delete(ctx, "core", "user", 7)
+			mutate: func(ctx context.Context, hook dygo.RecordHook) error {
+				return hook.Records.Delete(ctx, "core", "user", 7)
 			},
 		},
 	}
@@ -309,17 +309,17 @@ func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
 			queryer := tt.queryer()
 			var outerCalls int
 			var reentryCalls int
-			registry, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{
-				func(registry sdk.RecordHookRegistry) error {
-					if err := registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "outer-"+tt.name, func(ctx context.Context, dygo sdk.RecordHook) error {
+			registry, err := NewRecordHookRegistry([]dygo.RecordHookRegistrar{
+				func(registry dygo.RecordHookRegistry) error {
+					if err := registry.RegisterEntity("sales", "lead", dygo.RecordBeforeCreate, "outer-"+tt.name, func(ctx context.Context, hook dygo.RecordHook) error {
 						outerCalls++
-						return tt.mutate(ctx, dygo)
+						return tt.mutate(ctx, hook)
 					}); err != nil {
 						return err
 					}
 					for _, event := range allRecordHookEvents() {
 						event := event
-						if err := registry.RegisterEntity("core", "user", event, "reentry-"+string(event), func(context.Context, sdk.RecordHook) error {
+						if err := registry.RegisterEntity("core", "user", event, "reentry-"+string(event), func(context.Context, dygo.RecordHook) error {
 							reentryCalls++
 							return nil
 						}); err != nil {
@@ -335,7 +335,7 @@ func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
 
 			err = registry.Run(context.Background(), db.RecordHookContext{
 				Event:     db.RecordBeforeCreate,
-				Operation: sdk.RecordOperationCreate,
+				Operation: dygo.RecordOperationCreate,
 				AppName:   "sales",
 				Entity:    "lead",
 				Queryer:   queryer,
@@ -347,7 +347,7 @@ func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
 				t.Fatalf("outer hook calls = %d, want 1", outerCalls)
 			}
 			if reentryCalls != 0 {
-				t.Fatalf("inner app hook calls = %d, want dygo.Records mutation without app hook re-entry", reentryCalls)
+				t.Fatalf("inner app hook calls = %d, want hook.Records mutation without app hook re-entry", reentryCalls)
 			}
 			if !queryer.executedSQLContaining(`INSERT INTO "activity"`) {
 				t.Fatalf("exec SQL = %#v, want framework Activity hook to stay active", queryer.execSQL)
@@ -356,14 +356,14 @@ func TestRecordDataMutationsDoNotReenterAppHooks(t *testing.T) {
 	}
 }
 
-func allRecordHookEvents() []sdk.RecordHookEvent {
-	return sdk.SupportedRecordHookEvents()
+func allRecordHookEvents() []dygo.RecordHookEvent {
+	return dygo.SupportedRecordHookEvents()
 }
 
 func TestNewRecordHookRegistryRejectsNilRegistrarAndHook(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewRecordHookRegistry([]sdk.RecordHookRegistrar{nil})
+	_, err := NewRecordHookRegistry([]dygo.RecordHookRegistrar{nil})
 	if err == nil {
 		t.Fatal("NewRecordHookRegistry(nil registrar) error = nil, want error")
 	}
@@ -371,9 +371,9 @@ func TestNewRecordHookRegistryRejectsNilRegistrarAndHook(t *testing.T) {
 		t.Fatalf("NewRecordHookRegistry(nil registrar) error = %q, want nil registrar context", err.Error())
 	}
 
-	_, err = NewRecordHookRegistry([]sdk.RecordHookRegistrar{
-		func(registry sdk.RecordHookRegistry) error {
-			return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "missing", nil)
+	_, err = NewRecordHookRegistry([]dygo.RecordHookRegistrar{
+		func(registry dygo.RecordHookRegistry) error {
+			return registry.RegisterEntity("sales", "lead", dygo.RecordBeforeCreate, "missing", nil)
 		},
 	})
 	if err == nil {

@@ -106,9 +106,9 @@ func TestGenerateEntityForcePreservesExistingHookFile(t *testing.T) {
 	hookPath := filepath.Join(root, "apps", "sales", "entities", "lead", "hooks.go")
 	existing := `package hooks
 
-import "github.com/hapyco/dygo/pkg/sdk"
+import "github.com/hapyco/dygo/pkg/dygo"
 
-func Register(registry sdk.RecordHookRegistry) error {
+func Register(registry dygo.RecordHookRegistry) error {
 	return nil
 }
 `

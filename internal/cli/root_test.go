@@ -20,7 +20,7 @@ import (
 	"github.com/hapyco/dygo/internal/server"
 	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/studio"
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -683,10 +683,10 @@ func TestRunWithOptionsPassesRecordHooksToServe(t *testing.T) {
 		gotOptions = options
 		return nil
 	}, Options{
-		RecordHooks: []sdk.RecordHookRegistrar{
-			func(registry sdk.RecordHookRegistry) error {
+		RecordHooks: []dygo.RecordHookRegistrar{
+			func(registry dygo.RecordHookRegistry) error {
 				registrarCalled = true
-				return registry.RegisterEntity("sales", "lead", sdk.RecordBeforeCreate, "test", func(context.Context, sdk.RecordHook) error {
+				return registry.RegisterEntity("sales", "lead", dygo.RecordBeforeCreate, "test", func(context.Context, dygo.RecordHook) error {
 					return nil
 				})
 			},
@@ -1632,10 +1632,10 @@ timeout: 30s
 import (
 	"context"
 
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
-func Run(ctx context.Context, job sdk.JobExecution) error {
+func Run(ctx context.Context, job dygo.JobExecution) error {
 	return nil
 }
 `), 0o644); err != nil {
@@ -2626,7 +2626,7 @@ func runWithOptionsForTest(ctx context.Context, args []string, stdin io.Reader, 
 	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, noopDatabaseRunner(), migrator, &fakeAdminSetupRunner{}, &fakeFixtureRunner{}, &fakePermissionRunner{}, recordHooks, jobRegistry)
 }
 
-func recordhooksForTest(registrars []sdk.RecordHookRegistrar) (*db.RecordHookRegistry, error) {
+func recordhooksForTest(registrars []dygo.RecordHookRegistrar) (*db.RecordHookRegistry, error) {
 	return recordhooks.NewRecordHookRegistry(registrars)
 }
 

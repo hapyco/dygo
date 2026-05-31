@@ -1,4 +1,4 @@
-package sdkdata
+package dygodata
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	jobstore "github.com/hapyco/dygo/internal/jobs/store"
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
 func TestJobDataEnqueueMapsSDKOptions(t *testing.T) {
@@ -23,7 +23,7 @@ func TestJobDataEnqueueMapsSDKOptions(t *testing.T) {
 		},
 	}
 
-	execution, err := NewJobData(store).Enqueue(context.Background(), "crm", "send-email", json.RawMessage(`{"email":"a@example.com"}`), sdk.EnqueueOptions{
+	execution, err := NewJobData(store).Enqueue(context.Background(), "crm", "send-email", json.RawMessage(`{"email":"a@example.com"}`), dygo.EnqueueOptions{
 		IdempotencyKey: "email:1",
 		Priority:       10,
 		RunAfter:       runAfter,

@@ -22,6 +22,8 @@ func TestCoreSelectValuesMatchEntityMetadata(t *testing.T) {
 		{entity: "activity", field: "kind", want: ActivityKinds()},
 		{entity: "activity", field: "operation", want: ActivityOperations()},
 		{entity: "activity", field: "status", want: ActivityStatuses()},
+		{entity: "log", field: "type", want: LogTypes()},
+		{entity: "log", field: "source", want: LogSources()},
 	}
 
 	for _, tt := range tests {

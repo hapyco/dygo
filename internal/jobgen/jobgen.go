@@ -97,7 +97,7 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	if exists, hasRun, err := runnergen.InspectFunctionFile(runFile, "Run"); err != nil {
 		return Result{}, err
 	} else if exists && !hasRun {
-		return Result{}, fmt.Errorf("%s exists but does not expose Run(ctx context.Context, job sdk.JobExecution) error", runFile)
+		return Result{}, fmt.Errorf("%s exists but does not expose Run(ctx context.Context, job dygo.JobExecution) error", runFile)
 	}
 	if err := runnergen.PreflightGeneratedFile(runnerFile, runnergen.JobManualSnippet(root, modulePath, appName, jobName, jobDir)); err != nil {
 		return Result{}, err
@@ -244,7 +244,7 @@ func runFileStatus(path string, dryRun bool) (string, error) {
 		return "created", nil
 	}
 	if !hasRun {
-		return "", fmt.Errorf("%s exists but does not expose Run(ctx context.Context, job sdk.JobExecution) error", path)
+		return "", fmt.Errorf("%s exists but does not expose Run(ctx context.Context, job dygo.JobExecution) error", path)
 	}
 	return "existing", nil
 }
@@ -265,10 +265,10 @@ func renderRunSource(appName string, jobName string) ([]byte, error) {
 import (
 	"context"
 
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
-func Run(ctx context.Context, job sdk.JobExecution) error {
+func Run(ctx context.Context, job dygo.JobExecution) error {
 	// TODO(%s/%s): implement job behavior.
 	return nil
 }

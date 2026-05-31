@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/hapyco/dygo/internal/db"
+	"github.com/hapyco/dygo/internal/dygodata"
 	jobstore "github.com/hapyco/dygo/internal/jobs/store"
 	namegen "github.com/hapyco/dygo/internal/naming"
-	"github.com/hapyco/dygo/internal/sdkdata"
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 
 // Registry stores compiled Job handlers.
 type Registry struct {
-	handlers map[string]sdk.JobFunc
+	handlers map[string]dygo.JobFunc
 }
 
 // Queue is one worker queue with effective concurrency.
@@ -88,8 +88,8 @@ type Result struct {
 }
 
 // NewRegistry returns a Registry populated by compiled app registrars.
-func NewRegistry(registrars []sdk.JobRegistrar) (*Registry, error) {
-	registry := &Registry{handlers: map[string]sdk.JobFunc{}}
+func NewRegistry(registrars []dygo.JobRegistrar) (*Registry, error) {
+	registry := &Registry{handlers: map[string]dygo.JobFunc{}}
 	adapter := registryAdapter{registry: registry}
 	for index, registrar := range registrars {
 		if registrar == nil {
@@ -103,7 +103,7 @@ func NewRegistry(registrars []sdk.JobRegistrar) (*Registry, error) {
 }
 
 // RegisterJob stores one compiled Job handler.
-func (r *Registry) RegisterJob(appName string, jobName string, fn sdk.JobFunc) error {
+func (r *Registry) RegisterJob(appName string, jobName string, fn dygo.JobFunc) error {
 	if fn == nil {
 		return fmt.Errorf("job %s/%s function is required", appName, jobName)
 	}
@@ -112,7 +112,7 @@ func (r *Registry) RegisterJob(appName string, jobName string, fn sdk.JobFunc) e
 		return err
 	}
 	if r.handlers == nil {
-		r.handlers = map[string]sdk.JobFunc{}
+		r.handlers = map[string]dygo.JobFunc{}
 	}
 	if _, ok := r.handlers[key]; ok {
 		return fmt.Errorf("job %s/%s is already registered", appName, jobName)
@@ -121,7 +121,7 @@ func (r *Registry) RegisterJob(appName string, jobName string, fn sdk.JobFunc) e
 	return nil
 }
 
-func (r *Registry) handler(appName string, jobName string) (sdk.JobFunc, bool) {
+func (r *Registry) handler(appName string, jobName string) (dygo.JobFunc, bool) {
 	if r == nil {
 		return nil, false
 	}
@@ -133,7 +133,7 @@ type registryAdapter struct {
 	registry *Registry
 }
 
-func (r registryAdapter) RegisterJob(appName string, jobName string, fn sdk.JobFunc) error {
+func (r registryAdapter) RegisterJob(appName string, jobName string, fn dygo.JobFunc) error {
 	return r.registry.RegisterJob(appName, jobName, fn)
 }
 
@@ -382,21 +382,30 @@ func (w Worker) runExecution(ctx context.Context, execution jobstore.Execution, 
 	}
 
 	w.log("running %s/%s execution %d attempt %d", execution.AppName, execution.JobName, execution.ID, execution.Attempts)
-	finalizeCtx := context.WithoutCancel(ctx)
+	finalizeCtx := w.withJobLogContext(context.WithoutCancel(ctx), execution)
 	runCtx, cancel := context.WithTimeout(ctx, execution.Timeout)
+	runCtx = w.withJobLogContext(runCtx, execution)
 	defer cancel()
-	err := runJobHandler(fn, runCtx, sdk.JobExecution{
+	err := runJobHandler(fn, runCtx, dygo.JobExecution{
 		ID:      execution.ID,
 		AppName: execution.AppName,
 		JobName: execution.JobName,
 		Queue:   execution.Queue,
 		Attempt: execution.Attempts,
 		Payload: execution.Payload,
-		Records: sdkdata.NewRecordData(w.Queryer, w.RecordHooks),
-		Jobs:    sdkdata.NewJobData(w.Store),
+		Records: dygodata.NewRecordData(w.Queryer, w.RecordHooks),
+		Jobs:    dygodata.NewJobData(w.Store),
 	})
 	if err == nil && runCtx.Err() == context.DeadlineExceeded {
 		err = context.DeadlineExceeded
+	}
+	var panicErr jobPanicError
+	if errors.As(err, &panicErr) {
+		dygo.Panic(finalizeCtx, "Job handler panic", panicErr,
+			dygo.WithReference("core", "job-execution", execution.ID),
+			dygo.WithMetadata("job", execution.JobName),
+			dygo.WithMetadata("attempt", execution.Attempts),
+		)
 	}
 	if err == nil {
 		if err := w.Store.Complete(finalizeCtx, execution, nil, options.Now()); err != nil {
@@ -424,13 +433,31 @@ func (w Worker) runExecution(ctx context.Context, execution jobstore.Execution, 
 	return Result{Failed: 1}, nil
 }
 
-func runJobHandler(fn sdk.JobFunc, ctx context.Context, execution sdk.JobExecution) (err error) {
+func (w Worker) withJobLogContext(ctx context.Context, execution jobstore.Execution) context.Context {
+	if w.Queryer != nil {
+		ctx = dygo.WithLogWriter(ctx, dygodata.NewLogData(w.Queryer))
+	}
+	return dygo.WithLogContext(ctx, dygo.LogContext{
+		Source: dygo.SourceJob,
+		App:    execution.AppName,
+	})
+}
+
+func runJobHandler(fn dygo.JobFunc, ctx context.Context, execution dygo.JobExecution) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("panic: %v", recovered)
+			err = jobPanicError{value: recovered}
 		}
 	}()
 	return fn(ctx, execution)
+}
+
+type jobPanicError struct {
+	value any
+}
+
+func (err jobPanicError) Error() string {
+	return fmt.Sprintf("panic: %v", err.value)
 }
 
 func (w Worker) shutdownActiveExecutions(ctx context.Context, inFlight *sync.WaitGroup, active *activeExecutions, options Options) {

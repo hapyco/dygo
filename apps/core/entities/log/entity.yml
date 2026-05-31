@@ -1,0 +1,78 @@
+label: Log
+description: Persisted framework and app diagnostic event.
+icon: file-text
+is-system: true
+name:
+  strategy: random
+fields:
+  - name: type
+    label: Type
+    type: select
+    required: true
+    options:
+      values:
+        - Debug
+        - Info
+        - Warning
+        - Error
+        - Panic
+
+  - name: source
+    label: Source
+    type: select
+    required: true
+    options:
+      values:
+        - Framework
+        - SDK
+        - HTTP
+        - Job
+        - Hook
+        - CLI
+        - Studio
+
+  - name: app
+    label: App
+    type: link
+    options:
+      entity: app
+      foreign-key: false
+
+  - name: title
+    label: Title
+    type: text
+    required: true
+
+  - name: message
+    label: Message
+    type: long-text
+
+  - name: trace-id
+    label: Trace ID
+    type: text
+
+  - name: reference-entity
+    label: Reference Entity
+    type: link
+    options:
+      entity: entity
+      foreign-key: false
+
+  - name: reference-record-id
+    label: Reference Record ID
+    type: bigint
+
+  - name: reference-record-name
+    label: Reference Record Name
+    type: text
+
+  - name: actor
+    label: Actor
+    type: link
+    options:
+      entity: user
+      foreign-key: false
+
+  - name: metadata
+    label: Metadata
+    type: json

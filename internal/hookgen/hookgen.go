@@ -102,7 +102,7 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	if exists, hasRegister, err := runnergen.InspectFunctionFile(hookFile, "Register"); err != nil {
 		return Result{}, err
 	} else if exists && !hasRegister {
-		return Result{}, fmt.Errorf("%s exists but does not expose Register(registry sdk.RecordHookRegistry) error", hookFile)
+		return Result{}, fmt.Errorf("%s exists but does not expose Register(registry dygo.RecordHookRegistry) error", hookFile)
 	}
 	if err := runnergen.PreflightGeneratedFile(runnerFile, runnergen.HookManualSnippet(root, modulePath, appName, entityName, entityDir)); err != nil {
 		return Result{}, err
@@ -188,7 +188,7 @@ func Validate(root string) ([]string, error) {
 	var problems []string
 	for _, hook := range hookFiles {
 		if !hook.HasRegister {
-			problems = append(problems, fmt.Sprintf("%s: hook file must expose Register(registry sdk.RecordHookRegistry) error", filepath.ToSlash(hook.Path)))
+			problems = append(problems, fmt.Sprintf("%s: hook file must expose Register(registry dygo.RecordHookRegistry) error", filepath.ToSlash(hook.Path)))
 		}
 	}
 	jobFiles, err := runnergen.DiscoverJobs(root)
@@ -197,7 +197,7 @@ func Validate(root string) ([]string, error) {
 	}
 	for _, job := range jobFiles {
 		if !job.HasRun {
-			problems = append(problems, fmt.Sprintf("%s: job runner file must expose Run(ctx context.Context, job sdk.JobExecution) error", filepath.ToSlash(job.Path)))
+			problems = append(problems, fmt.Sprintf("%s: job runner file must expose Run(ctx context.Context, job dygo.JobExecution) error", filepath.ToSlash(job.Path)))
 		}
 	}
 	update, err := RenderRunner(root)
@@ -286,38 +286,38 @@ func renderEntityHookSource(appName string, entityName string) ([]byte, error) {
 import (
 	"context"
 
-	"github.com/hapyco/dygo/pkg/sdk"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
-func Register(registry sdk.RecordHookRegistry) error {
-	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordBeforeCreate, %[4]q, beforeCreate%[1]s); err != nil {
+func Register(registry dygo.RecordHookRegistry) error {
+	if err := registry.RegisterEntity(%[2]q, %[3]q, dygo.RecordBeforeCreate, %[4]q, beforeCreate%[1]s); err != nil {
 		return err
 	}
-	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordAfterCreate, %[5]q, afterCreate%[1]s); err != nil {
+	if err := registry.RegisterEntity(%[2]q, %[3]q, dygo.RecordAfterCreate, %[5]q, afterCreate%[1]s); err != nil {
 		return err
 	}
-	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordBeforeUpdate, %[6]q, beforeUpdate%[1]s); err != nil {
+	if err := registry.RegisterEntity(%[2]q, %[3]q, dygo.RecordBeforeUpdate, %[6]q, beforeUpdate%[1]s); err != nil {
 		return err
 	}
-	if err := registry.RegisterEntity(%[2]q, %[3]q, sdk.RecordAfterUpdate, %[7]q, afterUpdate%[1]s); err != nil {
+	if err := registry.RegisterEntity(%[2]q, %[3]q, dygo.RecordAfterUpdate, %[7]q, afterUpdate%[1]s); err != nil {
 		return err
 	}
 	return nil
 }
 
-func beforeCreate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
+func beforeCreate%[1]s(ctx context.Context, hook dygo.RecordHook) error {
 	return nil
 }
 
-func afterCreate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
+func afterCreate%[1]s(ctx context.Context, hook dygo.RecordHook) error {
 	return nil
 }
 
-func beforeUpdate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
+func beforeUpdate%[1]s(ctx context.Context, hook dygo.RecordHook) error {
 	return nil
 }
 
-func afterUpdate%[1]s(ctx context.Context, dygo sdk.RecordHook) error {
+func afterUpdate%[1]s(ctx context.Context, hook dygo.RecordHook) error {
 	return nil
 }
 `, name, appName, entityName, entityName+"-before-create", entityName+"-after-create", entityName+"-before-update", entityName+"-after-update")

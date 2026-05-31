@@ -132,7 +132,7 @@ config/queues.yml
 
 Job and Schedule files do not create per-Job tables. They sync into Core metadata records after the Entity schema plan succeeds.
 
-During `dygo db migrate`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/` is the source for Core tables such as `app`, `activity`, `entity`, `field`, `index`, `constraint`, `job`, `job-execution`, `schedule`, `naming-series`, `patch-run`, `user`, `role`, `permission`, and `session`.
+During `dygo db migrate`, dygo loads every discovered App from `apps/` and `.dygo/apps/`, then creates or updates tables from each App's Entity metadata. Core is handled this way too: `apps/core/entities/` is the source for Core tables such as `app`, `activity`, `log`, `entity`, `field`, `index`, `constraint`, `job`, `job-execution`, `schedule`, `naming-series`, `patch-run`, `user`, `role`, `permission`, and `session`.
 
 Preview metadata sync:
 
