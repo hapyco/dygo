@@ -64,6 +64,48 @@ func TestWorkerRunOnceCompletesRegisteredJob(t *testing.T) {
 	}
 }
 
+func TestWorkerRunOnceEnqueuesDueSchedulesBeforeClaim(t *testing.T) {
+	now := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
+	store := &fakeStore{
+		scheduled: 1,
+		claimed: []jobstore.Execution{{
+			ID:          42,
+			AppName:     "crm",
+			JobName:     "send-email",
+			Queue:       "default",
+			Attempts:    1,
+			MaxAttempts: 1,
+			Timeout:     time.Minute,
+		}},
+	}
+	registry, err := NewRegistry([]sdk.JobRegistrar{
+		func(registry sdk.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+				return nil
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v, want nil", err)
+	}
+
+	result, err := (Worker{Store: store, Registry: registry}).Run(context.Background(), Options{
+		Queues:   []Queue{{Name: "default", Concurrency: 1}},
+		WorkerID: "test-worker",
+		Once:     true,
+		Now:      func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if result.Scheduled != 1 || result.Claimed != 1 || result.Succeeded != 1 {
+		t.Fatalf("result = %+v, want one scheduled and one succeeded execution", result)
+	}
+	if store.scheduleCalls != 1 || store.recoverCalls != 1 || store.claimCalls != 1 {
+		t.Fatalf("calls schedule=%d recover=%d claim=%d, want one schedule before normal claim path", store.scheduleCalls, store.recoverCalls, store.claimCalls)
+	}
+}
+
 func TestWorkerRunOnceFailsMissingHandlerWithoutRetry(t *testing.T) {
 	now := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
 	store := &fakeStore{
@@ -299,6 +341,61 @@ func TestWorkerRunContinuousUsesNextRunAfterBeforePoll(t *testing.T) {
 	}
 }
 
+func TestWorkerRunContinuousUsesNextScheduleRunAtBeforePoll(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	now := time.Now().UTC()
+	store := &fakeStore{
+		claimBatches: [][]jobstore.Execution{
+			nil,
+			{{
+				ID:          49,
+				AppName:     "crm",
+				JobName:     "send-email",
+				Queue:       "default",
+				Attempts:    1,
+				MaxAttempts: 1,
+				Timeout:     time.Minute,
+			}},
+		},
+		nextScheduleRunAt: ptrTime(now.Add(20 * time.Millisecond)),
+	}
+	registry, err := NewRegistry([]sdk.JobRegistrar{
+		func(registry sdk.JobRegistry) error {
+			return registry.RegisterJob("crm", "send-email", func(context.Context, sdk.JobExecution) error {
+				cancel()
+				return nil
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v, want nil", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := (Worker{Store: store, Registry: registry}).Run(ctx, Options{
+			Queues:       []Queue{{Name: "default", Concurrency: 1}},
+			WorkerID:     "test-worker",
+			PollInterval: time.Hour,
+			Now:          func() time.Time { return time.Now().UTC() },
+		})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run() error = %v, want nil", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not wake from next schedule next-run-at")
+	}
+	if len(store.completed) != 1 || store.completed[0] != 49 {
+		t.Fatalf("completed = %#v, want execution 49", store.completed)
+	}
+}
+
 func TestWorkerRunContinuousExpiresActiveClaimAfterShutdownTimeout(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -374,15 +471,20 @@ func TestWorkerRunContinuousExpiresActiveClaimAfterShutdownTimeout(t *testing.T)
 }
 
 type fakeStore struct {
-	mu            sync.Mutex
-	claimed       []jobstore.Execution
-	claimBatches  [][]jobstore.Execution
-	claimSignal   chan struct{}
-	nextRunAfter  *time.Time
-	completed     []int64
-	failures      []fakeFailure
-	finalFailures []fakeFailure
-	expired       []int64
+	mu                sync.Mutex
+	claimed           []jobstore.Execution
+	claimBatches      [][]jobstore.Execution
+	claimSignal       chan struct{}
+	nextRunAfter      *time.Time
+	nextScheduleRunAt *time.Time
+	scheduled         int
+	scheduleCalls     int
+	recoverCalls      int
+	claimCalls        int
+	completed         []int64
+	failures          []fakeFailure
+	finalFailures     []fakeFailure
+	expired           []int64
 }
 
 type fakeFailure struct {
@@ -391,12 +493,23 @@ type fakeFailure struct {
 }
 
 func (s *fakeStore) RecoverExpired(context.Context, time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.recoverCalls++
 	return 0, nil
+}
+
+func (s *fakeStore) RunDueSchedules(context.Context, []string, string, time.Time, int) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scheduleCalls++
+	return s.scheduled, nil
 }
 
 func (s *fakeStore) Claim(_ context.Context, _ []string, _ int, _ string, _ time.Time) ([]jobstore.Execution, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.claimCalls++
 	if s.claimSignal != nil {
 		select {
 		case s.claimSignal <- struct{}{}:
@@ -417,6 +530,12 @@ func (s *fakeStore) NextRunAfter(context.Context, []string, time.Time) (*time.Ti
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.nextRunAfter, nil
+}
+
+func (s *fakeStore) NextScheduleRunAt(context.Context, []string, time.Time) (*time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.nextScheduleRunAt, nil
 }
 
 func (s *fakeStore) Complete(_ context.Context, execution jobstore.Execution, _ json.RawMessage, _ time.Time) error {

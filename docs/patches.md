@@ -314,7 +314,7 @@ Use a patch when the change cannot be proven safe from metadata alone.
 | `constraint-definition-drift` | An existing constraint name has different columns or rules. | Write a patch to replace or rename the constraint intentionally. |
 | `extra-index` | The database has a non-constraint index that metadata no longer declares. | Use `dygo db prune` for an intentional drop, or restore the index in metadata. |
 | `extra-constraint` | The database has a constraint that metadata no longer declares. | Use `dygo db prune` for an intentional drop, or restore the constraint in metadata. |
-| `unsupported-field-storage` | Metadata uses a field type whose storage is not implemented yet. | Wait for storage support or change metadata to supported field types. |
+| `unsupported-field-storage` | Metadata uses a field type whose storage is coming soon. | Wait for storage support or change metadata to supported field types. |
 
 ## Boundaries
 

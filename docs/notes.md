@@ -1,19 +1,19 @@
-# Notes
+# Maintainer Notes
 
-These are internal working notes. Framework behavior is documented in the focused reference docs linked from [Documentation Index](index.md).
+This page keeps repo-maintenance notes that are useful to review with the codebase. Framework behavior is documented in the focused docs linked from the [Documentation Index](index.md).
 
-## Documentation
+## Documentation Practice
 
-- Keep framework documentation in `/docs`, not GitHub Wiki.
+- Keep framework documentation in `docs/`, not in a GitHub Wiki.
 - Keep docs versioned with code and reviewed in pull requests.
-- Prefer concise reference docs over planning transcripts or product-thesis prose.
-- A future docs website can publish these files, but website tooling should wait until the docs are stable.
+- Prefer concise reference docs over planning transcripts.
+- A future docs website can publish these files when the docs are stable enough for a public site.
 
-## Historical CLI And Directory Refactor
+## CLI And Directory Shape
 
-`docs/cli.md` and `docs/dir.md` remain the source references for the target command surface and directory shape.
+[CLI](cli.md) and [Directory Shape](dir.md) are the source references for the command surface and filesystem layout.
 
-The refactor plan originally tracked these work areas:
+The current conventions are:
 
 - Centralize path constants and slash-target parsing.
 - Use root `dygo.yml`, `config/`, `.dygo/`, and `db/schema.sql`.
@@ -25,20 +25,23 @@ The refactor plan originally tracked these work areas:
 - Keep hook generation under `dygo generate hook`; use `dygo hook` for inspection and wiring maintenance.
 - Keep route validation filesystem-backed.
 - Keep permission CLI explicitly database-backed because it must use the runtime permission engine.
-- Include route, fixture, hook, schema snapshot, config, secrets, database, Studio assets, and first-run setup checks in `dygo doctor`.
+- Include route, fixture, hook, Job, Schedule, schema snapshot, config, secrets, database, Studio assets, and first-run setup checks in `dygo doctor`.
 
-Historical deferred items:
+## Coming Soon
 
-- `dygo worker`
-- `dygo scheduler`
+These are intentionally not part of the current public CLI contract:
+
 - global `--json`
 - smart shell completions
-- full job, schedule, report, and custom page runtimes
+- report runtime
+- custom page runtime
+- Studio schedule UI
+- Studio retry and cancel controls for Job Executions
 - production secret providers such as KMS or Vault
 
 ## Reduction Scan
 
-Static scan notes, not verified by tests in this pass.
+These notes came from a static reduction scan. Re-check each item before deleting or refactoring code.
 
 High-confidence delete candidates:
 

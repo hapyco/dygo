@@ -48,6 +48,7 @@ func TestRepositoryEntitiesValidate(t *testing.T) {
 		"patch-run",
 		"permission",
 		"role",
+		"schedule",
 		"session",
 		"user",
 		"user-role",

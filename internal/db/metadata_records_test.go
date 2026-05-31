@@ -10,6 +10,7 @@ import (
 	"github.com/hapyco/dygo/internal/entity/fieldtype"
 	"github.com/hapyco/dygo/internal/entity/schema"
 	"github.com/hapyco/dygo/internal/jobs"
+	"github.com/hapyco/dygo/internal/schedules"
 	"gopkg.in/yaml.v3"
 )
 
@@ -186,6 +187,45 @@ func TestBuildMetadataRecordsStoresJobMetadata(t *testing.T) {
 		if !strings.Contains(string(job.Retry), want) {
 			t.Fatalf("job retry = %s, want %s", job.Retry, want)
 		}
+	}
+}
+
+func TestBuildMetadataRecordsStoresScheduleMetadata(t *testing.T) {
+	disabled := false
+	records, err := buildMetadataRecords(metadataCatalog{
+		Apps: []manifest.LoadedApp{
+			{Manifest: manifest.Manifest{Name: "sales", Label: "Sales", Version: "0.1.0"}},
+		},
+		Entities: []catalog.LoadedEntity{
+			metadataNamingEntity("schedule", schema.Naming{Strategy: schema.NamingStrategyFormat, Format: "{app}.{key}"}),
+		},
+		Schedules: []schedules.LoadedSchedule{
+			{
+				AppName: "sales",
+				Schedule: schedules.Schedule{
+					Name:        "weekly-report",
+					Label:       "Weekly Report",
+					Description: "Runs the weekly report.",
+					Cron:        "0 9 * * MON",
+					Timezone:    "Asia/Karachi",
+					Job:         "sales/send-weekly-report",
+					Enabled:     &disabled,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildMetadataRecords() error = %v, want nil", err)
+	}
+	if len(records.Schedules) != 1 {
+		t.Fatalf("schedule records count = %d, want 1", len(records.Schedules))
+	}
+	schedule := records.Schedules[0]
+	if schedule.Name != "sales.weekly-report" || schedule.Key != "weekly-report" || schedule.Source != schedules.ScheduleSourceFile || schedule.Label != "Weekly Report" || schedule.Description != "Runs the weekly report." || schedule.Cron != "0 9 * * MON" || schedule.Timezone != "Asia/Karachi" || schedule.JobAppName != "sales" || schedule.JobName != "send-weekly-report" || schedule.Enabled || schedule.Retired {
+		t.Fatalf("schedule record = %+v, want synced sales schedule metadata", schedule)
+	}
+	if schedule.NextRunAt.IsZero() {
+		t.Fatalf("schedule next run = zero, want calculated next-run-at")
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hapyco/dygo/internal/corevalues"
 	"github.com/hapyco/dygo/internal/entity/catalog"
@@ -13,6 +14,7 @@ import (
 	"github.com/hapyco/dygo/internal/entity/schema"
 	"github.com/hapyco/dygo/internal/jobs"
 	namegen "github.com/hapyco/dygo/internal/naming"
+	"github.com/hapyco/dygo/internal/schedules"
 	"github.com/jackc/pgx/v5"
 	"gopkg.in/yaml.v3"
 )
@@ -21,6 +23,7 @@ type metadataPersistResult struct {
 	Apps        int
 	Entities    int
 	Jobs        int
+	Schedules   int
 	Fields      int
 	Indexes     int
 	Constraints int
@@ -30,6 +33,7 @@ type metadataRecordSet struct {
 	Apps        []appRecord
 	Entities    []entityRecord
 	Jobs        []jobRecord
+	Schedules   []scheduleRecord
 	Fields      []fieldRecord
 	Indexes     []indexRecord
 	Constraints []constraintRecord
@@ -68,6 +72,22 @@ type jobRecord struct {
 	Retry       []byte
 	Enabled     bool
 	Retired     bool
+}
+
+type scheduleRecord struct {
+	AppName     string
+	Name        string
+	Key         string
+	Source      string
+	Label       string
+	Description string
+	Cron        string
+	Timezone    string
+	JobAppName  string
+	JobName     string
+	Enabled     bool
+	Retired     bool
+	NextRunAt   time.Time
 }
 
 type fieldRecord struct {
@@ -161,16 +181,36 @@ RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity
 		entityIDs[entityKey(entity.AppName, entity.Key)] = id
 	}
 
+	jobIDs := map[string]int64{}
 	for _, job := range records.Jobs {
 		appID, ok := appIDs[job.AppName]
 		if !ok {
 			return metadataPersistResult{}, fmt.Errorf("persist job metadata %q: app %q was not persisted", job.Key, job.AppName)
 		}
-		if err := persistJobRecord(ctx, tx, appID, job); err != nil {
+		jobID, err := persistJobRecord(ctx, tx, appID, job)
+		if err != nil {
+			return metadataPersistResult{}, err
+		}
+		jobIDs[jobKey(job.AppName, job.Key)] = jobID
+	}
+	if err := retireRemovedFileJobRecords(ctx, tx, appIDs, records.Jobs); err != nil {
+		return metadataPersistResult{}, err
+	}
+
+	for _, schedule := range records.Schedules {
+		appID, ok := appIDs[schedule.AppName]
+		if !ok {
+			return metadataPersistResult{}, fmt.Errorf("persist schedule metadata %q: app %q was not persisted", schedule.Key, schedule.AppName)
+		}
+		jobID, ok := jobIDs[jobKey(schedule.JobAppName, schedule.JobName)]
+		if !ok {
+			return metadataPersistResult{}, fmt.Errorf("persist schedule metadata %s/%s: target job %s/%s was not persisted", schedule.AppName, schedule.Key, schedule.JobAppName, schedule.JobName)
+		}
+		if err := persistScheduleRecord(ctx, tx, appID, jobID, schedule); err != nil {
 			return metadataPersistResult{}, err
 		}
 	}
-	if err := retireRemovedFileJobRecords(ctx, tx, appIDs, records.Jobs); err != nil {
+	if err := retireRemovedFileScheduleRecords(ctx, tx, appIDs, records.Schedules); err != nil {
 		return metadataPersistResult{}, err
 	}
 
@@ -208,18 +248,20 @@ RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity
 		Apps:        len(records.Apps),
 		Entities:    len(records.Entities),
 		Jobs:        len(records.Jobs),
+		Schedules:   len(records.Schedules),
 		Fields:      len(records.Fields),
 		Indexes:     len(records.Indexes),
 		Constraints: len(records.Constraints),
 	}, nil
 }
 
-func persistJobRecord(ctx context.Context, tx pgx.Tx, appID int64, job jobRecord) error {
+func persistJobRecord(ctx context.Context, tx pgx.Tx, appID int64, job jobRecord) (int64, error) {
 	source := strings.TrimSpace(job.Source)
 	if source == "" {
 		source = jobs.JobSourceFile
 	}
-	tag, err := tx.Exec(ctx, `
+	var id int64
+	err := tx.QueryRow(ctx, `
 INSERT INTO "job" (name, app_id, key, source, label, description, queue, timeout, retry, enabled, retired)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (app_id, key) DO UPDATE
@@ -232,18 +274,19 @@ SET name = EXCLUDED.name,
 	retry = EXCLUDED.retry,
 	retired = false,
 	updated_at = now()
-WHERE "job"."source" = $12`, job.Name, appID, job.Key, source, job.Label, nullIfEmpty(job.Description), job.Queue, job.Timeout, job.Retry, job.Enabled, job.Retired, jobs.JobSourceFile)
-	if err != nil {
-		return fmt.Errorf("persist job metadata %s/%s: %w", job.AppName, job.Key, err)
+WHERE "job"."source" = $12
+RETURNING id`, job.Name, appID, job.Key, source, job.Label, nullIfEmpty(job.Description), job.Queue, job.Timeout, job.Retry, job.Enabled, job.Retired, jobs.JobSourceFile).Scan(&id)
+	if err != nil && err != pgx.ErrNoRows {
+		return 0, fmt.Errorf("persist job metadata %s/%s: %w", job.AppName, job.Key, err)
 	}
-	if tag.RowsAffected() == 0 {
+	if err == pgx.ErrNoRows {
 		var existingSource string
 		if err := tx.QueryRow(ctx, `SELECT source FROM "job" WHERE app_id = $1 AND key = $2`, appID, job.Key).Scan(&existingSource); err != nil {
-			return fmt.Errorf("persist job metadata %s/%s: load existing job source: %w", job.AppName, job.Key, err)
+			return 0, fmt.Errorf("persist job metadata %s/%s: load existing job source: %w", job.AppName, job.Key, err)
 		}
-		return fmt.Errorf("persist job metadata %s/%s: existing job source %q cannot be overwritten by file-backed metadata", job.AppName, job.Key, existingSource)
+		return 0, fmt.Errorf("persist job metadata %s/%s: existing job source %q cannot be overwritten by file-backed metadata", job.AppName, job.Key, existingSource)
 	}
-	return nil
+	return id, nil
 }
 
 func retireRemovedFileJobRecords(ctx context.Context, tx pgx.Tx, appIDs map[string]int64, records []jobRecord) error {
@@ -268,6 +311,76 @@ WHERE app_id = $1
 	AND retired = false
 	AND NOT (key = ANY($3::text[]))`, appID, jobs.JobSourceFile, keys); err != nil {
 			return fmt.Errorf("retire removed job metadata for app %q: %w", appName, err)
+		}
+	}
+	return nil
+}
+
+func persistScheduleRecord(ctx context.Context, tx pgx.Tx, appID int64, jobID int64, schedule scheduleRecord) error {
+	source := strings.TrimSpace(schedule.Source)
+	if source == "" {
+		source = schedules.ScheduleSourceFile
+	}
+	tag, err := tx.Exec(ctx, `
+INSERT INTO "schedule" (name, app_id, key, source, label, description, cron, timezone, job_id, job_app_name, job_name, enabled, retired, next_run_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+ON CONFLICT (app_id, key) DO UPDATE
+SET name = EXCLUDED.name,
+	source = EXCLUDED.source,
+	label = EXCLUDED.label,
+	description = EXCLUDED.description,
+	cron = EXCLUDED.cron,
+	timezone = EXCLUDED.timezone,
+	job_id = EXCLUDED.job_id,
+	job_app_name = EXCLUDED.job_app_name,
+	job_name = EXCLUDED.job_name,
+	enabled = EXCLUDED.enabled,
+	retired = false,
+	next_run_at = CASE
+		WHEN "schedule".cron IS DISTINCT FROM EXCLUDED.cron
+			OR "schedule".timezone IS DISTINCT FROM EXCLUDED.timezone
+			OR "schedule".enabled IS DISTINCT FROM EXCLUDED.enabled
+			OR "schedule".retired = true
+		THEN EXCLUDED.next_run_at
+		ELSE "schedule".next_run_at
+	END,
+	updated_at = now()
+WHERE "schedule"."source" = $15`, schedule.Name, appID, schedule.Key, source, schedule.Label, nullIfEmpty(schedule.Description), schedule.Cron, schedule.Timezone, jobID, schedule.JobAppName, schedule.JobName, schedule.Enabled, schedule.Retired, schedule.NextRunAt, schedules.ScheduleSourceFile)
+	if err != nil {
+		return fmt.Errorf("persist schedule metadata %s/%s: %w", schedule.AppName, schedule.Key, err)
+	}
+	if tag.RowsAffected() == 0 {
+		var existingSource string
+		if err := tx.QueryRow(ctx, `SELECT source FROM "schedule" WHERE app_id = $1 AND key = $2`, appID, schedule.Key).Scan(&existingSource); err != nil {
+			return fmt.Errorf("persist schedule metadata %s/%s: load existing schedule source: %w", schedule.AppName, schedule.Key, err)
+		}
+		return fmt.Errorf("persist schedule metadata %s/%s: existing schedule source %q cannot be overwritten by file-backed metadata", schedule.AppName, schedule.Key, existingSource)
+	}
+	return nil
+}
+
+func retireRemovedFileScheduleRecords(ctx context.Context, tx pgx.Tx, appIDs map[string]int64, records []scheduleRecord) error {
+	currentKeys := make(map[string][]string, len(appIDs))
+	for appName := range appIDs {
+		currentKeys[appName] = nil
+	}
+	for _, record := range records {
+		currentKeys[record.AppName] = append(currentKeys[record.AppName], record.Key)
+	}
+	for appName, appID := range appIDs {
+		keys := currentKeys[appName]
+		if keys == nil {
+			keys = []string{}
+		}
+		if _, err := tx.Exec(ctx, `
+UPDATE "schedule"
+SET retired = true,
+	updated_at = now()
+WHERE app_id = $1
+	AND source = $2
+	AND retired = false
+	AND NOT (key = ANY($3::text[]))`, appID, schedules.ScheduleSourceFile, keys); err != nil {
+			return fmt.Errorf("retire removed schedule metadata for app %q: %w", appName, err)
 		}
 	}
 	return nil
@@ -535,12 +648,49 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			Retired:     false,
 		})
 	}
+	for _, loaded := range metadata.Schedules {
+		jobRef, err := loaded.Schedule.JobRef()
+		if err != nil {
+			return metadataRecordSet{}, fmt.Errorf("build schedule metadata %s/%s job: %w", loaded.AppName, loaded.Schedule.Name, err)
+		}
+		nextRunAt, err := schedules.NextRunAt(loaded.Schedule.Cron, loaded.Schedule.Timezone, time.Now().UTC())
+		if err != nil {
+			return metadataRecordSet{}, fmt.Errorf("build schedule metadata %s/%s next run: %w", loaded.AppName, loaded.Schedule.Name, err)
+		}
+		recordName, err := deterministicRecordNameFromValues("schedule", namings.Schedule, map[string]string{
+			"app":      loaded.AppName,
+			"key":      loaded.Schedule.Name,
+			"label":    loaded.Schedule.Label,
+			"cron":     loaded.Schedule.Cron,
+			"timezone": loaded.Schedule.Timezone,
+			"job":      loaded.Schedule.Job,
+		})
+		if err != nil {
+			return metadataRecordSet{}, fmt.Errorf("build schedule metadata %s/%s name: %w", loaded.AppName, loaded.Schedule.Name, err)
+		}
+		records.Schedules = append(records.Schedules, scheduleRecord{
+			AppName:     loaded.AppName,
+			Name:        recordName,
+			Key:         loaded.Schedule.Name,
+			Source:      schedules.ScheduleSourceFile,
+			Label:       loaded.Schedule.Label,
+			Description: loaded.Schedule.Description,
+			Cron:        loaded.Schedule.Cron,
+			Timezone:    loaded.Schedule.Timezone,
+			JobAppName:  jobRef.App,
+			JobName:     jobRef.Name,
+			Enabled:     loaded.Schedule.EffectiveEnabled(),
+			Retired:     false,
+			NextRunAt:   nextRunAt,
+		})
+	}
 	return records, nil
 }
 
 type metadataNamings struct {
 	Entity     schema.Naming
 	Job        schema.Naming
+	Schedule   schema.Naming
 	Field      schema.Naming
 	Index      schema.Naming
 	Constraint schema.Naming
@@ -553,6 +703,10 @@ func metadataRecordNamings(entities []catalog.LoadedEntity) metadataNamings {
 			Format:   "{app}.{key}",
 		}),
 		Job: metadataCoreEntityNaming(entities, "job", schema.Naming{
+			Strategy: schema.NamingStrategyFormat,
+			Format:   "{app}.{key}",
+		}),
+		Schedule: metadataCoreEntityNaming(entities, "schedule", schema.Naming{
 			Strategy: schema.NamingStrategyFormat,
 			Format:   "{app}.{key}",
 		}),
@@ -745,6 +899,10 @@ func scalarNodeAny(node yaml.Node, name string) (any, error) {
 
 func entityKey(appName string, entityName string) string {
 	return appName + "\x00" + entityName
+}
+
+func jobKey(appName string, jobName string) string {
+	return appName + "\x00" + jobName
 }
 
 func nullIfEmpty(value string) any {

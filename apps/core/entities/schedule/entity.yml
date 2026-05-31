@@ -1,0 +1,115 @@
+label: Schedule
+description: Recurring trigger that creates Job Executions.
+icon: calendar-clock
+is-system: true
+name:
+  strategy: format
+  format: "{app}.{key}"
+fields:
+  - name: app
+    label: App
+    type: link
+    required: true
+    index: true
+    options:
+      entity: app
+
+  - name: key
+    label: Key
+    type: text
+    required: true
+    index: true
+
+  - name: source
+    label: Source
+    type: select
+    required: true
+    default: file
+    index: true
+    options:
+      values:
+        - file
+        - studio
+        - system
+
+  - name: label
+    label: Label
+    type: text
+    required: true
+
+  - name: description
+    label: Description
+    type: long-text
+
+  - name: cron
+    label: Cron
+    type: text
+    required: true
+
+  - name: timezone
+    label: Timezone
+    type: text
+    required: true
+
+  - name: job
+    label: Job
+    type: link
+    required: true
+    index: true
+    options:
+      entity: job
+
+  - name: job-app-name
+    label: Job App Name
+    type: text
+    required: true
+    index: true
+
+  - name: job-name
+    label: Job Name
+    type: text
+    required: true
+    index: true
+
+  - name: enabled
+    label: Enabled
+    type: boolean
+    required: true
+    default: true
+    index: true
+
+  - name: retired
+    label: Retired
+    type: boolean
+    required: true
+    default: false
+    index: true
+
+  - name: next-run-at
+    label: Next Run At
+    type: datetime
+    index: true
+
+  - name: last-run-at
+    label: Last Run At
+    type: datetime
+
+  - name: last-error
+    label: Last Error
+    type: long-text
+
+  - name: actor
+    label: Actor
+    type: link
+    index: true
+    options:
+      entity: user
+      foreign-key: false
+
+indexes:
+  - name: schedule-due
+    fields: [enabled, retired, next-run-at]
+
+constraints:
+  - type: unique
+    fields: [app, key]
