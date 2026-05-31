@@ -17,7 +17,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #244 Remove stale `permissions.yml` references until a dedicated loader exists
 - [ ] #245 Add permission fixture scaffolding when generating new app Entities
 - [x] #31 Add worker command
-- [x] #32 Add scheduler behavior to workers
+- [x] #32 Add scheduler command
 - [ ] #33 Add site command group
 - [ ] #38 Add one-command local project setup
 - [ ] #51 Add Studio metadata browser
@@ -115,6 +115,14 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [x] #230 Debounce record-list route updates for filter changes to reduce replace churn
 - [ ] #192 Support filtered Link field records
 - [ ] #202 Add saved filters for Studio record lists
+- [ ] #246 Add Studio DOM freeze support
+- [ ] #247 Add Studio dialog and popup API
+- [ ] #248 Design notification logic for system and external events
+- [ ] #249 Add test mode for trying changes before switching live
+- [ ] #250 Add Studio debug bar
+- [ ] #251 Add webhook sending support in Studio and framework
+- [ ] #252 Add Studio chart styles and options
+- [ ] #253 Add Studio action sound feedback
 
 ## Done
 
