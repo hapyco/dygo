@@ -29,6 +29,7 @@ Use this index to find the right document for the task. The docs are kept in the
 - [Server](server.md) explains `dygo dev`, `dygo serve`, the health endpoint, auth, metadata APIs, and Record APIs.
 - [Auth](auth.md) explains Administrator bootstrap, session login, and authenticated API identity.
 - [Records](records.md) explains the metadata-powered Record CRUD API.
+- [Logs](logs.md) explains persisted framework and app diagnostic events.
 - [Encrypted Secrets](secrets.md) explains repo-stored encrypted secrets and `dygo secret`.
 
 ## Jobs And Automation
