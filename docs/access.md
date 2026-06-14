@@ -113,11 +113,11 @@ Validation should fail when:
 - a cross-app role reference omits the app name
 - two access files define grants for the same Entity
 
-## Fixture Export
+## Fixture Apply And Export
 
 Access metadata should not round-trip through ordinary fixture files.
 
-After this model exists, `dygo fixture export` should not export app-owned Core `role` or `permission` Records into Entity `fixtures.yml` files. Those Records are runtime storage for access metadata. Their authoring files are:
+After this model exists, `dygo fixture validate`, `dygo fixture apply`, and `dygo fixture export` should reject app-owned Core `role` or `permission` Records as Entity `fixtures.yml` data. Those Records are runtime storage for access metadata. Their authoring files are:
 
 ```txt
 apps/<app>/access/_roles.yml
@@ -126,7 +126,7 @@ apps/<app>/access/<entity>.access.yml
 
 Exporting app-owned access should use a dedicated access export path that writes `_roles.yml` and `<entity>.access.yml`.
 
-`dygo fixture export` can still export ordinary seed/reference Records. It can also export user-role assignments for environment or demo setup when explicitly requested, because assignments are runtime data, not the app access contract.
+Fixtures can still handle ordinary seed/reference Records. They can also handle user-role assignments for environment or demo setup when explicitly requested, because assignments are runtime data, not the app access contract.
 
 ## Why Access Is Separate
 
@@ -185,7 +185,8 @@ Administrator remains a `user.administrator` flag, not a role.
 - validate that each access file points at one known Entity
 - sync validated roles and Entity grants during `dygo db migrate`
 - add an access export path for `_roles.yml` and `<entity>.access.yml`
-- prevent ordinary fixture export from writing app-owned `role` and `permission` Records as fixtures
+- add a central fixture eligibility policy used by fixture validate, apply, and export
+- prevent ordinary fixture commands from reading or writing app-owned `role` and `permission` Records as fixtures
 - remove stale `entities/<entity>/permissions.yml`, root `roles.yml`, and `permissions/` documentation once the loader exists
 - side task: rename Entity metadata from `entities/<entity>/entity.yml` to `entities/<entity>/<entity>.entity.yml`
 - side task: update Entity shape helpers, generators, validators, JSON Schemas, metadata loading, and docs for the `<entity>.entity.yml` filename

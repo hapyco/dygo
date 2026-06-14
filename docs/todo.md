@@ -16,6 +16,14 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #243 Document fixture-first permission setup for app roles and Entity grants
 - [ ] #244 Remove stale `permissions.yml` references until a dedicated loader exists
 - [ ] #245 Add permission fixture scaffolding when generating new app Entities
+- [ ] #254 Add central fixture eligibility policy for denied and restricted Entities across validate, apply, and export
+- [ ] #255 Finalize Workflow metadata file naming and app layout
+- [ ] #256 Add Workflow loaders, validators, JSON Schema, and generator support
+- [ ] #257 Validate access actions against built-in permissions and Entity Workflow actions
+- [ ] #258 Add Workflow runtime execution for state transitions and successor Records
+- [ ] #259 Add Workflow hooks and audit/log entries around actions
+- [ ] #260 Add Studio Workflow management and metadata export
+- [ ] #261 Make reserved names and fixture eligibility policies extendable by apps
 - [ ] #33 Add site command group
 - [ ] #38 Add one-command local project setup
 - [ ] #51 Add Studio metadata browser
