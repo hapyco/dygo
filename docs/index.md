@@ -16,6 +16,8 @@ Use this index to find the right document for the task. The docs are kept in the
 - [App Model](app-model.md) explains built-in apps, business apps, and app install locations.
 - [App Manifest](app-manifest.md) defines `app.yml`.
 - [Entity Metadata](entity-metadata.md) defines Entity YAML, route slugs, Record naming, storage naming, field types, indexes, and constraints.
+- [Access](access.md) records the proposed app role and Entity access authoring model.
+- [Workflow](workflow.md) records the proposed model for lifecycle actions, status transitions, approvals, and document-style operations.
 - [Metadata Authoring](metadata-authoring.md) explains JSON Schemas and editor support for dygo YAML files.
 - [Fixtures](fixtures.md) explains app-owned seed Records and `dygo fixture apply`.
 - [Record Hooks](record-hooks.md) explains compiled app Record hooks and the `entities/<entity>/hooks.go` convention.
