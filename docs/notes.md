@@ -45,17 +45,12 @@ These notes came from a static reduction scan. Re-check each item before deletin
 
 High-confidence delete candidates:
 
-- `apps/studio/ui/src/stores/index.ts`
-- `apps/studio/ui/src/renderers/index.ts`
-- `apps/studio/ui/src/shell/index.ts`
-- `apps/studio/ui/src/design/atoms/Badge.vue`
 - `apps/studio/ui/src/design/atoms/Divider.vue`
 - `apps/studio/ui/src/design/molecules/FieldRow.vue`
 - `apps/studio/ui/src/design/molecules/FormSection.vue`
 - `apps/studio/ui/src/design/molecules/SearchBox.vue`
 - `apps/studio/ui/src/design/molecules/RadioGroupField.vue`
 - `apps/studio/ui/src/design/primitives/RadioGroup.vue`
-- `internal/db/schema_inspect.go` unused `liveTable.HasIndex`
 
 DRY candidates:
 

@@ -23,11 +23,6 @@ type liveTable struct {
 	Constraints   map[string]liveConstraint
 }
 
-func (t liveTable) HasIndex(name string) bool {
-	_, ok := t.Indexes[name]
-	return ok
-}
-
 type liveColumn struct {
 	Name       string
 	Type       string
