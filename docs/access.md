@@ -113,6 +113,35 @@ Validation should fail when:
 - a cross-app role reference omits the app name
 - two access files define grants for the same Entity
 
+## CLI
+
+Access gets one command group:
+
+```txt
+dygo access
+```
+
+The first command surface should focus on source metadata:
+
+```txt
+dygo access validate
+dygo access list
+dygo access list <app>
+dygo access show <app>/<entity>
+dygo access roles
+dygo access roles <app>
+dygo access export <app>
+dygo access export <app>/<entity>
+```
+
+`dygo access validate`, `list`, `show`, and `roles` read authored access files. `dygo access export` reads live Core access Records and writes app access metadata.
+
+Do not keep `dygo permission` as a public command or compatibility alias. The command name should be `access` only.
+
+Do not add access `check` or `explain` commands in this sprint. Runtime decision inspection can wait until the source metadata model, row/workflow access, and Studio access screens are clearer.
+
+Do not add `dygo access apply`. `dygo db migrate` is the sync path from access metadata to runtime Core Records.
+
 ## Fixture Apply And Export
 
 Access metadata should not round-trip through ordinary fixture files.
@@ -181,6 +210,7 @@ Administrator remains a `user.administrator` flag, not a role.
 - update app and Entity generators to create the new access files
 - replace generated root `roles.yml` with `access/_roles.yml`
 - add loaders and validators for `_roles.yml` and `<entity>.access.yml`
+- replace the runtime-only `dygo permission` command with source-oriented `dygo access` commands
 - validate app-scoped role names and explicit cross-app role references
 - validate that each access file points at one known Entity
 - sync validated roles and Entity grants during `dygo db migrate`

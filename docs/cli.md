@@ -147,17 +147,21 @@ Generator boilerplate lives as embedded templates under `internal/generate/templ
 - `dygo route resolve <method> <path>` - Explains which route, action, and permission a request would use.
 - `dygo route reserved` - Lists framework-reserved route slugs.
 
-## Permissions*
+## Access
 
-- `dygo permission` - Groups live permission inspection commands.
-- `dygo permission list` - Lists live role permission grants from the configured database.
-- `dygo permission list <app>/<entity>` - Lists live role permission grants for one Entity.
-- `dygo permission check <app>/<entity> <action> --user <email-or-id>` - Checks live database permissions and prints `allow` or `deny`.
-- `dygo permission check <app>/<entity> <action> --role <role>` - Checks whether one live role grants the action and prints `allow` or `deny`.
-- `dygo permission explain <app>/<entity> <action> --user <email-or-id>` - Explains the live permission decision for one user.
-- `dygo permission explain <app>/<entity> <action> --role <role>` - Explains the live permission decision for one role.
+- `dygo access` - Groups app access metadata commands.
+- `dygo access validate` - Validates `access/_roles.yml` and `access/<entity>.access.yml` files.
+- `dygo access list` - Lists discovered app roles and Entity access files grouped by app.
+- `dygo access list <app>` - Lists roles and Entity access files for one app.
+- `dygo access show <app>/<entity>` - Prints resolved access metadata for one Entity.
+- `dygo access roles` - Lists app-owned roles grouped by app.
+- `dygo access roles <app>` - Lists app-owned roles for one app.
+- `dygo access export <app>` - Prints an access export plan, prompts interactively, then writes `_roles.yml` and Entity access files for one app.
+- `dygo access export <app>/<entity>` - Prints an access export plan, prompts interactively, then writes one Entity access file and required role metadata.
+- `dygo access export <target> --yes` - Exports access metadata without an interactive prompt.
+- `dygo access export <target> --dry-run` - Prints the access export plan without writing or prompting.
 
-Permission commands default to `--env development` and read live Core permission Records from the configured database. They use the same internal permission verification methods as the server/runtime so command answers match API and Studio authorization behavior.
+`dygo access` is source-metadata oriented. Runtime access sync happens through `dygo db migrate`; there is no `dygo access apply`.
 
 ## Secrets
 
