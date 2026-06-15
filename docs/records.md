@@ -4,10 +4,10 @@ Records are saved data created from an Entity.
 
 dygo's first Record runtime is generic. It uses persisted Core metadata to map Entity route slugs, app-scoped Entity identity, and Field names to PostgreSQL tables and columns, so the framework does not need handwritten handlers for each Entity.
 
-Run metadata sync before using the Record API:
+Prepare the database before using the Record API:
 
 ```sh
-dygo db migrate
+dygo db prepare
 dygo dev
 ```
 

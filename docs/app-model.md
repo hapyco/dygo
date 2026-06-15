@@ -2,7 +2,7 @@
 
 dygo is a framework runtime with installable Apps.
 
-The runtime loads installed apps, applies their patches and fixtures, registers their entities and permissions, and exposes their behavior through APIs, jobs, hooks, and the Studio.
+The runtime loads installed apps, registers their entities and permissions, and exposes their behavior through APIs, jobs, hooks, and the Studio. Database preparation applies patches, access metadata, and fixtures before serving a usable environment.
 
 ## Built-In Apps
 
@@ -94,7 +94,7 @@ Hooks are app-owned Go code inside Entity bundles. A file such as `entities/lead
 
 Patches are app-owned lifecycle changes for unsafe transitions that metadata cannot infer, such as renames, drops, destructive type changes, and data backfills. See [Explicit Patches](patches.md) for the v1 runner workflow.
 
-Fixtures are app-owned seed Records for roles, permissions, and reference data. They live inside Entity bundles as `entities/<entity>/fixtures.yml` and can be applied explicitly with `dygo fixture apply`. See [Fixtures](fixtures.md) for the v1 file shape.
+Fixtures are app-owned seed Records for reference, demo, and setup data. They live inside Entity bundles as `entities/<entity>/fixtures.yml` and can be applied explicitly with `dygo fixture apply`. Roles and Entity access policies use [Access](access.md). See [Fixtures](fixtures.md) for the v1 file shape.
 
 ## Install Locations
 

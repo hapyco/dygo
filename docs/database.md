@@ -62,22 +62,28 @@ Create the configured database if it is missing:
 dygo db create
 ```
 
-Migrate the database. `db migrate` ensures the configured database exists, prints the full plan, prompts, then applies pre-sync patches, metadata schema sync, post-sync patches, fixtures, and schema snapshot refresh.
+Migrate an existing database. `db migrate` requires the configured database to exist, prints the full plan, prompts, then applies pre-sync patches, metadata schema sync, post-sync patches, and schema snapshot refresh.
 
 ```sh
 dygo db migrate
 ```
-
-When the configured database is missing, normal `db migrate` prompts before creating it because schema planning needs a real database to inspect.
 
 ```sh
 dygo db migrate --dry-run
 dygo db migrate --yes
 ```
 
-`--dry-run` never creates the database. If the database is missing, it reports that the database would be created and exits before full schema planning.
+`db migrate` does not create the database. If the database is missing, it reports that migration cannot continue.
 
-After migration, create the first Administrator account before opening Studio:
+Prepare a usable environment. `db prepare` creates the configured database if missing, then runs migration, access apply, and fixture apply:
+
+```sh
+dygo db prepare
+dygo db prepare --dry-run
+dygo db prepare --yes
+```
+
+After preparation, create the first Administrator account before opening Studio:
 
 ```sh
 dygo setup
@@ -98,7 +104,7 @@ dygo db drop --yes
 dygo db reset --yes
 ```
 
-`db reset` drops the database, creates it again, and runs the same migration workflow as `db migrate`.
+`db reset` drops the database, creates it again, and runs the same preparation workflow as `db prepare`.
 
 For staging or production destructive commands, pass `--force` in addition to the prompt or `--yes`:
 
@@ -158,7 +164,7 @@ After the schema plan succeeds, `dygo db migrate` upserts discovered Apps, Entit
 
 File-backed Jobs whose `job.yml` was removed are marked retired, not deleted, so old Job Executions remain inspectable. File-backed Schedules removed from `_schedules.yml` are also marked retired instead of being deleted.
 
-App-owned fixtures are applied by `dygo db migrate` and can also be applied explicitly with `dygo fixture apply`. See [Fixtures](fixtures.md) for the fixture file shape.
+App-owned access metadata and fixtures are not applied by `dygo db migrate`. Use `dygo access apply` and `dygo fixture apply` explicitly, or run `dygo db prepare` when preparing a full usable environment. See [Access](access.md) and [Fixtures](fixtures.md) for their file shapes.
 
 The current sync path is intentionally additive. Removing fields, renaming fields, renaming tables, destructive type changes, and unsafe required/unique/check/foreign-key changes are not inferred automatically. Those cases need an explicit app patch or, for plain metadata-orphaned objects, an explicit schema prune.
 

@@ -29,14 +29,17 @@ This document describes the dygo CLI command surface. Commands that are intentio
 - `dygo db create` - Creates the configured PostgreSQL database.
 - `dygo db drop` - Prints the drop target, prompts interactively, then drops the configured PostgreSQL database.
 - `dygo db drop --yes` - Drops the configured PostgreSQL database without an interactive prompt.
-- `dygo db migrate` - Ensures the configured database exists, prints the full migration plan, prompts interactively, then applies pre-sync patches, metadata sync, post-sync patches, fixtures, and schema dump.
-- `dygo db migrate --yes` - Applies the full migration workflow without an interactive prompt.
-- `dygo db migrate --dry-run` - Prints the full migration plan without writing; if the database is missing, reports that it would be created and exits before full planning.
+- `dygo db migrate` - Requires the configured database to exist, prints the migration plan, prompts interactively, then applies pre-sync patches, metadata sync, post-sync patches, and schema dump.
+- `dygo db migrate --yes` - Applies the migration workflow without an interactive prompt.
+- `dygo db migrate --dry-run` - Prints the migration plan without writing; if the database is missing, reports that it cannot plan without an existing database.
+- `dygo db prepare` - Creates the configured database if missing, then runs migrate, access apply, and fixture apply.
+- `dygo db prepare --yes` - Prepares the database without an interactive prompt.
+- `dygo db prepare --dry-run` - Prints the prepare plan without writing.
 - `dygo db prune` - Prints the metadata-orphaned schema cleanup plan, prompts interactively, then removes approved objects.
 - `dygo db prune --yes` - Prints the cleanup plan and applies it without an interactive prompt.
 - `dygo db prune --dry-run` - Previews metadata-orphaned schema cleanup without writing.
-- `dygo db reset` - Prints the reset target, prompts interactively, then drops, creates, and migrates the configured PostgreSQL database.
-- `dygo db reset --yes` - Drops, creates, and migrates the configured PostgreSQL database without an interactive prompt.
+- `dygo db reset` - Prints the reset target, prompts interactively, then drops, creates, and prepares the configured PostgreSQL database.
+- `dygo db reset --yes` - Drops, creates, and prepares the configured PostgreSQL database without an interactive prompt.
 - `dygo db reset --dry-run` - Prints the reset target and planned steps without writing.
 
 ## Apps
@@ -151,6 +154,9 @@ Generator boilerplate lives as embedded templates under `internal/generate/templ
 
 - `dygo access` - Groups app access metadata commands.
 - `dygo access validate` - Validates `access/_roles.yml` and `access/<entity>.access.yml` files.
+- `dygo access apply` - Prints an access apply plan, prompts interactively, then syncs access files into Core role and permission Records.
+- `dygo access apply --yes` - Applies access metadata without an interactive prompt.
+- `dygo access apply --dry-run` - Prints the access apply plan without writing.
 - `dygo access list` - Lists discovered app roles and Entity access files grouped by app.
 - `dygo access list <app>` - Lists roles and Entity access files for one app.
 - `dygo access show <app>/<entity>` - Prints resolved access metadata for one Entity.
@@ -161,7 +167,7 @@ Generator boilerplate lives as embedded templates under `internal/generate/templ
 - `dygo access export <target> --yes` - Exports access metadata without an interactive prompt.
 - `dygo access export <target> --dry-run` - Prints the access export plan without writing or prompting.
 
-`dygo access` is source-metadata oriented. Runtime access sync happens through `dygo db migrate`; there is no `dygo access apply`.
+`dygo access` owns app access metadata. Runtime access sync happens through `dygo access apply`. `dygo db prepare` runs access apply as part of first-time environment preparation.
 
 ## Secrets
 

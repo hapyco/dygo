@@ -33,7 +33,7 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - `replaces` must point at the app whose policy item is being replaced.
 - Removing a policy item that uses `replaces` has no special fallback behavior.
 - `permission.retired` only tracks removed file-backed permission Records.
-- After removals, access validation and migration evaluate the remaining policy metadata normally.
+- After removals, access validation and apply evaluate the remaining policy metadata normally.
 - Role names are global.
 - Role names are globally unique across all apps.
 - Apps can define roles, but defining a role does not scope that role to the app.
@@ -50,7 +50,7 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - The permission engine ignores retired grants.
 - Core `role` and `permission` Records are runtime storage for access metadata, not ordinary fixture authoring.
 - Runtime permission checks read database Records only.
-- Access files are authoring metadata that create or update database permission Records through `dygo db migrate`.
+- Access files are authoring metadata that create or update database permission Records through `dygo access apply`.
 - Policy items define full permission grants for `(entity, role)`.
 - Access metadata does not model negative permission rules.
 - Apps can define policy metadata for Entities owned by another app.
@@ -68,8 +68,10 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - Base actions are `read`, `create`, `update`, `delete`, `export`, and `print`.
 - In this access sprint, `policy.can` validates built-in actions only.
 - Workflow-specific actions in `policy.can` are deferred to the Workflow sprint.
-- File-to-database sync happens through `dygo db migrate`.
+- File-to-database sync happens through `dygo access apply`.
 - Database-to-file export happens through `dygo access export`.
+- `dygo db migrate` does not apply access files.
+- `dygo db prepare` runs access apply as part of first-time environment preparation.
 - `dygo access export` must receive an explicit destination app with `--in <app>`.
 - Exported roles are written to `apps/<app>/access/_roles.yml` for the selected `--in` app.
 - Role export only writes roles that are not already represented by any loaded `_roles.yml` file.
@@ -79,17 +81,17 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - Policy export must not duplicate roles already contributed by another app.
 - Policy export does not create `replaces` automatically in v1.
 - Policy export may write policy metadata that creates an unresolved duplicate `(entity, role)`.
-- Access validation and migration fail on unresolved duplicate policy metadata until the user manually adds `replaces`.
+- Access validation and apply fail on unresolved duplicate policy metadata until the user manually adds `replaces`.
 - Access export writes patch-style updates, not full-file replacements.
 - Access export preserves unrelated roles and policy items.
 - Access export updates matching role or policy items when found.
 - Access export appends missing role or policy items when needed.
 - Access export does not reorder whole files in v1.
 - Do not add `dygo access import`.
-- Do not add `dygo access apply`.
+- Add `dygo access apply`.
 - Remove `dygo permission` from the public CLI instead of keeping it as a compatibility alias.
 - Do not add access `check` or `explain` commands in this sprint.
-- The first access CLI surface is source-metadata oriented: `validate`, `list`, `show`, `roles`, and `export`.
+- The first access CLI surface is `validate`, `apply`, `list`, `show`, `roles`, and `export`.
 - `dygo generate app <app>` creates `apps/<app>/access/_roles.yml` by default.
 - `dygo generate app <app> --no-access` skips the access folder.
 - `dygo generate entity <app>/<entity>` creates `apps/<app>/access/<entity>.access.yml` by default.

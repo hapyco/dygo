@@ -44,8 +44,8 @@ The basic dygo loop should stay small:
 ```sh
 dygo generate app <app>
 dygo generate entity <app>/<entity>
-dygo db migrate
+dygo db prepare
 dygo dev
 ```
 
-The exact commands may evolve, but the workflow should remain clear: define metadata, migrate app state, run Studio, and build the business system inside a stable framework.
+The exact commands may evolve, but the workflow should remain clear: define metadata, prepare app state, run Studio, and build the business system inside a stable framework.

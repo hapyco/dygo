@@ -4,13 +4,15 @@ Fixtures are app-owned seed Records.
 
 They are for reference data, demo/setup data, and other ordinary runtime defaults that should be versioned with an App. App access roles and grants move to [Access](access.md); they should not remain generic fixtures once the access metadata loader exists.
 
-Use the normal app-state workflow to sync metadata and apply fixtures:
+Apply fixtures explicitly:
 
 ```sh
-dygo db migrate
+dygo fixture apply
 ```
 
-Use explicit fixture commands when authoring, debugging, or exporting fixture files. For example, validate fixture files without database writes:
+Use `dygo db prepare` when preparing a full usable environment that should run migration, access apply, and fixture apply together.
+
+Use fixture commands when authoring, debugging, or exporting fixture files. For example, validate fixture files without database writes:
 
 ```sh
 dygo fixture validate
@@ -95,7 +97,7 @@ Target policy:
 | Ordinary business and reference Entities | allowed | App-owned seed data is the main fixture use case. |
 | `core/role` | denied after the access loader exists | Role authoring belongs in `access/_roles.yml`. |
 | `core/permission` | denied after the access loader exists | Entity grants belong in `access/<entity>.access.yml`. |
-| `core/user`, `core/user-role`, `core/configuration` | restricted | Accounts, assignments, and global defaults are environment/demo setup data. |
+| `core/user`, `core/user-role`, `core/configuration` | allowed for now | Accounts, assignments, and global defaults can be explicit environment/demo setup data until Studio/admin tooling owns them. |
 | `core/app`, `core/entity`, `core/field`, `core/index`, `core/constraint`, `core/job`, `core/schedule` | denied | These Records are synced from metadata files. |
 | `core/session`, `core/activity`, `core/log`, `core/job-execution`, `core/patch-run`, `core/naming-series` | denied | These Records are runtime state, ledgers, logs, executions, or counters. |
 | Collection Entities | denied as standalone fixtures | Parent Entity fixtures own collection row data. |
@@ -125,6 +127,6 @@ fixtures applied: 3 created, 2 updated (development)
 
 ## Boundaries
 
-`dygo db migrate` applies fixtures as part of the normal app-state workflow. Keep `dygo fixture apply`, `dygo fixture validate`, and `dygo fixture export <app>/<entity>` for app-author tooling, debugging, and exporting Studio-authored Records back into app-owned fixture files.
+`dygo db migrate` does not apply fixtures. Use `dygo fixture apply` for explicit fixture loading, or `dygo db prepare` for first-time environment preparation.
 
 Fixtures do not delete Records, prune schema, run patches, track history, or expose HTTP endpoints.

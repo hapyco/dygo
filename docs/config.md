@@ -76,8 +76,8 @@ Secrets stay separate from runtime config. `dygo.yml` references secret names on
 
 `dygo dev` and `dygo serve` use this config to choose the HTTP bind address.
 
-`dygo db check`, `dygo db create`, `dygo db drop`, `dygo db migrate`, `dygo db prune`, and `dygo db reset` use this config to find the encrypted database URL secret.
+`dygo db check`, `dygo db create`, `dygo db drop`, `dygo db migrate`, `dygo db prepare`, `dygo db prune`, and `dygo db reset` use this config to find the encrypted database URL secret.
 
-`dygo fixture apply`, `dygo fixture export`, `dygo access export`, and `dygo setup` also use this config when they need the selected environment's database URL.
+`dygo fixture apply`, `dygo fixture export`, `dygo access apply`, `dygo access export`, and `dygo setup` also use this config when they need the selected environment's database URL.
 
 `dygo db migrate`, `dygo doctor`, Job commands, and `dygo worker` use `config/queues.yml` to validate Job queue references and choose worker concurrency.
