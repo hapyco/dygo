@@ -32,13 +32,13 @@ This document describes the dygo CLI command surface. Commands that are intentio
 - `dygo db migrate` - Requires the configured database to exist, prints the migration plan, prompts interactively, then applies pre-sync patches, metadata sync, post-sync patches, and schema dump.
 - `dygo db migrate --yes` - Applies the migration workflow without an interactive prompt.
 - `dygo db migrate --dry-run` - Prints the migration plan without writing; if the database is missing, reports that it cannot plan without an existing database.
-- `dygo db prepare` - Creates the configured database if missing, then runs migrate, access apply, and fixture apply.
+- `dygo db prepare` - Non-destructively prepares a usable environment by creating the configured database if missing, then running migrate, access apply, and fixture apply.
 - `dygo db prepare --yes` - Prepares the database without an interactive prompt.
 - `dygo db prepare --dry-run` - Prints the prepare plan without writing.
 - `dygo db prune` - Prints the metadata-orphaned schema cleanup plan, prompts interactively, then removes approved objects.
 - `dygo db prune --yes` - Prints the cleanup plan and applies it without an interactive prompt.
 - `dygo db prune --dry-run` - Previews metadata-orphaned schema cleanup without writing.
-- `dygo db reset` - Prints the reset target, prompts interactively, then drops, creates, and prepares the configured PostgreSQL database.
+- `dygo db reset` - Destructively rebuilds a usable environment by printing the reset target, prompting interactively, then dropping, creating, and preparing the configured PostgreSQL database.
 - `dygo db reset --yes` - Drops, creates, and prepares the configured PostgreSQL database without an interactive prompt.
 - `dygo db reset --dry-run` - Prints the reset target and planned steps without writing.
 

@@ -75,7 +75,7 @@ dygo db migrate --yes
 
 `db migrate` does not create the database. If the database is missing, it reports that migration cannot continue.
 
-Prepare a usable environment. `db prepare` creates the configured database if missing, then runs migration, access apply, and fixture apply:
+Prepare a usable environment. `db prepare` is the non-destructive bootstrap command. It creates the configured database if missing, then runs migration, access apply, and fixture apply:
 
 ```sh
 dygo db prepare
@@ -104,7 +104,7 @@ dygo db drop --yes
 dygo db reset --yes
 ```
 
-`db reset` drops the database, creates it again, and runs the same preparation workflow as `db prepare`.
+`db reset` is the destructive rebuild command. It drops the database, creates it again, and runs the same preparation workflow as `db prepare`.
 
 For staging or production destructive commands, pass `--force` in addition to the prompt or `--yes`:
 
