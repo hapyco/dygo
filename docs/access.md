@@ -14,6 +14,9 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - Use `<entity>.access.yml`, not `<entity>.policy.yml`, because the file owns the full access contract for that Entity.
 - Do not use `apps/<app>/permissions/` or `entities/<entity>/permissions.yml` for the target model.
 - `_roles.yml` defines roles contributed by that app, not Entity grants.
+- `_roles.yml` uses top-level `roles`.
+- `_roles.yml` role items require `name` and `label`.
+- `_roles.yml` role item `description` is optional.
 - `<entity>.access.yml` defines access for one Entity.
 - The first access section inside an Entity access file is singular `policy`.
 - Do not use separate `permissions` and `policies` sections in v1.
@@ -52,7 +55,8 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - User-role assignment fixtures are allowed for demo/setup data.
 - Administrator remains a `user.administrator` flag, not a role.
 - Base actions are `read`, `create`, `update`, `delete`, `export`, and `print`.
-- Workflow actions can extend the valid action set per Entity later.
+- In this access sprint, `policy.can` validates built-in actions only.
+- Workflow-specific actions in `policy.can` are deferred to the Workflow sprint.
 - File-to-database sync happens through `dygo db migrate`.
 - Database-to-file export happens through `dygo access export`.
 - `dygo access export` must receive an explicit destination app with `--in <app>`.
@@ -90,5 +94,4 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 
 - Define exact permission export rules for Studio-authored database changes.
 - Decide whether `dygo access export <app>/<entity> --in <app>` writes required permission changes only, or roles too.
-- Decide exact validation rules for Workflow actions in policy `can`.
 - Decide how Studio-authored access changes export back to app metadata.
