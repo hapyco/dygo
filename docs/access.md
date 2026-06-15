@@ -1,229 +1,94 @@
 # Access
 
-Status: proposed.
-
-This document records the intended authoring model for dygo roles and Entity access. The current runtime still reads live Core `role`, `user-role`, and `permission` Records from the database.
-
-## Direction
-
-Roles and access grants are app metadata, not ordinary seed data.
-
-App authors should be able to review an app and answer:
-
-- which roles the app defines
-- which Entities each role can access
-- which actions each role can use
-- which runtime assignments are outside the app contract
-
-`dygo db migrate` should eventually validate this metadata and sync it into Core permission Records.
-
-The target app shape is:
-
-```txt
-apps/sales/
-  app.yml
-  entities/
-    customer/
-      customer.entity.yml
-    invoice/
-      invoice.entity.yml
-  access/
-    _roles.yml
-    customer.access.yml
-    invoice.access.yml
-```
-
-## Roles
-
-Each app gets one role vocabulary file:
-
-```txt
-apps/<app>/access/_roles.yml
-```
-
-It defines app-owned roles only, not Entity grants:
-
-```yaml
-roles:
-  - name: manager
-    label: Sales Manager
-    description: Can manage sales operations.
-
-  - name: user
-    label: Sales User
-    description: Can create and update sales records.
-```
-
-`role` remains a Core Entity in the database. `_roles.yml` is the app authoring source that syncs Core `role` Records; it is not a fixture file.
-
-Role names are app-scoped. A role named `manager` in `apps/sales/access/_roles.yml` has the canonical identity `sales/manager`.
-
-Cross-app role references must be explicit:
-
-```txt
-manager              -> sales/manager inside the sales app
-core/system-manager  -> system-manager role from the core app
-```
-
-Do not use ambiguous global role lookup.
-
-## Entity Access
-
-Each Entity gets one access file:
-
-```txt
-apps/<app>/access/<entity>.access.yml
-```
-
-The file owns the access contract for that Entity. The first supported section is simple role-to-action permissions:
-
-```yaml
-entity: invoice
-
-permissions:
-  - role: manager
-    actions: [read, create, update, delete, export, print]
-
-  - role: user
-    actions: [read, create, update, print]
-
-  - role: core/system-manager
-    actions: [read, create, update, delete, export, print]
-```
-
-Bare role names resolve inside the same app as the access file. App-qualified role references resolve across apps.
-
-The first supported action names should match the existing permission engine:
-
-```txt
-read
-create
-update
-delete
-export
-print
-```
-
-Validation should fail when:
-
-- a role name is duplicated inside one app
-- an access file references an unknown Entity
-- an access file references an unknown role
-- an access file references an unsupported action
-- a cross-app role reference omits the app name
-- two access files define grants for the same Entity
-
-## CLI
-
-Access gets one command group:
-
-```txt
-dygo access
-```
-
-The first command surface should focus on source metadata:
-
-```txt
-dygo access validate
-dygo access list
-dygo access list <app>
-dygo access show <app>/<entity>
-dygo access roles
-dygo access roles <app>
-dygo access export <app>
-dygo access export <app>/<entity>
-```
-
-`dygo access validate`, `list`, `show`, and `roles` read authored access files. `dygo access export` reads live Core access Records and writes app access metadata.
-
-Do not keep `dygo permission` as a public command or compatibility alias. The command name should be `access` only.
-
-Do not add access `check` or `explain` commands in this sprint. Runtime decision inspection can wait until the source metadata model, row/workflow access, and Studio access screens are clearer.
-
-Do not add `dygo access apply`. `dygo db migrate` is the sync path from access metadata to runtime Core Records.
-
-## Fixture Apply And Export
-
-Access metadata should not round-trip through ordinary fixture files.
-
-After this model exists, `dygo fixture validate`, `dygo fixture apply`, and `dygo fixture export` should reject app-owned Core `role` or `permission` Records as Entity `fixtures.yml` data. Those Records are runtime storage for access metadata. Their authoring files are:
-
-```txt
-apps/<app>/access/_roles.yml
-apps/<app>/access/<entity>.access.yml
-```
-
-Exporting app-owned access should use a dedicated access export path that writes `_roles.yml` and `<entity>.access.yml`.
-
-Fixtures can still handle ordinary seed/reference Records. They can also handle user-role assignments for environment or demo setup when explicitly requested, because assignments are runtime data, not the app access contract.
-
-## Why Access Is Separate
-
-Roles are subjects. Entities are objects. Access files define what those subjects can do to those objects.
-
-Putting grants inside `_roles.yml` makes it easy to answer "what can this role do?" but hard to answer "who can touch invoices?" A framework should optimize for access review. Per-Entity access files make the object rules obvious.
-
-Putting access rules inside each Entity bundle is better than fixtures, but still mixes authorization with schema, hooks, and seed data. Keeping access under `apps/<app>/access/` gives reviewers one place to inspect an app's access contract:
-
-```txt
-apps/sales/access/
-```
-
-It also keeps Entity bundles focused on data shape and behavior:
-
-```txt
-entities/invoice/invoice.entity.yml  - schema and metadata
-entities/invoice/hooks.go            - app behavior
-entities/invoice/fixtures.yml        - seed Records
-access/invoice.access.yml            - Entity access contract
-```
-
-Use `entities/<entity>/<entity>.access.yml` only if dygo later chooses stronger Entity co-location over centralized access review.
-
-## Runtime Data
-
-User-role assignments are not app metadata.
-
-These belong in Studio, setup flows, admin CLI commands, or environment/demo fixtures:
-
-```txt
-Tahseen -> sales-manager
-Ali     -> sales-user
-```
-
-## Core Bootstrap
-
-Core should use the same target model:
-
-```txt
-apps/core/access/_roles.yml
-apps/core/access/*.access.yml
-```
-
-Core can still seed framework-owned bootstrap roles and grants through fixtures until the metadata loader exists. That is an implementation bridge, not the long-term authoring model.
-
-Administrator remains a `user.administrator` flag, not a role.
-
-## Access Sprint Tasks
-
-- add shape helpers for `apps/<app>/access/`, `access/_roles.yml`, and `access/<entity>.access.yml`
-- update app and Entity generators to create the new access files
-- replace generated root `roles.yml` with `access/_roles.yml`
-- add loaders and validators for `_roles.yml` and `<entity>.access.yml`
-- replace the runtime-only `dygo permission` command with source-oriented `dygo access` commands
-- validate app-scoped role names and explicit cross-app role references
-- validate that each access file points at one known Entity
-- sync validated roles and Entity grants during `dygo db migrate`
-- add an access export path for `_roles.yml` and `<entity>.access.yml`
-- add a central fixture eligibility policy used by fixture validate, apply, and export
-- prevent ordinary fixture commands from reading or writing app-owned `role` and `permission` Records as fixtures
-- remove stale `entities/<entity>/permissions.yml`, root `roles.yml`, and `permissions/` documentation once the loader exists
-- side task: rename Entity metadata from `entities/<entity>/entity.yml` to `entities/<entity>/<entity>.entity.yml`
-- side task: update Entity shape helpers, generators, validators, JSON Schemas, metadata loading, and docs for the `<entity>.entity.yml` filename
-
-## Open Decisions
-
-- how app-scoped role identities map onto current Core `role.name`
-- whether removed grants disable or delete live permission Records
-- whether generated apps should include empty `access/_roles.yml`
-- how Studio-authored access changes export back to app metadata
+Status: proposed decision log.
+
+Current runtime still reads live Core `role`, `user-role`, and `permission` Records from the database. This document records the target authoring model before implementation.
+
+## Decided
+
+- Access is the umbrella name for app authorization metadata.
+- App access metadata lives under `apps/<app>/access/`.
+- App role vocabulary lives in `apps/<app>/access/_roles.yml`.
+- Entity access metadata lives in `apps/<app>/access/<entity>.access.yml`.
+- Use `_roles.yml`, not `roles.yml`, because it is an app-level access file inside a folder where normal files are Entity access files.
+- Use `<entity>.access.yml`, not `<entity>.policy.yml`, because the file owns the full access contract for that Entity.
+- Do not use `apps/<app>/permissions/` or `entities/<entity>/permissions.yml` for the target model.
+- `_roles.yml` defines roles contributed by that app, not Entity grants.
+- `<entity>.access.yml` defines access for one Entity.
+- The first access section inside an Entity access file is singular `policy`.
+- Do not use separate `permissions` and `policies` sections in v1.
+- Keep `permission` as the Core runtime grant concept, but use `policy` as the access metadata section name.
+- A v1 policy item has `role` and `can`.
+- Do not add `description` to policy items in v1.
+- Future conditional access can add `when` to policy items instead of adding a separate `policies` section.
+- Role names are global.
+- Role names are globally unique across all apps.
+- Apps can define roles, but defining a role does not scope that role to the app.
+- Access files can reference any known global role.
+- Two apps cannot define the same role name unless dygo later adds an explicit shared-role ownership model.
+- Role definitions do not record an owning app in the DB for v1.
+- `role` remains a Core Entity in the database.
+- Core `role.name` remains globally unique.
+- `role` keeps `enabled` as the human/admin switch.
+- Do not add `retired` to `role` in v1.
+- `permission` remains a Core Entity in the database.
+- Add `retired` to `permission` for file-backed grants that disappear from access metadata.
+- Do not add `enabled` to `permission` in v1.
+- The permission engine ignores retired grants.
+- Core `role` and `permission` Records are runtime storage for access metadata, not ordinary fixture authoring.
+- Runtime permission checks read database Records only.
+- Access files are authoring metadata that create or update database permission Records through `dygo db migrate`.
+- Policy items define full permission grants for `(entity, role)`.
+- Access metadata does not model negative permission rules.
+- Apps can define policy metadata for Entities owned by another app.
+- Duplicate file-authored policy metadata for the same `(entity, role)` is invalid in v1.
+- Do not merge duplicate policy metadata across apps in v1.
+- Do not use app order, cascading, or last-writer-wins to resolve duplicate policy metadata in v1.
+- Future replacement, versioning, and duplicate-record conflict behavior belongs to the broader metadata import system, not access-specific v1 rules.
+- User-role assignments are runtime data, not app metadata.
+- User-role assignments may still use explicit setup, demo, or environment fixtures until Studio/admin tooling owns them.
+- `dygo access export` does not export user-role assignments.
+- Normal user-role assignment changes belong to Studio, admin CLI, setup flows, or runtime code.
+- User-role assignment fixtures are allowed for demo/setup data.
+- Administrator remains a `user.administrator` flag, not a role.
+- Base actions are `read`, `create`, `update`, `delete`, `export`, and `print`.
+- Workflow actions can extend the valid action set per Entity later.
+- File-to-database sync happens through `dygo db migrate`.
+- Database-to-file export happens through `dygo access export`.
+- `dygo access export` must receive an explicit destination app with `--in <app>`.
+- Exported roles are written to `apps/<app>/access/_roles.yml` for the selected `--in` app.
+- Role export only writes roles that are not already represented by any loaded `_roles.yml` file.
+- Role export must not duplicate roles already contributed by another app.
+- Do not add `dygo access import`.
+- Do not add `dygo access apply`.
+- Remove `dygo permission` from the public CLI instead of keeping it as a compatibility alias.
+- Do not add access `check` or `explain` commands in this sprint.
+- The first access CLI surface is source-metadata oriented: `validate`, `list`, `show`, `roles`, and `export`.
+- `dygo generate app <app>` creates `apps/<app>/access/_roles.yml` by default.
+- `dygo generate app <app> --no-access` skips the access folder.
+- `dygo generate entity <app>/<entity>` creates `apps/<app>/access/<entity>.access.yml` by default.
+- `dygo generate entity <app>/<entity> --no-access` skips the Entity access file.
+- Generated access files are minimal skeletons.
+- Entity generation does not create roles automatically.
+- Once the access loader exists, fixture validate, apply, and export should reject app-owned Core `role` and `permission` Records as fixtures.
+- Fixture validate, apply, and export should share one central fixture deny policy.
+- The fixture deny policy should live under `internal/fixtures/`, not `internal/reserved/`.
+- `internal/reserved/words.yml` stays limited to reserved naming collisions.
+- Use one deny list for fixtures in v1; do not add restricted fixture categories yet.
+- Collection Entities stay code-denied because that depends on Entity kind, not a static list.
+- `core/user`, `core/user-role`, and `core/configuration` stay fixture-allowed for now.
+- Core can keep using role and permission fixtures only as a bootstrap bridge until the access loader exists.
+- After implementation, do one docs cleanup pass for stale `roles.yml`, `permissions.yml`, `permissions/`, and `dygo permission` references.
+- Rename Entity metadata from `entities/<entity>/entity.yml` to `entities/<entity>/<entity>.entity.yml` before adding access file generators and loaders.
+- The Entity metadata rename includes shape helpers, generators, validators, JSON Schemas, metadata loading, and docs.
+- Reserved-name and fixture-eligibility extensions by apps are deferred beyond v1.
+- Track app-extendable reserved and fixture policies in Roadmap item `#261`.
+- Track broader metadata import conflict and versioning behavior in Roadmap item `#262`.
+- Row-level access is deferred beyond v1.
+
+## Pending
+
+- Define exact permission export rules for Studio-authored database changes.
+- Decide whether `dygo access export <app>/<entity> --in <app>` writes required permission changes only, or roles too.
+- Decide exact validation rules for Workflow actions in policy `can`.
+- Decide how Studio-authored access changes export back to app metadata.

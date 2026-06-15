@@ -24,6 +24,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #259 Add Workflow hooks and audit/log entries around actions
 - [ ] #260 Add Studio Workflow management and metadata export
 - [ ] #261 Make reserved names and fixture eligibility policies extendable by apps
+- [ ] #262 Design versioned metadata import and replacement behavior for duplicate authored Records
 - [ ] #33 Add site command group
 - [ ] #38 Add one-command local project setup
 - [ ] #51 Add Studio metadata browser
