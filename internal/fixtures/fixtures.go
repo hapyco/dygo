@@ -75,6 +75,11 @@ type fixtureEntityIndex struct {
 	byName     map[string][]catalog.LoadedEntity
 }
 
+var deniedFixtureEntities = map[string]string{
+	"core/role":       "Role authoring belongs in access/_roles.yml.",
+	"core/permission": "Permission grants belong in access/<entity>.access.yml.",
+}
+
 // Fixture is one per-Entity fixture document.
 type Fixture struct {
 	Entity  string
@@ -357,6 +362,9 @@ func ValidateFiles(files []LoadedFile, entities []catalog.LoadedEntity) error {
 	index := newFixtureEntityIndex(entities)
 	filesByEntity := map[string]int{}
 	for fileIndex, file := range files {
+		if err := validateFixtureAllowed(file.AppName, file.Fixture.Entity, file.Path); err != nil {
+			return err
+		}
 		entity, ok := index.byIdentity[catalog.EntityKey(file.AppName, file.Fixture.Entity)]
 		if !ok {
 			return fmt.Errorf("%s: fixture Entity %s/%s is not loaded", file.Path, file.AppName, file.Fixture.Entity)
@@ -376,6 +384,18 @@ func ValidateFiles(files []LoadedFile, entities []catalog.LoadedEntity) error {
 		}
 	}
 	return validateFixtureDependencies(files, index, filesByEntity)
+}
+
+func validateFixtureAllowed(appName string, entityName string, path string) error {
+	if reason, denied := deniedFixtureReason(appName, entityName); denied {
+		return fmt.Errorf("%s: fixtures are not allowed for %s/%s; %s", path, appName, entityName, reason)
+	}
+	return nil
+}
+
+func deniedFixtureReason(appName string, entityName string) (string, bool) {
+	reason, denied := deniedFixtureEntities[catalog.EntityKey(appName, entityName)]
+	return reason, denied
 }
 
 func newFixtureEntityIndex(entities []catalog.LoadedEntity) fixtureEntityIndex {
@@ -629,6 +649,11 @@ func fixtureMatchIsUnique(entity schema.Entity, match []string) bool {
 func ApplyFiles(ctx context.Context, store Store, files []LoadedFile) (Result, error) {
 	if store == nil {
 		return Result{}, fmt.Errorf("fixture store is required")
+	}
+	for _, file := range files {
+		if err := validateFixtureAllowed(file.AppName, file.Fixture.Entity, file.Path); err != nil {
+			return Result{}, err
+		}
 	}
 	ctx = db.WithActivitySource(ctx, db.ActivitySourceFixtures)
 	prepared := make([]preparedFile, 0, len(files))

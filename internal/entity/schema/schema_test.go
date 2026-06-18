@@ -82,7 +82,7 @@ func TestLoadFile(t *testing.T) {
 func TestLoadFileDerivesCanonicalBundleNameFromParentFolder(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "lead", "entity.yml")
+	path := filepath.Join(t.TempDir(), "lead", "lead.entity.yml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}

@@ -20,9 +20,9 @@ The repository also includes `.vscode/settings.json` with YAML schema mappings f
 
 ```txt
 apps/*/app.yml
-apps/*/entities/*/entity.yml
+apps/*/entities/*/*.entity.yml
 apps/*/entities/_collections/*.yml
-apps/*/entities/_collections/*/entity.yml
+apps/*/entities/_collections/*/*.entity.yml
 apps/*/entities/*/fixtures.yml
 apps/*/jobs/*/job.yml
 apps/*/jobs/_schedules.yml

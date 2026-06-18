@@ -821,7 +821,7 @@ version: 0.1.0
 
 func writeFixtureEntity(t *testing.T, root string, appName string, entityName string, body string) {
 	t.Helper()
-	writeFixtureProjectFile(t, filepath.Join(root, "apps", appName, "entities", entityName, "entity.yml"), body)
+	writeFixtureProjectFile(t, filepath.Join(root, "apps", appName, "entities", entityName, entityName+".entity.yml"), body)
 }
 
 func writeFixtureFile(t *testing.T, path string, body string) {
@@ -913,13 +913,13 @@ func fixtureExportMetadata(root string) project.Metadata {
 			{
 				AppName: "crm",
 				AppDir:  crmDir,
-				Path:    filepath.Join(crmDir, "entities", "lead", "entity.yml"),
+				Path:    filepath.Join(crmDir, "entities", "lead", "lead.entity.yml"),
 				Entity:  schema.Entity{Name: "lead", Label: "Lead", Fields: []schema.Field{{Name: "title", Label: "Title", Type: "text"}}},
 			},
 			{
 				AppName: "core",
 				AppDir:  coreDir,
-				Path:    filepath.Join(coreDir, "entities", "user", "entity.yml"),
+				Path:    filepath.Join(coreDir, "entities", "user", "user.entity.yml"),
 				Entity:  schema.Entity{Name: "user", Label: "User", Fields: []schema.Field{{Name: "full-name", Label: "Full Name", Type: "text"}}},
 			},
 		},

@@ -14,7 +14,7 @@ func TestEntriesBuildsStableRouteRegistry(t *testing.T) {
 	entities := []catalog.LoadedEntity{
 		{
 			AppName: "sales",
-			Path:    "/project/apps/sales/entities/deal/entity.yml",
+			Path:    "/project/apps/sales/entities/deal/deal.entity.yml",
 			Entity: schema.Entity{
 				Name:  "deal",
 				Label: "Deal",
@@ -32,7 +32,7 @@ func TestEntriesBuildsStableRouteRegistry(t *testing.T) {
 		},
 		{
 			AppName: "core",
-			Path:    "/project/apps/core/entities/settings/entity.yml",
+			Path:    "/project/apps/core/entities/settings/settings.entity.yml",
 			Entity: schema.Entity{
 				Name:     "settings",
 				Label:    "Settings",
@@ -43,8 +43,8 @@ func TestEntriesBuildsStableRouteRegistry(t *testing.T) {
 
 	got := Entries(entities)
 	want := []Entry{
-		{Slug: "sales-deal", AppName: "sales", EntityName: "deal", Kind: "normal", Path: "/project/apps/sales/entities/deal/entity.yml"},
-		{Slug: "settings", AppName: "core", EntityName: "settings", Kind: "single", Path: "/project/apps/core/entities/settings/entity.yml"},
+		{Slug: "sales-deal", AppName: "sales", EntityName: "deal", Kind: "normal", Path: "/project/apps/sales/entities/deal/deal.entity.yml"},
+		{Slug: "settings", AppName: "core", EntityName: "settings", Kind: "single", Path: "/project/apps/core/entities/settings/settings.entity.yml"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Entries() = %+v, want %+v", got, want)
@@ -75,7 +75,7 @@ func TestRegistryIncludesReservedAndEntityRoutes(t *testing.T) {
 	if !containsRegistryEntry(got, RegistryEntry{Path: "/api", Kind: "reserved", Owner: "framework reserved route"}) {
 		t.Fatalf("Registry() = %+v, want /api reserved route", got)
 	}
-	if !containsRegistryEntry(got, RegistryEntry{Path: "/sales-lead", Kind: "entity", Owner: "entity sales/lead", Source: "/project/apps/sales/entities/lead/entity.yml"}) {
+	if !containsRegistryEntry(got, RegistryEntry{Path: "/sales-lead", Kind: "entity", Owner: "entity sales/lead", Source: "/project/apps/sales/entities/lead/lead.entity.yml"}) {
 		t.Fatalf("Registry() = %+v, want sales lead entity route", got)
 	}
 }
@@ -116,7 +116,7 @@ func TestValidateReportsDuplicateEntityRouteConflict(t *testing.T) {
 func loadedRouteEntity(appName string, entityName string, routeSlug string) catalog.LoadedEntity {
 	return catalog.LoadedEntity{
 		AppName: appName,
-		Path:    "/project/apps/" + appName + "/entities/" + entityName + "/entity.yml",
+		Path:    "/project/apps/" + appName + "/entities/" + entityName + "/" + entityName + ".entity.yml",
 		Entity: schema.Entity{
 			Name:  entityName,
 			Label: entityName,

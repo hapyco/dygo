@@ -31,7 +31,7 @@ func TestNewProjectCommandCreatesProject(t *testing.T) {
 		"secrets: initialized",
 		"dependencies: tidy skipped",
 		"studio: cached from framework Studio build",
-		"dygo db migrate",
+		"dygo db prepare",
 		"dygo setup",
 		"dygo dev",
 	} {

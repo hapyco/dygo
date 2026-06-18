@@ -32,11 +32,11 @@ func CoreRuntimeChecks(ctx context.Context, queryer Queryer) []CheckResult {
 func CheckCoreFixtures(ctx context.Context, queryer Queryer) CheckResult {
 	var roleCount int
 	if err := queryer.QueryRow(ctx, `SELECT COUNT(*) FROM "role" WHERE name IN ($1, $2)`, "studio-member", "system-manager").Scan(&roleCount); err != nil {
-		return CheckResult{Name: "core fixtures", Detail: fmt.Sprintf("check required roles: %v; run dygo db migrate", err)}
+		return CheckResult{Name: "core access", Detail: fmt.Sprintf("check required roles: %v; run dygo db migrate", err)}
 	}
 	var permissionCount int
 	if err := queryer.QueryRow(ctx, `SELECT COUNT(*) FROM "permission"`).Scan(&permissionCount); err != nil {
-		return CheckResult{Name: "core fixtures", Detail: fmt.Sprintf("check permissions: %v; run dygo db migrate", err)}
+		return CheckResult{Name: "core access", Detail: fmt.Sprintf("check permissions: %v; run dygo db migrate", err)}
 	}
 
 	var missing []string
@@ -47,9 +47,9 @@ func CheckCoreFixtures(ctx context.Context, queryer Queryer) CheckResult {
 		missing = append(missing, "permissions")
 	}
 	if len(missing) > 0 {
-		return CheckResult{Name: "core fixtures", Detail: fmt.Sprintf("missing Core %s; run dygo fixture apply", strings.Join(missing, " and "))}
+		return CheckResult{Name: "core access", Detail: fmt.Sprintf("missing Core %s; run dygo access apply", strings.Join(missing, " and "))}
 	}
-	return CheckResult{Name: "core fixtures", Ready: true, Detail: fmt.Sprintf("%d roles and %d permissions ready", roleCount, permissionCount)}
+	return CheckResult{Name: "core access", Ready: true, Detail: fmt.Sprintf("%d roles and %d permissions ready", roleCount, permissionCount)}
 }
 
 // CheckAdministratorAccount verifies an administrator user has been set up.

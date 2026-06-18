@@ -19,7 +19,7 @@ It owns:
 - sessions
 - installed App state
 - files and attachments when required by the runtime
-- core fixtures
+- core access metadata
 - core patches
 
 The framework repo includes the initial Core app manifest at `apps/core/app.yml`.
@@ -63,15 +63,17 @@ dygo-crm/
   app.yml
   entities/
     lead/
-      entity.yml
+      lead.entity.yml
       fixtures.yml
       hooks.go
-      permissions.yml
     deal/
-      entity.yml
+      deal.entity.yml
       hooks.go
     company/
-      entity.yml
+      company.entity.yml
+  access/
+    _roles.yml
+    lead.access.yml
   patches/
     0001_seed_default_pipeline.yml
   assets/

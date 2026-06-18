@@ -95,11 +95,9 @@ Target policy:
 | Entity or group | Fixture policy | Reason |
 | --- | --- | --- |
 | Ordinary business and reference Entities | allowed | App-owned seed data is the main fixture use case. |
-| `core/role` | denied after the access loader exists | Role authoring belongs in `access/_roles.yml`. |
-| `core/permission` | denied after the access loader exists | Entity grants belong in `access/<entity>.access.yml`. |
+| `core/role` | denied | Role authoring belongs in `access/_roles.yml`. |
+| `core/permission` | denied | Entity grants belong in `access/<entity>.access.yml`. |
 | `core/user`, `core/user-role`, `core/configuration` | allowed for now | Accounts, assignments, and global defaults can be explicit environment/demo setup data until Studio/admin tooling owns them. |
-| `core/app`, `core/entity`, `core/field`, `core/index`, `core/constraint`, `core/job`, `core/schedule` | denied | These Records are synced from metadata files. |
-| `core/session`, `core/activity`, `core/log`, `core/job-execution`, `core/patch-run`, `core/naming-series` | denied | These Records are runtime state, ledgers, logs, executions, or counters. |
 | Collection Entities | denied as standalone fixtures | Parent Entity fixtures own collection row data. |
 
 Denied fixture files should fail with an error that names the correct authoring source.

@@ -208,6 +208,7 @@ func TestValidateMetadata(t *testing.T) {
 			{Name: "delete", Type: "boolean"},
 			{Name: "export", Type: "boolean"},
 			{Name: "print", Type: "boolean"},
+			{Name: "retired", Type: "boolean"},
 		},
 	}
 	if err := ValidateMetadata(meta); err != nil {

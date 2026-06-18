@@ -47,7 +47,7 @@ func TestGenerateCreatesProjectSkeletonAndSecrets(t *testing.T) {
 		"apps/my-company/jobs/_schedules.yml",
 		"apps/my-company/pages",
 		"apps/my-company/reports",
-		"apps/my-company/roles.yml",
+		"apps/my-company/access/_roles.yml",
 		"config/queues.yml",
 		"config/secrets/development.yml.age",
 		"config/secrets/staging.yml.age",
@@ -108,7 +108,7 @@ func TestGenerateCreatesProjectSkeletonAndSecrets(t *testing.T) {
 	assertContains(t, readFile(t, filepath.Join(root, ".gitignore")), ".dygo/")
 	assertContains(t, readFile(t, filepath.Join(root, "cmd", "dygo", "main.go")), "dygoruntime.Run")
 	readme := readFile(t, filepath.Join(root, "README.md"))
-	assertContains(t, readme, "dygo db migrate")
+	assertContains(t, readme, "dygo db prepare")
 	assertContains(t, readme, "dygo setup")
 	assertContains(t, readme, "dygo dev")
 }

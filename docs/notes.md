@@ -17,14 +17,13 @@ The current conventions are:
 
 - Centralize path constants and slash-target parsing.
 - Use root `dygo.yml`, `config/`, `.dygo/`, and `db/schema.sql`.
-- Use canonical Entity bundles at `apps/<app>/entities/<entity>/entity.yml`.
+- Use canonical Entity bundles at `apps/<app>/entities/<entity>/<entity>.entity.yml`.
 - Store Entity fixtures at `apps/<app>/entities/<entity>/fixtures.yml`.
 - Use `dygo db migrate`, `dygo db prune`, singular command groups, and `--yes` / `--dry-run` write safety.
 - Keep `dygo upgrade` project-only; update binaries out of band through installers.
 - Put scaffolding under `dygo generate` and alias `dygo g`.
 - Keep hook generation under `dygo generate hook`; use `dygo hook` for inspection and wiring maintenance.
 - Keep route validation filesystem-backed.
-- Keep permission CLI explicitly database-backed because it must use the runtime permission engine.
 - Include route, fixture, hook, Job, Schedule, schema snapshot, config, secrets, database, Studio assets, and first-run setup checks in `dygo doctor`.
 
 ## Coming Soon

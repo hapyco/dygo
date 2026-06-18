@@ -13,7 +13,7 @@ apps/crm/
   app.yml
   entities/
     lead/
-      entity.yml
+      lead.entity.yml
       hooks.go
 ```
 

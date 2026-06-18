@@ -149,6 +149,9 @@ func PlanExport(ctx context.Context, store ExportStore, metadata project.Metadat
 	if !ok {
 		return ExportPlan{}, fmt.Errorf("Entity target %s/%s is not loaded", target.App, target.Name)
 	}
+	if err := validateFixtureExportAllowed(target.App, target.Name); err != nil {
+		return ExportPlan{}, err
+	}
 	if loaded.IsCollection() {
 		return ExportPlan{}, fmt.Errorf("cannot export fixtures for collection Entity %s/%s; export the parent Entity fixtures instead", target.App, target.Name)
 	}
@@ -471,6 +474,9 @@ func (p *exportPlanner) plan(target exportIdentity) (ExportPlan, error) {
 
 	files := make([]ExportFile, 0, len(identities))
 	for _, identity := range identities {
+		if err := validateFixtureExportAllowed(identity.app, identity.entity); err != nil {
+			return ExportPlan{}, err
+		}
 		loaded := p.entities[identity]
 		meta := p.metas[identity]
 		records := sortedExportRecords(p.records[identity])
@@ -491,6 +497,13 @@ func (p *exportPlanner) plan(target exportIdentity) (ExportPlan, error) {
 	}
 
 	return ExportPlan{Files: files, UnresolvedLinks: unresolved}, nil
+}
+
+func validateFixtureExportAllowed(appName string, entityName string) error {
+	if reason, denied := deniedFixtureReason(appName, entityName); denied {
+		return fmt.Errorf("cannot export fixtures for %s/%s; %s", appName, entityName, reason)
+	}
+	return nil
 }
 
 func (p *exportPlanner) includedRecordNames() map[exportIdentity]map[string]bool {

@@ -60,5 +60,12 @@ func ValidateMetadata(meta db.MetadataEntityMeta) error {
 			return fmt.Errorf("permission action field %q must be boolean", spec.Action)
 		}
 	}
+	retired, ok := db.RecordAddressableFieldByName(fields, "retired")
+	if !ok {
+		return fmt.Errorf("permission retired field is missing")
+	}
+	if retired.Type != "boolean" {
+		return fmt.Errorf("permission retired field must be boolean")
+	}
 	return nil
 }

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hapyco/dygo/internal/access"
 	"github.com/hapyco/dygo/internal/auth"
 	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/fixtures"
@@ -113,6 +114,7 @@ func TestCommandSurfaceRegistersTargetCommands(t *testing.T) {
 		{"db", "create"},
 		{"db", "drop"},
 		{"db", "migrate"},
+		{"db", "prepare"},
 		{"db", "prune"},
 		{"db", "reset"},
 		{"app"},
@@ -127,6 +129,13 @@ func TestCommandSurfaceRegistersTargetCommands(t *testing.T) {
 		{"fixture", "apply"},
 		{"fixture", "validate"},
 		{"fixture", "export"},
+		{"access"},
+		{"access", "validate"},
+		{"access", "apply"},
+		{"access", "list"},
+		{"access", "show"},
+		{"access", "roles"},
+		{"access", "export"},
 		{"hook"},
 		{"hook", "list"},
 		{"hook", "validate"},
@@ -162,10 +171,6 @@ func TestCommandSurfaceRegistersTargetCommands(t *testing.T) {
 		{"route", "validate"},
 		{"route", "resolve"},
 		{"route", "reserved"},
-		{"permission"},
-		{"permission", "list"},
-		{"permission", "check"},
-		{"permission", "explain"},
 		{"secret"},
 		{"secret", "init"},
 		{"secret", "get"},
@@ -1115,7 +1120,7 @@ func TestDBDropCommandPromptsBeforeDrop(t *testing.T) {
 	}
 }
 
-func TestDBMigrateDryRunPlansFullWorkflow(t *testing.T) {
+func TestDBMigrateDryRunPlansSchemaOnly(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -1135,20 +1140,23 @@ func TestDBMigrateDryRunPlansFullWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(db migrate --dry-run) error = %v, want nil", err)
 	}
-	for _, want := range []string{"db migrate plan (development)", "pre-sync patches: 1 pending", "schema safe operations: 1", "fixtures: 2 files, 5 records"} {
+	for _, want := range []string{"db migrate plan (development)", "pre-sync patches: 1 pending", "schema safe operations: 1"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("db migrate dry-run stdout = %q, want substring %q", stdout.String(), want)
 		}
 	}
-	if fakeSync.patchPlanCalls != 2 || fakeSync.planCalls != 1 || fakeSync.calls != 0 || fakeFixture.planCalls != 1 || fakeFixture.calls != 0 {
-		t.Fatalf("plan/apply calls = patchPlan %d plan %d sync %d fixturePlan %d fixtureApply %d, want dry-run only", fakeSync.patchPlanCalls, fakeSync.planCalls, fakeSync.calls, fakeFixture.planCalls, fakeFixture.calls)
+	if strings.Contains(stdout.String(), "fixtures:") {
+		t.Fatalf("db migrate dry-run stdout = %q, did not expect fixtures", stdout.String())
+	}
+	if fakeSync.patchPlanCalls != 2 || fakeSync.planCalls != 1 || fakeSync.calls != 0 || fakeFixture.planCalls != 0 || fakeFixture.calls != 0 {
+		t.Fatalf("plan/apply calls = patchPlan %d plan %d sync %d fixturePlan %d fixtureApply %d, want schema dry-run only", fakeSync.patchPlanCalls, fakeSync.planCalls, fakeSync.calls, fakeFixture.planCalls, fakeFixture.calls)
 	}
 	if fakeDB.operations[0] != "exists" {
 		t.Fatalf("database operations = %#v, want existence check", fakeDB.operations)
 	}
 }
 
-func TestDBMigrateYesAppliesFullWorkflow(t *testing.T) {
+func TestDBMigrateYesAppliesSchemaOnly(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -1171,20 +1179,23 @@ func TestDBMigrateYesAppliesFullWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(db migrate --yes) error = %v, want nil", err)
 	}
-	for _, want := range []string{"db migrate plan (development)", "database migrated (development)", "metadata synced: 2 apps, 8 entities, 34 fields, 3 schema operations", "fixture records: 1 created, 1 updated", "schema snapshot: refreshed"} {
+	for _, want := range []string{"db migrate plan (development)", "database migrated (development)", "metadata synced: 2 apps, 8 entities, 34 fields, 3 schema operations", "schema snapshot: refreshed"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("db migrate stdout = %q, want substring %q", stdout.String(), want)
 		}
 	}
-	if fakeSync.patchApplyCalls != 2 || fakeSync.calls != 1 || fakeFixture.calls != 1 {
-		t.Fatalf("apply calls = patch %d sync %d fixture %d, want full workflow", fakeSync.patchApplyCalls, fakeSync.calls, fakeFixture.calls)
+	if strings.Contains(stdout.String(), "fixture records:") {
+		t.Fatalf("db migrate stdout = %q, did not expect fixtures", stdout.String())
+	}
+	if fakeSync.patchApplyCalls != 2 || fakeSync.calls != 1 || fakeFixture.calls != 0 {
+		t.Fatalf("apply calls = patch %d sync %d fixture %d, want schema workflow", fakeSync.patchApplyCalls, fakeSync.calls, fakeFixture.calls)
 	}
 	if fakeDB.operations[0] != "exists" {
 		t.Fatalf("database operations = %#v, want existence check", fakeDB.operations)
 	}
 }
 
-func TestDBMigrateYesCreatesMissingDatabaseBeforePlanning(t *testing.T) {
+func TestDBMigrateMissingDatabaseErrorsBeforePlanning(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
 	writeCLIConfig(t, root)
@@ -1195,62 +1206,23 @@ func TestDBMigrateYesCreatesMissingDatabaseBeforePlanning(t *testing.T) {
 	fakeDB := &fakeDatabaseRunner{
 		existsResult: db.DatabaseStatus{Name: "dygo", Exists: false},
 		existsSet:    true,
-		createResult: db.DatabaseResult{Name: "dygo", Changed: true},
 	}
 	fakeSync := &fakeSchemaSyncRunner{result: db.SchemaSyncResult{Apps: 2, Entities: 8, Fields: 34, Operations: 3}}
 	fakeFixture := &fakeFixtureRunner{plan: fixturePlan(1, 2), result: fixtures.Result{Created: 1, Updated: 1}}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--yes"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fakeDB, fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
-	if err != nil {
-		t.Fatalf("Run(db migrate --yes missing database) error = %v, want nil", err)
+	if err == nil {
+		t.Fatal("Run(db migrate --yes missing database) error = nil, want missing database error")
 	}
-	for _, want := range []string{"database created: dygo (development)", "db migrate plan (development)", "database migrated (development)"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("db migrate stdout = %q, want substring %q", stdout.String(), want)
-		}
-	}
-	if got := strings.Join(fakeDB.operations, ","); got != "exists,create" {
-		t.Fatalf("database operations = %s, want exists,create", got)
-	}
-	if fakeSync.planCalls != 1 || fakeSync.calls != 1 || fakeFixture.planCalls != 1 || fakeFixture.calls != 1 {
-		t.Fatalf("migration calls = plan %d sync %d fixturePlan %d fixtureApply %d, want full workflow", fakeSync.planCalls, fakeSync.calls, fakeFixture.planCalls, fakeFixture.calls)
-	}
-}
-
-func TestDBMigratePromptsBeforeCreatingMissingDatabase(t *testing.T) {
-	root := t.TempDir()
-	writeCLIProjectRoot(t, root)
-	writeCLIConfig(t, root)
-	const databaseURL = "postgres://user:secret-password@localhost:5432/dygo"
-	writeCLIDatabaseSecret(t, root, secrets.EnvironmentDevelopment, databaseURL)
-	t.Chdir(root)
-
-	fakeDB := &fakeDatabaseRunner{
-		existsResult: db.DatabaseStatus{Name: "dygo", Exists: false},
-		existsSet:    true,
-	}
-	fakeSync := &fakeSchemaSyncRunner{}
-	fakeFixture := &fakeFixtureRunner{}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate"}, strings.NewReader("\n"), &stdout, &stderr, noopServeRunner, fakeDB, fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
-	if err != nil {
-		t.Fatalf("Run(db migrate missing database cancel) error = %v, want nil", err)
-	}
-	for _, want := range []string{"database: will create dygo (development)", "database migration cancelled"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("db migrate stdout = %q, want substring %q", stdout.String(), want)
-		}
-	}
-	if !strings.Contains(stderr.String(), "Create database before planning migration? [y/N] ") {
-		t.Fatalf("db migrate stderr = %q, want create prompt", stderr.String())
+	if !strings.Contains(err.Error(), "database dygo does not exist (development); run dygo db prepare or dygo db create") {
+		t.Fatalf("Run(db migrate --yes missing database) error = %q, want missing database guidance", err.Error())
 	}
 	if got := strings.Join(fakeDB.operations, ","); got != "exists" {
-		t.Fatalf("database operations = %s, want exists only", got)
+		t.Fatalf("database operations = %s, want exists", got)
 	}
-	if fakeSync.planCalls != 0 || fakeFixture.planCalls != 0 {
-		t.Fatalf("plan calls = schema %d fixture %d, want none", fakeSync.planCalls, fakeFixture.planCalls)
+	if fakeSync.planCalls != 0 || fakeSync.calls != 0 || fakeFixture.planCalls != 0 || fakeFixture.calls != 0 {
+		t.Fatalf("migration calls = plan %d sync %d fixturePlan %d fixtureApply %d, want none", fakeSync.planCalls, fakeSync.calls, fakeFixture.planCalls, fakeFixture.calls)
 	}
 }
 
@@ -1271,19 +1243,14 @@ func TestDBMigrateDryRunReportsMissingDatabaseWithoutPlanning(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	err := runWithServicesAndSetupAndFixtures(context.Background(), []string{"db", "migrate", "--dry-run"}, strings.NewReader(""), &stdout, &stderr, noopServeRunner, fakeDB, fakeSync, &fakeAdminSetupRunner{}, fakeFixture)
-	if err != nil {
-		t.Fatalf("Run(db migrate --dry-run missing database) error = %v, want nil", err)
-	}
-	for _, want := range []string{"database: would create dygo (development)", "dry-run: database is missing; run dygo db migrate to create it before full planning"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("db migrate dry-run stdout = %q, want substring %q", stdout.String(), want)
-		}
+	if err == nil {
+		t.Fatal("Run(db migrate --dry-run missing database) error = nil, want missing database error")
 	}
 	if got := strings.Join(fakeDB.operations, ","); got != "exists" {
 		t.Fatalf("database operations = %s, want exists only", got)
 	}
-	if fakeDB.operation == "create" || fakeSync.planCalls != 0 || fakeFixture.planCalls != 0 {
-		t.Fatalf("write/plan calls = db operation %q schema %d fixture %d, want none", fakeDB.operation, fakeSync.planCalls, fakeFixture.planCalls)
+	if fakeSync.planCalls != 0 || fakeFixture.planCalls != 0 {
+		t.Fatalf("plan calls = schema %d fixture %d, want none", fakeSync.planCalls, fakeFixture.planCalls)
 	}
 }
 
@@ -1309,6 +1276,47 @@ func TestDBMigrateExistenceErrorsAreSanitized(t *testing.T) {
 	}
 }
 
+func TestPlanDBPreparationUsesDBAwareAccessPlan(t *testing.T) {
+	fakeAccess := &fakeAccessRunner{
+		applyPlan: access.Plan{
+			Roles:    []access.Role{{Name: "db-role"}},
+			Policies: []access.PolicyFile{{}},
+			Grants:   []access.Grant{{}, {}},
+		},
+	}
+	plan, err := planDBPreparation(context.Background(), &fakeSchemaSyncRunner{}, &fakeFixtureRunner{plan: fixturePlan(1, 2)}, fakeAccess, "/tmp/project", "postgres://localhost/dygo")
+	if err != nil {
+		t.Fatalf("planDBPreparation() error = %v, want nil", err)
+	}
+	if plan.Access.Roles != 1 || plan.Access.Policies != 1 || plan.Access.Permissions != 2 {
+		t.Fatalf("access summary = %+v, want DB-aware counts", plan.Access)
+	}
+	if fakeAccess.applyPlanCalls != 1 || fakeAccess.planCalls != 0 {
+		t.Fatalf("access plan calls = apply %d file %d, want DB-aware only", fakeAccess.applyPlanCalls, fakeAccess.planCalls)
+	}
+}
+
+func TestPlanDBPreparationFallsBackToFileAccessPlan(t *testing.T) {
+	fakeAccess := &fakeAccessRunner{
+		applyPlanErr: errors.New("role table missing"),
+		plan: access.Plan{
+			Roles:    []access.Role{{Name: "file-role"}},
+			Policies: []access.PolicyFile{{}},
+			Grants:   []access.Grant{{}},
+		},
+	}
+	plan, err := planDBPreparation(context.Background(), &fakeSchemaSyncRunner{}, &fakeFixtureRunner{}, fakeAccess, "/tmp/project", "postgres://localhost/dygo")
+	if err != nil {
+		t.Fatalf("planDBPreparation() error = %v, want nil", err)
+	}
+	if plan.Access.Roles != 1 || plan.Access.Policies != 1 || plan.Access.Permissions != 1 {
+		t.Fatalf("access summary = %+v, want file fallback counts", plan.Access)
+	}
+	if fakeAccess.applyPlanCalls != 1 || fakeAccess.planCalls != 1 {
+		t.Fatalf("access plan calls = apply %d file %d, want fallback", fakeAccess.applyPlanCalls, fakeAccess.planCalls)
+	}
+}
+
 func TestDBResetDryRunPrintsSteps(t *testing.T) {
 	root := t.TempDir()
 	writeCLIProjectRoot(t, root)
@@ -1323,7 +1331,7 @@ func TestDBResetDryRunPrintsSteps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(db reset --dry-run) error = %v, want nil", err)
 	}
-	for _, want := range []string{"db reset plan (development)", "database: dygo", "steps: drop, create, migrate"} {
+	for _, want := range []string{"db reset plan (development)", "database: dygo", "steps: drop, create, prepare"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("db reset dry-run stdout = %q, want substring %q", stdout.String(), want)
 		}
@@ -1516,7 +1524,7 @@ func TestAppValidateCommandRejectsMissingProjectRoot(t *testing.T) {
 func TestDoctorCommand(t *testing.T) {
 	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{
 		roleCount:       2,
-		permissionCount: 17,
+		permissionCount: 19,
 		adminExists:     true,
 	})
 	withDoctorSchemaSnapshotCheck(t, func(context.Context, string, string) error {
@@ -1561,7 +1569,7 @@ fields:
 		"PASS secrets layout: 3 environments configured",
 		"PASS runtime database: development database reachable",
 		"PASS schema snapshot freshness: db/schema.sql matches live database",
-		"PASS core fixtures: 2 roles and 17 permissions ready",
+		"PASS core access: 2 roles and 19 permissions ready",
 		"PASS administrator account: Administrator account exists",
 		"dygo doctor passed",
 	} {
@@ -1608,7 +1616,7 @@ timeout: 30s
 func TestDoctorCommandReportsMissingJobRunnerWiring(t *testing.T) {
 	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{
 		roleCount:       2,
-		permissionCount: 17,
+		permissionCount: 19,
 		adminExists:     true,
 	})
 	withDoctorSchemaSnapshotCheck(t, func(context.Context, string, string) error {
@@ -1665,7 +1673,7 @@ func Run(ctx context.Context, job dygo.JobExecution) error {
 func TestDoctorCommandReportsStaleSchemaSnapshot(t *testing.T) {
 	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{
 		roleCount:       2,
-		permissionCount: 17,
+		permissionCount: 19,
 		adminExists:     true,
 	})
 	withDoctorSchemaSnapshotCheck(t, func(context.Context, string, string) error {
@@ -1701,7 +1709,7 @@ func TestDoctorCommandReportsStaleSchemaSnapshot(t *testing.T) {
 func TestDoctorCommandReportsMissingSchemaSnapshot(t *testing.T) {
 	withDoctorRuntimePool(t, &fakeDoctorRuntimePool{
 		roleCount:       2,
-		permissionCount: 17,
+		permissionCount: 19,
 		adminExists:     true,
 	})
 
@@ -1758,7 +1766,7 @@ func TestDoctorCommandReportsMissingFirstRunSetup(t *testing.T) {
 	output := stdout.String()
 	for _, want := range []string{
 		"PASS runtime database: development database reachable",
-		"FAIL core fixtures: missing Core roles and permissions; run dygo fixture apply",
+		"FAIL core access: missing Core roles and permissions; run dygo access apply",
 		"FAIL administrator account: missing Administrator account; run dygo setup",
 		"dygo doctor found 2 problems",
 	} {
@@ -1933,14 +1941,14 @@ func TestEntityShowCommand(t *testing.T) {
 	writeCLIProjectRoot(t, root)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company", "entity.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "company"), `
 label: Company
 fields:
   - name: title
     label: Title
     type: text
 `)
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead", "entity.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "lead"), `
 label: Lead
 fields:
   - name: company
@@ -1960,7 +1968,7 @@ fields:
 	if err != nil {
 		t.Fatalf("Run(entity show sales/lead) error = %v, want nil", err)
 	}
-	want := "entity: sales/lead\nkind: normal\npath: apps/sales/entities/lead/entity.yml\nroute: /lead\nstorage: sales_lead\nnaming: random\nfields:\n  - company: link -> sales/company\n  - notes: text\n"
+	want := "entity: sales/lead\nkind: normal\npath: apps/sales/entities/lead/lead.entity.yml\nroute: /lead\nstorage: sales_lead\nnaming: random\nfields:\n  - company: link -> sales/company\n  - notes: text\n"
 	if stdout.String() != want {
 		t.Fatalf("entity show stdout = %q, want %q", stdout.String(), want)
 	}
@@ -1971,14 +1979,14 @@ func TestEntityGraphCommand(t *testing.T) {
 	writeCLIProjectRoot(t, root)
 
 	writeCLIApp(t, filepath.Join(root, "apps", "sales"), "sales")
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "company", "entity.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "company"), `
 label: Company
 fields:
   - name: title
     label: Title
     type: text
 `)
-	writeCLIEntity(t, filepath.Join(root, "apps", "sales", "entities", "lead", "entity.yml"), `
+	writeCLIEntity(t, cliEntityPath(root, "sales", "lead"), `
 label: Lead
 fields:
   - name: company
@@ -2036,7 +2044,7 @@ fields:
 	if err == nil {
 		t.Fatal("Run(entity validate) error = nil, want missing target error")
 	}
-	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "lead", "entity.yml")) + ":5"
+	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "lead", "lead.entity.yml")) + ":5"
 	for _, want := range []string{wantPath, `field "company"`, `unknown entity target "company"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
@@ -2073,7 +2081,7 @@ fields:
 	if err == nil {
 		t.Fatal("Run(entity validate) error = nil, want duplicate entity error")
 	}
-	wantPath := filepath.ToSlash(filepath.Join("apps", "support", "entities", "customer", "entity.yml")) + ":1"
+	wantPath := filepath.ToSlash(filepath.Join("apps", "support", "entities", "customer", "customer.entity.yml")) + ":1"
 	for _, want := range []string{wantPath, `app "support"`, `entity "customer"`, `route slug "customer" conflicts`, `set route.slug`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
@@ -2102,7 +2110,7 @@ fields:
 	if err == nil {
 		t.Fatal("Run(entity validate) error = nil, want reserved slug error")
 	}
-	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "login", "entity.yml")) + ":1"
+	wantPath := filepath.ToSlash(filepath.Join("apps", "sales", "entities", "login", "login.entity.yml")) + ":1"
 	for _, want := range []string{wantPath, `app "sales"`, `entity "login"`, `reserved root route slug "login"`, `set route.slug`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run(entity validate) error = %q, want substring %q", err.Error(), want)
@@ -2623,7 +2631,7 @@ func runWithOptionsForTest(ctx context.Context, args []string, stdin io.Reader, 
 	if err != nil {
 		return err
 	}
-	return runWithServicesAndSetupAndFixturesAndHooks(ctx, args, stdin, stdout, stderr, serve, noopDatabaseRunner(), migrator, &fakeAdminSetupRunner{}, &fakeFixtureRunner{}, &fakePermissionRunner{}, recordHooks, jobRegistry)
+	return runWithServicesAndSetupAndFixturesAndAccessAndHooks(ctx, args, stdin, stdout, stderr, serve, noopDatabaseRunner(), migrator, &fakeAdminSetupRunner{}, &fakeFixtureRunner{}, defaultAccessRunner{}, recordHooks, jobRegistry)
 }
 
 func recordhooksForTest(registrars []dygo.RecordHookRegistrar) (*db.RecordHookRegistry, error) {
@@ -2788,6 +2796,50 @@ func fixturePlan(fileCount int, recordCount int) fixtures.Plan {
 		files[index].Fixture.Records = append(files[index].Fixture.Records, fixtures.Record{})
 	}
 	return fixtures.Plan{Files: files}
+}
+
+type fakeAccessRunner struct {
+	plan            access.Plan
+	applyPlan       access.Plan
+	result          access.Result
+	exportPlan      access.ExportPlan
+	exportResult    access.ExportResult
+	planErr         error
+	applyPlanErr    error
+	err             error
+	exportPlanErr   error
+	exportErr       error
+	planCalls       int
+	applyPlanCalls  int
+	calls           int
+	exportPlanCalls int
+	exportCalls     int
+}
+
+func (r *fakeAccessRunner) Plan(_ context.Context, _ string, _ []string) (access.Plan, error) {
+	r.planCalls++
+	return r.plan, r.planErr
+}
+
+func (r *fakeAccessRunner) ApplyPlan(_ context.Context, _ string, _ string) (access.Plan, error) {
+	r.applyPlanCalls++
+	return r.applyPlan, r.applyPlanErr
+}
+
+func (r *fakeAccessRunner) Apply(_ context.Context, _ string, _ string) (access.Result, error) {
+	r.calls++
+	return r.result, r.err
+}
+
+func (r *fakeAccessRunner) ExportPlan(_ context.Context, _ string, _ string, _ *shape.AppRef, _ string) (access.ExportPlan, error) {
+	r.exportPlanCalls++
+	return r.exportPlan, r.exportPlanErr
+}
+
+func (r *fakeAccessRunner) WriteExportPlan(_ context.Context, plan access.ExportPlan) (access.ExportResult, error) {
+	r.exportCalls++
+	r.exportPlan = plan
+	return r.exportResult, r.exportErr
 }
 
 type fakeDatabaseRunner struct {
@@ -2962,7 +3014,7 @@ func writeCLIJob(t *testing.T, path string, body string) {
 }
 
 func cliEntityPath(root string, app string, entity string) string {
-	return filepath.Join(root, "apps", app, "entities", entity, "entity.yml")
+	return filepath.Join(root, "apps", app, "entities", entity, entity+".entity.yml")
 }
 
 func writeEditorScript(t *testing.T, root string, body string) string {

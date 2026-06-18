@@ -14,15 +14,17 @@ project/                         - Generated dygo project root
       app.yml                    - App manifest and paths
       entities/                  - App Entity definitions
         <entity>/                - Normal Entity bundle
-          entity.yml             - Entity metadata definition
+          <entity>.entity.yml    - Entity metadata definition
           hooks.go               - Entity hook scaffold
           fixtures.yml           - Entity fixture records
-          permissions.yml        - Entity access policy
           views.yml              - Entity view metadata
         _collections/            - Collection row definitions
           <collection>.yml       - Single-file collection metadata
           <collection>/          - Folder-form collection bundle
-            entity.yml           - Collection metadata definition
+            <collection>.entity.yml - Collection metadata definition
+      access/                    - App access metadata
+        _roles.yml               - App-contributed global roles
+        <entity>.access.yml      - Entity access policy contribution
       jobs/                      - App background jobs
         <job>/                   - Job bundle
           job.yml                - Job metadata definition
@@ -35,7 +37,6 @@ project/                         - Generated dygo project root
         <report>.yml             - Single-file report metadata
         <report>/                - Folder-form report bundle
           report.yml             - Report metadata definition
-      roles.yml                  - App role definitions
   db/                            - Database generated artifacts
     schema.sql                   - PostgreSQL schema snapshot
   docs/                          - Project documentation files
@@ -66,10 +67,10 @@ deploy/                          - Deployed project root
     crm/                         - Deployed business app
       app.yml                    - App manifest
       entities/                  - Entity metadata files
+      access/                    - Role and Entity access metadata files
       jobs/                      - Job metadata files
       pages/                     - Custom page files
       reports/                   - Report metadata files
-      roles.yml                  - Role metadata file
   db/                            - Runtime DB artifacts
     schema.sql                   - Deployed schema snapshot
   studio/                        - Studio static assets

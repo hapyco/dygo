@@ -24,7 +24,8 @@ func TestGenerateEntityCreatesStandardBundle(t *testing.T) {
 	}
 	for _, want := range []string{
 		"generated entity sales/lead",
-		"file: apps/sales/entities/lead/entity.yml (created)",
+		"file: apps/sales/entities/lead/lead.entity.yml (created)",
+		"file: apps/sales/access/lead.access.yml (created)",
 		"file: apps/sales/entities/lead/fixtures.yml (created)",
 		"file: apps/sales/entities/lead/hooks_test.go (created)",
 		"hook: apps/sales/entities/lead/hooks.go (created)",
@@ -36,7 +37,8 @@ func TestGenerateEntityCreatesStandardBundle(t *testing.T) {
 	}
 
 	for _, path := range []string{
-		"apps/sales/entities/lead/entity.yml",
+		"apps/sales/entities/lead/lead.entity.yml",
+		"apps/sales/access/lead.access.yml",
 		"apps/sales/entities/lead/fixtures.yml",
 		"apps/sales/entities/lead/hooks.go",
 		"apps/sales/entities/lead/hooks_test.go",
@@ -77,7 +79,8 @@ func TestGenerateEntityDryRunDoesNotWrite(t *testing.T) {
 		t.Fatalf("Run(generate entity --dry-run) error = %v, want nil", err)
 	}
 	for _, want := range []string{
-		"file: apps/sales/entities/lead/entity.yml (would create)",
+		"file: apps/sales/entities/lead/lead.entity.yml (would create)",
+		"file: apps/sales/access/lead.access.yml (would create)",
 		"hook: apps/sales/entities/lead/hooks.go (would create)",
 		"runner: cmd/dygo/main.go (would update)",
 	} {
@@ -85,7 +88,7 @@ func TestGenerateEntityDryRunDoesNotWrite(t *testing.T) {
 			t.Fatalf("generate entity dry-run stdout = %q, want substring %q", stdout.String(), want)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(root, "apps", "sales", "entities", "lead", "entity.yml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "apps", "sales", "entities", "lead", "lead.entity.yml")); !os.IsNotExist(err) {
 		t.Fatalf("dry-run entity stat error = %v, want missing generated file", err)
 	}
 }

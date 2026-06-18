@@ -15,7 +15,7 @@ func TestValidateLoadsEntitiesFromManifestPath(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{Entities: "metadata/entities"})
-	entityPath := filepath.Join(app.Dir, "metadata", "entities", "lead", "entity.yml")
+	entityPath := filepath.Join(app.Dir, "metadata", "entities", "lead", "lead.entity.yml")
 	writeEntity(t, entityPath, "lead")
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
@@ -106,10 +106,9 @@ func TestValidateLoadsCanonicalEntityBundle(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	entityPath := filepath.Join(app.Dir, "entities", "lead", "entity.yml")
+	entityPath := entityPath(app, "lead")
 	writeEntity(t, entityPath, "lead")
 	writeFile(t, filepath.Join(app.Dir, "entities", "lead", "fixtures.yml"), "records: []")
-	writeFile(t, filepath.Join(app.Dir, "entities", "lead", "permissions.yml"), "rules: []")
 	writeFile(t, filepath.Join(app.Dir, "entities", "lead", "views.yml"), "views: []")
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
@@ -135,7 +134,7 @@ func TestValidateRejectsInvalidEntityBundleFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("Validate() error = nil, want invalid bundle file error")
 	}
-	if !strings.Contains(err.Error(), `entities/lead/lead.yml is not a valid Entity bundle file; Entity metadata must be entities/lead/entity.yml`) {
+	if !strings.Contains(err.Error(), `entities/lead/lead.yml is not a valid Entity bundle file; Entity metadata must be entities/lead/lead.entity.yml`) {
 		t.Fatalf("Validate() error = %q, want invalid bundle file context", err.Error())
 	}
 }
@@ -151,7 +150,7 @@ func TestValidateRejectsBundleFilesWithoutEntityMetadata(t *testing.T) {
 	if err == nil {
 		t.Fatal("Validate() error = nil, want missing entity metadata error")
 	}
-	if !strings.Contains(err.Error(), `entities/lead requires Entity metadata file entities/lead/entity.yml`) {
+	if !strings.Contains(err.Error(), `entities/lead requires Entity metadata file entities/lead/lead.entity.yml`) {
 		t.Fatalf("Validate() error = %q, want missing entity metadata context", err.Error())
 	}
 }
@@ -613,7 +612,7 @@ func TestValidateLoadsCanonicalCollectionEntityFiles(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "entity.yml"), `
+	writeFile(t, entityPath(app, "invoice"), `
 label: Invoice
 name:
   strategy: random
@@ -643,7 +642,7 @@ func TestValidateLoadsCanonicalCollectionEntityBundles(t *testing.T) {
 
 	root := t.TempDir()
 	app := loadedApp(root, "sales", "sales", manifest.Paths{})
-	writeFile(t, filepath.Join(app.Dir, "entities", "invoice", "entity.yml"), `
+	writeFile(t, entityPath(app, "invoice"), `
 label: Invoice
 name:
   strategy: random
@@ -654,7 +653,7 @@ fields:
     options:
       entity: invoice-item
 `)
-	entityPath := filepath.Join(app.Dir, "entities", "_collections", "invoice-item", "entity.yml")
+	entityPath := filepath.Join(app.Dir, "entities", "_collections", "invoice-item", "invoice-item.entity.yml")
 	writeCollectionEntity(t, entityPath, "invoice-item")
 
 	entities, err := New([]manifest.LoadedApp{app}, fieldtype.DefaultRegistry()).Validate()
@@ -943,7 +942,7 @@ fields:
 }
 
 func entityPath(app manifest.LoadedApp, name string) string {
-	return filepath.Join(app.Dir, "entities", name, "entity.yml")
+	return filepath.Join(app.Dir, "entities", name, name+".entity.yml")
 }
 
 func collectionPath(app manifest.LoadedApp, name string) string {

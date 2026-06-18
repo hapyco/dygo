@@ -1,0 +1,6 @@
+policy:
+  - role: studio-member
+    can: [read, export, print]
+
+  - role: system-manager
+    can: [read, export, print]

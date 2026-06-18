@@ -145,6 +145,7 @@ SELECT EXISTS (
 	WHERE u.id = $1
 		AND COALESCE(u.enabled, false) = true
 		AND e.slug = $2
+		AND COALESCE(p.retired, false) = false
 		AND COALESCE(p.%s, false) = true
 	LIMIT 1
 )`, column)
@@ -217,6 +218,7 @@ SELECT EXISTS (
 	JOIN entity e ON e.id = p.entity_id
 	WHERE r.name = $1
 		AND e.slug = $2
+		AND COALESCE(p.retired, false) = false
 		AND COALESCE(p.%s, false) = true
 	LIMIT 1
 )`, column)

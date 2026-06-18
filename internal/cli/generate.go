@@ -38,6 +38,7 @@ func newGenerateCommand(stdout io.Writer) *cobra.Command {
 func newGenerateAppCommand(stdout io.Writer) *cobra.Command {
 	var dryRun bool
 	var force bool
+	var noAccess bool
 
 	cmd := &cobra.Command{
 		Use:   "app <app>",
@@ -51,7 +52,7 @@ func newGenerateAppCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			plan, err := scaffold.App(scaffold.Options{Root: root, DryRun: dryRun, Force: force}, args[0])
+			plan, err := scaffold.App(scaffold.Options{Root: root, DryRun: dryRun, Force: force, NoAccess: noAccess}, args[0])
 			if err != nil {
 				return fmt.Errorf("generate app: %w", err)
 			}
@@ -59,6 +60,7 @@ func newGenerateAppCommand(stdout io.Writer) *cobra.Command {
 		},
 	}
 	addScaffoldWriteFlags(cmd, &dryRun, &force)
+	cmd.Flags().BoolVar(&noAccess, "no-access", false, "skip access metadata skeleton creation")
 	return cmd
 }
 
@@ -67,6 +69,7 @@ func newGenerateEntityCommand(stdout io.Writer) *cobra.Command {
 	var force bool
 	var noHook bool
 	var noFixture bool
+	var noAccess bool
 	var noTest bool
 
 	cmd := &cobra.Command{
@@ -85,7 +88,7 @@ func newGenerateEntityCommand(stdout io.Writer) *cobra.Command {
 			if err := requireGenerateApp(root, target.App); err != nil {
 				return err
 			}
-			plan, err := scaffold.Entity(scaffold.Options{Root: root, DryRun: dryRun, Force: force}, target, !noFixture, !noTest)
+			plan, err := scaffold.Entity(scaffold.Options{Root: root, DryRun: dryRun, Force: force, NoAccess: noAccess}, target, !noFixture, !noTest)
 			if err != nil {
 				return fmt.Errorf("generate entity: %w", err)
 			}
@@ -115,6 +118,7 @@ func newGenerateEntityCommand(stdout io.Writer) *cobra.Command {
 	addScaffoldWriteFlags(cmd, &dryRun, &force)
 	cmd.Flags().BoolVar(&noHook, "no-hook", false, "skip hook scaffolding and runner wiring")
 	cmd.Flags().BoolVar(&noFixture, "no-fixture", false, "skip fixture skeleton creation")
+	cmd.Flags().BoolVar(&noAccess, "no-access", false, "skip access metadata skeleton creation")
 	cmd.Flags().BoolVar(&noTest, "no-test", false, "skip Go test boilerplate")
 	return cmd
 }

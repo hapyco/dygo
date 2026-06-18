@@ -279,7 +279,7 @@ func writeTestApp(t *testing.T, root string, name string, extra string) {
 func writeTestEntity(t *testing.T, root string, appName string, entityName string) {
 	t.Helper()
 	body := "label: " + strings.ToUpper(entityName[:1]) + entityName[1:] + "\nname:\n  strategy: random\nfields:\n  - name: title\n    label: Title\n    type: text\n"
-	writeTestFile(t, filepath.Join(root, "apps", appName, "entities", entityName, "entity.yml"), body)
+	writeTestFile(t, filepath.Join(root, "apps", appName, "entities", entityName, entityName+".entity.yml"), body)
 }
 
 func writeTestFile(t *testing.T, path string, body string) {

@@ -157,13 +157,13 @@ Generator boilerplate lives as embedded templates under `internal/generate/templ
 - `dygo access apply` - Prints an access apply plan, prompts interactively, then syncs access files into Core role and permission Records.
 - `dygo access apply --yes` - Applies access metadata without an interactive prompt.
 - `dygo access apply --dry-run` - Prints the access apply plan without writing.
-- `dygo access list` - Lists discovered app roles and Entity access files grouped by app.
-- `dygo access list <app>` - Lists roles and Entity access files for one app.
+- `dygo access list` - Lists discovered Entity access files grouped by contributor app.
+- `dygo access list <app>` - Lists Entity access files contributed by one app.
 - `dygo access show <app>/<entity>` - Prints resolved access metadata for one Entity.
 - `dygo access roles` - Lists app-owned roles grouped by app.
 - `dygo access roles <app>` - Lists app-owned roles for one app.
-- `dygo access export <app>` - Prints an access export plan, prompts interactively, then writes `_roles.yml` and Entity access files for one app.
-- `dygo access export <app>/<entity>` - Prints an access export plan, prompts interactively, then writes one Entity access file and required role metadata.
+- `dygo access export --in <app>` - Prints a role export plan, prompts interactively, then writes missing database roles into the selected app's `_roles.yml`.
+- `dygo access export <app>/<entity> --in <app>` - Prints an access export plan, prompts interactively, then writes one Entity access file and required role metadata under the selected destination app.
 - `dygo access export <target> --yes` - Exports access metadata without an interactive prompt.
 - `dygo access export <target> --dry-run` - Prints the access export plan without writing or prompting.
 

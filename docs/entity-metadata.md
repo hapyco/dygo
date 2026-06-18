@@ -68,7 +68,7 @@ constraints:
 
 Entity identity comes from the file path. Top-level `name` configures Record system names; it does not define Entity identity.
 
-Normal Entity metadata lives at `entities/<entity>/entity.yml`. The parent folder defines the Entity key.
+Normal Entity metadata lives at `entities/<entity>/<entity>.entity.yml`. The parent folder defines the Entity key.
 
 Entity keys, field names, and field type names use kebab-case.
 
@@ -115,13 +115,13 @@ Collection row Entities live in the app's `entities/_collections/` folder. Norma
 ```txt
 entities/
   invoice/
-    entity.yml
+    invoice.entity.yml
     fixtures.yml
     hooks.go
   _collections/
     invoice-item.yml
     invoice-tax/
-      entity.yml
+      invoice-tax.entity.yml
 ```
 
 A parent declares usage with a `type: collection` field:
@@ -344,7 +344,7 @@ Entity files belong to an app's manifest-defined `entities` directory. By defaul
 entities
 ```
 
-dygo loads normal Entity bundles from `entities/<entity>/entity.yml` and collection Entity metadata from `entities/_collections/<collection>.yml` or `entities/_collections/<collection>/entity.yml`. Missing `entities` directories are allowed for apps that do not define Entities yet.
+dygo loads normal Entity bundles from `entities/<entity>/<entity>.entity.yml` and collection Entity metadata from `entities/_collections/<collection>.yml` or `entities/_collections/<collection>/<collection>.entity.yml`. Missing `entities` directories are allowed for apps that do not define Entities yet.
 
 Entity identities are unique per app across normal and collection Entities. An app cannot define both a normal `invoice` Entity and an `invoice` collection Entity. Two different apps may use the same Entity key when their route slugs are unique.
 

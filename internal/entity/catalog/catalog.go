@@ -157,6 +157,7 @@ func (c Catalog) discoverEntityFolder(app manifest.LoadedApp, entitiesDir string
 	hasYAML := false
 	hasBundleFile := false
 	var entities []LoadedEntity
+	expectedMetadataFile := shape.EntityMetadataFileName(folderName)
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yml" {
 			continue
@@ -174,8 +175,8 @@ func (c Catalog) discoverEntityFolder(app manifest.LoadedApp, entitiesDir string
 		}
 		hasYAML = true
 		path := filepath.Join(folderPath, entry.Name())
-		if entry.Name() != shape.EntityMetadataFile {
-			return nil, fmt.Errorf("%s is not a valid Entity bundle file; Entity metadata must be %s", appRelativePath(app.Dir, path), appRelativePath(app.Dir, filepath.Join(folderPath, shape.EntityMetadataFile)))
+		if entry.Name() != expectedMetadataFile {
+			return nil, fmt.Errorf("%s is not a valid Entity bundle file; Entity metadata must be %s", appRelativePath(app.Dir, path), appRelativePath(app.Dir, filepath.Join(folderPath, expectedMetadataFile)))
 		}
 		if entityPath != "" {
 			return nil, fmt.Errorf("Entity %q is defined twice. Use either %s or %s.", folderName, appRelativePath(app.Dir, entityPath), appRelativePath(app.Dir, path))
@@ -185,7 +186,7 @@ func (c Catalog) discoverEntityFolder(app manifest.LoadedApp, entitiesDir string
 
 	if entityPath == "" {
 		if hasYAML || hasBundleFile {
-			return nil, fmt.Errorf("%s requires Entity metadata file %s", appRelativePath(app.Dir, folderPath), appRelativePath(app.Dir, filepath.Join(folderPath, shape.EntityMetadataFile)))
+			return nil, fmt.Errorf("%s requires Entity metadata file %s", appRelativePath(app.Dir, folderPath), appRelativePath(app.Dir, filepath.Join(folderPath, expectedMetadataFile)))
 		}
 		return entities, nil
 	}
@@ -208,7 +209,7 @@ func (c Catalog) discoverCollectionFolder(app manifest.LoadedApp, folderPath str
 	for _, entry := range entries {
 		path := filepath.Join(folderPath, entry.Name())
 		if entry.IsDir() {
-			entityPath := filepath.Join(path, shape.EntityMetadataFile)
+			entityPath := filepath.Join(path, shape.EntityMetadataFileName(entry.Name()))
 			entity, err := c.loadEntityFile(app, entityPath, true)
 			if err != nil {
 				return nil, err
@@ -237,7 +238,7 @@ func (c Catalog) discoverCollectionFolder(app manifest.LoadedApp, folderPath str
 
 func isEntityBundleMetadataFile(name string) bool {
 	switch name {
-	case shape.EntityFixturesFile, shape.EntityPermissionsFile, shape.EntityViewsFile:
+	case shape.EntityFixturesFile, shape.EntityViewsFile:
 		return true
 	default:
 		return false

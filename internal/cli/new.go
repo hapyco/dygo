@@ -60,7 +60,7 @@ func newProjectCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 			} else if _, err := fmt.Fprintln(stdout, "studio: not cached; dygo dev will require bundled Studio assets or a Studio dev server"); err != nil {
 				return fmt.Errorf("write new project output: %w", err)
 			}
-			if _, err := fmt.Fprintf(stdout, "\nnext:\n  cd %s\n  dygo db migrate\n  dygo setup\n  dygo dev\n", result.Name); err != nil {
+			if _, err := fmt.Fprintf(stdout, "\nnext:\n  cd %s\n  dygo db prepare\n  dygo setup\n  dygo dev\n", result.Name); err != nil {
 				return fmt.Errorf("write new project output: %w", err)
 			}
 			return nil

@@ -554,7 +554,8 @@ CREATE TABLE public.permission (
     update boolean DEFAULT false,
     delete boolean DEFAULT false,
     export boolean DEFAULT false,
-    print boolean DEFAULT false
+    print boolean DEFAULT false,
+    retired boolean DEFAULT false
 );
 
 
@@ -1445,6 +1446,13 @@ CREATE INDEX permission_entity_id_idx ON public.permission USING btree (entity_i
 --
 
 CREATE INDEX permission_role_id_idx ON public.permission USING btree (role_id);
+
+
+--
+-- Name: permission_retired_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX permission_retired_idx ON public.permission USING btree (retired);
 
 
 --

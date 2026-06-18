@@ -1,8 +1,8 @@
 # Access
 
-Status: proposed decision log.
+Status: v1 implementation decision log.
 
-Current runtime still reads live Core `role`, `user-role`, and `permission` Records from the database. This document records the target authoring model before implementation.
+Current runtime still reads live Core `role`, `user-role`, and `permission` Records from the database. This document records the access authoring model.
 
 ## Decided
 
@@ -110,7 +110,7 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - Access export does not reorder whole files in v1.
 - Do not add `dygo access import`.
 - Add `dygo access apply`.
-- Remove `dygo permission` from the public CLI instead of keeping it as a compatibility alias.
+- Do not expose `dygo permission` as a public CLI command.
 - Do not add access `check` or `explain` commands in this sprint.
 - The first access CLI surface is `validate`, `apply`, `list`, `show`, `roles`, and `export`.
 - `dygo generate app <app>` creates `apps/<app>/access/_roles.yml` by default.
@@ -119,16 +119,15 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - `dygo generate entity <app>/<entity> --no-access` skips the Entity access file.
 - Generated access files are minimal skeletons.
 - Entity generation does not create roles automatically.
-- Once `dygo access apply` exists, fixture validate, apply, and export should reject app-owned Core `role` and `permission` Records as fixtures.
+- Fixture validate, apply, and export reject app-owned Core `role` and `permission` Records as fixtures.
 - Fixture validate, apply, and export should share one central fixture deny policy.
 - The fixture deny policy should live under `internal/fixtures/`, not `internal/reserved/`.
 - `internal/reserved/words.yml` stays limited to reserved naming collisions.
 - Use one deny list for fixtures in v1; do not add restricted fixture categories yet.
 - Collection Entities stay code-denied because that depends on Entity kind, not a static list.
 - `core/user`, `core/user-role`, and `core/configuration` stay fixture-allowed for now.
-- Core can keep using role and permission fixtures only as a bootstrap bridge until `dygo access apply` exists.
-- After implementation, do one docs cleanup pass for stale `roles.yml`, `permissions.yml`, `permissions/`, and `dygo permission` references.
-- Rename Entity metadata from `entities/<entity>/entity.yml` to `entities/<entity>/<entity>.entity.yml` before adding access file generators and loaders.
+- Core role and permission defaults live in access metadata, not fixtures.
+- Entity metadata uses `entities/<entity>/<entity>.entity.yml`.
 - The Entity metadata rename includes shape helpers, generators, validators, JSON Schemas, metadata loading, and docs.
 - Reserved-name and fixture-eligibility extensions by apps are deferred beyond v1.
 - Track app-extendable reserved and fixture policies in Roadmap item `#261`.

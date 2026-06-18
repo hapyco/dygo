@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newDBCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, database databaseRunner, sync schemaSyncRunner, fixture fixtureRunner) *cobra.Command {
+func newDBCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, database databaseRunner, sync schemaSyncRunner, fixture fixtureRunner, accessRunner accessRunner) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "db",
 		Short: "Manage dygo database lifecycle",
@@ -25,9 +25,10 @@ func newDBCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	cmd.AddCommand(newDBCheckCommand(ctx, stdout, database))
 	cmd.AddCommand(newDBCreateCommand(ctx, stdout, database))
 	cmd.AddCommand(newDBDropCommand(ctx, stdin, stdout, stderr, database))
-	cmd.AddCommand(newDBMigrateCommand(ctx, stdin, stdout, stderr, database, sync, fixture))
+	cmd.AddCommand(newDBMigrateCommand(ctx, stdin, stdout, stderr, database, sync))
+	cmd.AddCommand(newDBPrepareCommand(ctx, stdin, stdout, stderr, database, sync, fixture, accessRunner))
 	cmd.AddCommand(newDBPruneCommand(ctx, stdin, stdout, stderr, sync))
-	cmd.AddCommand(newDBResetCommand(ctx, stdin, stdout, stderr, database, sync, fixture))
+	cmd.AddCommand(newDBResetCommand(ctx, stdin, stdout, stderr, database, sync, fixture, accessRunner))
 
 	return cmd
 }
@@ -145,7 +146,7 @@ func newDBDropCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Wr
 	return cmd
 }
 
-func newDBMigrateCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, database databaseRunner, sync schemaSyncRunner, fixture fixtureRunner) *cobra.Command {
+func newDBMigrateCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, database databaseRunner, sync schemaSyncRunner) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
 	yes := false
 	dryRun := false
@@ -164,43 +165,9 @@ func newDBMigrateCommand(ctx context.Context, stdin io.Reader, stdout, stderr io
 				return db.SanitizeDatabaseError("check db migrate database", databaseURL, err)
 			}
 			if !status.Exists {
-				if dryRun {
-					if _, err := fmt.Fprintf(stdout, "database: would create %s (%s)\n", status.Name, env); err != nil {
-						return fmt.Errorf("write db migrate database plan: %w", err)
-					}
-					if _, err := fmt.Fprintln(stdout, "dry-run: database is missing; run dygo db migrate to create it before full planning"); err != nil {
-						return fmt.Errorf("write db migrate dry-run output: %w", err)
-					}
-					return nil
-				}
-				if !yes {
-					if _, err := fmt.Fprintf(stdout, "database: will create %s (%s)\n", status.Name, env); err != nil {
-						return fmt.Errorf("write db migrate database plan: %w", err)
-					}
-					ok, err := confirm(stdin, stderr, "Create database before planning migration? [y/N] ")
-					if err != nil {
-						return err
-					}
-					if !ok {
-						if _, err := fmt.Fprintln(stdout, "database migration cancelled"); err != nil {
-							return fmt.Errorf("write db migrate cancellation: %w", err)
-						}
-						return nil
-					}
-				}
-				result, err := database.Create(ctx, databaseURL)
-				if err != nil {
-					return db.SanitizeDatabaseError("create db migrate database", databaseURL, err)
-				}
-				action := "created"
-				if !result.Changed {
-					action = "already exists"
-				}
-				if _, err := fmt.Fprintf(stdout, "database %s: %s (%s)\n", action, result.Name, env); err != nil {
-					return fmt.Errorf("write db migrate database output: %w", err)
-				}
+				return fmt.Errorf("database %s does not exist (%s); run dygo db prepare or dygo db create", status.Name, env)
 			}
-			plan, err := planDBMigration(ctx, sync, fixture, root, databaseURL)
+			plan, err := planDBMigration(ctx, sync, root, databaseURL)
 			if err != nil {
 				return db.SanitizeDatabaseError("plan db migrate", databaseURL, err)
 			}
@@ -225,7 +192,7 @@ func newDBMigrateCommand(ctx context.Context, stdin io.Reader, stdout, stderr io
 					return nil
 				}
 			}
-			result, err := applyDBMigration(ctx, sync, fixture, root, databaseURL)
+			result, err := applyDBMigration(ctx, sync, root, databaseURL)
 			if err != nil {
 				return db.SanitizeDatabaseError("apply db migrate", databaseURL, err)
 			}
@@ -314,7 +281,95 @@ func newDBPruneCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 	return cmd
 }
 
-func newDBResetCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, database databaseRunner, sync schemaSyncRunner, fixture fixtureRunner) *cobra.Command {
+func newDBPrepareCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, database databaseRunner, sync schemaSyncRunner, fixture fixtureRunner, accessRunner accessRunner) *cobra.Command {
+	envName := string(secrets.EnvironmentDevelopment)
+	yes := false
+	dryRun := false
+
+	cmd := &cobra.Command{
+		Use:   "prepare",
+		Short: "Prepare a usable dygo database",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			env, root, databaseURL, err := databaseInputs(envName)
+			if err != nil {
+				return err
+			}
+			status, err := database.Exists(ctx, databaseURL)
+			if err != nil {
+				return db.SanitizeDatabaseError("check db prepare database", databaseURL, err)
+			}
+			if err := writeDBPrepareHeader(stdout, env, status); err != nil {
+				return err
+			}
+			if dryRun && !status.Exists {
+				if _, err := fmt.Fprintln(stdout, "dry-run: database is missing; create it before full preparation planning"); err != nil {
+					return fmt.Errorf("write db prepare dry-run output: %w", err)
+				}
+				return nil
+			}
+			if !status.Exists {
+				if !yes {
+					ok, err := confirm(stdin, stderr, "Prepare database? [y/N] ")
+					if err != nil {
+						return err
+					}
+					if !ok {
+						if _, err := fmt.Fprintln(stdout, "database prepare cancelled"); err != nil {
+							return fmt.Errorf("write db prepare cancellation: %w", err)
+						}
+						return nil
+					}
+				}
+				result, err := database.Create(ctx, databaseURL)
+				if err != nil {
+					return db.SanitizeDatabaseError("create db prepare database", databaseURL, err)
+				}
+				if _, err := fmt.Fprintf(stdout, "database created: %s (%s)\n", result.Name, env); err != nil {
+					return fmt.Errorf("write db prepare create output: %w", err)
+				}
+			}
+			plan, err := planDBPreparation(ctx, sync, fixture, accessRunner, root, databaseURL)
+			if err != nil {
+				return db.SanitizeDatabaseError("plan db prepare", databaseURL, err)
+			}
+			if err := writeDBPreparePlan(stdout, env, plan); err != nil {
+				return err
+			}
+			if dryRun {
+				return nil
+			}
+			if err := plan.Migration.Schema.BlockerError(); err != nil {
+				return err
+			}
+			if status.Exists && !yes {
+				ok, err := confirm(stdin, stderr, "Apply database preparation? [y/N] ")
+				if err != nil {
+					return err
+				}
+				if !ok {
+					if _, err := fmt.Fprintln(stdout, "database prepare cancelled"); err != nil {
+						return fmt.Errorf("write db prepare cancellation: %w", err)
+					}
+					return nil
+				}
+			}
+			result, err := applyDBPreparation(ctx, sync, fixture, accessRunner, root, databaseURL)
+			if err != nil {
+				return db.SanitizeDatabaseError("apply db prepare", databaseURL, err)
+			}
+			return writeDBPrepareResult(stdout, env, result)
+		},
+	}
+
+	cmd.Flags().StringVar(&envName, "env", envName, "Environment: development, staging, or production")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Prepare the database without an interactive prompt")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the database preparation plan without writing")
+
+	return cmd
+}
+
+func newDBResetCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, database databaseRunner, sync schemaSyncRunner, fixture fixtureRunner, accessRunner accessRunner) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
 	yes := false
 	dryRun := false
@@ -356,15 +411,15 @@ func newDBResetCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 			if _, err := database.Create(ctx, target.DatabaseURL); err != nil {
 				return fmt.Errorf("create database for reset: %w", err)
 			}
-			result, err := applyDBMigration(ctx, sync, fixture, target.Root, target.DatabaseURL)
+			result, err := applyDBPreparation(ctx, sync, fixture, accessRunner, target.Root, target.DatabaseURL)
 			if err != nil {
-				return db.SanitizeDatabaseError("migrate reset database", target.DatabaseURL, err)
+				return db.SanitizeDatabaseError("prepare reset database", target.DatabaseURL, err)
 			}
 			if _, err := fmt.Fprintf(stdout, "database reset complete (%s)\n", target.Env); err != nil {
 				return fmt.Errorf("write database reset output: %w", err)
 			}
-			if err := writeDBMigrateResult(stdout, target.Env, result); err != nil {
-				return fmt.Errorf("write reset migration output: %w", err)
+			if err := writeDBPrepareResult(stdout, target.Env, result); err != nil {
+				return fmt.Errorf("write reset prepare output: %w", err)
 			}
 			return nil
 		},
@@ -382,17 +437,38 @@ type dbMigrationPlan struct {
 	PreSync  db.PatchPlan
 	Schema   db.SchemaPlan
 	PostSync db.PatchPlan
-	Fixtures fixtures.Plan
 }
 
 type dbMigrationResult struct {
 	PreSync  db.PatchApplyResult
 	Schema   db.SchemaSyncResult
 	PostSync db.PatchApplyResult
-	Fixtures fixtures.Result
 }
 
-func planDBMigration(ctx context.Context, sync schemaSyncRunner, fixture fixtureRunner, root string, databaseURL string) (dbMigrationPlan, error) {
+type dbPreparationPlan struct {
+	Migration dbMigrationPlan
+	Access    accessPlanSummary
+	Fixtures  fixtures.Plan
+}
+
+type accessPlanSummary struct {
+	Roles       int
+	Policies    int
+	Permissions int
+}
+
+type dbPreparationResult struct {
+	Migration dbMigrationResult
+	Access    accessResultSummary
+	Fixtures  fixtures.Result
+}
+
+type accessResultSummary struct {
+	Roles       int
+	Permissions int
+}
+
+func planDBMigration(ctx context.Context, sync schemaSyncRunner, root string, databaseURL string) (dbMigrationPlan, error) {
 	preSync, err := sync.PatchPlan(ctx, root, databaseURL, db.PatchPhasePreSync)
 	if err != nil {
 		return dbMigrationPlan{}, fmt.Errorf("plan pre-sync patches: %w", err)
@@ -405,19 +481,14 @@ func planDBMigration(ctx context.Context, sync schemaSyncRunner, fixture fixture
 	if err != nil {
 		return dbMigrationPlan{}, fmt.Errorf("plan post-sync patches: %w", err)
 	}
-	fixturesPlan, err := fixture.Plan(ctx, root)
-	if err != nil {
-		return dbMigrationPlan{}, fmt.Errorf("plan fixtures: %w", err)
-	}
 	return dbMigrationPlan{
 		PreSync:  preSync,
 		Schema:   schema,
 		PostSync: postSync,
-		Fixtures: fixturesPlan,
 	}, nil
 }
 
-func applyDBMigration(ctx context.Context, sync schemaSyncRunner, fixture fixtureRunner, root string, databaseURL string) (dbMigrationResult, error) {
+func applyDBMigration(ctx context.Context, sync schemaSyncRunner, root string, databaseURL string) (dbMigrationResult, error) {
 	preSync, err := sync.ApplyPatches(ctx, root, databaseURL, db.PatchPhasePreSync, currentVersion())
 	if err != nil {
 		return dbMigrationResult{}, fmt.Errorf("apply pre-sync patches: %w", err)
@@ -430,14 +501,59 @@ func applyDBMigration(ctx context.Context, sync schemaSyncRunner, fixture fixtur
 	if err != nil {
 		return dbMigrationResult{}, fmt.Errorf("apply post-sync patches: %w", err)
 	}
-	fixtureResult, err := fixture.Apply(ctx, root, databaseURL)
-	if err != nil {
-		return dbMigrationResult{}, fmt.Errorf("apply fixtures: %w", err)
-	}
 	return dbMigrationResult{
 		PreSync:  preSync,
 		Schema:   schema,
 		PostSync: postSync,
+	}, nil
+}
+
+func planDBPreparation(ctx context.Context, sync schemaSyncRunner, fixture fixtureRunner, accessRunner accessRunner, root string, databaseURL string) (dbPreparationPlan, error) {
+	migration, err := planDBMigration(ctx, sync, root, databaseURL)
+	if err != nil {
+		return dbPreparationPlan{}, err
+	}
+	accessPlan, err := accessRunner.ApplyPlan(ctx, root, databaseURL)
+	if err != nil {
+		accessPlan, err = accessRunner.Plan(ctx, root, nil)
+	}
+	if err != nil {
+		return dbPreparationPlan{}, fmt.Errorf("plan access metadata: %w", err)
+	}
+	fixturePlan, err := fixture.Plan(ctx, root)
+	if err != nil {
+		return dbPreparationPlan{}, fmt.Errorf("plan fixtures: %w", err)
+	}
+	return dbPreparationPlan{
+		Migration: migration,
+		Access: accessPlanSummary{
+			Roles:       len(accessPlan.Roles),
+			Policies:    len(accessPlan.Policies),
+			Permissions: len(accessPlan.Grants),
+		},
+		Fixtures: fixturePlan,
+	}, nil
+}
+
+func applyDBPreparation(ctx context.Context, sync schemaSyncRunner, fixture fixtureRunner, accessRunner accessRunner, root string, databaseURL string) (dbPreparationResult, error) {
+	migration, err := applyDBMigration(ctx, sync, root, databaseURL)
+	if err != nil {
+		return dbPreparationResult{}, err
+	}
+	accessResult, err := accessRunner.Apply(ctx, root, databaseURL)
+	if err != nil {
+		return dbPreparationResult{}, fmt.Errorf("apply access metadata: %w", err)
+	}
+	fixtureResult, err := fixture.Apply(ctx, root, databaseURL)
+	if err != nil {
+		return dbPreparationResult{}, fmt.Errorf("apply fixture records: %w", err)
+	}
+	return dbPreparationResult{
+		Migration: migration,
+		Access: accessResultSummary{
+			Roles:       accessResult.Roles,
+			Permissions: accessResult.Permissions,
+		},
 		Fixtures: fixtureResult,
 	}, nil
 }
@@ -462,8 +578,7 @@ func writeDBMigratePlan(stdout io.Writer, env secrets.Environment, plan dbMigrat
 	if _, err := fmt.Fprintf(stdout, "post-sync patches: %d pending, %d applied\n", len(plan.PostSync.Pending), len(plan.PostSync.Applied)); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(stdout, "fixtures: %d files, %d records\n", plan.Fixtures.FileCount(), plan.Fixtures.RecordCount())
-	return err
+	return nil
 }
 
 func writeDBMigrateResult(stdout io.Writer, env secrets.Environment, result dbMigrationResult) error {
@@ -479,10 +594,66 @@ func writeDBMigrateResult(stdout io.Writer, env secrets.Environment, result dbMi
 	if _, err := fmt.Fprintf(stdout, "post-sync patches applied: %d\n", len(result.PostSync.Applied)); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(stdout, "fixture records: %d created, %d updated\n", result.Fixtures.Created, result.Fixtures.Updated); err != nil {
+	_, err := fmt.Fprintln(stdout, "schema snapshot: refreshed")
+	return err
+}
+
+func writeDBPrepareHeader(stdout io.Writer, env secrets.Environment, status db.DatabaseStatus) error {
+	state := "exists"
+	if !status.Exists {
+		state = "missing"
+	}
+	_, err := fmt.Fprintf(stdout, "database %s: %s (%s)\n", state, status.Name, env)
+	return err
+}
+
+func writeDBPreparePlan(stdout io.Writer, env secrets.Environment, plan dbPreparationPlan) error {
+	unsafeCount, unsupportedCount := schemaDiagnosticCounts(plan.Migration.Schema)
+	if _, err := fmt.Fprintf(stdout, "db prepare plan (%s)\n", env); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintln(stdout, "schema snapshot: refreshed")
+	if _, err := fmt.Fprintf(stdout, "pre-sync patches: %d pending, %d applied\n", len(plan.Migration.PreSync.Pending), len(plan.Migration.PreSync.Applied)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "schema safe operations: %d\n", len(plan.Migration.Schema.Operations)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "schema unsafe diagnostics: %d\n", unsafeCount); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "schema unsupported diagnostics: %d\n", unsupportedCount); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "post-sync patches: %d pending, %d applied\n", len(plan.Migration.PostSync.Pending), len(plan.Migration.PostSync.Applied)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "access: %d roles, %d policy files, %d permissions\n", plan.Access.Roles, plan.Access.Policies, plan.Access.Permissions); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(stdout, "fixtures: %d files, %d records\n", plan.Fixtures.FileCount(), plan.Fixtures.RecordCount())
+	return err
+}
+
+func writeDBPrepareResult(stdout io.Writer, env secrets.Environment, result dbPreparationResult) error {
+	if _, err := fmt.Fprintf(stdout, "database prepared (%s)\n", env); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "pre-sync patches applied: %d\n", len(result.Migration.PreSync.Applied)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(stdout, migrateResultLine(result.Migration.Schema, env)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "post-sync patches applied: %d\n", len(result.Migration.PostSync.Applied)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(stdout, "schema snapshot: refreshed"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "access records: %d roles, %d permissions\n", result.Access.Roles, result.Access.Permissions); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(stdout, "fixture records: %d created, %d updated\n", result.Fixtures.Created, result.Fixtures.Updated)
 	return err
 }
 
@@ -492,7 +663,7 @@ func writeDBDropPlan(stdout io.Writer, target destructiveTarget) error {
 }
 
 func writeDBResetPlan(stdout io.Writer, target destructiveTarget) error {
-	_, err := fmt.Fprintf(stdout, "db reset plan (%s)\ndatabase: %s\nsteps: drop, create, migrate\n", target.Env, target.Database)
+	_, err := fmt.Fprintf(stdout, "db reset plan (%s)\ndatabase: %s\nsteps: drop, create, prepare\n", target.Env, target.Database)
 	return err
 }
 

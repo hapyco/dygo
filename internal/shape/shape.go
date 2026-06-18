@@ -30,18 +30,19 @@ const (
 	LocalSecretsTempDir = ".dygo/secrets/tmp"
 
 	AppManifestFile  = "app.yml"
+	AppAccessDir     = "access"
 	AppEntitiesDir   = "entities"
 	AppJobsDir       = "jobs"
 	AppPagesDir      = "pages"
 	AppReportsDir    = "reports"
-	AppRolesFile     = "roles.yml"
+	AppRolesFile     = "_roles.yml"
 	AppSchedulesFile = "jobs/_schedules.yml"
 
-	EntityMetadataFile    = "entity.yml"
-	EntityFixturesFile    = "fixtures.yml"
-	EntityHooksFile       = "hooks.go"
-	EntityPermissionsFile = "permissions.yml"
-	EntityViewsFile       = "views.yml"
+	EntityMetadataFileSuffix = ".entity.yml"
+	EntityAccessFileSuffix   = ".access.yml"
+	EntityFixturesFile       = "fixtures.yml"
+	EntityHooksFile          = "hooks.go"
+	EntityViewsFile          = "views.yml"
 
 	CollectionDir = "_collections"
 
@@ -129,7 +130,12 @@ func AppReportsPath(app string) string {
 
 // AppRolesPath returns the project-relative role metadata path for an app.
 func AppRolesPath(app string) string {
-	return filepath.ToSlash(filepath.Join(AppDir(app), AppRolesFile))
+	return filepath.ToSlash(filepath.Join(AppDir(app), AppAccessDir, AppRolesFile))
+}
+
+// AppEntityAccessPath returns the project-relative access metadata path for an app-owned Entity.
+func AppEntityAccessPath(app string, entity string) string {
+	return filepath.ToSlash(filepath.Join(AppDir(app), AppAccessDir, EntityAccessFileName(entity)))
 }
 
 // EntityDir returns the app-relative directory for a normal Entity bundle.
@@ -137,9 +143,19 @@ func EntityDir(entity string) string {
 	return filepath.ToSlash(filepath.Join(AppEntitiesDir, entity))
 }
 
+// EntityAccessFileName returns the canonical access filename for an Entity.
+func EntityAccessFileName(entity string) string {
+	return entity + EntityAccessFileSuffix
+}
+
+// EntityMetadataFileName returns the canonical metadata filename for an Entity.
+func EntityMetadataFileName(entity string) string {
+	return entity + EntityMetadataFileSuffix
+}
+
 // EntityMetadataPath returns the app-relative metadata path for a normal Entity.
 func EntityMetadataPath(entity string) string {
-	return filepath.ToSlash(filepath.Join(EntityDir(entity), EntityMetadataFile))
+	return filepath.ToSlash(filepath.Join(EntityDir(entity), EntityMetadataFileName(entity)))
 }
 
 // EntityFixturesPath returns the app-relative fixture path for a normal Entity.
@@ -150,11 +166,6 @@ func EntityFixturesPath(entity string) string {
 // EntityHooksPath returns the app-relative hook scaffold path for a normal Entity.
 func EntityHooksPath(entity string) string {
 	return filepath.ToSlash(filepath.Join(EntityDir(entity), EntityHooksFile))
-}
-
-// EntityPermissionsPath returns the app-relative permission metadata path for a normal Entity.
-func EntityPermissionsPath(entity string) string {
-	return filepath.ToSlash(filepath.Join(EntityDir(entity), EntityPermissionsFile))
 }
 
 // EntityViewsPath returns the app-relative view metadata path for a normal Entity.
@@ -169,7 +180,7 @@ func CollectionMetadataPath(collection string) string {
 
 // CollectionBundleMetadataPath returns the app-relative bundle-form collection metadata path.
 func CollectionBundleMetadataPath(collection string) string {
-	return filepath.ToSlash(filepath.Join(AppEntitiesDir, CollectionDir, collection, EntityMetadataFile))
+	return filepath.ToSlash(filepath.Join(AppEntitiesDir, CollectionDir, collection, EntityMetadataFileName(collection)))
 }
 
 // JobMetadataPath returns the app-relative metadata path for a job bundle.

@@ -423,7 +423,7 @@ The generated development database secret is encrypted in `+"`config/secrets/dev
 Do not commit `+"`.dygo/secrets/master.key`"+`.
 `, label, "```sh\n"+
 		"dygo secret edit\n"+
-		"dygo db migrate\n"+
+		"dygo db prepare\n"+
 		"dygo setup\n"+
 		"dygo dev\n"+
 		"```")

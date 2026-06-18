@@ -122,9 +122,9 @@ All database commands default to `development` and support `--env staging` or `-
 dygo has one normal schema input:
 
 ```txt
-apps/*/entities/*/entity.yml
+apps/*/entities/*/*.entity.yml
 apps/*/entities/_collections/*.yml
-apps/*/entities/_collections/*/entity.yml
+apps/*/entities/_collections/*/*.entity.yml
   desired table schema
 ```
 

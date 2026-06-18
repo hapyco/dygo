@@ -21,9 +21,10 @@ var templateFS embed.FS
 
 // Options controls scaffold writes.
 type Options struct {
-	Root   string
-	DryRun bool
-	Force  bool
+	Root     string
+	DryRun   bool
+	Force    bool
+	NoAccess bool
 }
 
 // Plan describes scaffold file actions.
@@ -62,17 +63,20 @@ func App(options Options, appName string) (Plan, error) {
 		return Plan{}, fmt.Errorf("app name %q is reserved for framework-managed apps", appName)
 	}
 	data := templateData{App: appName, Name: appName, Label: labelForName(appName)}
+	files := []fileSpec{
+		{Path: shape.AppManifestPath(appName), Mode: 0o644, Template: "app.yml.tmpl", Data: data},
+	}
+	if !options.NoAccess {
+		files = append(files, fileSpec{Path: shape.AppRolesPath(appName), Mode: 0o644, Template: "roles.yml.tmpl", Data: data})
+	}
+	files = append(files, fileSpec{Path: shape.AppSchedulesPath(appName), Mode: 0o644, Template: "schedules.yml.tmpl", Data: data})
 	return writeScaffold(options, []string{
 		shape.AppEntitiesPath(appName),
 		shape.AppCollectionDirPath(appName),
 		shape.AppJobsPath(appName),
 		shape.AppPagesPath(appName),
 		shape.AppReportsPath(appName),
-	}, []fileSpec{
-		{Path: shape.AppManifestPath(appName), Mode: 0o644, Template: "app.yml.tmpl", Data: data},
-		{Path: shape.AppRolesPath(appName), Mode: 0o644, Template: "roles.yml.tmpl", Data: data},
-		{Path: shape.AppSchedulesPath(appName), Mode: 0o644, Template: "schedules.yml.tmpl", Data: data},
-	})
+	}, files)
 }
 
 // Entity generates the metadata and optional companion files for one Entity.
@@ -87,6 +91,9 @@ func Entity(options Options, ref shape.AppRef, includeFixture bool, includeTest 
 	entityDir := filepath.ToSlash(filepath.Join(shape.AppDir(ref.App), shape.EntityDir(ref.Name)))
 	files := []fileSpec{
 		{Path: filepath.ToSlash(filepath.Join(shape.AppDir(ref.App), shape.EntityMetadataPath(ref.Name))), Mode: 0o644, Template: "entity.yml.tmpl", Data: data},
+	}
+	if !options.NoAccess {
+		files = append(files, accessSpec(ref))
 	}
 	if includeFixture {
 		files = append(files, fixtureSpec(ref))
@@ -121,6 +128,14 @@ func fixtureSpec(ref shape.AppRef) fileSpec {
 	return fileSpec{
 		Path: filepath.ToSlash(filepath.Join(shape.AppDir(ref.App), shape.EntityFixturesPath(ref.Name))),
 		Mode: 0o644, Template: "fixtures.yml.tmpl",
+		Data: templateData{App: ref.App, Name: ref.Name, Label: labelForName(ref.Name), Entity: ref.Name},
+	}
+}
+
+func accessSpec(ref shape.AppRef) fileSpec {
+	return fileSpec{
+		Path: shape.AppEntityAccessPath(ref.App, ref.Name),
+		Mode: 0o644, Template: "access.yml.tmpl",
 		Data: templateData{App: ref.App, Name: ref.Name, Label: labelForName(ref.Name), Entity: ref.Name},
 	}
 }

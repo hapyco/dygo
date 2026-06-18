@@ -858,7 +858,11 @@ func inspectSource(data []byte) (sourceMap, error) {
 }
 
 func entityNameFromPath(path string) (string, error) {
-	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	base := filepath.Base(path)
+	name := strings.TrimSuffix(base, filepath.Ext(base))
+	if strings.HasSuffix(base, ".entity.yml") {
+		name = strings.TrimSuffix(base, ".entity.yml")
+	}
 	if name == "entity" {
 		parent := filepath.Base(filepath.Dir(path))
 		if parent != "" && parent != "." && parent != "entities" && parent != "_collections" {

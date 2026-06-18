@@ -50,6 +50,12 @@ fields:
     type: boolean
     default: false
 
+  - name: retired
+    label: Retired
+    type: boolean
+    default: false
+    index: true
+
 constraints:
   - type: unique
     fields: [entity, role]

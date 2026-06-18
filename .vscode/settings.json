@@ -5,12 +5,12 @@
       ".dygo/apps/*/app.yml"
     ],
     "./schemas/entity.schema.json": [
-      "apps/*/entities/*/entity.yml",
+      "apps/*/entities/*/*.entity.yml",
       "apps/*/entities/_collections/*.yml",
-      "apps/*/entities/_collections/*/entity.yml",
-      ".dygo/apps/*/entities/*/entity.yml",
+      "apps/*/entities/_collections/*/*.entity.yml",
+      ".dygo/apps/*/entities/*/*.entity.yml",
       ".dygo/apps/*/entities/_collections/*.yml",
-      ".dygo/apps/*/entities/_collections/*/entity.yml"
+      ".dygo/apps/*/entities/_collections/*/*.entity.yml"
     ],
     "./schemas/fixture.schema.json": [
       "apps/*/entities/*/fixtures.yml",

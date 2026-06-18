@@ -29,7 +29,7 @@ fields:
 		{
 			name: "list",
 			args: []string{"route", "list"},
-			want: []string{"/lead normal sales/lead apps/sales/entities/lead/entity.yml", "reserved: /api"},
+			want: []string{"/lead normal sales/lead apps/sales/entities/lead/lead.entity.yml", "reserved: /api"},
 		},
 		{
 			name: "validate",
