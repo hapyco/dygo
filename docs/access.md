@@ -12,17 +12,18 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - Entity access metadata lives in `apps/<app>/access/<entity>.access.yml`.
 - Cross-app Entity access metadata lives in `apps/<contributor>/access/<target-app>/<entity>.access.yml`.
 - Use `_roles.yml`, not `roles.yml`, because it is an app-level access file inside a folder where normal files are Entity access files.
-- Use `<entity>.access.yml`, not `<entity>.policy.yml`, because the file owns the full access contract for that Entity.
+- Use `<entity>.access.yml`, not `<entity>.policy.yml`, because the file contributes access policy for that Entity.
 - Do not use `apps/<app>/permissions/` or `entities/<entity>/permissions.yml` for the target model.
 - `_roles.yml` defines roles contributed by that app, not Entity grants.
 - `_roles.yml` uses top-level `roles`.
 - `_roles.yml` role items require `name` and `label`.
 - `_roles.yml` role item `description` is optional.
-- `<entity>.access.yml` defines access for one Entity.
+- `<entity>.access.yml` contributes access policy for one Entity.
 - The first access section inside an Entity access file is singular `policy`.
 - Do not use separate `permissions` and `policies` sections in v1.
 - Keep `permission` as the Core runtime grant concept, but use `policy` as the access metadata section name.
-- A v1 policy item has `role` and `can`.
+- A v1 policy item requires `role` and `can`.
+- A v1 policy item may include `override`.
 - Do not add `description` to policy items in v1.
 - Future conditional access can add `when` to policy items instead of adding a separate `policies` section.
 - Policy items can use `override: true` for manual conflict resolution.
@@ -31,26 +32,35 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - Do not allow override chains.
 - Do not allow more than one override for the same `(entity, role)` conflict group.
 - `override` does not name another app or policy item.
-- Removing a policy item that uses `override` has no special fallback behavior.
-- `permission.retired` only tracks removed file-backed permission Records.
+- Removing a policy item that uses `override` recomputes the effective grant from the remaining policy metadata.
+- If exactly one non-override policy item remains for the same `(entity, role)`, that item becomes effective normally.
+- `permission.retired` marks permission Records ignored by the permission engine without hard-delete.
 - After removals, access validation and apply evaluate the remaining policy metadata normally.
 - Role names are global.
 - Role names are globally unique across all apps.
+- Role names must be kebab-case.
+- Role names must not contain `/`.
 - Apps can define roles, but defining a role does not scope that role to the app.
 - Access files can reference any known global role.
+- `dygo access validate` resolves known roles from loaded `_roles.yml` files.
+- `dygo access apply` resolves known roles from loaded `_roles.yml` files and existing database roles.
+- Access apply fails when a policy references a role that is not found in loaded `_roles.yml` files or existing database roles.
 - Two apps cannot define the same role name.
 - Role definitions do not record an owning app in the DB for v1.
 - `role` remains a Core Entity in the database.
 - Core `role.name` remains globally unique.
 - `role` keeps `enabled` as the human/admin switch.
 - `permission` remains a Core Entity in the database.
-- Add `retired` to `permission` for file-backed grants that disappear from access metadata.
+- Add `retired` to `permission`.
 - Do not add `enabled` to `permission` in v1.
 - The permission engine ignores retired grants.
 - Core `role` and `permission` Records are runtime storage for access metadata, not ordinary fixture authoring.
 - Runtime permission checks read database Records only.
 - Access files are authoring metadata that create or update database permission Records through `dygo access apply`.
 - Policy items define full permission grants for `(entity, role)`.
+- Access validation and apply resolve policy contributions into one effective permission grant per `(entity, role)`.
+- The database stores only the final effective permission Record for each `(entity, role)`.
+- `override` is YAML-only conflict resolution metadata.
 - Access metadata does not model negative permission rules.
 - Apps can define policy metadata for Entities owned by another app.
 - Duplicate file-authored policy metadata for the same `(entity, role)` is invalid unless exactly one policy item has `override: true`.
@@ -70,14 +80,17 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - File-to-database sync happens through `dygo access apply`.
 - Database-to-file export happens through `dygo access export`.
 - `dygo db migrate` does not apply access files.
-- `dygo db prepare` runs access apply as part of first-time environment preparation.
+- `dygo db prepare` is repeatable and runs access apply during environment preparation.
 - Access apply is idempotent.
 - Access apply creates or updates roles found in `_roles.yml`.
+- Access apply does nothing when a role disappears from `_roles.yml`.
+- Access apply does not disable or delete roles.
 - Access apply creates or updates permission Records for policy items found in access files.
-- Access apply marks previously file-backed permission Records as retired when their policy items disappear from access files.
-- Access apply un-retires and updates retired file-backed permission Records when their policy items return.
+- Access apply infers file-owned permission Records from currently loaded access files.
+- Access apply does not retire permission Records by omission in v1.
 - Access apply does not delete permission Records.
-- Access apply does not retire DB-only Studio-created permission Records in v1.
+- Access apply updates or un-retires permission Records when their policy items exist in loaded access files.
+- Access apply leaves DB-only Studio-created permission Records alone in v1.
 - `dygo access export` must receive an explicit destination app with `--in <app>`.
 - Exported roles are written to `apps/<app>/access/_roles.yml` for the selected `--in` app.
 - Role export only writes roles that are not already represented by any loaded `_roles.yml` file.
@@ -90,8 +103,10 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - Access validation and apply fail on unresolved duplicate policy metadata until the user manually adds `override: true`.
 - Access export writes patch-style updates, not full-file replacements.
 - Access export preserves unrelated roles and policy items.
-- Access export updates matching role or policy items when found.
+- Access export only edits files under the selected `--in` app's `access/` folder.
+- Access export updates matching role or policy items when found inside the selected `--in` app.
 - Access export appends missing role or policy items when needed.
+- Access export never edits another app's access files.
 - Access export does not reorder whole files in v1.
 - Do not add `dygo access import`.
 - Add `dygo access apply`.
@@ -104,14 +119,14 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - `dygo generate entity <app>/<entity> --no-access` skips the Entity access file.
 - Generated access files are minimal skeletons.
 - Entity generation does not create roles automatically.
-- Once the access loader exists, fixture validate, apply, and export should reject app-owned Core `role` and `permission` Records as fixtures.
+- Once `dygo access apply` exists, fixture validate, apply, and export should reject app-owned Core `role` and `permission` Records as fixtures.
 - Fixture validate, apply, and export should share one central fixture deny policy.
 - The fixture deny policy should live under `internal/fixtures/`, not `internal/reserved/`.
 - `internal/reserved/words.yml` stays limited to reserved naming collisions.
 - Use one deny list for fixtures in v1; do not add restricted fixture categories yet.
 - Collection Entities stay code-denied because that depends on Entity kind, not a static list.
 - `core/user`, `core/user-role`, and `core/configuration` stay fixture-allowed for now.
-- Core can keep using role and permission fixtures only as a bootstrap bridge until the access loader exists.
+- Core can keep using role and permission fixtures only as a bootstrap bridge until `dygo access apply` exists.
 - After implementation, do one docs cleanup pass for stale `roles.yml`, `permissions.yml`, `permissions/`, and `dygo permission` references.
 - Rename Entity metadata from `entities/<entity>/entity.yml` to `entities/<entity>/<entity>.entity.yml` before adding access file generators and loaders.
 - The Entity metadata rename includes shape helpers, generators, validators, JSON Schemas, metadata loading, and docs.
@@ -119,17 +134,3 @@ Current runtime still reads live Core `role`, `user-role`, and `permission` Reco
 - Track app-extendable reserved and fixture policies in Roadmap item `#261`.
 - Track broader metadata import conflict and versioning behavior in Roadmap item `#262`.
 - Row-level access is deferred beyond v1.
-
-## Drifts
-
-- `<entity>.access.yml` is described as owning the full access contract for an Entity, but cross-app access and `override` mean a file may only contribute policy for that Entity.
-- The policy item shape says v1 items have `role` and `can`, but manual `override` is also allowed. Clarify required fields versus optional fields.
-- `permission.retired` and file-backed permission behavior require a way to distinguish file-backed permission Records from Studio-created permission Records.
-- Replacement semantics conflict with the current one-row-per-`(entity, role)` permission table shape. Decide whether access apply stores policy contributions or only the final effective permission Record.
-- Removing a policy item that uses `override` says there is no special fallback behavior, but this should explicitly mean remaining policy metadata is evaluated normally; if only the original remains, it becomes effective normally.
-- Role identity rules say names are global, but the exact role name shape is not locked. Decide kebab-case/global slug rules and whether `/` is forbidden in role names.
-- Access files can reference any known global role, but "known" is not defined. Decide whether roles must resolve from loaded `_roles.yml`, existing database roles, or both.
-- `dygo db prepare` is described as first-time environment preparation in one place, but the target behavior is repeatable environment preparation.
-- Access export updates matching role or policy items, but should clarify that it only edits files inside the selected `--in` app.
-- Access apply creates or updates roles, but role removal behavior is not explicit. Since roles have no `retired`, decide whether removing a role from `_roles.yml` does nothing, disables it, or fails while referenced.
-- "Access loader" wording remains in fixture/bootstrap notes, but the current command language is `dygo access apply`.
