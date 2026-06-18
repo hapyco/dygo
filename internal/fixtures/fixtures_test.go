@@ -123,6 +123,30 @@ records:
 	}
 }
 
+func TestValidateFilesRejectsDeniedFixtureEntities(t *testing.T) {
+	files := []LoadedFile{{
+		AppName: "core",
+		Path:    "apps/core/entities/role/fixtures.yml",
+		Fixture: Fixture{
+			Entity:  "role",
+			Match:   []string{"name"},
+			Records: []Record{{Values: map[string]Value{}}},
+		},
+	}}
+	entities := []catalog.LoadedEntity{{
+		AppName: "core",
+		Entity: schema.Entity{Name: "role"},
+	}}
+
+	err := ValidateFiles(files, entities)
+	if err == nil {
+		t.Fatal("ValidateFiles() error = nil, want denied fixture entity error")
+	}
+	if !strings.Contains(err.Error(), "fixtures are not allowed for core/role") {
+		t.Fatalf("ValidateFiles() error = %q, want denied fixture entity", err.Error())
+	}
+}
+
 func TestRunnerPlanValidatesFixtureMatchAgainstEntityMetadata(t *testing.T) {
 	root := t.TempDir()
 	writeFixtureApp(t, root, "sales")
@@ -807,7 +831,7 @@ func loadedFixture(t *testing.T, name string, body string) LoadedFile {
 	if err != nil {
 		t.Fatalf("Decode(%s) error = %v", name, err)
 	}
-	return LoadedFile{AppName: "core", AppDir: "/tmp/core", Path: name, Fixture: fixture}
+	return LoadedFile{AppName: "sales", AppDir: "/tmp/sales", Path: name, Fixture: fixture}
 }
 
 func writeFixtureApp(t *testing.T, root string, appName string) {

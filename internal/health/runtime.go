@@ -35,7 +35,7 @@ func CheckCoreFixtures(ctx context.Context, queryer Queryer) CheckResult {
 		return CheckResult{Name: "core access", Detail: fmt.Sprintf("check required roles: %v; run dygo db migrate", err)}
 	}
 	var permissionCount int
-	if err := queryer.QueryRow(ctx, `SELECT COUNT(*) FROM "permission"`).Scan(&permissionCount); err != nil {
+	if err := queryer.QueryRow(ctx, `SELECT COUNT(*) FROM "permission" WHERE COALESCE(retired, false) = false`).Scan(&permissionCount); err != nil {
 		return CheckResult{Name: "core access", Detail: fmt.Sprintf("check permissions: %v; run dygo db migrate", err)}
 	}
 

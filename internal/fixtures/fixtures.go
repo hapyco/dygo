@@ -76,8 +76,8 @@ type fixtureEntityIndex struct {
 }
 
 var deniedFixtureEntities = map[string]string{
-	"core/role":       "Role authoring belongs in access/_roles.yml.",
-	"core/permission": "Permission grants belong in access/<entity>.access.yml.",
+	catalog.EntityKey("core", "role"):       "Role authoring belongs in access/_roles.yml.",
+	catalog.EntityKey("core", "permission"): "Permission grants belong in access/<entity>.access.yml.",
 }
 
 // Fixture is one per-Entity fixture document.
