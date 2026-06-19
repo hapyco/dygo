@@ -12,6 +12,8 @@ Studio needs one shared dialog surface for framework flows, metadata-driven acti
 - Treat `popup` as an informal word, not an API name.
 - Dialogs are part of Studio shell, not individual pages.
 - Studio exposes one dialog API that pages, stores, and framework flows can call.
+- Use `useDialog()` as the frontend API name.
+- `useDialog()` exposes `open`, `alert`, `confirm`, and `choose`.
 - The first API should cover alert, confirm, and choice dialogs.
 - The API returns the selected action instead of mutating caller state directly.
 - Dialog actions are explicit objects with `key`, `label`, and optional `variant`.
@@ -32,6 +34,13 @@ Studio needs one shared dialog surface for framework flows, metadata-driven acti
 - `content` is plain text in v1.
 - Do not allow raw HTML content in v1.
 - Do not add app-defined custom dialog components in v1.
+- Non-blocking messages use a separate toast API.
+- Dialogs stay blocking.
+- Toasts are tracked separately in Roadmap item `#263`.
+- Do not model form-like dialogs in v1.
+- Form-like dialogs belong to future action or workflow forms.
+- Do not add dialog analytics or audit logging in v1.
+- Audit the operation, not the dialog.
 - Studio keeps a dialog stack.
 - New dialogs are pushed on top of the stack.
 - Only the top dialog is interactive.
@@ -90,10 +99,3 @@ type StudioConfirmationRequired = {
   dialog: StudioDialogRequest
 }
 ```
-
-## Pending
-
-- Decide exact frontend API name.
-- Decide whether non-blocking notifications need a separate `toast` API.
-- Decide how form-like dialogs should be modeled later.
-- Decide how dialog analytics or audit logging should work for sensitive actions.
