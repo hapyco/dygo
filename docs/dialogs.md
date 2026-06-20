@@ -28,9 +28,15 @@ Studio needs one shared dialog surface for framework flows, metadata-driven acti
 - Dialog requests require `title`.
 - Dialog requests may include `content`, `type`, `actions`, and `dismissible`.
 - Dialog requests always have props; v1 props are `title`, `content`, `type`, `actions`, `dismissible`, and `source`.
+- `type` defaults to `neutral`.
+- `dismissible` defaults to `true`.
+- `actions` defaults to one `ok` primary action when no actions are supplied.
 - `dismissible` controls whether the user can close the dialog without choosing an action.
 - Non-dismissible dialogs must include at least one action.
 - Dialogs may include multiple actions.
+- Action keys must be non-empty.
+- Action labels must be non-empty.
+- Action keys must be unique inside one dialog.
 - `content` is plain text in v1.
 - Do not allow raw HTML content in v1.
 - Do not add app-defined custom dialog components in v1.
@@ -46,7 +52,9 @@ Studio needs one shared dialog surface for framework flows, metadata-driven acti
 - Only the top dialog is interactive.
 - Closing the top dialog reveals the previous dialog.
 - Dialog calls resolve only when their own dialog closes.
+- `useDialog()` resolves to the selected action key, or `null` when a dismissible dialog is dismissed.
 - Escape only affects the top dismissible dialog.
+- Backdrop click does not dismiss dialogs in v1.
 - Server-driven dialogs use the same stack as client-created dialogs.
 - Do not auto-dedupe dialogs in v1.
 - Dialogs must trap focus, support Escape when dismissible, and restore focus after close.
@@ -54,6 +62,9 @@ Studio needs one shared dialog surface for framework flows, metadata-driven acti
 - Access gate failures can use the shared dialog API for "Access denied", "Session expired", and "Missing setup" states.
 - Server responses may include a dialog intent.
 - Server errors may include a dialog intent.
+- Success responses put `dialog` beside `data`.
+- Error responses put `dialog` inside the existing `error` envelope.
+- Confirmation tokens live in `error.details.confirmationToken`.
 - The server returns dialog data; Studio decides how to render it.
 - Server dialog intents cannot include raw HTML.
 - Server dialog intents cannot include JavaScript callbacks.
@@ -82,20 +93,57 @@ type StudioDialogRequest = {
   source?: "client" | "server"
 }
 
+type StudioDialogResult = string | null
+
 type StudioAPIResponse<T> = {
   data?: T
   dialog?: StudioDialogRequest
 }
 
-type StudioAPIError = {
+type StudioAPIErrorBody = {
   code: string
   message: string
+  details?: Record<string, unknown>
   dialog?: StudioDialogRequest
 }
 
-type StudioConfirmationRequired = {
-  code: "confirmation_required"
-  confirmationToken: string
-  dialog: StudioDialogRequest
+type StudioAPIErrorEnvelope = {
+  error: StudioAPIErrorBody
+}
+```
+
+## SDK Shape
+
+```go
+type DialogType string
+
+const (
+	DialogNeutral DialogType = "neutral"
+	DialogInfo    DialogType = "info"
+	DialogSuccess DialogType = "success"
+	DialogWarning DialogType = "warning"
+	DialogDanger  DialogType = "danger"
+)
+
+type DialogActionVariant string
+
+const (
+	DialogActionPrimary   DialogActionVariant = "primary"
+	DialogActionSecondary DialogActionVariant = "secondary"
+	DialogActionDanger    DialogActionVariant = "danger"
+)
+
+type DialogAction struct {
+	Key     string              `json:"key"`
+	Label   string              `json:"label"`
+	Variant DialogActionVariant `json:"variant,omitempty"`
+}
+
+type Dialog struct {
+	Title       string         `json:"title"`
+	Content     string         `json:"content,omitempty"`
+	Type        DialogType     `json:"type,omitempty"`
+	Actions     []DialogAction `json:"actions,omitempty"`
+	Dismissible *bool          `json:"dismissible,omitempty"`
 }
 ```
