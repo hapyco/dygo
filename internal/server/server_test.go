@@ -1200,6 +1200,9 @@ func TestRecordRoutesDenyForbiddenBeforeStore(t *testing.T) {
 	if !contains(string(body), `"code":"forbidden"`) {
 		t.Fatalf("permission denied body = %s, want forbidden", string(body))
 	}
+	if !contains(string(body), `"dialog":{"title":"Access denied","content":"You do not have permission to access this resource.","type":"warning"}`) {
+		t.Fatalf("permission denied body = %s, want access denied dialog", string(body))
+	}
 	if len(store.calls) != 0 {
 		t.Fatalf("record store calls = %v, want none", store.calls)
 	}

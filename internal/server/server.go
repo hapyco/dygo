@@ -1116,19 +1116,30 @@ func writePermissionError(w http.ResponseWriter, err error) {
 	code := permissionErr.Code
 	message := permissionErr.Message
 	details := permissionErr.Details
+	var dialog *dygo.Dialog
 	switch permissionErr.Code {
 	case permissions.ErrorInvalidRequest:
 		status = http.StatusBadRequest
 	case permissions.ErrorDenied:
 		status = http.StatusForbidden
 		code = "forbidden"
+		dialog = &dygo.Dialog{
+			Title:   "Access denied",
+			Content: "You do not have permission to access this resource.",
+			Type:    dygo.DialogWarning,
+		}
 	case permissions.ErrorInternal:
 		status = http.StatusInternalServerError
 		code = "internal_error"
 		message = "permission check failed"
 		details = nil
 	}
-	writeErrorEnvelope(w, status, code, message, details)
+	writeJSON(w, status, errorEnvelope{Error: apiError{
+		Code:    code,
+		Message: message,
+		Details: details,
+		Dialog:  dialog,
+	}})
 }
 
 func writeRecordError(w http.ResponseWriter, err error) {
