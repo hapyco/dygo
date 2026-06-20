@@ -92,7 +92,7 @@ Source: local staging list for `hapyco/dygo`, last updated on 2026-05-31.
 - [ ] #192 Support filtered Link field records
 - [ ] #202 Add saved filters for Studio record lists
 - [ ] #246 Add Studio DOM freeze support
-- [ ] #247 Add Studio dialog and popup API
+- [x] #247 Add Studio dialog and popup API
 - [ ] #263 Add Studio notification and toast API
 - [ ] #248 Design notification logic for system and external events
 - [ ] #249 Add test mode for trying changes before switching live

@@ -3,9 +3,7 @@ import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
 import { onKeyStroke } from '@vueuse/core'
-import * as LucideIcons from '@lucide/vue'
 import {
-  Box,
   Clock,
   Command,
   FilePlus2,
@@ -17,6 +15,7 @@ import {
 
 import { queryClient } from '@/app/query'
 import { reloadStudioApp } from '@/app/reload'
+import { iconForEntity } from '@/features/metadata/entity-icons'
 import type { MetadataEntity } from '@/features/metadata/metadata.api'
 import { useMetadataEntitiesQuery } from '@/features/metadata/metadata.query'
 import { routeParam, RouteName } from '@/router/routes'
@@ -51,7 +50,6 @@ const searchInput = ref<HTMLInputElement | null>(null)
 const query = ref('')
 const activeItemId = ref('')
 const runningAppAction = ref(false)
-const lucideIconRegistry = LucideIcons as unknown as Record<string, Component | undefined>
 const metadataEntitiesQuery = useMetadataEntitiesQuery({
   enabled: computed(() => Boolean(authStore.currentUser)),
 })
@@ -369,23 +367,6 @@ function normalizeHome(value: unknown): string {
 
 function entityLabel(entity: MetadataEntity): string {
   return entity.label || humanizeEntity(entity.slug ?? entity.key)
-}
-
-function iconForEntity(icon?: string): Component {
-  const key = icon?.trim()
-  if (!key) {
-    return Box
-  }
-
-  return lucideIconRegistry[key] ?? lucideIconRegistry[toPascalIconName(key)] ?? Box
-}
-
-function toPascalIconName(value: string): string {
-  return value
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('')
 }
 
 function humanizeEntity(value: string): string {
