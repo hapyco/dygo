@@ -1,7 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { ApiClientError, apiRequest, type ApiErrorEnvelope, type DataEnvelope } from './client.ts'
+import {
+  ApiClientError,
+  apiRequest,
+  setAPIDialogHandler,
+  type ApiErrorEnvelope,
+  type DataEnvelope,
+} from './client.ts'
 
 class TestApiError extends ApiClientError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
@@ -27,6 +33,47 @@ test('apiRequest applies credentials and returns successful envelopes', async (t
   assert.equal(observedCredentials, 'include')
 })
 
+test('apiRequest emits successful response dialogs', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    setAPIDialogHandler(null)
+  })
+
+  let observedTitle = ''
+  setAPIDialogHandler((dialog) => {
+    observedTitle = dialog.title
+  })
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    data: { ok: true },
+    dialog: { title: 'Saved' },
+  }), { status: 200 })) as typeof fetch
+
+  await apiRequest<DataEnvelope<{ ok: boolean }>, TestApiError>('/api/test', { method: 'GET' }, requestOptions())
+
+  assert.equal(observedTitle, 'Saved')
+})
+
+test('apiRequest ignores dialog handler failures on successful responses', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    setAPIDialogHandler(null)
+  })
+
+  setAPIDialogHandler(() => {
+    throw new Error('dialog failed')
+  })
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    data: { ok: true },
+    dialog: { title: 'Saved' },
+  }), { status: 200 })) as typeof fetch
+
+  const payload = await apiRequest<DataEnvelope<{ ok: boolean }>, TestApiError>('/api/test', { method: 'GET' }, requestOptions())
+
+  assert.deepEqual(payload.data, { ok: true })
+})
+
 test('apiRequest maps error envelopes through the domain error class', async (t) => {
   const originalFetch = globalThis.fetch
   t.after(() => {
@@ -47,6 +94,61 @@ test('apiRequest maps error envelopes through the domain error class', async (t)
       assert.equal(error instanceof TestApiError, true)
       assert.equal((error as TestApiError).code, 'forbidden')
       assert.deepEqual((error as TestApiError).details, { entity: 'user' })
+      assert.equal((error as Error).message, 'mapped: permission denied')
+      return true
+    },
+  )
+})
+
+test('apiRequest emits error response dialogs before throwing', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    setAPIDialogHandler(null)
+  })
+
+  let observedTitle = ''
+  setAPIDialogHandler((dialog) => {
+    observedTitle = dialog.title
+  })
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    error: {
+      code: 'forbidden',
+      message: 'permission denied',
+      dialog: { title: 'Access denied' },
+    },
+  }), { status: 403 })) as typeof fetch
+
+  await assert.rejects(
+    apiRequest<DataEnvelope<unknown>, TestApiError>('/api/test', { method: 'GET' }, requestOptions()),
+    TestApiError,
+  )
+  assert.equal(observedTitle, 'Access denied')
+})
+
+test('apiRequest preserves mapped errors when dialog handler fails', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    setAPIDialogHandler(null)
+  })
+
+  setAPIDialogHandler(() => {
+    throw new Error('dialog failed')
+  })
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    error: {
+      code: 'forbidden',
+      message: 'permission denied',
+      dialog: { title: 'Access denied' },
+    },
+  }), { status: 403 })) as typeof fetch
+
+  await assert.rejects(
+    apiRequest<DataEnvelope<unknown>, TestApiError>('/api/test', { method: 'GET' }, requestOptions()),
+    (error) => {
+      assert.equal(error instanceof TestApiError, true)
+      assert.equal((error as TestApiError).code, 'forbidden')
       assert.equal((error as Error).message, 'mapped: permission denied')
       return true
     },

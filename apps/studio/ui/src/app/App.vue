@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, watch, type Component } from 'vue'
+import { computed, onUnmounted, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
-import * as LucideIcons from '@lucide/vue'
 
+import DialogHost from '@/features/dialogs/DialogHost.vue'
+import { useDialog } from '@/features/dialogs/use-dialog'
+import { setAPIDialogHandler } from '@/features/api/client'
+import { iconForEntity } from '@/features/metadata/entity-icons'
 import { routeParam, RouteName } from '@/router/routes'
 import { useMetadataEntitiesQuery } from '@/features/metadata/metadata.query'
 import Shell from '@/shell/Shell.vue'
@@ -14,6 +17,14 @@ import { storeError } from '@/stores/status'
 const route = useRoute()
 const authStore = useAuthStore()
 const navigationStore = useNavigationStore()
+const dialog = useDialog()
+
+setAPIDialogHandler((request) => {
+  void dialog.open(request)
+})
+onUnmounted(() => {
+  setAPIDialogHandler(null)
+})
 
 const usesShell = computed(() => !route.meta.public)
 const publicRouteViewKey = computed(() => `${route.fullPath}:${navigationStore.routeReloadVersion}`)
@@ -36,9 +47,6 @@ const metadataEntitiesError = computed(() => (
     ? storeError(metadataEntitiesQuery.error.value, 'Studio could not load entities.')
     : null
 ))
-
-const lucideIconRegistry = LucideIcons as unknown as Record<string, Component | undefined>
-const fallbackEntityIcon = LucideIcons.Box as Component
 
 const navItems = computed<ShellNavItem[]>(() => {
   return metadataEntities.value
@@ -84,23 +92,6 @@ function isEntityRoute(entity: string): boolean {
   return currentEntity.value === entity
 }
 
-function iconForEntity(icon?: string): Component {
-  const key = icon?.trim()
-  if (!key) {
-    return fallbackEntityIcon
-  }
-
-  return lucideIconRegistry[key] ?? lucideIconRegistry[toPascalIconName(key)] ?? fallbackEntityIcon
-}
-
-function toPascalIconName(value: string): string {
-  return value
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('')
-}
-
 function humanizeEntity(value: string): string {
   return value
     .replace(/[-_]+/g, ' ')
@@ -125,6 +116,7 @@ function humanizeEntity(value: string): string {
 
     <RouterView :key="shellRouteViewKey" />
   </Shell>
+  <DialogHost />
 </template>
 
 <style scoped>
