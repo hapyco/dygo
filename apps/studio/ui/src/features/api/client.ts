@@ -77,7 +77,11 @@ export async function apiRequest<TEnvelope, TError extends ApiClientError>(
 
 function emitAPIDialog(dialog: StudioDialogRequest | undefined) {
   if (dialog) {
-    apiDialogHandler?.({ ...dialog, source: 'server' })
+    try {
+      apiDialogHandler?.({ ...dialog, source: 'server' })
+    } catch {
+      // Dialog rendering is best-effort; it must not change API request semantics.
+    }
   }
 }
 
