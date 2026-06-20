@@ -20,6 +20,7 @@ import (
 	"github.com/hapyco/dygo/internal/permissions"
 	"github.com/hapyco/dygo/internal/recordquery"
 	"github.com/hapyco/dygo/internal/reserved"
+	"github.com/hapyco/dygo/pkg/dygo"
 )
 
 const shutdownTimeout = 5 * time.Second
@@ -425,7 +426,8 @@ func writeAuthError(w http.ResponseWriter, err error) {
 }
 
 type dataEnvelope struct {
-	Data any `json:"data"`
+	Data   any          `json:"data"`
+	Dialog *dygo.Dialog `json:"dialog,omitempty"`
 }
 
 type bootDefaults struct {
@@ -507,8 +509,9 @@ func normalizeBootHome(value any) string {
 }
 
 type listEnvelope struct {
-	Data any `json:"data"`
-	Meta any `json:"meta"`
+	Data   any          `json:"data"`
+	Meta   any          `json:"meta"`
+	Dialog *dygo.Dialog `json:"dialog,omitempty"`
 }
 
 type recordListMeta struct {
@@ -526,6 +529,7 @@ type apiError struct {
 	Code    string         `json:"code"`
 	Message string         `json:"message"`
 	Details map[string]any `json:"details,omitempty"`
+	Dialog  *dygo.Dialog   `json:"dialog,omitempty"`
 }
 
 func writeErrorEnvelope(w http.ResponseWriter, status int, code string, message string, details map[string]any) {

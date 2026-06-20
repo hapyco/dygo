@@ -1,7 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { ApiClientError, apiRequest, type ApiErrorEnvelope, type DataEnvelope } from './client.ts'
+import {
+  ApiClientError,
+  apiRequest,
+  setAPIDialogHandler,
+  type ApiErrorEnvelope,
+  type DataEnvelope,
+} from './client.ts'
 
 class TestApiError extends ApiClientError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
@@ -25,6 +31,27 @@ test('apiRequest applies credentials and returns successful envelopes', async (t
 
   assert.deepEqual(payload.data, { ok: true })
   assert.equal(observedCredentials, 'include')
+})
+
+test('apiRequest emits successful response dialogs', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    setAPIDialogHandler(null)
+  })
+
+  let observedTitle = ''
+  setAPIDialogHandler((dialog) => {
+    observedTitle = dialog.title
+  })
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    data: { ok: true },
+    dialog: { title: 'Saved' },
+  }), { status: 200 })) as typeof fetch
+
+  await apiRequest<DataEnvelope<{ ok: boolean }>, TestApiError>('/api/test', { method: 'GET' }, requestOptions())
+
+  assert.equal(observedTitle, 'Saved')
 })
 
 test('apiRequest maps error envelopes through the domain error class', async (t) => {
@@ -51,6 +78,32 @@ test('apiRequest maps error envelopes through the domain error class', async (t)
       return true
     },
   )
+})
+
+test('apiRequest emits error response dialogs before throwing', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    setAPIDialogHandler(null)
+  })
+
+  let observedTitle = ''
+  setAPIDialogHandler((dialog) => {
+    observedTitle = dialog.title
+  })
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    error: {
+      code: 'forbidden',
+      message: 'permission denied',
+      dialog: { title: 'Access denied' },
+    },
+  }), { status: 403 })) as typeof fetch
+
+  await assert.rejects(
+    apiRequest<DataEnvelope<unknown>, TestApiError>('/api/test', { method: 'GET' }, requestOptions()),
+    TestApiError,
+  )
+  assert.equal(observedTitle, 'Access denied')
 })
 
 test('apiRequest reports invalid JSON with the domain error class', async (t) => {

@@ -30,7 +30,7 @@ Studio needs one shared dialog surface for framework flows, metadata-driven acti
 - Dialog requests always have props; v1 props are `title`, `content`, `type`, `actions`, `dismissible`, and `source`.
 - `type` defaults to `neutral`.
 - `dismissible` defaults to `true`.
-- `actions` defaults to one `ok` primary action when no actions are supplied.
+- Dismissible dialogs default to one `ok` primary action when no actions are supplied.
 - `dismissible` controls whether the user can close the dialog without choosing an action.
 - Non-dismissible dialogs must include at least one action.
 - Dialogs may include multiple actions.

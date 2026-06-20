@@ -4,7 +4,7 @@ import type { ControlSize } from '../types'
 withDefaults(
   defineProps<{
     type?: 'button' | 'submit' | 'reset'
-    variant?: 'primary' | 'secondary' | 'ghost'
+    variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
     size?: ControlSize
     loading?: boolean
     disabled?: boolean
@@ -103,6 +103,15 @@ withDefaults(
 .d-button--ghost:hover:not(:disabled) {
   background: var(--studio-surface-raised);
   color: var(--studio-text);
+}
+
+.d-button--danger {
+  background: var(--studio-danger);
+  color: oklch(0.99 0.004 246);
+}
+
+.d-button--danger:hover:not(:disabled) {
+  background: oklch(48% 0.16 28);
 }
 
 .d-button__spinner {

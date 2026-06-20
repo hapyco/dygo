@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { Plus, RotateCcw, Save, Trash2 } from '@lucide/vue'
 
 import { ErrorState, Spinner } from '@/design'
+import { useDialog } from '@/features/dialogs/use-dialog'
 import type { MetadataEntityMeta, MetadataField } from '@/features/metadata/metadata.api'
 import { useMetadataEntityMetaQuery } from '@/features/metadata/metadata.query'
 import {
@@ -35,6 +36,7 @@ type ConvertedValue = {
 }
 
 const router = useRouter()
+const dialog = useDialog()
 const entityMetaQuery = useMetadataEntityMetaQuery(() => props.entity)
 
 const draft = ref<RecordData>({})
@@ -327,7 +329,16 @@ async function deleteRecord() {
   }
 
   const recordLabel = props.recordName || entityLabel.value
-  if (!window.confirm(`Delete ${recordLabel}? This cannot be undone.`)) {
+  const action = await dialog.confirm({
+    title: `Delete ${recordLabel}?`,
+    content: 'This cannot be undone.',
+    type: 'danger',
+    actions: [
+      { key: 'cancel', label: 'Cancel', variant: 'secondary' },
+      { key: 'confirm', label: 'Delete', variant: 'danger' },
+    ],
+  })
+  if (action !== 'confirm') {
     return
   }
 

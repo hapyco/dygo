@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, watch, type Component } from 'vue'
+import { computed, onUnmounted, watch, type Component } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import * as LucideIcons from '@lucide/vue'
 
+import DialogHost from '@/features/dialogs/DialogHost.vue'
+import { useDialog } from '@/features/dialogs/use-dialog'
+import { setAPIDialogHandler } from '@/features/api/client'
 import { routeParam, RouteName } from '@/router/routes'
 import { useMetadataEntitiesQuery } from '@/features/metadata/metadata.query'
 import Shell from '@/shell/Shell.vue'
@@ -14,6 +17,14 @@ import { storeError } from '@/stores/status'
 const route = useRoute()
 const authStore = useAuthStore()
 const navigationStore = useNavigationStore()
+const dialog = useDialog()
+
+setAPIDialogHandler((request) => {
+  void dialog.open(request)
+})
+onUnmounted(() => {
+  setAPIDialogHandler(null)
+})
 
 const usesShell = computed(() => !route.meta.public)
 const publicRouteViewKey = computed(() => `${route.fullPath}:${navigationStore.routeReloadVersion}`)
@@ -125,6 +136,7 @@ function humanizeEntity(value: string): string {
 
     <RouterView :key="shellRouteViewKey" />
   </Shell>
+  <DialogHost />
 </template>
 
 <style scoped>
