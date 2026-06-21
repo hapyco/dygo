@@ -4,7 +4,9 @@ import { RouterView, useRoute } from 'vue-router'
 
 import DialogHost from '@/features/dialogs/DialogHost.vue'
 import { useDialog } from '@/features/dialogs/use-dialog'
-import { setAPIDialogHandler } from '@/features/api/client'
+import ToastHost from '@/features/toasts/ToastHost.vue'
+import { useToast } from '@/features/toasts/use-toast'
+import { setAPIDialogHandler, setAPIToastHandler } from '@/features/api/client'
 import { iconForEntity } from '@/features/metadata/entity-icons'
 import { routeParam, RouteName } from '@/router/routes'
 import { useMetadataEntitiesQuery } from '@/features/metadata/metadata.query'
@@ -18,12 +20,17 @@ const route = useRoute()
 const authStore = useAuthStore()
 const navigationStore = useNavigationStore()
 const dialog = useDialog()
+const toast = useToast()
 
 setAPIDialogHandler((request) => {
   void dialog.open(request)
 })
+setAPIToastHandler((request) => {
+  toast.show(request)
+})
 onUnmounted(() => {
   setAPIDialogHandler(null)
+  setAPIToastHandler(null)
 })
 
 const usesShell = computed(() => !route.meta.public)
@@ -117,6 +124,7 @@ function humanizeEntity(value: string): string {
     <RouterView :key="shellRouteViewKey" />
   </Shell>
   <DialogHost />
+  <ToastHost />
 </template>
 
 <style scoped>

@@ -1,11 +1,18 @@
 import type { StudioDialogRequest } from '../dialogs/dialogs.store'
+import type { StudioToastRequest } from '../toasts/toasts.store'
 
 export type APIDialogHandler = (dialog: StudioDialogRequest) => void
+export type APIToastHandler = (toast: StudioToastRequest) => void
 
 let apiDialogHandler: APIDialogHandler | null = null
+let apiToastHandler: APIToastHandler | null = null
 
 export function setAPIDialogHandler(handler: APIDialogHandler | null) {
   apiDialogHandler = handler
+}
+
+export function setAPIToastHandler(handler: APIToastHandler | null) {
+  apiToastHandler = handler
 }
 
 export type ApiErrorBody = {
@@ -13,6 +20,7 @@ export type ApiErrorBody = {
   message?: string
   details?: Record<string, unknown>
   dialog?: StudioDialogRequest
+  toast?: StudioToastRequest
 }
 
 export type ApiErrorEnvelope = {
@@ -22,12 +30,14 @@ export type ApiErrorEnvelope = {
 export type DataEnvelope<T> = {
   data: T
   dialog?: StudioDialogRequest
+  toast?: StudioToastRequest
 }
 
 export type ListEnvelope<T, M = unknown> = {
   data: T
   meta: M
   dialog?: StudioDialogRequest
+  toast?: StudioToastRequest
 }
 
 export class ApiClientError extends Error {
@@ -68,10 +78,13 @@ export async function apiRequest<TEnvelope, TError extends ApiClientError>(
 
   if (!response.ok) {
     emitAPIDialog(payload.error?.dialog)
+    emitAPIToast(payload.error?.toast)
     throw new options.error(payload.error?.code ?? options.fallbackCode, options.message(payload), payload.error?.details)
   }
 
-  emitAPIDialog((payload as TEnvelope & { dialog?: StudioDialogRequest }).dialog)
+  const successPayload = payload as TEnvelope & { dialog?: StudioDialogRequest, toast?: StudioToastRequest }
+  emitAPIDialog(successPayload.dialog)
+  emitAPIToast(successPayload.toast)
   return payload
 }
 
@@ -81,6 +94,16 @@ function emitAPIDialog(dialog: StudioDialogRequest | undefined) {
       apiDialogHandler?.({ ...dialog, source: 'server' })
     } catch {
       // Dialog rendering is best-effort; it must not change API request semantics.
+    }
+  }
+}
+
+function emitAPIToast(toast: StudioToastRequest | undefined) {
+  if (toast) {
+    try {
+      apiToastHandler?.(toast)
+    } catch {
+      // Toast rendering is best-effort; it must not change API request semantics.
     }
   }
 }

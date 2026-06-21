@@ -5,6 +5,7 @@ import {
   ApiClientError,
   apiRequest,
   setAPIDialogHandler,
+  setAPIToastHandler,
   type ApiErrorEnvelope,
   type DataEnvelope,
 } from './client.ts'
@@ -54,6 +55,27 @@ test('apiRequest emits successful response dialogs', async (t) => {
   assert.equal(observedTitle, 'Saved')
 })
 
+test('apiRequest emits successful response toasts', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    setAPIToastHandler(null)
+  })
+
+  let observedTitle = ''
+  setAPIToastHandler((toast) => {
+    observedTitle = toast.title
+  })
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    data: { ok: true },
+    toast: { title: 'Saved' },
+  }), { status: 200 })) as typeof fetch
+
+  await apiRequest<DataEnvelope<{ ok: boolean }>, TestApiError>('/api/test', { method: 'GET' }, requestOptions())
+
+  assert.equal(observedTitle, 'Saved')
+})
+
 test('apiRequest ignores dialog handler failures on successful responses', async (t) => {
   const originalFetch = globalThis.fetch
   t.after(() => {
@@ -67,6 +89,26 @@ test('apiRequest ignores dialog handler failures on successful responses', async
   globalThis.fetch = (async () => new Response(JSON.stringify({
     data: { ok: true },
     dialog: { title: 'Saved' },
+  }), { status: 200 })) as typeof fetch
+
+  const payload = await apiRequest<DataEnvelope<{ ok: boolean }>, TestApiError>('/api/test', { method: 'GET' }, requestOptions())
+
+  assert.deepEqual(payload.data, { ok: true })
+})
+
+test('apiRequest ignores toast handler failures on successful responses', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    setAPIToastHandler(null)
+  })
+
+  setAPIToastHandler(() => {
+    throw new Error('toast failed')
+  })
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    data: { ok: true },
+    toast: { title: 'Saved' },
   }), { status: 200 })) as typeof fetch
 
   const payload = await apiRequest<DataEnvelope<{ ok: boolean }>, TestApiError>('/api/test', { method: 'GET' }, requestOptions())
@@ -126,6 +168,32 @@ test('apiRequest emits error response dialogs before throwing', async (t) => {
   assert.equal(observedTitle, 'Access denied')
 })
 
+test('apiRequest emits error response toasts before throwing', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    setAPIToastHandler(null)
+  })
+
+  let observedTitle = ''
+  setAPIToastHandler((toast) => {
+    observedTitle = toast.title
+  })
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    error: {
+      code: 'forbidden',
+      message: 'permission denied',
+      toast: { title: 'Access denied' },
+    },
+  }), { status: 403 })) as typeof fetch
+
+  await assert.rejects(
+    apiRequest<DataEnvelope<unknown>, TestApiError>('/api/test', { method: 'GET' }, requestOptions()),
+    TestApiError,
+  )
+  assert.equal(observedTitle, 'Access denied')
+})
+
 test('apiRequest preserves mapped errors when dialog handler fails', async (t) => {
   const originalFetch = globalThis.fetch
   t.after(() => {
@@ -141,6 +209,35 @@ test('apiRequest preserves mapped errors when dialog handler fails', async (t) =
       code: 'forbidden',
       message: 'permission denied',
       dialog: { title: 'Access denied' },
+    },
+  }), { status: 403 })) as typeof fetch
+
+  await assert.rejects(
+    apiRequest<DataEnvelope<unknown>, TestApiError>('/api/test', { method: 'GET' }, requestOptions()),
+    (error) => {
+      assert.equal(error instanceof TestApiError, true)
+      assert.equal((error as TestApiError).code, 'forbidden')
+      assert.equal((error as Error).message, 'mapped: permission denied')
+      return true
+    },
+  )
+})
+
+test('apiRequest preserves mapped errors when toast handler fails', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    setAPIToastHandler(null)
+  })
+
+  setAPIToastHandler(() => {
+    throw new Error('toast failed')
+  })
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    error: {
+      code: 'forbidden',
+      message: 'permission denied',
+      toast: { title: 'Access denied' },
     },
   }), { status: 403 })) as typeof fetch
 

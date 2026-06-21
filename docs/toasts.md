@@ -82,6 +82,6 @@ type Toast struct {
 	Title    string    `json:"title"`
 	Content  string    `json:"content,omitempty"`
 	Type     ToastType `json:"type,omitempty"`
-	Duration int       `json:"duration,omitempty"`
+	Duration *int      `json:"duration,omitempty"`
 }
 ```
