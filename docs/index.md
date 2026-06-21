@@ -44,6 +44,7 @@ Use this index to find the right document for the task. The docs are kept in the
 
 - [Studio](studio.md) explains the first-party global UI app, route model, and design responsibilities.
 - [Dialogs](dialogs.md) records the proposed shared Studio dialog API.
+- [Toasts](toasts.md) records the proposed shared Studio toast API.
 
 ## Maintainers
 

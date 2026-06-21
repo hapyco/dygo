@@ -35,3 +35,21 @@ type Dialog struct {
 	Actions     []DialogAction `json:"actions,omitempty"`
 	Dismissible *bool          `json:"dismissible,omitempty"`
 }
+
+// ToastType controls the visual intent of a Studio toast.
+type ToastType string
+
+const (
+	ToastInfo    ToastType = "info"
+	ToastSuccess ToastType = "success"
+	ToastWarning ToastType = "warning"
+	ToastDanger  ToastType = "danger"
+)
+
+// Toast is a server-provided Studio toast intent.
+type Toast struct {
+	Title    string    `json:"title"`
+	Content  string    `json:"content,omitempty"`
+	Type     ToastType `json:"type,omitempty"`
+	Duration *int      `json:"duration,omitempty"`
+}

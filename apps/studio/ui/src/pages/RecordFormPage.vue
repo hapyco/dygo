@@ -5,6 +5,7 @@ import { Plus, RotateCcw, Save, Trash2 } from '@lucide/vue'
 
 import { ErrorState, Spinner } from '@/design'
 import { useDialog } from '@/features/dialogs/use-dialog'
+import { useToast } from '@/features/toasts/use-toast'
 import type { MetadataEntityMeta, MetadataField } from '@/features/metadata/metadata.api'
 import { useMetadataEntityMetaQuery } from '@/features/metadata/metadata.query'
 import {
@@ -37,6 +38,7 @@ type ConvertedValue = {
 
 const router = useRouter()
 const dialog = useDialog()
+const toast = useToast()
 const entityMetaQuery = useMetadataEntityMetaQuery(() => props.entity)
 
 const draft = ref<RecordData>({})
@@ -314,6 +316,7 @@ async function saveRecord() {
           })
 
     resetToRecord(record)
+    toast.success(isNew.value ? 'Record created' : 'Record saved')
     const nextName = typeof record.name === 'string' ? record.name : ''
     if (!isSingle.value && nextName && (isNew.value || nextName !== props.recordName)) {
       await router.replace({ name: RouteName.RecordDetail, params: { entity: props.entity, recordName: nextName } })
@@ -351,6 +354,7 @@ async function deleteRecord() {
       recordName: props.recordName ?? '',
       id: currentRecordID(),
     })
+    toast.success('Record deleted')
     await router.replace({ name: RouteName.EntityRecords, params: { entity: props.entity } })
   } catch {
     // TanStack owns the mutation error for display.
