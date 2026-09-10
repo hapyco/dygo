@@ -5,6 +5,7 @@ import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka
 import { RouterLink, useRoute } from 'vue-router'
 
 import { useMetadataEntitiesQuery } from '@/features/metadata/metadata.query'
+import { studioPinIsCurrent } from '@/router/current'
 import type { PinnedItem } from './pinned'
 import { useBootStore } from '@/stores/boot.store'
 import { useNavigationStore } from '@/stores/navigation.store'
@@ -96,7 +97,7 @@ function followPin(event: MouseEvent, path: string | null) {
       <PopoverContent class="pinned-nav__popover" side="right" align="start" :side-offset="8">
         <p class="pinned-nav__popover-title">Pinned</p>
         <div class="pinned-nav__popover-list">
-          <div v-for="entry in items" :key="entry.item.path" class="pinned-nav__item" :class="{ 'pinned-nav__item--current': entry.path === route.path }">
+          <div v-for="entry in items" :key="entry.item.path" class="pinned-nav__item" :class="{ 'pinned-nav__item--current': studioPinIsCurrent(entry.item.type, entry.path, route.path) }">
             <button class="pinned-nav__remove" type="button" :aria-label="`Unpin ${entry.item.label}`" @click="navigation.unpin(entry.item)">
               <Pin :size="16" :stroke-width="1.8" aria-hidden="true" />
             </button>
@@ -120,7 +121,7 @@ function followPin(event: MouseEvent, path: string | null) {
         v-for="(entry, index) in visibleItems"
         :key="`${entry.item.type}:${entry.item.app}:${entry.item.entity ?? entry.item.page}:${entry.item.record ?? ''}`"
         class="pinned-nav__item"
-        :class="{ 'pinned-nav__item--current': entry.path === route.path, 'pinned-nav__item--grabbed': grabbed === index }"
+        :class="{ 'pinned-nav__item--current': studioPinIsCurrent(entry.item.type, entry.path, route.path), 'pinned-nav__item--grabbed': grabbed === index }"
         :data-pinned-index="index"
         draggable="true"
         tabindex="0"

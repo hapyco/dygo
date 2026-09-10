@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onErrorCaptured, onUnmounted } from 'vue'
+import { computed, defineAsyncComponent, onErrorCaptured, onUnmounted, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { LockKeyhole, RefreshCw, TriangleAlert } from '@lucide/vue'
 
@@ -11,16 +11,18 @@ import ToastHost from '@/features/toasts/ToastHost.vue'
 import { useToast } from '@/features/toasts/use-toast'
 import { setAPIDialogHandler, setAPIToastHandler } from '@/features/api/client'
 import { iconForEntity } from '@/features/metadata/entity-icons'
-import { routeParam, RouteName } from '@/router/routes'
+import { studioPathIsEntity } from '@/router/current'
+import { RouteName } from '@/router/routes'
 import { installBootRoutes } from '@/router'
 import { useMetadataEntitiesQuery } from '@/features/metadata/metadata.query'
 import Shell from '@/shell/Shell.vue'
 import type { ShellNavItem } from '@/shell/types'
 import { useAuthStore } from '@/stores/auth.store'
 import { useBootStore } from '@/stores/boot.store'
-import { humanizeEntity } from '@/stores/metadata.identity'
+import { findEntityByRouteSlug, humanizeEntity } from '@/stores/metadata.identity'
 import { useNavigationStore } from '@/stores/navigation.store'
 import { storeError } from '@/stores/status'
+import { tabLabelForRoute } from '@/features/tabs/tabs'
 
 const route = useRoute()
 const router = useRouter()
@@ -51,15 +53,6 @@ onUnmounted(() => {
 
 const usesShell = computed(() => !route.meta.public)
 const publicRouteViewKey = computed(() => `${route.fullPath}:${navigationStore.routeReloadVersion}`)
-const shellRouteViewKey = computed(() => `${route.path}:${navigationStore.routeReloadVersion}`)
-const currentEntity = computed(() => {
-  const value = route.params.entity
-  if (typeof value !== 'string' && !Array.isArray(value)) {
-    return ''
-  }
-
-  return routeParam(value)
-})
 const metadataEntitiesQuery = useMetadataEntitiesQuery({
   enabled: computed(() => (
     usesShell.value
@@ -101,16 +94,31 @@ async function retryBoot() {
 }
 
 function isEntityRoute(entity: string): boolean {
-  if (
-    route.name !== RouteName.EntityRecords
-    && route.name !== RouteName.RecordNew
-    && route.name !== RouteName.RecordDetail
-  ) {
-    return false
-  }
-
-  return currentEntity.value === entity
+  return studioPathIsEntity(route.path, entity)
 }
+
+watch(
+  () => [route.path, route.fullPath, String(route.name ?? ''), bootStore.status, authStore.currentUser?.id ?? null, metadataEntities.value] as const,
+  (_current, previous) => {
+    if (!usesShell.value || bootStore.status !== 'ready' || !authStore.currentUser) return
+    if (route.name === RouteName.Home && typeof bootStore.defaults?.home === 'string' && bootStore.defaults.home !== '/') return
+    const previousPath = previous ? previous[0] : ''
+    navigationStore.syncTab({
+      path: route.path,
+      fullPath: route.fullPath,
+      label: tabLabelForRoute({
+        name: route.name,
+        path: route.path,
+        fullPath: route.fullPath,
+        params: route.params,
+      }, (slug) => {
+        const entity = findEntityByRouteSlug(metadataEntities.value, slug)
+        return entity?.label || humanizeEntity(slug)
+      }),
+    }, previousPath)
+  },
+  { immediate: true },
+)
 
 </script>
 
@@ -167,7 +175,11 @@ function isEntityRoute(entity: string): boolean {
         </Button>
       </section>
 
-      <RouterView v-else :key="shellRouteViewKey" />
+      <RouterView v-else v-slot="{ Component }">
+        <KeepAlive :max="Math.max(navigationStore.openTabs.length, 1)">
+          <component :is="Component" :key="navigationStore.tabCacheKey(route.path)" />
+        </KeepAlive>
+      </RouterView>
     </Shell>
     <DebugBar v-if="DebugBar" />
   </div>

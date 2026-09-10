@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { ErrorState, Spinner } from '@/design'
 import { storeError } from '@/stores/status'
+import { useNavigationStore } from '@/stores/navigation.store'
 import { pageRenderer } from './page-renderers'
 import { usePageQuery } from './pages.query'
 
@@ -18,6 +20,12 @@ const renderer = computed(() => page.value ? pageRenderer(page.value.renderer) :
 const error = computed(() => pageQuery.error.value
   ? storeError(pageQuery.error.value, 'Studio could not load this Page.')
   : null)
+const route = useRoute()
+const navigation = useNavigationStore()
+const sheetPath = route.path
+watch(() => page.value?.label, label => {
+  if (label) navigation.setTabLabel(sheetPath, label)
+})
 </script>
 
 <template>

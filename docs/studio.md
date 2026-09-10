@@ -91,6 +91,22 @@ Studio saves signed-in preferences in the Studio Preference Entity. Theme, sound
 
 Pin an Entity, Page, or saved Record from its header to add it to the personal Pinned section above the main navigation. Pinned items follow the signed-in user. The section shows five items until See more is selected, and supports drag or keyboard reordering.
 
+## Page Tabs
+
+Studio keeps open Page Sheets in a tab strip above the current sheet.
+
+Each tab is one route path. Entity lists, Records, New Record forms, reports, custom Pages, and other route-backed Page Types each get their own tab. Opening a path that is already open activates that tab. Query state such as list filters stays on that tab.
+
+The browser URL always matches the active tab. Back and Forward activate an open tab when that path is still open, or open a new tab.
+
+Switching tabs keeps Record drafts on the hidden sheet. Closing a dirty tab asks for confirmation. The last tab stays open. Creating a Record replaces the New Record tab with the saved Record tab.
+
+Open tabs belong to the current browser tab. Reload restores them in that browser tab. They do not follow the signed-in user across other browser tabs or devices.
+
+Tabs are horizontally scrollable when they exceed the available width. Tabs are not pinned: Pinned navigation is a separate persistent sidebar shortcut. Dirty state currently applies to Record forms; other Page Types need their own draft contract before Studio can mark them dirty.
+
+Close tab, Next tab, and Previous tab are available from the command palette. They do not bind Mod+W, so the browser can still close its own tab.
+
 ## Record List Filters
 
 Use Add filter to search available Field labels and names. Value controls follow Field metadata: options, booleans, dates, datetimes, numbers, and Links. Link choices respect Record permissions and dependent filters. Clear all removes filters and ID search while keeping sort and display choices.
@@ -125,15 +141,15 @@ Choose Search records, select an Entity, and type part of a Record ID. On an Ent
 | New Record | Mod+Enter | Entity list, outside input fields |
 | Toggle sidebar | Mod+\\ | When sidebar collapse is available |
 
-Open Keyboard shortcuts from the user menu or command palette to search current commands and disabled reasons. Record search, ID-search focus, Add filter, Reset changes, Home, and Entity-list navigation are available from the palette without extra key bindings.
+Open Keyboard shortcuts from the user menu or command palette to search current commands and disabled reasons. Record search, ID-search focus, Add filter, Reset changes, Home, Entity-list navigation, Close tab, Next tab, and Previous tab are available from the palette without extra key bindings.
 
 Studio matches exact modifiers and character keys. It ignores repeat, composition, AltGraph, and handled events. Dialogs, menus, and popovers keep keyboard control. Save is reserved on Record forms even when disabled, so it does not open the browser Save Page dialog. Browser Back, Forward, Find, Reload, Location, and New Window shortcuts are unchanged.
 
-Reset requires confirmation. Route navigation also requires confirmation when a Record form has unsaved changes. Failed saves and background refreshes preserve the draft. Navigation does not save automatically.
+Reset requires confirmation. Closing a dirty tab requires confirmation. Switching tabs keeps the draft on the hidden Page Sheet. Failed saves and background refreshes preserve the draft. Navigation does not save automatically.
 
 ### Internal registration
 
-Use `features/commands/context.ts` to register reactive current-page commands with `usePageCommands`. Supply a stable ID, label, optional group, disabled reason, and handler. The most recently mounted page owns the active commands; updates from background pages cannot replace it. Disposal removes that page's commands.
+Use `features/commands/context.ts` to register reactive current-page commands with `usePageCommands`. Supply a stable ID, label, optional group, disabled reason, and handler. The active Page Sheet owns the current-page commands. Hidden sheets unregister while they are in the background; a later activation restores them. Disposal removes that page's commands.
 
 Keep default keys and input policy in `features/commands/shortcuts.ts`. All bindings require Mod. The shell installs one listener. `runStudioCommand` and `executeCommand` share eligibility and in-flight checks for buttons, palette selection, and shortcuts. Focus actions execute after the palette closes and restores focus. Help and key badges use the same bindings.
 
