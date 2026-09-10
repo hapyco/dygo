@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useSheetActive } from '@/features/tabs/sheet-active'
 import { useInfiniteQuery, useQuery } from '@tanstack/vue-query'
 import { useStorage } from '@vueuse/core'
 import { ArrowDown, ArrowUp, Check, Download, Play, Settings2, X } from '@lucide/vue'
@@ -66,6 +67,7 @@ const emit = defineEmits<{
 
 const route = useRoute()
 const router = useRouter()
+const sheetActive = useSheetActive()
 const platformConfigQuery = usePlatformConfigQuery()
 const preferences = usePreferencesStore()
 const auth = useAuthStore()
@@ -332,10 +334,12 @@ watch(
   () => [
     props.entity,
     route.query,
+    sheetActive.value,
     filterableFields.value.map((field) => `${field.name}:${field.filter?.operators?.map((operator) => operator.key).join(',') ?? ''}`).join('|'),
     columns.value.map((column) => `${column.key}:${column.sortable ? '1' : '0'}`).join('|'),
   ] as const,
   () => {
+    if (!sheetActive.value) return
     if (currentEntity !== props.entity) {
       clearScheduledRecordListRouteReplace()
       selectedRowKeys.value = []
@@ -722,6 +726,7 @@ function clearKeepViewOptionsOpenTimer() {
 }
 
 function replaceRecordListRoute(filters: RecordListFilter[], sort: DataTableSort | null) {
+  if (!sheetActive.value) return
   const nextQuery = buildRecordListRouteQuery({ filters, sort })
   if (recordListRouteQueriesEqual(route.query, nextQuery)) {
     return
@@ -759,7 +764,7 @@ function appliedRecordFilters(): RecordListFilter[] {
 
 function routeRecordListQuery(): RecordListRouteState {
   const canonical = canonicalizeRecordListRouteQuery(route.query, recordListRouteSchema())
-  if (canonical.changed) {
+  if (canonical.changed && sheetActive.value) {
     void router.replace({ query: canonical.query })
   }
 

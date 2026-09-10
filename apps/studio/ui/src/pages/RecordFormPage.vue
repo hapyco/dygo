@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onScopeDispose, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { usePageCommands, runStudioCommand } from '@/features/commands/context'
 import { bindings } from '@/features/commands/shortcuts'
 import { useDraftGuard } from '@/features/records/use-draft-guard'
@@ -42,6 +42,8 @@ import type { PageHeaderAction } from '@/shell/types'
 import { humanizeEntity } from '@/stores/metadata.identity'
 import { statusForError, storeError, type LoadStatus } from '@/stores/status'
 import type { PinnedItem } from '@/features/pinned/pinned'
+import { useSheetActive } from '@/features/tabs/sheet-active'
+import { useNavigationStore } from '@/stores/navigation.store'
 
 const props = defineProps<{
   entity: string
@@ -55,6 +57,10 @@ type ConvertedValue = {
 }
 
 const router = useRouter()
+const route = useRoute()
+const navigation = useNavigationStore()
+const sheetActive = useSheetActive()
+const sheetPath = route.path
 const dialog = useDialog()
 const toast = useToast()
 const entityMetaQuery = useMetadataEntityMetaQuery(() => props.entity)
@@ -231,6 +237,11 @@ const showForm = computed(() => Boolean(entityMeta.value) && (isNew.value || Boo
 const dirty = computed(() => fields.value.some((field) => !draftValuesEqual(draft.value[field.name], baseline.value[field.name])))
 const canSave = computed(() => showForm.value && dirty.value && !loading.value && !saving.value && !isSystem.value)
 const confirmDiscard = useDraftGuard(() => dirty.value, () => saving.value)
+watch([dirty, sheetActive], () => {
+  if (!sheetActive.value) return
+  navigation.setTabDirty(sheetPath, dirty.value)
+}, { immediate: true })
+onScopeDispose(() => navigation.setTabDirty(sheetPath, false))
 const saveDisabledReason = computed(() => isSystem.value ? 'Read-only Record' : loading.value ? 'Loading Record' : saving.value ? 'Saving Record' : !showForm.value ? 'Record unavailable' : !dirty.value ? 'No changes' : undefined)
 usePageCommands(computed(() => [
   { id: 'record:save', label: isNew.value ? 'Create Record' : 'Save Record', disabledReason: entityActionMutation.isPending.value ? 'Action is running' : saveDisabledReason.value, run: saveRecord },
@@ -309,11 +320,13 @@ watch(
     }
 
     if (meta?.['is-single'] && mode !== 'single') {
+      navigation.replaceTab(route.path, { path: `/${entity}`, fullPath: `/${entity}`, label: entityLabel.value })
       await router.replace({ name: RouteName.EntityRecords, params: { entity } })
       return
     }
 
     if (meta?.['is-system'] && mode === 'new') {
+      navigation.replaceTab(route.path, { path: `/${entity}`, fullPath: `/${entity}`, label: entityLabel.value })
       await router.replace({ name: RouteName.EntityRecords, params: { entity } })
       return
     }
@@ -506,6 +519,7 @@ async function deleteRecord() {
       id: currentRecordID(),
     })
     toast.success('Record deleted')
+    navigation.replaceTab(sheetPath, { path: `/${props.entity}`, fullPath: `/${props.entity}`, label: entityLabel.value })
     await router.replace({ name: RouteName.EntityRecords, params: { entity: props.entity } })
   } catch {
     // TanStack owns the mutation error for display.

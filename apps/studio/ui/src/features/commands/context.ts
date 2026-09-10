@@ -1,4 +1,4 @@
-import { computed, onScopeDispose, shallowRef, watch, type ComputedRef } from 'vue'
+import { computed, getCurrentInstance, onActivated, onDeactivated, onScopeDispose, shallowRef, watch, type ComputedRef } from 'vue'
 import { commandBinding, executeCommand, type StudioCommand } from './shortcuts.ts'
 
 export type PageCommand = StudioCommand
@@ -14,9 +14,21 @@ export function runStudioCommand(id: string) {
 
 export function usePageCommands(commands: ComputedRef<PageCommand[]>) {
   const owner = Symbol('page commands')
-  pages.value = [...pages.value, { owner, commands: [] }]
-  watch(commands, value => { pages.value = pages.value.map(page => page.owner === owner ? { owner, commands: value.map(commandBinding) } : page) }, { immediate: true })
-  onScopeDispose(() => {
+  function snapshot() { return commands.value.map(commandBinding) }
+  function register() {
+    pages.value = [...pages.value.filter(page => page.owner !== owner), { owner, commands: snapshot() }]
+  }
+  function unregister() {
     pages.value = pages.value.filter(page => page.owner !== owner)
-  })
+  }
+  register()
+  watch(commands, () => {
+    if (!pages.value.some(page => page.owner === owner)) return
+    pages.value = pages.value.map(page => page.owner === owner ? { owner, commands: snapshot() } : page)
+  }, { immediate: true })
+  if (getCurrentInstance()) {
+    onActivated(register)
+    onDeactivated(unregister)
+  }
+  onScopeDispose(unregister)
 }

@@ -14,6 +14,8 @@ import type { ShellNavItem } from './types'
 import PageSheet from './PageSheet.vue'
 import Sidebar from './Sidebar.vue'
 import TopBar from './TopBar.vue'
+import PageTabs from '@/features/tabs/PageTabs.vue'
+import { useCloseTab } from '@/features/tabs/use-close-tab'
 
 const props = withDefaults(defineProps<{
   brandLabel?: string
@@ -31,11 +33,12 @@ const props = withDefaults(defineProps<{
 })
 
 const navigationStore = useNavigationStore()
-const { sidebarCollapsed } = storeToRefs(navigationStore)
+const { sidebarCollapsed, openTabs } = storeToRefs(navigationStore)
 const router = useRouter()
 const boot = useBootStore()
 const auth = useAuthStore()
 const desktop = useMediaQuery('(min-width: 721px)')
+const closeTab = useCloseTab()
 const commands = computed(() => auth.currentUser ? [
   { id: 'app:palette', label: 'Open command palette', group: 'Studio', run: () => { navigationStore.commandMenuOpen = !navigationStore.commandMenuOpen } },
   { id: 'app:shortcuts', label: 'Keyboard shortcuts', group: 'Studio', run: () => { navigationStore.shortcutsOpen = true } },
@@ -44,6 +47,15 @@ const commands = computed(() => auth.currentUser ? [
   { id: 'app:home', label: 'Go home', group: 'Studio', run: async () => {
     const home = boot.defaults?.home
     await router.push(typeof home === 'string' && home.startsWith('/') && !home.startsWith('//') ? home : '/')
+  } },
+  { id: 'app:tab-close', label: 'Close tab', group: 'Studio', disabledReason: openTabs.value.length <= 1 ? 'The last tab stays open' : undefined, run: () => closeTab(router.currentRoute.value.path) },
+  { id: 'app:tab-next', label: 'Next tab', group: 'Studio', disabledReason: openTabs.value.length < 2 ? 'No other tab is open' : undefined, run: async () => {
+    const tab = navigationStore.cycleTab(router.currentRoute.value.path, 1)
+    if (tab) await router.push(tab.fullPath)
+  } },
+  { id: 'app:tab-previous', label: 'Previous tab', group: 'Studio', disabledReason: openTabs.value.length < 2 ? 'No other tab is open' : undefined, run: async () => {
+    const tab = navigationStore.cycleTab(router.currentRoute.value.path, -1)
+    if (tab) await router.push(tab.fullPath)
   } },
 ] : [])
 watchEffect(() => { globalCommands.value = commands.value })
@@ -77,6 +89,7 @@ useShortcuts()
     </Sidebar>
 
     <div class="studio-shell__sheet">
+      <PageTabs />
       <PageSheet>
         <slot />
       </PageSheet>
@@ -129,6 +142,7 @@ useShortcuts()
   min-width: 0;
   grid-column: 2;
   grid-row: 2;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: visible;
   padding: 0 var(--studio-shell-sheet-right-gutter) 0 0;
 }
