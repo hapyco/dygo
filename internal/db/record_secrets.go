@@ -53,7 +53,7 @@ func (s RecordStore) DecryptSecret(ctx context.Context, appName, entity string, 
 		return "", recordError(RecordErrorNotFound, "record not found", nil, nil)
 	}
 	if err != nil {
-		return "", errors.New("read Record secret failed")
+		return "", fmt.Errorf("read Record secret failed: %w", err)
 	}
 	if ciphertext == nil {
 		return "", dygo.ErrSecretUnset
@@ -104,7 +104,7 @@ func (s RecordStore) secretStatus(ctx context.Context, layout recordLayout, id i
 			continue
 		}
 		if err != nil {
-			return result, errors.New("read secret status failed")
+			return result, fmt.Errorf("read secret status failed: %w", err)
 		}
 		result.Fields[field.Name] = present
 	}
@@ -134,14 +134,14 @@ func (s RecordStore) secretStatus(ctx context.Context, layout recordLayout, id i
 		}
 		rows, err := s.queryer.Query(ctx, fmt.Sprintf("SELECT %s FROM %s WHERE parent_entity_id=$1 AND parent_record_id=$2 AND parent_field_id=$3 ORDER BY ordinal", selectSQL, quoteIdent(collection.Layout.Table)), layout.EntityID, id, collection.Field.ID)
 		if err != nil {
-			return result, errors.New("read collection secret status failed")
+			return result, fmt.Errorf("read collection secret status failed: %w", err)
 		}
 		statuses := map[int64]map[string]bool{}
 		for rows.Next() {
 			values, err := rows.Values()
 			if err != nil {
 				rows.Close()
-				return result, errors.New("read secret status failed")
+				return result, fmt.Errorf("read secret status failed: %w", err)
 			}
 			rowID := values[0].(int64)
 			statuses[rowID] = map[string]bool{}
@@ -152,7 +152,7 @@ func (s RecordStore) secretStatus(ctx context.Context, layout recordLayout, id i
 		err = rows.Err()
 		rows.Close()
 		if err != nil {
-			return result, errors.New("read secret status failed")
+			return result, fmt.Errorf("read secret status failed: %w", err)
 		}
 		result.Collections[name] = statuses
 	}

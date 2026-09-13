@@ -19,7 +19,7 @@ func (h recordHandler) exportRecords(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope{Error: apiError{Code: "service_unavailable", Message: "record store is unavailable"}})
 		return
 	}
-	if !h.authorize(w, r, chi.URLParam(r, "entity"), permissions.ActionExport, 0) {
+	if !h.authorize(w, r, chi.URLParam(r, "entity"), permissions.ActionExport) {
 		return
 	}
 	params, err := recordListParams(r)

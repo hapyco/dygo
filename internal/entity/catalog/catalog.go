@@ -252,7 +252,7 @@ func (c Catalog) loadEntityFile(app manifest.LoadedApp, path string, isCollectio
 		return LoadedEntity{}, fmt.Errorf("stat entity for app %q from %s: %w", app.Manifest.Name, path, err)
 	}
 	if !info.Mode().IsRegular() {
-		return LoadedEntity{}, nil
+		return LoadedEntity{}, fmt.Errorf("entity metadata %s for app %q is not a regular file", path, app.Manifest.Name)
 	}
 	entity, err := schema.LoadFileWithOptions(path, c.fieldTypes, schema.LoadOptions{IsCollection: isCollection})
 	if err != nil {

@@ -201,9 +201,9 @@ func Register(registry dygo.RecordHookRegistry) error {
 	hookPath := filepath.Join(root, "apps", "sales", "entities", "lead", "hooks.go")
 	writeTestFile(t, hookPath, existing)
 
-	result, err := GenerateWithOptions(GenerateOptions{Root: root, AppName: "sales", EntityName: "lead", Force: true})
+	result, err := GenerateWithOptions(GenerateOptions{Root: root, AppName: "sales", EntityName: "lead"})
 	if err != nil {
-		t.Fatalf("GenerateWithOptions(force) error = %v, want nil", err)
+		t.Fatalf("GenerateWithOptions() error = %v, want nil", err)
 	}
 	if result.HookFileStatus != "existing" {
 		t.Fatalf("HookFileStatus = %q, want existing", result.HookFileStatus)

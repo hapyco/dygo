@@ -25,6 +25,7 @@ import (
 	"github.com/hapyco/dygo/internal/studio"
 	"github.com/hapyco/dygo/pkg/dygo"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestRun(t *testing.T) {
@@ -1326,7 +1327,7 @@ func TestPlanDBPreparationUsesDBAwareAccessPlan(t *testing.T) {
 
 func TestPlanDBPreparationFallsBackToFileAccessPlan(t *testing.T) {
 	fakeAccess := &fakeAccessRunner{
-		applyPlanErr: errors.New("role table missing"),
+		applyPlanErr: &pgconn.PgError{Code: "42P01", Message: "role table missing"},
 		plan: access.Plan{
 			Roles:    []access.Role{{Name: "file-role"}},
 			Policies: []access.PolicyFile{{}},

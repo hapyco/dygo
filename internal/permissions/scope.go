@@ -62,18 +62,11 @@ func (c Checker) RecordScope(ctx context.Context, request Request) (Scope, error
 }
 
 func loadScopeGrants(ctx context.Context, queryer scopeQueryer, request Request, resource Resource) ([]scopeGrant, error) {
-	args := []any{request.Actor.UserID, resource.Name}
-	target := "e.slug = $2"
-	if resource.App != "" {
-		target = "a.name = $2 AND e.key = $3"
-		args = []any{request.Actor.UserID, resource.App, resource.Name}
-	}
-	action := ""
-	if column, ok := actionColumn(request.Action); ok {
-		action = fmt.Sprintf("COALESCE(p.%s, false) = true", column)
-	} else {
-		args = append(args, string(request.Action))
-		action = fmt.Sprintf("COALESCE(p.actions, '[]'::jsonb) ? $%d", len(args))
+	target, targetArgs := permissionTargetSQL(resource)
+	args := append([]any{request.Actor.UserID}, targetArgs...)
+	action, args, err := permissionActionSQL(request.Action, resource, args)
+	if err != nil {
+		return nil, err
 	}
 	rows, err := queryer.Query(ctx, fmt.Sprintf(`
 SELECT r.name, p."when", COALESCE(p.field_rules, '{}'::jsonb)

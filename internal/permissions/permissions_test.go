@@ -47,16 +47,15 @@ func TestCheckerAllowsAdministratorWithoutRolePermissionRows(t *testing.T) {
 	queryer := &fakePermissionQueryer{row: fakePermissionRow{allowed: false}}
 
 	decision, err := NewChecker(queryer).Check(context.Background(), Request{
-		Actor:    Actor{UserID: 7, Administrator: true},
-		Entity:   "user",
-		Action:   ActionDelete,
-		RecordID: 12,
+		Actor:  Actor{UserID: 7, Administrator: true},
+		Entity: "user",
+		Action: ActionDelete,
 	})
 	if err != nil {
 		t.Fatalf("Check() error = %v, want nil", err)
 	}
-	if !decision.Allowed || decision.Reason != ReasonAllowed || !decision.Actor.Administrator || decision.RecordID != 12 {
-		t.Fatalf("Check() decision = %+v, want administrator allowed with record id", decision)
+	if !decision.Allowed || decision.Reason != ReasonAllowed || !decision.Actor.Administrator {
+		t.Fatalf("Check() decision = %+v, want administrator allowed", decision)
 	}
 	if len(queryer.sql) != 0 {
 		t.Fatalf("Check() executed SQL for administrator: %q", queryer.sql[0])
@@ -132,7 +131,6 @@ func TestCheckerValidatesRequest(t *testing.T) {
 		{name: "page without app", request: Request{Actor: Actor{UserID: 7}, Resource: Resource{Kind: ResourcePage, Name: "home"}, Action: ActionRead}},
 		{name: "unknown resource kind", request: Request{Actor: Actor{UserID: 7}, Resource: Resource{Kind: "widget", Name: "home"}, Action: ActionRead}},
 		{name: "invalid action", request: Request{Actor: Actor{UserID: 7}, Entity: "user", Action: Action("drop_table")}},
-		{name: "invalid record id", request: Request{Actor: Actor{UserID: 7}, Entity: "user", Action: ActionRead, RecordID: -1}},
 	}
 
 	for _, tt := range tests {

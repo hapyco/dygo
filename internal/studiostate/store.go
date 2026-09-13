@@ -88,7 +88,7 @@ func (s Store) ownerName(ctx context.Context, actor dygo.Actor) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	return record["name"].(string), nil
+	return recordStringValue(record, "name")
 }
 
 func requireActor(actor dygo.Actor) error {
@@ -96,6 +96,22 @@ func requireActor(actor dygo.Actor) error {
 		return db.RecordError{Code: db.RecordErrorPermissionDenied, Message: "authentication required"}
 	}
 	return nil
+}
+
+func recordIDValue(record dygo.Record) (int64, error) {
+	id, ok := record["id"].(int64)
+	if !ok {
+		return 0, invalid("record id is missing")
+	}
+	return id, nil
+}
+
+func recordStringValue(record dygo.Record, field string) (string, error) {
+	value, ok := record[field].(string)
+	if !ok {
+		return "", invalid(field + " is missing")
+	}
+	return value, nil
 }
 
 func validateKey(key string) error {
@@ -157,7 +173,11 @@ func (s Store) Preferences(ctx context.Context, actor dygo.Actor) (map[string]an
 	}
 	values := map[string]any{}
 	for _, record := range records {
-		values[record["key"].(string)] = record["value"]
+		key, err := recordStringValue(record, "key")
+		if err != nil {
+			return nil, err
+		}
+		values[key] = record["value"]
 	}
 	return values, nil
 }
@@ -181,7 +201,11 @@ func (s Store) PutPreference(ctx context.Context, actor dygo.Actor, key string, 
 	for attempt := 0; attempt < 2; attempt++ {
 		record, err := records.Find(ctx, "studio", "preference", match)
 		if err == nil {
-			_, err = records.Update(ctx, "studio", "preference", record["id"].(int64), dygo.RecordInput{"value": value})
+			id, idErr := recordIDValue(record)
+			if idErr != nil {
+				return idErr
+			}
+			_, err = records.Update(ctx, "studio", "preference", id, dygo.RecordInput{"value": value})
 			return err
 		}
 		var problem db.RecordError
@@ -215,7 +239,11 @@ func (s Store) DeletePreference(ctx context.Context, actor dygo.Actor, key strin
 	if len(rows) == 0 {
 		return nil
 	}
-	return s.records(actor).Delete(ctx, "studio", "preference", rows[0]["id"].(int64))
+	id, err := recordIDValue(rows[0])
+	if err != nil {
+		return err
+	}
+	return s.records(actor).Delete(ctx, "studio", "preference", id)
 }
 
 func (s Store) SavedFilters(ctx context.Context, actor dygo.Actor, entity string) ([]SavedFilter, error) {
@@ -246,7 +274,19 @@ func (s Store) SavedFilters(ctx context.Context, actor dygo.Actor, entity string
 }
 
 func savedFilter(record dygo.Record) (SavedFilter, error) {
-	item := SavedFilter{ID: record["id"].(int64), Entity: record["entity"].(string), Label: record["label"].(string)}
+	id, err := recordIDValue(record)
+	if err != nil {
+		return SavedFilter{}, err
+	}
+	entity, err := recordStringValue(record, "entity")
+	if err != nil {
+		return SavedFilter{}, err
+	}
+	label, err := recordStringValue(record, "label")
+	if err != nil {
+		return SavedFilter{}, err
+	}
+	item := SavedFilter{ID: id, Entity: entity, Label: label}
 	data, err := json.Marshal(record["filters"])
 	if err == nil {
 		err = json.Unmarshal(data, &item.Filters)

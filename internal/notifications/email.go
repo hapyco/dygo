@@ -48,10 +48,6 @@ func (m SMTPMailer) Send(ctx context.Context, recipient string, subject string, 
 	if strings.TrimSpace(m.Username) != "" {
 		auth = smtp.PlainAuth("", m.Username, m.Password, host)
 	}
-	sendMail := m.SendMail
-	if sendMail == nil {
-		sendMail = smtp.SendMail
-	}
 	message := []byte("From: " + cleanHeader(m.From) + "\r\n" +
 		"To: " + cleanHeader(recipient) + "\r\n" +
 		"Subject: " + cleanHeader(subject) + "\r\n" +
@@ -60,7 +56,7 @@ func (m SMTPMailer) Send(ctx context.Context, recipient string, subject string, 
 		"\r\n" + body + "\r\n")
 	address := host + ":" + strconv.Itoa(m.Port)
 	if m.SendMail != nil {
-		return sendMail(address, auth, from.Address, []string{to.Address}, message)
+		return m.SendMail(address, auth, from.Address, []string{to.Address}, message)
 	}
 	return sendSMTP(ctx, address, host, auth, from.Address, to.Address, message)
 }

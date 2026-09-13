@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/fixtures"
 	"github.com/hapyco/dygo/internal/secrets"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/spf13/cobra"
 )
 
@@ -512,6 +514,10 @@ func planDBPreparation(ctx context.Context, sync schemaSyncRunner, fixture fixtu
 	}
 	accessPlan, err := accessRunner.ApplyPlan(ctx, root, databaseURL)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || (pgErr.Code != "42P01" && pgErr.Code != "42703") {
+			return dbPreparationPlan{}, fmt.Errorf("plan access metadata: %w", err)
+		}
 		accessPlan, err = accessRunner.Plan(ctx, root, nil)
 	}
 	if err != nil {

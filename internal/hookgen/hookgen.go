@@ -42,7 +42,6 @@ type GenerateOptions struct {
 	AppName    string
 	EntityName string
 	DryRun     bool
-	Force      bool
 }
 
 // Generate creates an Entity hook scaffold and updates generated runner wiring.

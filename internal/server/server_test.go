@@ -833,11 +833,11 @@ func TestRecordRoutes(t *testing.T) {
 	}
 	wantPermissions := []permissions.Request{
 		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead},
-		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead, RecordID: 1},
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead},
 		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead},
 		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionCreate},
-		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionUpdate, RecordID: 1},
-		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionDelete, RecordID: 1},
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionUpdate},
+		{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionDelete},
 	}
 	if len(checker.requests) != len(wantPermissions) {
 		t.Fatalf("permission requests = %+v, want %d requests", checker.requests, len(wantPermissions))
@@ -1022,7 +1022,7 @@ func TestRecordActivityRoute(t *testing.T) {
 	if activity.entity != "user" || activity.recordID != 1 || activity.params.Limit != 25 || activity.params.Offset != 5 {
 		t.Fatalf("activity request = entity %q id %d params %+v, want user/1 limit 25 offset 5", activity.entity, activity.recordID, activity.params)
 	}
-	wantPermission := permissions.Request{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead, RecordID: 1}
+	wantPermission := permissions.Request{Actor: permissions.Actor{UserID: 7, Administrator: true}, Entity: "user", Action: permissions.ActionRead}
 	if len(checker.requests) != 1 || checker.requests[0] != wantPermission {
 		t.Fatalf("permission requests = %+v, want %+v", checker.requests, wantPermission)
 	}

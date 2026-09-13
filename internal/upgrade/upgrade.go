@@ -68,7 +68,6 @@ type ProjectResult struct {
 	RunnerUpdated             bool
 	CoreUpdated               bool
 	CoreSource                string
-	StudioUpdated             bool
 	StudioSource              string
 	MetadataMigrationRequired bool
 	NoGit                     bool
@@ -225,7 +224,7 @@ func resultLines(result Result, options Options) []string {
 		if result.Project.CoreUpdated {
 			lines = append(lines, fmt.Sprintf("project Core App: updated from %s", result.Project.CoreSource))
 		}
-		if result.Project.StudioUpdated {
+		if result.Project.StudioSource != "" {
 			lines = append(lines, fmt.Sprintf("project Studio cache: updated from %s", result.Project.StudioSource))
 		}
 		if result.Project.MetadataMigrationRequired {

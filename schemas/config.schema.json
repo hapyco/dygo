@@ -7,6 +7,10 @@
   "additionalProperties": false,
   "required": ["database"],
   "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
     "server": {
       "type": "object",
       "additionalProperties": false,
@@ -21,6 +25,37 @@
           "minimum": 1,
           "maximum": 65535,
           "default": 6790
+        }
+      }
+    },
+    "email": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "smtp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "username": {
+              "$ref": "#/$defs/secretReference"
+            },
+            "password": {
+              "$ref": "#/$defs/secretReference"
+            }
+          }
         }
       }
     },
@@ -45,6 +80,20 @@
               "description": "Encrypted secret name that resolves to the database URL."
             }
           }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "secretReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["secret"],
+      "properties": {
+        "secret": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "description": "Encrypted secret name."
         }
       }
     }

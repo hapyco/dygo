@@ -41,7 +41,6 @@ type PermissionRequest struct {
 	Actor    Actor
 	Resource Resource
 	Action   Action
-	RecordID int64
 }
 
 // Authorizer is the stable authorization contract for framework and app code.

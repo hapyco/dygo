@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -120,8 +121,8 @@ func save(store secrets.Store, env secrets.Environment, ring Ring) error {
 		return ErrUnavailable
 	}
 	doc.Values[configKey] = value
-	if store.Save(env, doc) != nil {
-		return errors.New("save Record encryption keys failed")
+	if err := store.Save(env, doc); err != nil {
+		return fmt.Errorf("save Record encryption keys: %w", err)
 	}
 	return nil
 }

@@ -155,7 +155,7 @@ func TestGenerateInstallsStudioCacheFromFrameworkBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate() error = %v, want nil", err)
 	}
-	if !result.StudioCached || result.StudioSource != "framework Studio build" {
+	if result.StudioSource != "framework Studio build" {
 		t.Fatalf("Generate() result = %+v, want Studio cache from framework build", result)
 	}
 	root := filepath.Join(parent, "studio-ready")

@@ -15,7 +15,7 @@ func (h recordHandler) treeRecords(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entity := chi.URLParam(r, "entity")
-	if !h.authorize(w, r, entity, permissions.ActionRead, 0) {
+	if !h.authorize(w, r, entity, permissions.ActionRead) {
 		return
 	}
 	meta, ok := recordEntityMeta(r.Context())

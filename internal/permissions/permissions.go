@@ -69,7 +69,6 @@ type Request struct {
 	Entity   string
 	Resource Resource
 	Action   Action
-	RecordID int64
 }
 
 // Decision is the result of a permission check.
@@ -79,7 +78,6 @@ type Decision struct {
 	Entity   string
 	Resource Resource
 	Action   Action
-	RecordID int64
 	Reason   string
 }
 
@@ -142,24 +140,11 @@ func (c Checker) Check(ctx context.Context, request Request) (Decision, error) {
 		return Decision{}, permissionError(ErrorInternal, "permission queryer is required", nil, nil)
 	}
 
-	targetSQL := "e.slug = $2"
-	args := []any{normalized.Actor.UserID, resource.Name}
-	if resource.Kind == ResourcePage {
-		targetSQL = "pa.name = $2 AND pg.key = $3 AND p.page_id IS NOT NULL AND COALESCE(pg.retired, false) = false"
-		args = []any{normalized.Actor.UserID, resource.App, resource.Name}
-	} else if resource.App != "" {
-		targetSQL = "a.name = $2 AND e.key = $3"
-		args = []any{normalized.Actor.UserID, resource.App, resource.Name}
-	}
-	actionSQL := ""
-	if column, ok := actionColumn(normalized.Action); ok {
-		actionSQL = fmt.Sprintf("COALESCE(p.%s, false) = true", column)
-	} else {
-		if resource.Kind != ResourceEntity {
-			return Decision{}, permissionError(ErrorInvalidRequest, "custom actions require an Entity resource", decisionDetails(normalized), nil)
-		}
-		args = append(args, string(normalized.Action))
-		actionSQL = fmt.Sprintf("COALESCE(p.actions, '[]'::jsonb) ? $%d", len(args))
+	targetSQL, targetArgs := permissionTargetSQL(resource)
+	args := append([]any{normalized.Actor.UserID}, targetArgs...)
+	actionSQL, args, err := permissionActionSQL(normalized.Action, resource, args)
+	if err != nil {
+		return Decision{}, err
 	}
 
 	sql := fmt.Sprintf(`
@@ -196,7 +181,7 @@ SELECT EXISTS (
 
 // CheckResource evaluates a permission against an app-scoped resource.
 func (c Checker) CheckResource(ctx context.Context, request ResourceRequest) (Decision, error) {
-	return c.Check(ctx, Request{Actor: request.Actor, Resource: request.Resource, Action: request.Action, RecordID: request.RecordID})
+	return c.Check(ctx, Request{Actor: request.Actor, Resource: request.Resource, Action: request.Action})
 }
 
 // Can returns nil only when the requested permission is allowed.
@@ -213,13 +198,12 @@ func (c Checker) Can(ctx context.Context, request Request) error {
 		Entity:   decision.Entity,
 		Resource: decision.Resource,
 		Action:   decision.Action,
-		RecordID: decision.RecordID,
 	}), nil)
 }
 
 // CanResource returns nil only when the resource permission is allowed.
 func (c Checker) CanResource(ctx context.Context, request ResourceRequest) error {
-	return c.Can(ctx, Request{Actor: request.Actor, Resource: request.Resource, Action: request.Action, RecordID: request.RecordID})
+	return c.Can(ctx, Request{Actor: request.Actor, Resource: request.Resource, Action: request.Action})
 }
 
 // Authorize implements the public dygo.Authorizer contract.
@@ -244,7 +228,6 @@ func normalizeRequest(request Request) (Request, Resource, error) {
 		Entity:   entity,
 		Resource: Resource{Kind: ResourceKind(strings.TrimSpace(string(resource.Kind))), App: strings.TrimSpace(resource.App), Name: strings.TrimSpace(resource.Name)},
 		Action:   Action(strings.TrimSpace(string(request.Action))),
-		RecordID: request.RecordID,
 	}
 	if normalized.Actor.UserID <= 0 {
 		return Request{}, Resource{}, permissionError(ErrorInvalidRequest, "user id must be a positive integer", map[string]any{"user-id": request.Actor.UserID}, nil)
@@ -261,9 +244,6 @@ func normalizeRequest(request Request) (Request, Resource, error) {
 	if normalized.Resource.Kind == ResourcePage && normalized.Resource.App == "" {
 		return Request{}, Resource{}, permissionError(ErrorInvalidRequest, "page resource app is required", nil, nil)
 	}
-	if normalized.RecordID < 0 {
-		return Request{}, Resource{}, permissionError(ErrorInvalidRequest, "record id must be greater than or equal to zero", map[string]any{"record-id": request.RecordID}, nil)
-	}
 	if _, err := ParseAction(string(normalized.Action)); err != nil {
 		return Request{}, Resource{}, permissionError(ErrorInvalidRequest, err.Error(), map[string]any{"action": request.Action}, err)
 	}
@@ -274,7 +254,7 @@ func normalizeRequest(request Request) (Request, Resource, error) {
 }
 
 func allowedDecision(request Request, resource Resource) Decision {
-	return Decision{Allowed: true, Actor: request.Actor, Entity: request.Entity, Resource: resource, Action: request.Action, RecordID: request.RecordID, Reason: ReasonAllowed}
+	return Decision{Allowed: true, Actor: request.Actor, Entity: request.Entity, Resource: resource, Action: request.Action, Reason: ReasonAllowed}
 }
 
 func decisionDetails(request Request) map[string]any {
@@ -289,10 +269,29 @@ func decisionDetails(request Request) map[string]any {
 	} else {
 		details["entity"] = request.Entity
 	}
-	if request.RecordID > 0 {
-		details["record-id"] = request.RecordID
-	}
 	return details
+}
+
+func permissionTargetSQL(resource Resource) (string, []any) {
+	switch {
+	case resource.Kind == ResourcePage:
+		return "pa.name = $2 AND pg.key = $3 AND p.page_id IS NOT NULL AND COALESCE(pg.retired, false) = false", []any{resource.App, resource.Name}
+	case resource.App != "":
+		return "a.name = $2 AND e.key = $3", []any{resource.App, resource.Name}
+	default:
+		return "e.slug = $2", []any{resource.Name}
+	}
+}
+
+func permissionActionSQL(action Action, resource Resource, args []any) (string, []any, error) {
+	if column, ok := actionColumn(action); ok {
+		return fmt.Sprintf("COALESCE(p.%s, false) = true", column), args, nil
+	}
+	if resource.Kind != ResourceEntity {
+		return "", nil, permissionError(ErrorInvalidRequest, "custom actions require an Entity resource", nil, nil)
+	}
+	args = append(args, string(action))
+	return fmt.Sprintf("COALESCE(p.actions, '[]'::jsonb) ? $%d", len(args)), args, nil
 }
 
 func permissionError(code string, message string, details map[string]any, err error) Error {

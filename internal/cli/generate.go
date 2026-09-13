@@ -143,7 +143,6 @@ func newGenerateHookCommand(stdout io.Writer) *cobra.Command {
 				AppName:    target.App,
 				EntityName: target.Name,
 				DryRun:     dryRun,
-				Force:      force,
 			})
 			if err != nil {
 				return fmt.Errorf("generate hook: %w", err)

@@ -54,7 +54,6 @@ type Result struct {
 	DatabaseURL  string
 	TidyRun      bool
 	CoreSource   string
-	StudioCached bool
 	StudioSource string
 }
 
@@ -122,7 +121,7 @@ func Generate(ctx context.Context, options Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	studioCached, studioSource, err := installStudioCache(target, options, dep)
+	studioSource, err := installStudioCache(target, options, dep)
 	if err != nil {
 		return Result{}, err
 	}
@@ -134,7 +133,6 @@ func Generate(ctx context.Context, options Options) (Result, error) {
 		Path:         target,
 		DatabaseURL:  databaseURL,
 		CoreSource:   coreSource,
-		StudioCached: studioCached,
 		StudioSource: studioSource,
 	}
 	if !options.SkipTidy {
@@ -274,12 +272,12 @@ func resolveDygoDependency(options Options, workingDir string) (dygoDependency, 
 	return dygoDependency{Version: "v0.0.0", Replace: frameworkRoot}, nil
 }
 
-func installStudioCache(root string, options Options, dep dygoDependency) (bool, string, error) {
+func installStudioCache(root string, options Options, dep dygoDependency) (string, error) {
 	appSources := make([]studio.AppSource, 0, 2)
 	if dep.Replace != "" {
 		source, ok, err := studio.AppSourceFromDir("framework Studio App", studio.FrameworkAppPath(dep.Replace))
 		if err != nil {
-			return false, "", fmt.Errorf("resolve framework Studio App: %w", err)
+			return "", fmt.Errorf("resolve framework Studio App: %w", err)
 		}
 		if ok {
 			appSources = append(appSources, source)
@@ -287,7 +285,7 @@ func installStudioCache(root string, options Options, dep dygoDependency) (bool,
 	}
 	embeddedApp, err := studio.EmbeddedAppSource()
 	if err != nil {
-		return false, "", err
+		return "", err
 	}
 	appSources = append(appSources, embeddedApp)
 
@@ -298,7 +296,7 @@ func installStudioCache(root string, options Options, dep dygoDependency) (bool,
 	if dep.Replace != "" {
 		source, ok, err := studio.SourceFromDir("framework Studio build", studio.FrameworkDistPath(dep.Replace))
 		if err != nil {
-			return false, "", fmt.Errorf("resolve framework Studio build: %w", err)
+			return "", fmt.Errorf("resolve framework Studio build: %w", err)
 		}
 		if ok {
 			assetSources = append(assetSources, source)
@@ -306,16 +304,16 @@ func installStudioCache(root string, options Options, dep dygoDependency) (bool,
 	}
 	source, ok, err := studio.EmbeddedSource()
 	if err != nil {
-		return false, "", err
+		return "", err
 	}
 	if ok {
 		assetSources = append(assetSources, source)
 	}
 	name, err := studio.InstallApp(root, appSources, assetSources)
 	if err != nil {
-		return false, "", fmt.Errorf("install Studio App: %w", err)
+		return "", fmt.Errorf("install Studio App: %w", err)
 	}
-	return true, name, nil
+	return name, nil
 }
 
 func writeProjectFiles(root string, name string, label string, modulePath string, dep dygoDependency) error {

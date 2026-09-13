@@ -202,7 +202,7 @@ func UpgradeProject(ctx context.Context, options ProjectOptions) (ProjectResult,
 	if _, err := runner(ctx, root, "go", "mod", "edit", "-require="+ModulePath+"@"+options.TargetVersion); err != nil {
 		return failed(fmt.Errorf("update dygo module requirement: %w", err))
 	}
-	studioUpdated, studioSource, err := installStudioCache(root, options.StudioAssets)
+	studioSource, err := installStudioCache(root, options.StudioAssets)
 	if err != nil {
 		return failed(err)
 	}
@@ -228,7 +228,6 @@ func UpgradeProject(ctx context.Context, options ProjectOptions) (ProjectResult,
 	result.RunnerUpdated = written
 	result.CoreUpdated = true
 	result.CoreSource = coreSource
-	result.StudioUpdated = studioUpdated
 	result.StudioSource = studioSource
 	result.MetadataMigrationRequired = true
 	return result, nil
@@ -352,10 +351,10 @@ func installCoreCache(root string, configured fs.FS) (string, error) {
 	return name, nil
 }
 
-func installStudioCache(root string, configured fs.FS) (bool, string, error) {
+func installStudioCache(root string, configured fs.FS) (string, error) {
 	appSource, err := studio.EmbeddedAppSource()
 	if err != nil {
-		return false, "", err
+		return "", err
 	}
 	assetSources := make([]studio.Source, 0, 2)
 	if configured != nil {
@@ -363,16 +362,16 @@ func installStudioCache(root string, configured fs.FS) (bool, string, error) {
 	}
 	source, ok, err := studio.EmbeddedSource()
 	if err != nil {
-		return false, "", err
+		return "", err
 	}
 	if ok {
 		assetSources = append(assetSources, source)
 	}
 	name, err := studio.InstallApp(root, []studio.AppSource{appSource}, assetSources)
 	if err != nil {
-		return false, "", fmt.Errorf("install Studio App: %w", err)
+		return "", fmt.Errorf("install Studio App: %w", err)
 	}
-	return true, name, nil
+	return name, nil
 }
 
 // ReadProjectVersion reads the dygo module version from go.mod.

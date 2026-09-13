@@ -32,6 +32,7 @@ CREATE TABLE public.activity (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     kind text DEFAULT 'record'::text NOT NULL,
     operation text NOT NULL,
     status text DEFAULT 'success'::text NOT NULL,
@@ -43,8 +44,8 @@ CREATE TABLE public.activity (
     changes jsonb,
     snapshot jsonb,
     details jsonb,
-    CONSTRAINT activity_kind_check CHECK ((kind = ANY (ARRAY['record'::text, 'comment'::text, 'workflow'::text, 'job'::text, 'email'::text, 'attachment'::text, 'auth'::text, 'system'::text]))),
-    CONSTRAINT activity_operation_check CHECK ((operation = ANY (ARRAY['create'::text, 'update'::text, 'delete'::text, 'restore'::text, 'comment'::text, 'workflow-transition'::text, 'job-completed'::text, 'email-sent'::text, 'attachment-added'::text, 'login'::text, 'logout'::text, 'system'::text]))),
+    CONSTRAINT activity_kind_check CHECK ((kind = ANY (ARRAY['record'::text, 'comment'::text, 'workflow'::text, 'job'::text, 'email'::text, 'attachment'::text, 'auth'::text, 'system'::text, 'action'::text]))),
+    CONSTRAINT activity_operation_check CHECK ((operation = ANY (ARRAY['create'::text, 'update'::text, 'delete'::text, 'restore'::text, 'comment'::text, 'workflow-transition'::text, 'job-completed'::text, 'email-sent'::text, 'attachment-added'::text, 'login'::text, 'logout'::text, 'system'::text, 'action'::text]))),
     CONSTRAINT activity_status_check CHECK ((status = ANY (ARRAY['success'::text, 'failed'::text])))
 );
 
@@ -72,6 +73,7 @@ CREATE TABLE public.app (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     label text NOT NULL,
     version text NOT NULL,
     status text DEFAULT 'active'::text NOT NULL,
@@ -102,10 +104,11 @@ CREATE TABLE public.configuration (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
+    home text DEFAULT '/'::text NOT NULL,
     country_id bigint,
     language_id bigint,
     currency_id bigint,
-    home text DEFAULT '/'::text NOT NULL,
     CONSTRAINT configuration_single_check CHECK ((name = 'configuration'::text))
 );
 
@@ -133,6 +136,7 @@ CREATE TABLE public."constraint" (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     entity_id bigint NOT NULL,
     constraint_name text NOT NULL,
     type text NOT NULL,
@@ -143,7 +147,7 @@ CREATE TABLE public."constraint" (
     "position" integer,
     retired boolean DEFAULT false NOT NULL,
     CONSTRAINT constraint_operator_check CHECK ((operator = ANY (ARRAY['eq'::text, 'neq'::text, 'gt'::text, 'gte'::text, 'lt'::text, 'lte'::text, 'in'::text, 'not-in'::text]))),
-    CONSTRAINT constraint_type_check CHECK ((type = ANY (ARRAY['unique'::text, 'check'::text])))
+    CONSTRAINT constraint_type_check CHECK ((type = ANY (ARRAY['unique'::text, 'check'::text, 'exactly-one'::text])))
 );
 
 
@@ -170,6 +174,7 @@ CREATE TABLE public.country (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     code text NOT NULL
 );
 
@@ -197,6 +202,7 @@ CREATE TABLE public.currency (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     code text NOT NULL,
     numeric_code text,
     display_name text,
@@ -230,6 +236,8 @@ CREATE TABLE public.entity (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
+    tree jsonb,
     app_id bigint NOT NULL,
     key text NOT NULL,
     slug text,
@@ -269,6 +277,7 @@ CREATE TABLE public.field (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     entity_id bigint NOT NULL,
     field_name text NOT NULL,
     label text NOT NULL,
@@ -278,9 +287,9 @@ CREATE TABLE public.field (
     index boolean DEFAULT false,
     "default" jsonb,
     "check" jsonb,
+    "fetch" jsonb,
     "position" integer,
     options jsonb,
-    "fetch" jsonb,
     retired boolean DEFAULT false NOT NULL
 );
 
@@ -300,6 +309,117 @@ ALTER TABLE public.field ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: file; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.file (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
+    filename text NOT NULL,
+    storage_key text NOT NULL,
+    checksum text NOT NULL,
+    content_type text NOT NULL,
+    size bigint NOT NULL,
+    private boolean DEFAULT true NOT NULL,
+    actor_id bigint NOT NULL,
+    retired boolean DEFAULT false NOT NULL,
+    app text,
+    entity text,
+    record_id bigint,
+    field text
+);
+
+
+--
+-- Name: file_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.file ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.file_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: import; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.import (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
+    app text NOT NULL,
+    entity text NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    actor_id bigint,
+    headers jsonb NOT NULL,
+    total_rows integer DEFAULT 0 NOT NULL,
+    processed_rows integer DEFAULT 0 NOT NULL,
+    succeeded_rows integer DEFAULT 0 NOT NULL,
+    failed_rows integer DEFAULT 0 NOT NULL,
+    error text,
+    CONSTRAINT import_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text])))
+);
+
+
+--
+-- Name: import_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.import ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.import_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: import_row; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.import_row (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
+    import_id bigint NOT NULL,
+    row_number integer NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    data jsonb NOT NULL,
+    error text,
+    record_id bigint,
+    CONSTRAINT import_row_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text])))
+);
+
+
+--
+-- Name: import_row_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.import_row ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.import_row_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: index; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -308,6 +428,7 @@ CREATE TABLE public.index (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     entity_id bigint NOT NULL,
     index_name text NOT NULL,
     field_names jsonb NOT NULL,
@@ -339,15 +460,16 @@ CREATE TABLE public.job (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     app_id bigint NOT NULL,
     key text NOT NULL,
+    source text DEFAULT 'file'::text NOT NULL,
     label text NOT NULL,
     description text,
     queue text DEFAULT 'default'::text NOT NULL,
     timeout text NOT NULL,
     retry jsonb,
     enabled boolean DEFAULT true NOT NULL,
-    source text DEFAULT 'file'::text NOT NULL,
     retired boolean DEFAULT false NOT NULL,
     CONSTRAINT job_source_check CHECK ((source = ANY (ARRAY['file'::text, 'studio'::text, 'system'::text])))
 );
@@ -362,6 +484,7 @@ CREATE TABLE public.job_execution (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     job_id bigint NOT NULL,
     app_name text NOT NULL,
     job_name text NOT NULL,
@@ -422,6 +545,7 @@ CREATE TABLE public.language (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     code text NOT NULL,
     enabled boolean DEFAULT true
 );
@@ -450,6 +574,7 @@ CREATE TABLE public.log (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     type text NOT NULL,
     source text NOT NULL,
     app_id bigint,
@@ -489,6 +614,7 @@ CREATE TABLE public.naming_series (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     entity_id bigint NOT NULL,
     key text NOT NULL,
     pattern text NOT NULL,
@@ -511,6 +637,80 @@ ALTER TABLE public.naming_series ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
 
 
 --
+-- Name: notification; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.notification (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
+    recipient_id bigint NOT NULL,
+    title text NOT NULL,
+    message text NOT NULL,
+    deep_link text DEFAULT '/'::text NOT NULL,
+    read_at timestamp with time zone,
+    send_email boolean DEFAULT false NOT NULL,
+    emailed_at timestamp with time zone,
+    idempotency_key text NOT NULL
+);
+
+
+--
+-- Name: notification_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.notification ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.notification_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: page; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.page (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
+    app_id bigint NOT NULL,
+    key text NOT NULL,
+    source text DEFAULT 'file'::text NOT NULL,
+    label text NOT NULL,
+    description text,
+    icon text,
+    path text NOT NULL,
+    renderer text DEFAULT 'entity-index'::text NOT NULL,
+    options jsonb,
+    retired boolean DEFAULT false NOT NULL,
+    CONSTRAINT page_renderer_check CHECK ((renderer = 'entity-index'::text)),
+    CONSTRAINT page_source_check CHECK ((source = ANY (ARRAY['file'::text, 'studio'::text, 'system'::text])))
+);
+
+
+--
+-- Name: page_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.page ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.page_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: patch_run; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -519,6 +719,7 @@ CREATE TABLE public.patch_run (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     app_id bigint NOT NULL,
     patch_id text NOT NULL,
     path text NOT NULL,
@@ -553,7 +754,9 @@ CREATE TABLE public.permission (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    entity_id bigint NOT NULL,
+    owner_id bigint,
+    entity_id bigint,
+    page_id bigint,
     role_id bigint NOT NULL,
     read boolean DEFAULT false,
     "create" boolean DEFAULT false,
@@ -561,7 +764,11 @@ CREATE TABLE public.permission (
     delete boolean DEFAULT false,
     export boolean DEFAULT false,
     print boolean DEFAULT false,
-    retired boolean DEFAULT false
+    actions jsonb,
+    "when" jsonb,
+    field_rules jsonb,
+    retired boolean DEFAULT false,
+    CONSTRAINT entity_or_page_target CHECK ((num_nonnulls(entity_id, page_id) = 1))
 );
 
 
@@ -588,6 +795,7 @@ CREATE TABLE public.role (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     label text NOT NULL,
     description text,
     enabled boolean DEFAULT true
@@ -617,6 +825,7 @@ CREATE TABLE public.schedule (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     app_id bigint NOT NULL,
     key text NOT NULL,
     source text DEFAULT 'file'::text NOT NULL,
@@ -660,6 +869,7 @@ CREATE TABLE public.session (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     user_id bigint NOT NULL,
     token_digest text NOT NULL,
     status text DEFAULT 'active'::text NOT NULL,
@@ -685,6 +895,67 @@ ALTER TABLE public.session ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
+-- Name: studio_preference; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.studio_preference (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
+    user_id bigint NOT NULL,
+    key text NOT NULL,
+    value jsonb
+);
+
+
+--
+-- Name: studio_preference_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.studio_preference ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.studio_preference_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: studio_saved_filter; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.studio_saved_filter (
+    id bigint NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
+    user_id bigint NOT NULL,
+    entity text NOT NULL,
+    label text NOT NULL,
+    filters jsonb NOT NULL
+);
+
+
+--
+-- Name: studio_saved_filter_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.studio_saved_filter ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.studio_saved_filter_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: user; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -693,6 +964,7 @@ CREATE TABLE public."user" (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     email text NOT NULL,
     full_name text NOT NULL,
     password_hash text,
@@ -724,6 +996,7 @@ CREATE TABLE public.user_role (
     name text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    owner_id bigint,
     user_id bigint NOT NULL,
     role_id bigint NOT NULL
 );
@@ -896,6 +1169,62 @@ ALTER TABLE ONLY public.field
 
 
 --
+-- Name: file file_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.file
+    ADD CONSTRAINT file_name_key UNIQUE (name);
+
+
+--
+-- Name: file file_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.file
+    ADD CONSTRAINT file_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: file file_storage_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.file
+    ADD CONSTRAINT file_storage_key_key UNIQUE (storage_key);
+
+
+--
+-- Name: import import_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import
+    ADD CONSTRAINT import_name_key UNIQUE (name);
+
+
+--
+-- Name: import import_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import
+    ADD CONSTRAINT import_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: import_row import_row_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import_row
+    ADD CONSTRAINT import_row_name_key UNIQUE (name);
+
+
+--
+-- Name: import_row import_row_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.import_row
+    ADD CONSTRAINT import_row_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: index index_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1024,6 +1353,62 @@ ALTER TABLE ONLY public.naming_series
 
 
 --
+-- Name: notification notification_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notification
+    ADD CONSTRAINT notification_name_key UNIQUE (name);
+
+
+--
+-- Name: notification notification_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notification
+    ADD CONSTRAINT notification_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: notification notification_recipient_idempotency_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notification
+    ADD CONSTRAINT notification_recipient_idempotency_key_key UNIQUE (recipient_id, idempotency_key);
+
+
+--
+-- Name: page page_app_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.page
+    ADD CONSTRAINT page_app_key_key UNIQUE (app_id, key);
+
+
+--
+-- Name: page page_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.page
+    ADD CONSTRAINT page_name_key UNIQUE (name);
+
+
+--
+-- Name: page page_path_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.page
+    ADD CONSTRAINT page_path_key UNIQUE (path);
+
+
+--
+-- Name: page page_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.page
+    ADD CONSTRAINT page_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: patch_run patch_run_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1056,11 +1441,27 @@ ALTER TABLE ONLY public.permission
 
 
 --
+-- Name: permission permission_page_role_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.permission
+    ADD CONSTRAINT permission_page_role_key UNIQUE (page_id, role_id);
+
+
+--
 -- Name: permission permission_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.permission
     ADD CONSTRAINT permission_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: studio_preference preference_user_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.studio_preference
+    ADD CONSTRAINT preference_user_key_key UNIQUE (user_id, key);
 
 
 --
@@ -1077,6 +1478,14 @@ ALTER TABLE ONLY public.role
 
 ALTER TABLE ONLY public.role
     ADD CONSTRAINT role_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: studio_saved_filter saved_filter_user_entity_label_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.studio_saved_filter
+    ADD CONSTRAINT saved_filter_user_entity_label_key UNIQUE (user_id, entity, label);
 
 
 --
@@ -1128,6 +1537,38 @@ ALTER TABLE ONLY public.session
 
 
 --
+-- Name: studio_preference studio_preference_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.studio_preference
+    ADD CONSTRAINT studio_preference_name_key UNIQUE (name);
+
+
+--
+-- Name: studio_preference studio_preference_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.studio_preference
+    ADD CONSTRAINT studio_preference_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: studio_saved_filter studio_saved_filter_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.studio_saved_filter
+    ADD CONSTRAINT studio_saved_filter_name_key UNIQUE (name);
+
+
+--
+-- Name: studio_saved_filter studio_saved_filter_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.studio_saved_filter
+    ADD CONSTRAINT studio_saved_filter_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: user user_email_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1168,10 +1609,31 @@ ALTER TABLE ONLY public.user_role
 
 
 --
+-- Name: by_import; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX by_import ON public.import_row USING btree (import_id, row_number);
+
+
+--
+-- Name: by_recipient_read_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX by_recipient_read_at ON public.notification USING btree (recipient_id, read_at);
+
+
+--
 -- Name: by_record; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX by_record ON public.activity USING btree (entity_id, record_id);
+
+
+--
+-- Name: by_target; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX by_target ON public.file USING btree (app, entity, record_id, field);
 
 
 --
@@ -1217,6 +1679,13 @@ CREATE INDEX entity_is_collection_idx ON public.entity USING btree (is_collectio
 
 
 --
+-- Name: entity_is_private_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX entity_is_private_idx ON public.entity USING btree (is_private);
+
+
+--
 -- Name: entity_is_single_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1228,11 +1697,6 @@ CREATE INDEX entity_is_single_idx ON public.entity USING btree (is_single);
 --
 
 CREATE INDEX entity_is_system_idx ON public.entity USING btree (is_system);
-
--- Name: entity_is_private_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX entity_is_private_idx ON public.entity USING btree (is_private);
 
 
 --
@@ -1268,6 +1732,13 @@ CREATE INDEX field_field_name_idx ON public.field USING btree (field_name);
 --
 
 CREATE INDEX field_type_idx ON public.field USING btree (type);
+
+
+--
+-- Name: import_row_import_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX import_row_import_id_idx ON public.import_row USING btree (import_id);
 
 
 --
@@ -1425,6 +1896,62 @@ CREATE INDEX naming_series_entity_id_idx ON public.naming_series USING btree (en
 
 
 --
+-- Name: notification_read_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX notification_read_at_idx ON public.notification USING btree (read_at);
+
+
+--
+-- Name: notification_recipient_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX notification_recipient_id_idx ON public.notification USING btree (recipient_id);
+
+
+--
+-- Name: page_app_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX page_app_id_idx ON public.page USING btree (app_id);
+
+
+--
+-- Name: page_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX page_key_idx ON public.page USING btree (key);
+
+
+--
+-- Name: page_path_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX page_path_idx ON public.page USING btree (path);
+
+
+--
+-- Name: page_renderer_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX page_renderer_idx ON public.page USING btree (renderer);
+
+
+--
+-- Name: page_retired_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX page_retired_idx ON public.page USING btree (retired);
+
+
+--
+-- Name: page_source_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX page_source_idx ON public.page USING btree (source);
+
+
+--
 -- Name: patch_run_app_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1450,6 +1977,13 @@ CREATE INDEX patch_run_phase_idx ON public.patch_run USING btree (phase);
 --
 
 CREATE INDEX permission_entity_id_idx ON public.permission USING btree (entity_id);
+
+
+--
+-- Name: permission_page_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX permission_page_id_idx ON public.permission USING btree (page_id);
 
 
 --
@@ -1673,6 +2207,22 @@ ALTER TABLE ONLY public.naming_series
 
 
 --
+-- Name: notification notification_recipient_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notification
+    ADD CONSTRAINT notification_recipient_id_fkey FOREIGN KEY (recipient_id) REFERENCES public."user"(id);
+
+
+--
+-- Name: page page_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.page
+    ADD CONSTRAINT page_app_id_fkey FOREIGN KEY (app_id) REFERENCES public.app(id);
+
+
+--
 -- Name: patch_run patch_run_app_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1686,6 +2236,14 @@ ALTER TABLE ONLY public.patch_run
 
 ALTER TABLE ONLY public.permission
     ADD CONSTRAINT permission_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(id);
+
+
+--
+-- Name: permission permission_page_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.permission
+    ADD CONSTRAINT permission_page_id_fkey FOREIGN KEY (page_id) REFERENCES public.page(id);
 
 
 --
@@ -1718,6 +2276,22 @@ ALTER TABLE ONLY public.schedule
 
 ALTER TABLE ONLY public.session
     ADD CONSTRAINT session_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id);
+
+
+--
+-- Name: studio_preference studio_preference_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.studio_preference
+    ADD CONSTRAINT studio_preference_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id);
+
+
+--
+-- Name: studio_saved_filter studio_saved_filter_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.studio_saved_filter
+    ADD CONSTRAINT studio_saved_filter_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id);
 
 
 --

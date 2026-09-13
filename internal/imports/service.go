@@ -282,32 +282,29 @@ func process(ctx context.Context, job dygo.JobExecution) error {
 			if !ok {
 				continue
 			}
-			var values map[string]string
-			if raw, ok := row["data"].(json.RawMessage); ok {
-				_ = json.Unmarshal(raw, &values)
-			} else if raw, ok := row["data"].([]byte); ok {
-				_ = json.Unmarshal(raw, &values)
-			} else if raw, ok := row["data"].(map[string]any); ok {
-				values = make(map[string]string, len(raw))
-				for field, value := range raw {
-					values[field] = fmt.Sprint(value)
-				}
-			}
+			values, parseErr := importRowValues(row["data"])
 			input := make(dygo.RecordInput, len(values))
 			for field, value := range values {
 				input[field] = jsonString(value)
 			}
-			created, createErr := actorRecords.Create(ctx, payload.Target.App, payload.Target.Entity, input)
 			processed++
 			rowUpdate := map[string]any{"status": "succeeded"}
-			if createErr != nil {
+			switch {
+			case parseErr != nil:
 				failed++
 				rowUpdate["status"] = "failed"
-				rowUpdate["error"] = createErr.Error()
-			} else {
-				succeeded++
-				if createdID, ok := integer(created["id"]); ok {
-					rowUpdate["record-id"] = createdID
+				rowUpdate["error"] = parseErr.Error()
+			default:
+				created, createErr := actorRecords.Create(ctx, payload.Target.App, payload.Target.Entity, input)
+				if createErr != nil {
+					failed++
+					rowUpdate["status"] = "failed"
+					rowUpdate["error"] = createErr.Error()
+				} else {
+					succeeded++
+					if createdID, ok := integer(created["id"]); ok {
+						rowUpdate["record-id"] = createdID
+					}
 				}
 			}
 			if _, err := system.Update(ctx, coreApp, rowEntity, rowID, dygoRecordInput(rowUpdate)); err != nil {
@@ -340,6 +337,31 @@ func validateHeaders(headers []string) error {
 		return dygo.ActionError{Code: "invalid_request", Message: "CSV header is required"}
 	}
 	return nil
+}
+
+func importRowValues(data any) (map[string]string, error) {
+	switch raw := data.(type) {
+	case json.RawMessage:
+		var values map[string]string
+		if err := json.Unmarshal(raw, &values); err != nil {
+			return nil, fmt.Errorf("decode import row data: %w", err)
+		}
+		return values, nil
+	case []byte:
+		var values map[string]string
+		if err := json.Unmarshal(raw, &values); err != nil {
+			return nil, fmt.Errorf("decode import row data: %w", err)
+		}
+		return values, nil
+	case map[string]any:
+		values := make(map[string]string, len(raw))
+		for field, value := range raw {
+			values[field] = fmt.Sprint(value)
+		}
+		return values, nil
+	default:
+		return nil, nil
+	}
 }
 
 func dygoRecordInput(values map[string]any) dygo.RecordInput {

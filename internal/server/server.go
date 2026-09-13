@@ -1115,7 +1115,7 @@ func (h recordHandler) listRecords(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entity := chi.URLParam(r, "entity")
-	if !h.authorize(w, r, entity, permissions.ActionRead, 0) {
+	if !h.authorize(w, r, entity, permissions.ActionRead) {
 		return
 	}
 	params, err := recordListParams(r)
@@ -1149,7 +1149,7 @@ func (h recordHandler) getRecord(w http.ResponseWriter, r *http.Request) {
 		writeRecordError(w, err)
 		return
 	}
-	if !h.authorize(w, r, entity, permissions.ActionRead, id) {
+	if !h.authorize(w, r, entity, permissions.ActionRead) {
 		return
 	}
 	store, err := h.storeFor(r, entity, permissions.ActionRead)
@@ -1170,7 +1170,7 @@ func (h recordHandler) getRecordByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entity := chi.URLParam(r, "entity")
-	if !h.authorize(w, r, entity, permissions.ActionRead, 0) {
+	if !h.authorize(w, r, entity, permissions.ActionRead) {
 		return
 	}
 	name, err := url.PathUnescape(chi.URLParam(r, "name"))
@@ -1205,7 +1205,7 @@ func (h recordHandler) getSingleRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entity := chi.URLParam(r, "entity")
-	if !h.authorize(w, r, entity, permissions.ActionRead, 0) {
+	if !h.authorize(w, r, entity, permissions.ActionRead) {
 		return
 	}
 	store, err := h.storeFor(r, entity, permissions.ActionRead)
@@ -1226,7 +1226,7 @@ func (h recordHandler) createRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entity := chi.URLParam(r, "entity")
-	if !h.authorize(w, r, entity, permissions.ActionCreate, 0) {
+	if !h.authorize(w, r, entity, permissions.ActionCreate) {
 		return
 	}
 	input, err := decodeRecordInput(r)
@@ -1257,7 +1257,7 @@ func (h recordHandler) updateRecord(w http.ResponseWriter, r *http.Request) {
 		writeRecordError(w, err)
 		return
 	}
-	if !h.authorize(w, r, entity, permissions.ActionUpdate, id) {
+	if !h.authorize(w, r, entity, permissions.ActionUpdate) {
 		return
 	}
 	input, err := decodeRecordInput(r)
@@ -1283,7 +1283,7 @@ func (h recordHandler) updateSingleRecord(w http.ResponseWriter, r *http.Request
 		return
 	}
 	entity := chi.URLParam(r, "entity")
-	if !h.authorize(w, r, entity, permissions.ActionUpdate, 0) {
+	if !h.authorize(w, r, entity, permissions.ActionUpdate) {
 		return
 	}
 	input, err := decodeRecordInput(r)
@@ -1314,7 +1314,7 @@ func (h recordHandler) deleteRecord(w http.ResponseWriter, r *http.Request) {
 		writeRecordError(w, err)
 		return
 	}
-	if !h.authorize(w, r, entity, permissions.ActionDelete, id) {
+	if !h.authorize(w, r, entity, permissions.ActionDelete) {
 		return
 	}
 	store, err := h.storeFor(r, entity, permissions.ActionDelete)
@@ -1336,7 +1336,7 @@ func (h recordHandler) listRecordActivity(w http.ResponseWriter, r *http.Request
 		writeRecordError(w, err)
 		return
 	}
-	if !h.authorize(w, r, entity, permissions.ActionRead, id) {
+	if !h.authorize(w, r, entity, permissions.ActionRead) {
 		return
 	}
 	if h.store != nil {
@@ -1376,7 +1376,7 @@ func (h recordHandler) addRecordComment(w http.ResponseWriter, r *http.Request) 
 		writeRecordError(w, err)
 		return
 	}
-	if !h.authorize(w, r, entity, permissions.ActionUpdate, id) {
+	if !h.authorize(w, r, entity, permissions.ActionUpdate) {
 		return
 	}
 	if h.requireStore(w) {
@@ -1445,7 +1445,7 @@ func (h recordHandler) requireActivityStore(w http.ResponseWriter) bool {
 	return true
 }
 
-func (h recordHandler) authorize(w http.ResponseWriter, r *http.Request, entity string, action permissions.Action, recordID int64) bool {
+func (h recordHandler) authorize(w http.ResponseWriter, r *http.Request, entity string, action permissions.Action) bool {
 	if h.permissions == nil {
 		writeJSON(w, http.StatusServiceUnavailable, errorEnvelope{Error: apiError{
 			Code:    "service_unavailable",
@@ -1464,10 +1464,9 @@ func (h recordHandler) authorize(w http.ResponseWriter, r *http.Request, entity 
 			return false
 		}
 		err := h.permissions.Can(r.Context(), permissions.Request{
-			Actor:    permissions.Actor{UserID: user.ID, Administrator: user.Administrator},
-			Entity:   entity,
-			Action:   action,
-			RecordID: recordID,
+			Actor:  permissions.Actor{UserID: user.ID, Administrator: user.Administrator},
+			Entity: entity,
+			Action: action,
 		})
 		if err != nil {
 			writePermissionError(w, err)
@@ -1495,6 +1494,13 @@ func (h recordHandler) authorize(w http.ResponseWriter, r *http.Request, entity 
 func (h recordHandler) storeFor(r *http.Request, entity string, action permissions.Action) (RecordStore, error) {
 	store, ok := h.store.(db.RecordStore)
 	if !ok {
+		if h.metadata != nil {
+			if _, scopes := h.permissions.(interface {
+				RecordScope(context.Context, permissions.Request) (permissions.Scope, error)
+			}); scopes {
+				return nil, permissions.Error{Code: permissions.ErrorInternal, Message: "record store does not support permission scoping"}
+			}
+		}
 		return h.store, nil
 	}
 	user, ok := CurrentUserFromContext(r.Context())

@@ -18,7 +18,7 @@ func (h recordHandler) secretStatus(w http.ResponseWriter, r *http.Request) {
 		writeRecordError(w, err)
 		return
 	}
-	if !h.authorize(w, r, entity, permissions.ActionRead, id) {
+	if !h.authorize(w, r, entity, permissions.ActionRead) {
 		return
 	}
 	store, err := h.storeFor(r, entity, permissions.ActionRead)

@@ -139,7 +139,9 @@ func DiscoverHooks(root string) ([]HookFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	MarkHookRunnerWiring(filepath.Join(root, "cmd", "dygo", "main.go"), hookFiles)
+	if err := MarkHookRunnerWiring(filepath.Join(root, "cmd", "dygo", "main.go"), hookFiles); err != nil {
+		return nil, err
+	}
 	return hookFiles, nil
 }
 
@@ -161,7 +163,9 @@ func DiscoverJobs(root string) ([]JobFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	MarkJobRunnerWiring(filepath.Join(root, "cmd", "dygo", "main.go"), jobFiles)
+	if err := MarkJobRunnerWiring(filepath.Join(root, "cmd", "dygo", "main.go"), jobFiles); err != nil {
+		return nil, err
+	}
 	return jobFiles, nil
 }
 
@@ -449,27 +453,35 @@ func ImportPathForDir(root string, modulePath string, dir string) (string, error
 }
 
 // MarkHookRunnerWiring annotates hook files with current runner state.
-func MarkHookRunnerWiring(runnerFile string, hookFiles []HookFile) {
+func MarkHookRunnerWiring(runnerFile string, hookFiles []HookFile) error {
 	data, err := os.ReadFile(runnerFile)
 	if err != nil {
-		return
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read runner file %s: %w", runnerFile, err)
 	}
 	source := string(data)
 	for index := range hookFiles {
 		hookFiles[index].RunnerWired = strings.Contains(source, strconv.Quote(hookFiles[index].ImportPath)) && strings.Contains(source, hookFiles[index].Alias+".Register")
 	}
+	return nil
 }
 
 // MarkJobRunnerWiring annotates Job files with current runner state.
-func MarkJobRunnerWiring(runnerFile string, jobFiles []JobFile) {
+func MarkJobRunnerWiring(runnerFile string, jobFiles []JobFile) error {
 	data, err := os.ReadFile(runnerFile)
 	if err != nil {
-		return
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read runner file %s: %w", runnerFile, err)
 	}
 	source := string(data)
 	for index := range jobFiles {
 		jobFiles[index].RunnerWired = strings.Contains(source, strconv.Quote(jobFiles[index].ImportPath)) && strings.Contains(source, jobFiles[index].Alias+".Run")
 	}
+	return nil
 }
 
 // RenderSource renders the project runner source.

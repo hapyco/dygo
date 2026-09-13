@@ -7,7 +7,11 @@ import (
 	"time"
 
 	"github.com/hapyco/dygo/internal/auth"
+	"github.com/hapyco/dygo/internal/recordsecret"
 )
+
+// adminSetupLock serializes first-administrator creation across concurrent setups.
+const adminSetupLock int64 = 0x6479676f61646d
 
 // AuthSessionWriter persists login sessions through the framework system writer.
 type AuthSessionWriter struct {
@@ -54,11 +58,49 @@ func (w AuthAdminWriter) SaveAdmin(ctx context.Context, input auth.AdminInput) (
 		"enabled":       systemRecordBool(true),
 		"administrator": systemRecordBool(true),
 	}
-	record, err := w.writer.UpsertReturningByIdentity(ctx, "core", "user", match, recordInput, SystemMutationBootstrap)
+	record, err := w.saveFirstAdmin(ctx, match, recordInput)
 	if err != nil {
 		return auth.User{}, err
 	}
 	return authUserFromRecord(record)
+}
+
+// saveFirstAdmin creates the administrator only when none exists. The advisory
+// lock and existence check share one transaction so concurrent setups cannot
+// both pass the check.
+func (w AuthAdminWriter) saveFirstAdmin(ctx context.Context, match RecordInput, input RecordInput) (Record, error) {
+	if err := w.writer.store.requireQueryer(); err != nil {
+		return nil, err
+	}
+	store, err := w.writer.mutationStore("core", "user", SystemMutationBootstrap)
+	if err != nil {
+		return nil, err
+	}
+	ctx = recordsecret.WithOperation(ctx)
+	return store.withRecordMutation(ctx, func(txStore RecordStore) (Record, error) {
+		if _, err := txStore.queryer.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", adminSetupLock); err != nil {
+			return nil, fmt.Errorf("lock administrator setup: %w", err)
+		}
+		var exists bool
+		if err := txStore.queryer.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM "user" WHERE COALESCE(administrator, false) = true)`).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, auth.Error{Code: auth.ErrorAlreadyExists, Message: "administrator account already exists"}
+		}
+		existing, err := txStore.FindRecordByIdentity(ctx, "core", "user", match)
+		if err != nil {
+			if !isRecordNotFound(err) {
+				return nil, err
+			}
+			return txStore.createRecordByIdentity(ctx, "core", "user", input)
+		}
+		id, err := activityRecordID(existing)
+		if err != nil {
+			return nil, err
+		}
+		return txStore.updateRecordByIdentity(ctx, "core", "user", id, input)
+	})
 }
 
 func systemRecordTime(value time.Time) json.RawMessage {
