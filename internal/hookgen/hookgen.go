@@ -73,7 +73,7 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 		return Result{}, err
 	}
 
-	app, ok := findApp(metadata.Apps, appName)
+	app, ok := manifest.FindApp(metadata.Apps, appName)
 	if !ok {
 		return Result{}, fmt.Errorf("app %q not found", appName)
 	}
@@ -155,7 +155,7 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	}
 	result.RunnerFileWritten = written
 	if result.RunnerFileStatus == "" {
-		result.RunnerFileStatus = writeStatus(written)
+		result.RunnerFileStatus = runnergen.WriteStatus(written)
 	}
 	return result, nil
 }
@@ -216,15 +216,6 @@ func Validate(root string) ([]string, error) {
 		problems = append(problems, fmt.Sprintf("%s is out of date; run dygo hook sync", filepath.ToSlash(update.RunnerFile)))
 	}
 	return problems, nil
-}
-
-func findApp(apps []manifest.LoadedApp, appName string) (manifest.LoadedApp, bool) {
-	for _, app := range apps {
-		if app.Manifest.Name == appName {
-			return app, true
-		}
-	}
-	return manifest.LoadedApp{}, false
 }
 
 func findEntity(entities []catalog.LoadedEntity, appName string, entityName string) (catalog.LoadedEntity, bool) {
@@ -321,11 +312,4 @@ func afterUpdate%[1]s(ctx context.Context, hook dygo.RecordHook) error {
 }
 `, name, appName, entityName, entityName+"-before-create", entityName+"-after-create", entityName+"-before-update", entityName+"-after-update")
 	return runnergen.FormatGoSource([]byte(source))
-}
-
-func writeStatus(written bool) string {
-	if written {
-		return "updated"
-	}
-	return "unchanged"
 }

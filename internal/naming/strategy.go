@@ -6,11 +6,26 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/hapyco/dygo/internal/entity/schema"
 )
 
 var seriesTokenPattern = regexp.MustCompile(`\{(YY|YYYY|MM|#+)\}`)
+
+// LabelForName converts a kebab-case name into a display label.
+func LabelForName(name string) string {
+	parts := strings.Split(name, "-")
+	for index, part := range parts {
+		if part == "" {
+			continue
+		}
+		runes := []rune(part)
+		runes[0] = unicode.ToUpper(runes[0])
+		parts[index] = string(runes)
+	}
+	return strings.Join(parts, " ")
+}
 
 // ValueResolver provides values for manual and format naming tokens.
 type ValueResolver interface {

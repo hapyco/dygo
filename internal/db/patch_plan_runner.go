@@ -9,7 +9,6 @@ import (
 
 	"github.com/hapyco/dygo/internal/entity/catalog"
 	"github.com/hapyco/dygo/internal/patches"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -50,10 +49,6 @@ type PatchApplyResult struct {
 	Applied []PatchRun
 }
 
-type patchTransactionBeginner interface {
-	Begin(context.Context) (pgx.Tx, error)
-}
-
 // PatchPlan compares discovered patch files with the patch ledger without writing to the database.
 func (m Migrator) PatchPlan(ctx context.Context, root string, databaseURL string, phase string) (PatchPlan, error) {
 	pool, err := connectMetadataPool(ctx, databaseURL)
@@ -84,7 +79,7 @@ func (m Migrator) ApplyPatches(ctx context.Context, root string, databaseURL str
 	return m.applyPatchPlan(ctx, pool, plan, root, databaseURL, dygoVersion)
 }
 
-func (m Migrator) applyPatchPlan(ctx context.Context, beginner patchTransactionBeginner, plan PatchPlan, root string, databaseURL string, dygoVersion string) (PatchApplyResult, error) {
+func (m Migrator) applyPatchPlan(ctx context.Context, beginner recordBeginner, plan PatchPlan, root string, databaseURL string, dygoVersion string) (PatchApplyResult, error) {
 	result, err := ApplyPatchPlan(ctx, beginner, plan, root, dygoVersion)
 	if err != nil {
 		return result, err
@@ -134,7 +129,7 @@ func patchLedgerTablesAvailable(live LiveSchema) bool {
 }
 
 // ApplyPatchPlan applies planned pending patches using one transaction per patch.
-func ApplyPatchPlan(ctx context.Context, beginner patchTransactionBeginner, plan PatchPlan, root string, dygoVersion string) (PatchApplyResult, error) {
+func ApplyPatchPlan(ctx context.Context, beginner recordBeginner, plan PatchPlan, root string, dygoVersion string) (PatchApplyResult, error) {
 	if beginner == nil {
 		return PatchApplyResult{}, fmt.Errorf("patch transaction beginner is required")
 	}
@@ -149,7 +144,7 @@ func ApplyPatchPlan(ctx context.Context, beginner patchTransactionBeginner, plan
 	return result, nil
 }
 
-func applyOnePatch(ctx context.Context, beginner patchTransactionBeginner, patch PlannedPatch, root string, dygoVersion string) (PatchRun, error) {
+func applyOnePatch(ctx context.Context, beginner recordBeginner, patch PlannedPatch, root string, dygoVersion string) (PatchRun, error) {
 	tx, err := beginner.Begin(ctx)
 	if err != nil {
 		return PatchRun{}, fmt.Errorf("begin patch %s/%s transaction: %w", patch.AppName, patch.PatchID, err)
@@ -198,7 +193,7 @@ func BuildPatchPlan(loaded []patches.LoadedPatch, entities []catalog.LoadedEntit
 
 	runByPatch := map[string]PatchRun{}
 	for _, run := range runs {
-		runByPatch[patchRunKey(run.AppName, run.PatchID)] = run
+		runByPatch[metadataKey(run.AppName, run.PatchID)] = run
 	}
 
 	pendingLoaded := []patches.LoadedPatch{}
@@ -209,7 +204,7 @@ func BuildPatchPlan(loaded []patches.LoadedPatch, entities []catalog.LoadedEntit
 			continue
 		}
 
-		if run, ok := runByPatch[patchRunKey(patch.AppName, patch.Patch.ID)]; ok {
+		if run, ok := runByPatch[metadataKey(patch.AppName, patch.Patch.ID)]; ok {
 			if run.Checksum != patch.Checksum {
 				return PatchPlan{}, PatchRunChecksumMismatchError{
 					AppName:         patch.AppName,
@@ -222,7 +217,7 @@ func BuildPatchPlan(loaded []patches.LoadedPatch, entities []catalog.LoadedEntit
 			continue
 		}
 
-		pendingByPatch[patchRunKey(patch.AppName, patch.Patch.ID)] = len(plan.Pending)
+		pendingByPatch[metadataKey(patch.AppName, patch.Patch.ID)] = len(plan.Pending)
 		plan.Pending = append(plan.Pending, plannedPatchFromLoaded(patch))
 		pendingLoaded = append(pendingLoaded, patch)
 	}
@@ -235,7 +230,7 @@ func BuildPatchPlan(loaded []patches.LoadedPatch, entities []catalog.LoadedEntit
 		return PatchPlan{}, err
 	}
 	for _, operation := range operationPlan.Operations {
-		key := patchRunKey(operation.AppName, operation.PatchID)
+		key := metadataKey(operation.AppName, operation.PatchID)
 		index, ok := pendingByPatch[key]
 		if !ok {
 			return PatchPlan{}, fmt.Errorf("planned operation references unknown pending patch %s/%s", operation.AppName, operation.PatchID)
@@ -272,10 +267,6 @@ func patchLedgerPath(root string, patch PlannedPatch) (string, error) {
 
 func validPatchPhase(phase string) bool {
 	return phase == PatchPhasePreSync || phase == PatchPhasePostSync
-}
-
-func patchRunKey(appName string, patchID string) string {
-	return appName + "\x00" + patchID
 }
 
 func plannedPatchFromLoaded(patch patches.LoadedPatch) PlannedPatch {

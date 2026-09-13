@@ -101,7 +101,7 @@ func (r *RecordHookRegistry) RegisterEntity(appName string, entity string, event
 		return err
 	}
 	r.ensure()
-	key := entityKey(appName, entity)
+	key := metadataKey(appName, entity)
 	if r.entity[key] == nil {
 		r.entity[key] = map[RecordHookEvent][]recordHookDefinition{}
 	}
@@ -120,7 +120,7 @@ func (r *RecordHookRegistry) Run(ctx context.Context, hookCtx RecordHookContext)
 			return err
 		}
 	}
-	for _, hook := range r.entity[entityKey(hookCtx.AppName, hookCtx.Entity)][hookCtx.Event] {
+	for _, hook := range r.entity[metadataKey(hookCtx.AppName, hookCtx.Entity)][hookCtx.Event] {
 		if err := runRecordHook(ctx, recordHookContextForRun(hookCtx), hook); err != nil {
 			return err
 		}

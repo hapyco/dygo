@@ -289,3 +289,13 @@ func rejectDuplicateKeys(data []byte) error {
 		return fmt.Errorf("duplicate key %q at %s", duplicate.Key, strings.TrimSuffix(duplicate.Location, "."+duplicate.Key))
 	})
 }
+
+// FindApp returns the loaded App with the given manifest name.
+func FindApp(apps []LoadedApp, name string) (LoadedApp, bool) {
+	for _, app := range apps {
+		if app.Manifest.Name == name {
+			return app, true
+		}
+	}
+	return LoadedApp{}, false
+}

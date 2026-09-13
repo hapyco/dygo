@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
@@ -27,16 +26,9 @@ type PatchRun struct {
 	DygoVersion string
 }
 
-// PatchLedgerQueryer is the database behavior needed by the patch ledger.
-type PatchLedgerQueryer interface {
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-	QueryRow(context.Context, string, ...any) pgx.Row
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
-}
-
 // PatchLedger reads and writes successful app patch ledger entries.
 type PatchLedger struct {
-	queryer PatchLedgerQueryer
+	queryer RecordQueryer
 }
 
 // PatchRunAlreadyAppliedError reports an attempt to record an applied patch twice.
@@ -62,7 +54,7 @@ func (e PatchRunChecksumMismatchError) Error() string {
 }
 
 // NewPatchLedger returns a patch ledger backed by queryer.
-func NewPatchLedger(queryer PatchLedgerQueryer) PatchLedger {
+func NewPatchLedger(queryer RecordQueryer) PatchLedger {
 	return PatchLedger{queryer: queryer}
 }
 

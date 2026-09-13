@@ -1072,42 +1072,7 @@ func decodeEntityActionRequest(r *http.Request) (entityActionRequest, error) {
 }
 
 func writeEntityActionError(w http.ResponseWriter, err error) {
-	var permissionErr permissions.Error
-	if errors.As(err, &permissionErr) {
-		writePermissionError(w, err)
-		return
-	}
-	var recordErr db.RecordError
-	if errors.As(err, &recordErr) {
-		writeRecordError(w, err)
-		return
-	}
-	if db.IsMetadataNotFound(err) {
-		writeErrorEnvelope(w, http.StatusNotFound, "not_found", "Entity not found", nil)
-		return
-	}
-	var actionErr dygo.ActionError
-	if !errors.As(err, &actionErr) {
-		writeErrorEnvelope(w, http.StatusInternalServerError, "internal_error", "Entity action failed", nil)
-		return
-	}
-	status := http.StatusInternalServerError
-	switch actionErr.Code {
-	case "invalid_request":
-		status = http.StatusBadRequest
-	case "validation_error":
-		status = http.StatusUnprocessableEntity
-	case "not_found":
-		status = http.StatusNotFound
-	case "constraint_violation", "conflict":
-		status = http.StatusConflict
-	case "permission_denied":
-		status = http.StatusForbidden
-	case "internal_error":
-		actionErr.Message = "Entity action failed"
-		actionErr.Details = nil
-	}
-	writeErrorEnvelope(w, status, actionErr.Code, actionErr.Message, actionErr.Details)
+	writeActionError(w, err, "Entity action failed")
 }
 
 func (h recordHandler) listRecords(w http.ResponseWriter, r *http.Request) {

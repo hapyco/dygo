@@ -103,12 +103,8 @@ WHERE s.enabled = true
 
 func (s Store) scheduleQueueNames(queueNames []string) ([]string, error) {
 	queueNames = normalizeQueueNames(queueNames)
-	if s.queues != nil {
-		for _, queue := range queueNames {
-			if !s.queues.Has(queue) {
-				return nil, fmt.Errorf("queue %q is not registered", queue)
-			}
-		}
+	if err := s.validateQueues(queueNames); err != nil {
+		return nil, err
 	}
 	return queueNames, nil
 }

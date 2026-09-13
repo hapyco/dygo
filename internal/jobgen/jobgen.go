@@ -72,7 +72,7 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	app, ok := findApp(apps, appName)
+	app, ok := manifest.FindApp(apps, appName)
 	if !ok {
 		return Result{}, fmt.Errorf("app %q not found", appName)
 	}
@@ -164,18 +164,9 @@ func GenerateWithOptions(options GenerateOptions) (Result, error) {
 	}
 	result.RunnerFileWritten = written
 	if result.RunnerFileStatus == "" {
-		result.RunnerFileStatus = writeStatus(written)
+		result.RunnerFileStatus = runnergen.WriteStatus(written)
 	}
 	return result, nil
-}
-
-func findApp(apps []manifest.LoadedApp, appName string) (manifest.LoadedApp, bool) {
-	for _, app := range apps {
-		if app.Manifest.Name == appName {
-			return app, true
-		}
-	}
-	return manifest.LoadedApp{}, false
 }
 
 func preflightDirectory(path string) error {
@@ -285,11 +276,4 @@ func labelForName(name string) string {
 		parts[index] = strings.ToUpper(part[:1]) + part[1:]
 	}
 	return strings.Join(parts, " ")
-}
-
-func writeStatus(written bool) string {
-	if written {
-		return "updated"
-	}
-	return "unchanged"
 }

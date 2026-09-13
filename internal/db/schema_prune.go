@@ -145,15 +145,12 @@ func BuildSchemaPrunePlan(entities []catalog.LoadedEntity, live LiveSchema) (Sch
 		if !ok {
 			continue
 		}
-		constraintOperations, constraintDiagnostics := pruneExtraConstraints(desiredTable, liveTable)
-		indexOperations, indexDiagnostics := pruneExtraIndexes(desiredTable, liveTable)
-		columnOperations, columnDiagnostics := pruneExtraColumns(desiredTable, liveTable)
+		constraintOperations := pruneExtraConstraints(desiredTable, liveTable)
+		indexOperations := pruneExtraIndexes(desiredTable, liveTable)
+		columnOperations := pruneExtraColumns(desiredTable, liveTable)
 		constraints = append(constraints, constraintOperations...)
 		indexes = append(indexes, indexOperations...)
 		columns = append(columns, columnOperations...)
-		plan.Diagnostics = append(plan.Diagnostics, constraintDiagnostics...)
-		plan.Diagnostics = append(plan.Diagnostics, indexDiagnostics...)
-		plan.Diagnostics = append(plan.Diagnostics, columnDiagnostics...)
 	}
 
 	for _, name := range sortedTableNames(live.Tables) {
@@ -211,13 +208,12 @@ func sortedDesiredTableNames(tables map[string]desiredTable) []string {
 	return names
 }
 
-func pruneExtraConstraints(desired desiredTable, live liveTable) ([]SchemaPruneOperation, []SchemaDiagnostic) {
+func pruneExtraConstraints(desired desiredTable, live liveTable) []SchemaPruneOperation {
 	expected := map[string]bool{}
 	for _, constraint := range desired.Constraints {
 		expected[constraint.Name] = true
 	}
 	var operations []SchemaPruneOperation
-	var diagnostics []SchemaDiagnostic
 	for _, name := range sortedConstraintNames(live.Constraints) {
 		constraint := live.Constraints[name]
 		if constraint.Type == "primary-key" || constraint.Type == "not-null" || expected[name] {
@@ -232,16 +228,15 @@ func pruneExtraConstraints(desired desiredTable, live liveTable) ([]SchemaPruneO
 			SQL:         fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT %s", quoteIdent(desired.Name), quoteIdent(name)),
 		})
 	}
-	return operations, diagnostics
+	return operations
 }
 
-func pruneExtraIndexes(desired desiredTable, live liveTable) ([]SchemaPruneOperation, []SchemaDiagnostic) {
+func pruneExtraIndexes(desired desiredTable, live liveTable) []SchemaPruneOperation {
 	expected := map[string]bool{}
 	for _, index := range desired.Indexes {
 		expected[index.Name] = true
 	}
 	var operations []SchemaPruneOperation
-	var diagnostics []SchemaDiagnostic
 	for _, name := range sortedIndexNames(live.Indexes) {
 		if expected[name] || liveIndexBacksConstraint(name, live) {
 			continue
@@ -255,10 +250,10 @@ func pruneExtraIndexes(desired desiredTable, live liveTable) ([]SchemaPruneOpera
 			SQL:         fmt.Sprintf("DROP INDEX %s", quoteIdent(name)),
 		})
 	}
-	return operations, diagnostics
+	return operations
 }
 
-func pruneExtraColumns(desired desiredTable, live liveTable) ([]SchemaPruneOperation, []SchemaDiagnostic) {
+func pruneExtraColumns(desired desiredTable, live liveTable) []SchemaPruneOperation {
 	expected := map[string]bool{}
 	for _, column := range desired.SystemColumns {
 		expected[column.Name] = true
@@ -267,7 +262,6 @@ func pruneExtraColumns(desired desiredTable, live liveTable) ([]SchemaPruneOpera
 		expected[column.Name] = true
 	}
 	var operations []SchemaPruneOperation
-	var diagnostics []SchemaDiagnostic
 	for _, name := range sortedColumnNames(live.Columns) {
 		if expected[name] {
 			continue
@@ -281,5 +275,5 @@ func pruneExtraColumns(desired desiredTable, live liveTable) ([]SchemaPruneOpera
 			SQL:         fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", quoteIdent(desired.Name), quoteIdent(name)),
 		})
 	}
-	return operations, diagnostics
+	return operations
 }

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,8 +9,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/hapyco/dygo/internal/auth"
-	"github.com/hapyco/dygo/internal/db"
-	"github.com/hapyco/dygo/internal/permissions"
 	"github.com/hapyco/dygo/pkg/dygo"
 )
 
@@ -135,31 +132,5 @@ func fileID(r *http.Request) (int64, error) {
 }
 
 func writeFileError(w http.ResponseWriter, err error) {
-	var actionErr dygo.ActionError
-	if errors.As(err, &actionErr) {
-		status := http.StatusInternalServerError
-		switch actionErr.Code {
-		case "invalid_request":
-			status = http.StatusBadRequest
-		case "not_found":
-			status = http.StatusNotFound
-		case "permission_denied":
-			status = http.StatusForbidden
-		case "conflict":
-			status = http.StatusConflict
-		}
-		writeErrorEnvelope(w, status, actionErr.Code, actionErr.Message, actionErr.Details)
-		return
-	}
-	var permissionErr permissions.Error
-	if errors.As(err, &permissionErr) {
-		writePermissionError(w, err)
-		return
-	}
-	var recordErr db.RecordError
-	if errors.As(err, &recordErr) {
-		writeRecordError(w, err)
-		return
-	}
-	writeErrorEnvelope(w, http.StatusInternalServerError, "internal_error", "file operation failed", nil)
+	writeActionError(w, err, "file operation failed")
 }

@@ -434,12 +434,8 @@ func (s Store) Claim(ctx context.Context, queueNames []string, limit int, worker
 	if strings.TrimSpace(workerID) == "" {
 		return nil, fmt.Errorf("worker id is required")
 	}
-	if s.queues != nil {
-		for _, queue := range queueNames {
-			if !s.queues.Has(queue) {
-				return nil, fmt.Errorf("queue %q is not registered", queue)
-			}
-		}
+	if err := s.validateQueues(queueNames); err != nil {
+		return nil, err
 	}
 
 	tx, err := s.db.Begin(ctx)
@@ -506,12 +502,8 @@ func (s Store) NextRunAfter(ctx context.Context, queueNames []string, now time.T
 	if len(queueNames) == 0 {
 		return nil, nil
 	}
-	if s.queues != nil {
-		for _, queue := range queueNames {
-			if !s.queues.Has(queue) {
-				return nil, fmt.Errorf("queue %q is not registered", queue)
-			}
-		}
+	if err := s.validateQueues(queueNames); err != nil {
+		return nil, err
 	}
 
 	tx, err := s.db.Begin(ctx)
@@ -709,38 +701,29 @@ j.id, j.name, a.name, j.key, j.source, j.label, COALESCE(j.description, ''),
 j.queue, j.timeout, j.retry, j.enabled, j.retired`
 
 func loadJob(ctx context.Context, tx pgx.Tx, appName string, jobName string) (jobRecord, error) {
-	appName = strings.TrimSpace(appName)
-	jobName = strings.TrimSpace(jobName)
-	if appName == "" || jobName == "" {
-		return jobRecord{}, fmt.Errorf("job app and name are required")
-	}
-	row := tx.QueryRow(ctx, `
-SELECT `+jobSelectColumns+`
-FROM "job" j
-JOIN "app" a ON a.id = j.app_id
-WHERE a.name = $1 AND j.key = $2`, appName, jobName)
-	job, err := scanJobRecord(row)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return jobRecord{}, fmt.Errorf("job %s/%s is not registered", appName, jobName)
-		}
-		return jobRecord{}, fmt.Errorf("load job %s/%s: %w", appName, jobName, err)
-	}
-	return job, nil
+	return loadJobRecord(ctx, tx, appName, jobName, false)
 }
 
 func loadJobForUpdate(ctx context.Context, tx pgx.Tx, appName string, jobName string) (jobRecord, error) {
+	return loadJobRecord(ctx, tx, appName, jobName, true)
+}
+
+func loadJobRecord(ctx context.Context, tx pgx.Tx, appName string, jobName string, forUpdate bool) (jobRecord, error) {
 	appName = strings.TrimSpace(appName)
 	jobName = strings.TrimSpace(jobName)
 	if appName == "" || jobName == "" {
 		return jobRecord{}, fmt.Errorf("job app and name are required")
 	}
-	row := tx.QueryRow(ctx, `
-SELECT `+jobSelectColumns+`
+	query := `
+SELECT ` + jobSelectColumns + `
 FROM "job" j
 JOIN "app" a ON a.id = j.app_id
-WHERE a.name = $1 AND j.key = $2
-FOR UPDATE OF j`, appName, jobName)
+WHERE a.name = $1 AND j.key = $2`
+	if forUpdate {
+		query += `
+FOR UPDATE OF j`
+	}
+	row := tx.QueryRow(ctx, query, appName, jobName)
 	job, err := scanJobRecord(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1070,6 +1053,18 @@ func nullIfEmpty(value string) any {
 		return nil
 	}
 	return value
+}
+
+func (s Store) validateQueues(queueNames []string) error {
+	if s.queues == nil {
+		return nil
+	}
+	for _, queue := range queueNames {
+		if !s.queues.Has(queue) {
+			return fmt.Errorf("queue %q is not registered", queue)
+		}
+	}
+	return nil
 }
 
 func normalizeQueueNames(names []string) []string {

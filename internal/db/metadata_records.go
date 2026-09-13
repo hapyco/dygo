@@ -208,7 +208,7 @@ SET app_id = EXCLUDED.app_id,
 RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity.Description, entity.Icon, entity.IsSingle, entity.IsSystem, entity.IsCollection, entity.IsPrivate, nullIfEmpty(entity.PrivateOwnerField), entity.Naming, entity.Tree).Scan(&id); err != nil {
 			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %s/%s: %w", entity.AppName, entity.Key, err)
 		}
-		entityIDs[entityKey(entity.AppName, entity.Key)] = id
+		entityIDs[metadataKey(entity.AppName, entity.Key)] = id
 	}
 
 	for _, page := range records.Pages {
@@ -244,7 +244,7 @@ SET name = EXCLUDED.name,
 		if err != nil {
 			return metadataPersistResult{}, err
 		}
-		jobIDs[jobKey(job.AppName, job.Key)] = jobID
+		jobIDs[metadataKey(job.AppName, job.Key)] = jobID
 	}
 
 	for _, schedule := range records.Schedules {
@@ -252,7 +252,7 @@ SET name = EXCLUDED.name,
 		if !ok {
 			return metadataPersistResult{}, fmt.Errorf("persist schedule metadata %q: app %q was not persisted", schedule.Key, schedule.AppName)
 		}
-		jobID, ok := jobIDs[jobKey(schedule.JobAppName, schedule.JobName)]
+		jobID, ok := jobIDs[metadataKey(schedule.JobAppName, schedule.JobName)]
 		if !ok {
 			return metadataPersistResult{}, fmt.Errorf("persist schedule metadata %s/%s: target job %s/%s was not persisted", schedule.AppName, schedule.Key, schedule.JobAppName, schedule.JobName)
 		}
@@ -262,7 +262,7 @@ SET name = EXCLUDED.name,
 	}
 
 	for _, field := range records.Fields {
-		entityID, ok := entityIDs[entityKey(field.EntityAppName, field.EntityName)]
+		entityID, ok := entityIDs[metadataKey(field.EntityAppName, field.EntityName)]
 		if !ok {
 			return metadataPersistResult{}, fmt.Errorf("persist field metadata %s/%s.%s: entity was not persisted", field.EntityAppName, field.EntityName, field.Name)
 		}
@@ -272,7 +272,7 @@ SET name = EXCLUDED.name,
 	}
 
 	for _, index := range records.Indexes {
-		entityID, ok := entityIDs[entityKey(index.EntityAppName, index.EntityName)]
+		entityID, ok := entityIDs[metadataKey(index.EntityAppName, index.EntityName)]
 		if !ok {
 			return metadataPersistResult{}, fmt.Errorf("persist index metadata %s/%s.%s: entity was not persisted", index.EntityAppName, index.EntityName, index.Name)
 		}
@@ -282,7 +282,7 @@ SET name = EXCLUDED.name,
 	}
 
 	for _, constraint := range records.Constraints {
-		entityID, ok := entityIDs[entityKey(constraint.EntityAppName, constraint.EntityName)]
+		entityID, ok := entityIDs[metadataKey(constraint.EntityAppName, constraint.EntityName)]
 		if !ok {
 			return metadataPersistResult{}, fmt.Errorf("persist constraint metadata %s/%s.%s: entity was not persisted", constraint.EntityAppName, constraint.EntityName, constraint.Name)
 		}
@@ -972,12 +972,8 @@ func scalarNodeAny(node yaml.Node, name string) (any, error) {
 	}
 }
 
-func entityKey(appName string, entityName string) string {
-	return appName + "\x00" + entityName
-}
-
-func jobKey(appName string, jobName string) string {
-	return appName + "\x00" + jobName
+func metadataKey(appName string, name string) string {
+	return appName + "\x00" + name
 }
 
 func nullIfEmpty(value string) any {

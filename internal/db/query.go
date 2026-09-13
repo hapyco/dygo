@@ -95,7 +95,7 @@ func (s RecordStore) AggregateRecordsByIdentity(ctx context.Context, appName str
 	expressions := make([]string, 0, len(params.Aggregates))
 	results := make([]dygo.AggregateResult, 0, len(params.Aggregates))
 	for index, spec := range params.Aggregates {
-		expression, field, err := s.aggregateExpression(ctx, layout, spec.Function, spec.Field)
+		expression, err := s.aggregateExpression(ctx, layout, spec.Function, spec.Field)
 		if err != nil {
 			return nil, err
 		}
@@ -105,7 +105,6 @@ func (s RecordStore) AggregateRecordsByIdentity(ctx context.Context, appName str
 		}
 		expressions = append(expressions, expression+" AS "+quoteIdent(alias))
 		results = append(results, dygo.AggregateResult{Function: spec.Function, Field: spec.Field, Alias: alias})
-		_ = field
 	}
 	sql := fmt.Sprintf("SELECT %s FROM %s AS %s", strings.Join(expressions, ", "), quoteIdent(layout.Table), quoteIdent(recordSelectSourceAlias))
 	if where != "" {
@@ -180,7 +179,7 @@ func (s RecordStore) GroupRecordsByIdentity(ctx context.Context, appName string,
 	}
 	aggregateAliases := make([]string, 0, len(params.Aggregates))
 	for index, spec := range params.Aggregates {
-		expression, _, err := s.aggregateExpression(ctx, layout, spec.Function, spec.Field)
+		expression, err := s.aggregateExpression(ctx, layout, spec.Function, spec.Field)
 		if err != nil {
 			return nil, err
 		}
@@ -237,29 +236,29 @@ func (s RecordStore) GroupRecordsByIdentity(ctx context.Context, appName string,
 	return groups, nil
 }
 
-func (s RecordStore) aggregateExpression(ctx context.Context, layout recordLayout, function dygo.AggregateFunction, fieldName string) (string, recordField, error) {
+func (s RecordStore) aggregateExpression(ctx context.Context, layout recordLayout, function dygo.AggregateFunction, fieldName string) (string, error) {
 	function = dygo.AggregateFunction(strings.ToLower(strings.TrimSpace(string(function))))
 	fieldName = strings.TrimSpace(fieldName)
 	if function != dygo.AggregateCount && function != dygo.AggregateSum && function != dygo.AggregateMin && function != dygo.AggregateMax {
-		return "", recordField{}, queryInvalid(layout.Entity, "aggregate function is not supported")
+		return "", queryInvalid(layout.Entity, "aggregate function is not supported")
 	}
 	if function == dygo.AggregateCount && fieldName == "" {
-		return "COUNT(*)", recordField{}, nil
+		return "COUNT(*)", nil
 	}
 	if fieldName == "" {
-		return "", recordField{}, queryInvalid(layout.Entity, "aggregate field is required")
+		return "", queryInvalid(layout.Entity, "aggregate field is required")
 	}
 	path, err := s.recordFieldPath(ctx, layout, fieldName, "aggregate")
 	if err != nil {
-		return "", recordField{}, err
+		return "", err
 	}
 	if function == dygo.AggregateSum && path.Field.ValueKind != fieldtype.ValueInteger && path.Field.ValueKind != fieldtype.ValueNumber {
-		return "", recordField{}, queryInvalid(layout.Entity, "sum requires a numeric field")
+		return "", queryInvalid(layout.Entity, "sum requires a numeric field")
 	}
 	if (function == dygo.AggregateMin || function == dygo.AggregateMax) && !aggregateOrderable(path.Field) {
-		return "", recordField{}, queryInvalid(layout.Entity, "min and max require an orderable field")
+		return "", queryInvalid(layout.Entity, "min and max require an orderable field")
 	}
-	return fmt.Sprintf("%s(%s)", strings.ToUpper(string(function)), path.Expression), path.Field, nil
+	return fmt.Sprintf("%s(%s)", strings.ToUpper(string(function)), path.Expression), nil
 }
 
 func aggregateOrderable(field recordField) bool {

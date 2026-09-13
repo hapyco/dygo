@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -10,9 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/hapyco/dygo/internal/auth"
-	"github.com/hapyco/dygo/internal/db"
 	importsvc "github.com/hapyco/dygo/internal/imports"
-	"github.com/hapyco/dygo/internal/permissions"
 	"github.com/hapyco/dygo/pkg/dygo"
 )
 
@@ -85,26 +82,5 @@ func (h importHandler) start(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeImportError(w http.ResponseWriter, err error) {
-	var actionErr dygo.ActionError
-	if errors.As(err, &actionErr) {
-		status := http.StatusInternalServerError
-		if actionErr.Code == "invalid_request" {
-			status = http.StatusBadRequest
-		} else if actionErr.Code == "permission_denied" {
-			status = http.StatusForbidden
-		}
-		writeErrorEnvelope(w, status, actionErr.Code, actionErr.Message, actionErr.Details)
-		return
-	}
-	var permissionErr permissions.Error
-	if errors.As(err, &permissionErr) {
-		writePermissionError(w, err)
-		return
-	}
-	var recordErr db.RecordError
-	if errors.As(err, &recordErr) {
-		writeRecordError(w, err)
-		return
-	}
-	writeErrorEnvelope(w, http.StatusInternalServerError, "internal_error", "import failed", nil)
+	writeActionError(w, err, "import failed")
 }

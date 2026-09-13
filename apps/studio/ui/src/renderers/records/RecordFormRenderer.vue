@@ -12,7 +12,7 @@ import {
 import { linkOptions, type MetadataEntityMeta, type MetadataField } from '@/features/metadata/metadata.api'
 import { useMetadataEntitiesQuery } from '@/features/metadata/metadata.query'
 import { uploadRecordFile, type RecordData } from '@/features/records/records.api'
-import { isHiddenRecordFormField, recordFieldLabel } from '@/features/records/system-fields'
+import { isHiddenRecordField, recordFieldLabel } from '@/features/records/system-fields'
 import SecretEditor from './SecretEditor.vue'
 import type { SecretStatus } from '@/features/records/records.api'
 import RecordCollectionTable from './RecordCollectionTable.vue'
@@ -49,7 +49,7 @@ const emit = defineEmits<{
 const router = useRouter()
 const entitiesQuery = useMetadataEntitiesQuery()
 
-const visibleFields = computed(() => props.fields.filter((field) => !isHiddenRecordFormField(field.name, props.systemFields ?? [])))
+const visibleFields = computed(() => props.fields.filter((field) => !isHiddenRecordField(field.name, props.systemFields ?? [])))
 
 function updateField(field: MetadataField, value: unknown) {
   emit('update:modelValue', {

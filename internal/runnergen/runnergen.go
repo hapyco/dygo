@@ -258,6 +258,14 @@ func GeneratedFileStatus(path string, source []byte, dryRun bool) (string, error
 	return "updated", nil
 }
 
+// WriteStatus reports whether a runner file write changed the file.
+func WriteStatus(written bool) string {
+	if written {
+		return "updated"
+	}
+	return "unchanged"
+}
+
 // IsGeneratedFile reports whether a file is dygo-managed generated code.
 func IsGeneratedFile(path string) (bool, error) {
 	data, err := os.ReadFile(path)

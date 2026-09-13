@@ -9,10 +9,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"unicode"
 
 	"github.com/hapyco/dygo/internal/frameworkapp"
 	scaffold "github.com/hapyco/dygo/internal/generate"
+	"github.com/hapyco/dygo/internal/naming"
 	"github.com/hapyco/dygo/internal/project"
 	"github.com/hapyco/dygo/internal/reserved"
 	"github.com/hapyco/dygo/internal/runnergen"
@@ -101,7 +101,7 @@ func Generate(ctx context.Context, options Options) (Result, error) {
 		return Result{}, fmt.Errorf("stat target project path %s: %w", target, err)
 	}
 
-	label := LabelForName(name)
+	label := naming.LabelForName(name)
 	databaseURL := strings.TrimSpace(options.DatabaseURL)
 	if databaseURL == "" {
 		databaseURL = defaultDatabaseURL(name)
@@ -214,20 +214,6 @@ func lowerASCII(r rune) rune {
 		return r + ('a' - 'A')
 	}
 	return r
-}
-
-// LabelForName converts a kebab-case project name into a display label.
-func LabelForName(name string) string {
-	parts := strings.Split(name, "-")
-	for index, part := range parts {
-		if part == "" {
-			continue
-		}
-		runes := []rune(part)
-		runes[0] = unicode.ToUpper(runes[0])
-		parts[index] = string(runes)
-	}
-	return strings.Join(parts, " ")
 }
 
 func firstRune(value string) (rune, bool) {

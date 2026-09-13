@@ -19,11 +19,7 @@ export function isRecordSystemField(name: string, systemFields: MetadataField[])
   return systemFields.some((field) => field.name === name)
 }
 
-export function isHiddenRecordFormField(name: string, systemFields: MetadataField[]): boolean {
-  return isRecordSystemField(name, systemFields) && hiddenSystemFields.has(name)
-}
-
-export function isHiddenRecordSubmitField(name: string, systemFields: MetadataField[]): boolean {
+export function isHiddenRecordField(name: string, systemFields: MetadataField[]): boolean {
   return isRecordSystemField(name, systemFields) && hiddenSystemFields.has(name)
 }
 

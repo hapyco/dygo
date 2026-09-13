@@ -24,7 +24,7 @@ import {
 } from '@/features/records/record-form.query'
 import type { RecordData } from '@/features/records/records.api'
 import { secretSubmitValue } from '@/features/records/secret-input'
-import { isHiddenCollectionField, isHiddenRecordSubmitField, recordFieldLabel } from '@/features/records/system-fields'
+import { isHiddenCollectionField, isHiddenRecordField, recordFieldLabel } from '@/features/records/system-fields'
 import { RecordFormRenderer, RecordTimeline } from '@/renderers/records'
 import { RouteName } from '@/router/routes'
 import PageHeader from '@/shell/PageHeader.vue'
@@ -442,7 +442,7 @@ function buildSubmitPayload(): RecordData {
   const errors: Record<string, string> = {}
 
   fields.value.forEach((field) => {
-    if (isHiddenRecordSubmitField(field.name, systemFields.value)) {
+    if (isHiddenRecordField(field.name, systemFields.value)) {
       return
     }
 

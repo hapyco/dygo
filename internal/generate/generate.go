@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/hapyco/dygo/internal/naming"
 	"github.com/hapyco/dygo/internal/reserved"
 	"github.com/hapyco/dygo/internal/shape"
 )
@@ -62,7 +63,7 @@ func App(options Options, appName string) (Plan, error) {
 	if reserved.IsApp(appName) {
 		return Plan{}, fmt.Errorf("app name %q is reserved for framework-managed apps", appName)
 	}
-	data := templateData{App: appName, Name: appName, Label: labelForName(appName)}
+	data := templateData{App: appName, Name: appName, Label: naming.LabelForName(appName)}
 	files := []fileSpec{
 		{Path: shape.AppManifestPath(appName), Mode: 0o644, Template: "app.yml.tmpl", Data: data},
 	}
@@ -84,7 +85,7 @@ func Entity(options Options, ref shape.AppRef, includeFixture bool) (Plan, error
 	data := templateData{
 		App:       ref.App,
 		Name:      ref.Name,
-		Label:     labelForName(ref.Name),
+		Label:     naming.LabelForName(ref.Name),
 		Entity:    ref.Name,
 		EntityVar: identifierForName(ref.Name),
 	}
@@ -103,7 +104,7 @@ func Entity(options Options, ref shape.AppRef, includeFixture bool) (Plan, error
 
 // Collection generates reusable collection row metadata.
 func Collection(options Options, ref shape.AppRef) (Plan, error) {
-	data := templateData{App: ref.App, Name: ref.Name, Label: labelForName(ref.Name), Collection: ref.Name}
+	data := templateData{App: ref.App, Name: ref.Name, Label: naming.LabelForName(ref.Name), Collection: ref.Name}
 	return writeScaffold(options, []string{
 		shape.AppCollectionDirPath(ref.App),
 	}, []fileSpec{
@@ -125,7 +126,7 @@ func fixtureSpec(ref shape.AppRef) fileSpec {
 	return fileSpec{
 		Path: filepath.ToSlash(filepath.Join(shape.AppDir(ref.App), shape.EntityFixturesPath(ref.Name))),
 		Mode: 0o644, Template: "fixtures.yml.tmpl",
-		Data: templateData{App: ref.App, Name: ref.Name, Label: labelForName(ref.Name), Entity: ref.Name},
+		Data: templateData{App: ref.App, Name: ref.Name, Label: naming.LabelForName(ref.Name), Entity: ref.Name},
 	}
 }
 
@@ -133,7 +134,7 @@ func accessSpec(ref shape.AppRef) fileSpec {
 	return fileSpec{
 		Path: shape.AppEntityAccessPath(ref.App, ref.Name),
 		Mode: 0o644, Template: "access.yml.tmpl",
-		Data: templateData{App: ref.App, Name: ref.Name, Label: labelForName(ref.Name), Entity: ref.Name},
+		Data: templateData{App: ref.App, Name: ref.Name, Label: naming.LabelForName(ref.Name), Entity: ref.Name},
 	}
 }
 
@@ -141,7 +142,7 @@ func testSpec(ref shape.AppRef) fileSpec {
 	return fileSpec{
 		Path: filepath.ToSlash(filepath.Join(shape.AppDir(ref.App), shape.EntityDir(ref.Name), "hooks_test.go")),
 		Mode: 0o644, Template: "hooks_test.go.tmpl",
-		Data: templateData{App: ref.App, Name: ref.Name, Label: labelForName(ref.Name), Entity: ref.Name, EntityVar: identifierForName(ref.Name)},
+		Data: templateData{App: ref.App, Name: ref.Name, Label: naming.LabelForName(ref.Name), Entity: ref.Name, EntityVar: identifierForName(ref.Name)},
 	}
 }
 
@@ -242,18 +243,7 @@ func isGenerated(data []byte) bool {
 	return strings.Contains(string(data), GeneratedMarker)
 }
 
-func labelForName(name string) string {
-	parts := strings.Split(name, "-")
-	for index, part := range parts {
-		if part == "" {
-			continue
-		}
-		parts[index] = strings.ToUpper(part[:1]) + part[1:]
-	}
-	return strings.Join(parts, " ")
-}
-
 func identifierForName(name string) string {
-	label := labelForName(name)
+	label := naming.LabelForName(name)
 	return strings.ReplaceAll(label, " ", "")
 }
