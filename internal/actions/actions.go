@@ -4,7 +4,6 @@ package actions
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -243,12 +242,6 @@ func validateRecordIDs(selection dygo.ActionSelection, recordIDs []int64) error 
 		}
 	}
 	return nil
-}
-
-// IsNotFound reports whether an execution error identifies a missing action or Entity.
-func IsNotFound(err error) bool {
-	var actionErr dygo.ActionError
-	return errors.As(err, &actionErr) && actionErr.Code == "not_found"
 }
 
 var _ jobstore.Beginner = (pgx.Tx)(nil)

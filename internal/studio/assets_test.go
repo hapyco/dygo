@@ -120,33 +120,6 @@ func TestHandlerForProjectFailsWhenAssetsUnavailable(t *testing.T) {
 	}
 }
 
-func TestInstallCacheCopiesFirstAvailableSource(t *testing.T) {
-	root := t.TempDir()
-	source := Source{
-		Name: "test Studio assets",
-		FS: fstest.MapFS{
-			"index.html":      {Data: []byte("<html>installed</html>")},
-			"assets/app.js":   {Data: []byte("console.log('installed')")},
-			"assets/app.css":  {Data: []byte("body{}")},
-			"placeholder.txt": {Data: []byte("ok")},
-		},
-	}
-
-	installed, name, err := InstallCache(root, Source{Name: "empty", FS: fstest.MapFS{}}, source)
-	if err != nil {
-		t.Fatalf("InstallCache() error = %v, want nil", err)
-	}
-	if !installed || name != "test Studio assets" {
-		t.Fatalf("InstallCache() = %v, %q, want test source", installed, name)
-	}
-	if got := readStudioCacheFile(t, root, "index.html"); !strings.Contains(got, "installed") {
-		t.Fatalf("cached index.html = %q, want installed content", got)
-	}
-	if got := readStudioCacheFile(t, root, "assets/app.js"); !strings.Contains(got, "installed") {
-		t.Fatalf("cached app.js = %q, want installed content", got)
-	}
-}
-
 func TestInstallAppReplacesManagedBundle(t *testing.T) {
 	root := t.TempDir()
 	stalePath := filepath.Join(root, filepath.FromSlash(projectAppDir), "stale.txt")
@@ -209,15 +182,6 @@ func writeStudioAsset(t *testing.T, root string, name string, body string) {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
-}
-
-func readStudioCacheFile(t *testing.T, root string, name string) string {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(ProjectCachePath(root), filepath.FromSlash(name)))
-	if err != nil {
-		t.Fatalf("ReadFile(%s) error = %v", name, err)
-	}
-	return string(data)
 }
 
 func studioMetadataContents(t *testing.T, source fs.FS) map[string]string {

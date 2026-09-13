@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hapyco/dygo/internal/db"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -168,48 +167,6 @@ func TestCheckerDatabaseFailureDoesNotLeakSensitiveDetails(t *testing.T) {
 	}
 }
 
-func TestCheckRole(t *testing.T) {
-	queryer := &fakePermissionQueryer{row: fakePermissionRow{allowed: true}}
-
-	decision, err := CheckRole(context.Background(), queryer, "system-manager", "lead", ActionUpdate)
-	if err != nil {
-		t.Fatalf("CheckRole() error = %v, want nil", err)
-	}
-	if !decision.Allowed || decision.Role != "system-manager" || decision.Entity != "lead" || decision.Action != ActionUpdate || decision.Reason != ReasonAllowed {
-		t.Fatalf("CheckRole() decision = %+v, want allowed system-manager update lead", decision)
-	}
-	if !reflect.DeepEqual(queryer.args[0], []any{"system-manager", "lead"}) {
-		t.Fatalf("CheckRole() args = %#v, want role and entity", queryer.args[0])
-	}
-	if !strings.Contains(queryer.sql[0], `COALESCE(p."update", false) = true`) {
-		t.Fatalf("CheckRole() SQL = %q, want update action column", queryer.sql[0])
-	}
-}
-
-func TestCheckRoleValidatesRequest(t *testing.T) {
-	tests := []struct {
-		name   string
-		role   string
-		entity string
-		action Action
-	}{
-		{name: "empty role", role: " ", entity: "lead", action: ActionRead},
-		{name: "empty entity", role: "system-manager", entity: " ", action: ActionRead},
-		{name: "invalid action", role: "system-manager", entity: "lead", action: Action("drop_table")},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			queryer := &fakePermissionQueryer{row: fakePermissionRow{allowed: true}}
-			_, err := CheckRole(context.Background(), queryer, tt.role, tt.entity, tt.action)
-			assertPermissionError(t, err, ErrorInvalidRequest)
-			if len(queryer.sql) != 0 {
-				t.Fatalf("CheckRole() executed SQL for invalid request: %q", queryer.sql[0])
-			}
-		})
-	}
-}
-
 func TestParseAction(t *testing.T) {
 	action, err := ParseAction(" read ")
 	if err != nil {
@@ -224,32 +181,6 @@ func TestParseAction(t *testing.T) {
 	}
 	if _, err := ParseAction("drop_table"); err == nil {
 		t.Fatal("ParseAction(drop_table) error = nil, want invalid action")
-	}
-}
-
-func TestValidateMetadata(t *testing.T) {
-	meta := db.MetadataEntityMeta{
-		MetadataEntity: db.MetadataEntity{Name: "core.permission"},
-		Fields: []db.MetadataField{
-			{Name: "actions", Type: "json"},
-			{Name: "when", Type: "json"},
-			{Name: "field-rules", Type: "json"},
-			{Name: "read", Type: "boolean"},
-			{Name: "create", Type: "boolean"},
-			{Name: "update", Type: "boolean"},
-			{Name: "delete", Type: "boolean"},
-			{Name: "export", Type: "boolean"},
-			{Name: "print", Type: "boolean"},
-			{Name: "retired", Type: "boolean"},
-		},
-	}
-	if err := ValidateMetadata(meta); err != nil {
-		t.Fatalf("ValidateMetadata() error = %v, want nil", err)
-	}
-	meta.Fields[3].Type = "text"
-	err := ValidateMetadata(meta)
-	if err == nil || !strings.Contains(err.Error(), "must be boolean") {
-		t.Fatalf("ValidateMetadata() error = %v, want boolean field error", err)
 	}
 }
 

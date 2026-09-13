@@ -286,12 +286,6 @@ func GenerateSessionToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 
-// IsError reports whether err is an auth Error.
-func IsError(err error) bool {
-	var authErr Error
-	return errors.As(err, &authErr)
-}
-
 func (s Service) requireQueryer() error {
 	if s.queryer == nil {
 		return authError(ErrorInternal, "auth queryer is required", nil, nil)

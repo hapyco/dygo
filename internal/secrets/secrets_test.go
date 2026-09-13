@@ -43,27 +43,12 @@ func TestStoreLifecycle(t *testing.T) {
 		t.Fatalf("Get().Value = %q, want %q", secret.Value, "postgres://local")
 	}
 
-	entries, err := store.List(EnvironmentDevelopment)
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if len(entries) != 1 || entries[0].Name != "DATABASE_URL" {
-		t.Fatalf("List() = %#v, want one DATABASE_URL entry", entries)
-	}
-
 	configPath := filepath.Join(root, "config", "app.yaml")
 	if err := os.WriteFile(configPath, []byte("env:\n  DATABASE_URL:\n    secret: DATABASE_URL\ndatabase:\n  url:\n    secret: DATABASE_URL\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}
 	if err := store.Validate(EnvironmentDevelopment); err != nil {
 		t.Fatalf("Validate() error = %v", err)
-	}
-
-	if err := store.Remove(EnvironmentDevelopment, "DATABASE_URL"); err != nil {
-		t.Fatalf("Remove() error = %v", err)
-	}
-	if _, err := store.Get(EnvironmentDevelopment, "DATABASE_URL"); err == nil {
-		t.Fatal("Get() error = nil after Remove(), want error")
 	}
 }
 

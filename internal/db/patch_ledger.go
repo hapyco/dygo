@@ -61,18 +61,6 @@ func (e PatchRunChecksumMismatchError) Error() string {
 	return fmt.Sprintf("patch run %s/%s checksum mismatch: applied %s, current %s", e.AppName, e.PatchID, e.AppliedChecksum, e.CurrentChecksum)
 }
 
-// IsPatchRunAlreadyApplied reports whether err is a PatchRunAlreadyAppliedError.
-func IsPatchRunAlreadyApplied(err error) bool {
-	var alreadyApplied PatchRunAlreadyAppliedError
-	return errors.As(err, &alreadyApplied)
-}
-
-// IsPatchRunChecksumMismatch reports whether err is a PatchRunChecksumMismatchError.
-func IsPatchRunChecksumMismatch(err error) bool {
-	var mismatch PatchRunChecksumMismatchError
-	return errors.As(err, &mismatch)
-}
-
 // NewPatchLedger returns a patch ledger backed by queryer.
 func NewPatchLedger(queryer PatchLedgerQueryer) PatchLedger {
 	return PatchLedger{queryer: queryer}

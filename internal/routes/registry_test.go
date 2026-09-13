@@ -43,13 +43,13 @@ func TestEntriesBuildsStableRouteRegistry(t *testing.T) {
 		},
 	}
 
-	got := Entries(entities)
+	got := EntriesWithPages(entities, nil)
 	want := []Entry{
 		{Slug: "sales-deal", AppName: "sales", EntityName: "deal", Kind: "normal", Path: "/project/apps/sales/entities/deal/deal.entity.yml"},
 		{Slug: "settings", AppName: "core", EntityName: "settings", Kind: "single", Path: "/project/apps/core/entities/settings/settings.entity.yml"},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Entries() = %+v, want %+v", got, want)
+		t.Fatalf("EntriesWithPages() = %+v, want %+v", got, want)
 	}
 }
 
@@ -70,24 +70,24 @@ func TestRegistryIncludesReservedAndEntityRoutes(t *testing.T) {
 		loadedRouteEntity("sales", "lead", "sales-lead"),
 	}
 
-	got := Registry(entities)
+	got := RegistryWithPages(entities, nil)
 	if len(got) != len(ReservedSlugs())+1 {
-		t.Fatalf("Registry() returned %d routes, want %d", len(got), len(ReservedSlugs())+1)
+		t.Fatalf("RegistryWithPages() returned %d routes, want %d", len(got), len(ReservedSlugs())+1)
 	}
 	if !containsRegistryEntry(got, RegistryEntry{Path: "/api", Kind: "reserved", Owner: "framework reserved route"}) {
-		t.Fatalf("Registry() = %+v, want /api reserved route", got)
+		t.Fatalf("RegistryWithPages() = %+v, want /api reserved route", got)
 	}
 	if !containsRegistryEntry(got, RegistryEntry{Path: "/sales-lead", Kind: "entity", Owner: "entity sales/lead", Source: "/project/apps/sales/entities/lead/lead.entity.yml"}) {
-		t.Fatalf("Registry() = %+v, want sales lead entity route", got)
+		t.Fatalf("RegistryWithPages() = %+v, want sales lead entity route", got)
 	}
 }
 
 func TestValidatePassesStaticRegistry(t *testing.T) {
-	result, err := Validate([]catalog.LoadedEntity{
+	result, err := ValidateWithPages([]catalog.LoadedEntity{
 		loadedRouteEntity("sales", "lead", "sales-lead"),
-	})
+	}, nil)
 	if err != nil {
-		t.Fatalf("Validate() error = %v, want nil", err)
+		t.Fatalf("ValidateWithPages() error = %v, want nil", err)
 	}
 	if result.ReservedRoutes != len(ReservedSlugs()) {
 		t.Fatalf("ReservedRoutes = %d, want %d", result.ReservedRoutes, len(ReservedSlugs()))
@@ -101,17 +101,17 @@ func TestValidatePassesStaticRegistry(t *testing.T) {
 }
 
 func TestValidateReportsReservedRouteConflict(t *testing.T) {
-	_, err := Validate([]catalog.LoadedEntity{
+	_, err := ValidateWithPages([]catalog.LoadedEntity{
 		loadedRouteEntity("sales", "login", "login"),
-	})
+	}, nil)
 	assertRouteValidationError(t, err, "/login claimed by entity sales/login and framework reserved route")
 }
 
 func TestValidateReportsDuplicateEntityRouteConflict(t *testing.T) {
-	_, err := Validate([]catalog.LoadedEntity{
+	_, err := ValidateWithPages([]catalog.LoadedEntity{
 		loadedRouteEntity("sales", "customer", "customer"),
 		loadedRouteEntity("support", "customer", "customer"),
-	})
+	}, nil)
 	assertRouteValidationError(t, err, "/customer claimed by entity sales/customer and entity support/customer")
 }
 

@@ -1185,12 +1185,6 @@ select.record-list-renderer__filter-segment {
   color: var(--studio-text-subtle);
 }
 
-.record-list-renderer__filter-segment--value {
-  min-width: 78px;
-  background: var(--studio-surface);
-  color: var(--studio-text);
-}
-
 .record-list-renderer__filter-apply,
 .record-list-renderer__filter-remove {
   width: var(--studio-control-height-xs);

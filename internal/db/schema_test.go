@@ -721,13 +721,14 @@ func TestBuildMetadataSchemaPlanScopesNonCoreTablesByApp(t *testing.T) {
 }
 
 func TestApplyMetadataSchemaPlanRejectsBlockersBeforeExecution(t *testing.T) {
-	_, err := ApplyMetadataSchemaPlan(context.Background(), nil, SchemaPlan{
+	plan := SchemaPlan{
 		Diagnostics: []SchemaDiagnostic{
 			{Classification: SchemaDiagnosticUnsafe, Table: "users", Column: "legacy", Message: "column exists in database but not metadata"},
 		},
-	})
+	}
+	err := plan.BlockerError()
 	if err == nil {
-		t.Fatal("ApplyMetadataSchemaPlan() error = nil, want blocker error")
+		t.Fatal("BlockerError() error = nil, want blocker error")
 	}
 	assertContains(t, err.Error(), "schema plan has 1 blocker")
 	assertContains(t, err.Error(), "users.legacy")

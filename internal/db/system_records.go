@@ -85,12 +85,6 @@ func (w SystemRecordWriter) DeleteByIdentity(ctx context.Context, appName string
 	return err
 }
 
-// UpsertByIdentity creates or updates one app-scoped system Record by a metadata-backed match without returning it.
-func (w SystemRecordWriter) UpsertByIdentity(ctx context.Context, appName string, entity string, match RecordInput, input RecordInput, policy SystemMutationPolicy) error {
-	_, err := w.upsertByIdentity(ctx, appName, entity, match, input, policy)
-	return err
-}
-
 // UpsertReturningByIdentity creates or updates one app-scoped system Record by a metadata-backed match and returns it.
 func (w SystemRecordWriter) UpsertReturningByIdentity(ctx context.Context, appName string, entity string, match RecordInput, input RecordInput, policy SystemMutationPolicy) (Record, error) {
 	return w.upsertByIdentity(ctx, appName, entity, match, input, policy)

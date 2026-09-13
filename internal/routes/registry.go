@@ -45,11 +45,6 @@ func (e ValidationError) Error() string {
 	return "route validation failed: " + strings.Join(e.Problems, "; ")
 }
 
-// Entries returns routeable Entity routes in stable slug order.
-func Entries(entities []catalog.LoadedEntity) []Entry {
-	return EntriesWithPages(entities, nil)
-}
-
 // EntriesWithPages returns Entity and Page routes in stable slug order.
 func EntriesWithPages(entities []catalog.LoadedEntity, loadedPages []pages.LoadedPage) []Entry {
 	routes := make([]Entry, 0, len(entities)+len(loadedPages))
@@ -75,11 +70,6 @@ func EntriesWithPages(entities []catalog.LoadedEntity, loadedPages []pages.Loade
 		return routes[i].Path < routes[j].Path
 	})
 	return routes
-}
-
-// Registry returns framework-reserved and Entity-owned root route claims.
-func Registry(entities []catalog.LoadedEntity) []RegistryEntry {
-	return RegistryWithPages(entities, nil)
 }
 
 // RegistryWithPages returns framework-reserved, Entity-owned, and Page-owned route claims.
@@ -113,11 +103,6 @@ func RegistryWithPages(entities []catalog.LoadedEntity, loadedPages []pages.Load
 		return routes[i].Owner < routes[j].Owner
 	})
 	return routes
-}
-
-// Validate checks the static public route registry for ownership conflicts.
-func Validate(entities []catalog.LoadedEntity) (ValidationResult, error) {
-	return ValidateWithPages(entities, nil)
 }
 
 // ValidateWithPages checks the static public route registry including Page claims.

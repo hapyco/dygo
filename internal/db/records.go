@@ -1865,22 +1865,6 @@ func collectionRowIDFromRaw(fieldName string, raw json.RawMessage) (int64, error
 	return id, nil
 }
 
-func recordIDFromDBValue(value any, entity string) (int64, error) {
-	switch typed := value.(type) {
-	case int64:
-		return typed, nil
-	case int:
-		return int64(typed), nil
-	case int32:
-		return int64(typed), nil
-	case float64:
-		if math.Trunc(typed) == typed {
-			return int64(typed), nil
-		}
-	}
-	return 0, recordError(RecordErrorInternal, "record id column has invalid type", map[string]any{"entity": entity, "type": fmt.Sprintf("%T", value)}, nil)
-}
-
 func isCollectionRowSystemInput(name string) bool {
 	switch name {
 	case systemFieldName, systemFieldCreatedAt, systemFieldUpdatedAt, systemFieldOwner,

@@ -188,27 +188,6 @@ func HandlerForProject(root string) (http.Handler, string, error) {
 	return nil, "", fmt.Errorf("Studio UI assets are unavailable; expected a built Studio cache at %s or bundled Studio assets in this dygo binary. Run dygo upgrade to refresh generated-project assets, or use dygo dev to proxy a Studio dev server", ProjectCachePath(root))
 }
 
-// InstallCache copies the first available source into the generated-project Studio cache.
-func InstallCache(root string, sources ...Source) (bool, string, error) {
-	for _, source := range sources {
-		if source.FS == nil {
-			continue
-		}
-		ok, err := HasIndex(source.FS)
-		if err != nil {
-			return false, "", fmt.Errorf("check %s: %w", source.Name, err)
-		}
-		if !ok {
-			continue
-		}
-		if err := replaceDir(source.FS, ProjectCachePath(root)); err != nil {
-			return false, "", fmt.Errorf("install %s: %w", source.Name, err)
-		}
-		return true, source.Name, nil
-	}
-	return false, "", nil
-}
-
 // InstallApp installs Studio metadata and UI assets as one framework-managed App.
 func InstallApp(root string, appSources []AppSource, assetSources []Source) (string, error) {
 	appSource, err := firstAppSource(appSources)
@@ -335,18 +314,4 @@ func cleanAssetPath(value string) string {
 func assetExists(fsys fs.FS, name string) bool {
 	info, err := fs.Stat(fsys, name)
 	return err == nil && !info.IsDir()
-}
-
-func replaceDir(source fs.FS, target string) error {
-	return fsutil.ReplaceDir(target, ".studio-dist-*", "Studio", func(temp string) error {
-		if err := fsutil.CopyFS(source, temp, "Studio asset"); err != nil {
-			return err
-		}
-		if ok, err := HasIndex(os.DirFS(temp)); err != nil {
-			return fmt.Errorf("verify temporary Studio cache: %w", err)
-		} else if !ok {
-			return fmt.Errorf("temporary Studio cache is missing index.html")
-		}
-		return nil
-	})
 }

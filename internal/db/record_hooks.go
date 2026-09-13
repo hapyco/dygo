@@ -137,34 +137,6 @@ func (r *RecordHookRegistry) ensure() {
 	}
 }
 
-func (r *RecordHookRegistry) withoutHook(name string) *RecordHookRegistry {
-	if r == nil {
-		return nil
-	}
-	r.ensure()
-	filtered := NewRecordHookRegistry()
-	for event, hooks := range r.global {
-		filtered.global[event] = recordHooksWithoutName(hooks, name)
-	}
-	for entity, events := range r.entity {
-		filtered.entity[entity] = map[RecordHookEvent][]recordHookDefinition{}
-		for event, hooks := range events {
-			filtered.entity[entity][event] = recordHooksWithoutName(hooks, name)
-		}
-	}
-	return filtered
-}
-
-func recordHooksWithoutName(hooks []recordHookDefinition, name string) []recordHookDefinition {
-	filtered := make([]recordHookDefinition, 0, len(hooks))
-	for _, hook := range hooks {
-		if hook.Name != name {
-			filtered = append(filtered, hook)
-		}
-	}
-	return filtered
-}
-
 func validateRecordHook(event RecordHookEvent, name string, fn RecordHookFunc) error {
 	if !isRecordHookEvent(event) {
 		return fmt.Errorf("record hook event %q is not supported", event)

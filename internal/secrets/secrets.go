@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strings"
 
 	"filippo.io/age"
@@ -36,12 +35,6 @@ type Secret struct {
 // Document is the decrypted YAML payload encrypted on disk.
 type Document struct {
 	Values map[string]any
-}
-
-// Entry is a sorted secret listing item.
-type Entry struct {
-	Name   string
-	Secret Secret
 }
 
 // Paths contains the filesystem locations used by encrypted secrets.
@@ -358,37 +351,6 @@ func (s Store) Get(env Environment, name string) (Secret, error) {
 	return Secret{Value: value}, nil
 }
 
-// Remove deletes one secret.
-func (s Store) Remove(env Environment, name string) error {
-	if err := ValidateSecretName(name); err != nil {
-		return err
-	}
-	doc, err := s.Load(env)
-	if err != nil {
-		return err
-	}
-	if ok := doc.Remove(name); !ok {
-		return fmt.Errorf("secret %q is not defined for %s", name, env)
-	}
-	return s.Save(env, doc)
-}
-
-// List returns secret entries sorted by name.
-func (s Store) List(env Environment) ([]Entry, error) {
-	doc, err := s.Load(env)
-	if err != nil {
-		return nil, err
-	}
-	entries := make([]Entry, 0)
-	for name, secret := range doc.Flatten() {
-		entries = append(entries, Entry{Name: name, Secret: secret})
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name < entries[j].Name
-	})
-	return entries, nil
-}
-
 // Validate checks decryptability, schema, and config manifest secret references.
 func (s Store) Validate(env Environment) error {
 	doc, err := s.Load(env)
@@ -554,17 +516,6 @@ func (d Document) Flatten() map[string]Secret {
 	out := map[string]Secret{}
 	flattenSecrets(out, "", d.Values)
 	return out
-}
-
-// Redact masks a secret value for human-facing output.
-func Redact(value string) string {
-	if value == "" {
-		return ""
-	}
-	if len(value) <= 4 {
-		return strings.Repeat("*", len(value))
-	}
-	return "************" + value[len(value)-4:]
 }
 
 // ValidationError reports multiple validation problems together.

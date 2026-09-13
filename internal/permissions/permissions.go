@@ -227,61 +227,6 @@ func (c Checker) Authorize(ctx context.Context, request dygo.PermissionRequest) 
 	return c.CanResource(ctx, request)
 }
 
-// CheckRole evaluates whether a role grants an Entity permission action.
-func CheckRole(ctx context.Context, queryer Queryer, role string, entity string, action Action) (RoleDecision, error) {
-	role = strings.TrimSpace(role)
-	entity = strings.TrimSpace(entity)
-	action = Action(strings.TrimSpace(string(action)))
-	if role == "" {
-		return RoleDecision{}, permissionError(ErrorInvalidRequest, "role is required", map[string]any{"role": role}, nil)
-	}
-	if entity == "" {
-		return RoleDecision{}, permissionError(ErrorInvalidRequest, "entity is required", map[string]any{"entity": entity}, nil)
-	}
-	if _, err := ParseAction(string(action)); err != nil {
-		return RoleDecision{}, permissionError(ErrorInvalidRequest, err.Error(), map[string]any{"action": action}, err)
-	}
-	if queryer == nil {
-		return RoleDecision{}, permissionError(ErrorInternal, "permission queryer is required", nil, nil)
-	}
-
-	actionSQL := ""
-	args := []any{role, entity}
-	if column, ok := actionColumn(action); ok {
-		actionSQL = fmt.Sprintf("COALESCE(p.%s, false) = true", column)
-	} else {
-		args = append(args, string(action))
-		actionSQL = "COALESCE(p.actions, '[]'::jsonb) ? $3"
-	}
-	sql := fmt.Sprintf(`
-SELECT EXISTS (
-	SELECT 1
-	FROM "permission" p
-	JOIN "role" r ON r.id = p.role_id AND COALESCE(r.enabled, false) = true
-	JOIN entity e ON e.id = p.entity_id AND e.retired = false
-	WHERE r.name = $1
-		AND e.slug = $2
-		AND COALESCE(p.retired, false) = false
-		AND %s
-	LIMIT 1
-)`, actionSQL)
-
-	var allowed bool
-	if err := queryer.QueryRow(ctx, sql, args...).Scan(&allowed); err != nil {
-		return RoleDecision{}, permissionError(ErrorInternal, "permission check failed", map[string]any{"role": role, "entity": entity, "action": action}, err)
-	}
-	if allowed {
-		return RoleDecision{Allowed: true, Role: role, Entity: entity, Action: action, Reason: ReasonAllowed}, nil
-	}
-	return RoleDecision{Allowed: false, Role: role, Entity: entity, Action: action, Reason: ReasonDenied}, nil
-}
-
-// IsError reports whether err is a permission Error.
-func IsError(err error) bool {
-	var permissionErr Error
-	return errors.As(err, &permissionErr)
-}
-
 // IsDenied reports whether err is a denied permission error.
 func IsDenied(err error) bool {
 	var permissionErr Error

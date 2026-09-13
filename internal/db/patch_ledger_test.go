@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -113,7 +114,8 @@ func TestPatchLedgerRecordPatchRunRejectsAlreadyApplied(t *testing.T) {
 		AppliedAt:   appliedAt,
 		DygoVersion: "0.1.0",
 	})
-	if !IsPatchRunAlreadyApplied(err) {
+	var alreadyApplied PatchRunAlreadyAppliedError
+	if !errors.As(err, &alreadyApplied) {
 		t.Fatalf("RecordPatchRun() error = %v, want already applied", err)
 	}
 	if len(queryer.rowSQL) != 1 {
@@ -136,7 +138,8 @@ func TestPatchLedgerRecordPatchRunRejectsChecksumMismatch(t *testing.T) {
 		AppliedAt:   appliedAt,
 		DygoVersion: "0.1.0",
 	})
-	if !IsPatchRunChecksumMismatch(err) {
+	var mismatch PatchRunChecksumMismatchError
+	if !errors.As(err, &mismatch) {
 		t.Fatalf("RecordPatchRun() error = %v, want checksum mismatch", err)
 	}
 	if len(queryer.rowSQL) != 1 {

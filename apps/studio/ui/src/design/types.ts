@@ -30,30 +30,6 @@ export type DataTableSort = {
 
 export type DataTableState = 'ready' | 'loading' | 'empty' | 'forbidden' | 'unauthenticated' | 'error'
 
-export type DropdownMenuItem =
-  | {
-      type: 'item'
-      key: string
-      label: string
-      disabled?: boolean
-    }
-  | {
-      type: 'checkbox'
-      key: string
-      label: string
-      checked: boolean
-      disabled?: boolean
-    }
-  | {
-      type: 'label'
-      key: string
-      label: string
-    }
-  | {
-      type: 'separator'
-      key: string
-    }
-
 export type SegmentedControlValue = string | number
 
 export type SegmentedControlOption = {

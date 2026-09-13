@@ -164,52 +164,12 @@ func EntityFixturesPath(entity string) string {
 	return filepath.ToSlash(filepath.Join(EntityDir(entity), EntityFixturesFile))
 }
 
-// EntityHooksPath returns the app-relative hook scaffold path for a normal Entity.
-func EntityHooksPath(entity string) string {
-	return filepath.ToSlash(filepath.Join(EntityDir(entity), EntityHooksFile))
-}
-
-// EntityViewsPath returns the app-relative view metadata path for a normal Entity.
-func EntityViewsPath(entity string) string {
-	return filepath.ToSlash(filepath.Join(EntityDir(entity), EntityViewsFile))
-}
-
 // CollectionMetadataPath returns the app-relative metadata path for a collection row Entity.
 func CollectionMetadataPath(collection string) string {
 	return filepath.ToSlash(filepath.Join(AppEntitiesDir, CollectionDir, collection+".yml"))
 }
 
-// CollectionBundleMetadataPath returns the app-relative bundle-form collection metadata path.
-func CollectionBundleMetadataPath(collection string) string {
-	return filepath.ToSlash(filepath.Join(AppEntitiesDir, CollectionDir, collection, EntityMetadataFileName(collection)))
-}
-
-// JobMetadataPath returns the app-relative metadata path for a job bundle.
-func JobMetadataPath(job string) string {
-	return filepath.ToSlash(filepath.Join(AppJobsDir, job, JobMetadataFile))
-}
-
-// JobRunPath returns the app-relative Go runner path for a job bundle.
-func JobRunPath(job string) string {
-	return filepath.ToSlash(filepath.Join(AppJobsDir, job, JobRunFile))
-}
-
-// PageMetadataPath returns the app-relative metadata path for a custom page bundle.
-func PageMetadataPath(page string) string {
-	return filepath.ToSlash(filepath.Join(AppPagesDir, page, PageMetadataFileName(page)))
-}
-
 // PageMetadataFileName returns the canonical metadata filename for a page bundle.
 func PageMetadataFileName(page string) string {
 	return page + PageMetadataFileSuffix
-}
-
-// ReportFilePath returns the app-relative single-file report metadata path.
-func ReportFilePath(report string) string {
-	return filepath.ToSlash(filepath.Join(AppReportsDir, report+".yml"))
-}
-
-// ReportMetadataPath returns the app-relative bundle-form report metadata path.
-func ReportMetadataPath(report string) string {
-	return filepath.ToSlash(filepath.Join(AppReportsDir, report, ReportMetadataFile))
 }

@@ -144,13 +144,6 @@ func relToHooksRoot(root string, path string) string {
 	return filepath.ToSlash(relative)
 }
 
-func createdStatus(created bool) string {
-	if created {
-		return "created"
-	}
-	return "existing"
-}
-
 func writtenStatus(written bool) string {
 	if written {
 		return "updated"

@@ -2942,7 +2942,6 @@ type fakeDatabaseRunner struct {
 	dropErr      error
 	operation    string
 	operations   []string
-	root         string
 	databaseURL  string
 	calls        int
 }

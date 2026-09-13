@@ -79,14 +79,10 @@ func TestRecordAddressableFieldByName(t *testing.T) {
 	}
 }
 
-func TestLinkFieldTarget(t *testing.T) {
-	target, err := LinkFieldTarget(MetadataField{Options: []byte(`{"entity":"user"}`)})
-	if err != nil || target != "user" {
-		t.Fatalf("LinkFieldTarget() = %q, %v; want user, nil", target, err)
-	}
-	_, err = LinkFieldTarget(MetadataField{Options: []byte(`{}`)})
+func TestLinkFieldTargetIdentity(t *testing.T) {
+	_, err := LinkFieldTargetIdentity(MetadataField{Options: []byte(`{}`)}, "")
 	if err == nil || !strings.Contains(err.Error(), "target entity is required") {
-		t.Fatalf("LinkFieldTarget() error = %v, want target error", err)
+		t.Fatalf("LinkFieldTargetIdentity() error = %v, want target error", err)
 	}
 	targetIdentity, err := LinkFieldTargetIdentity(MetadataField{Options: []byte(`{"app":"core","entity":"user"}`)}, "sales")
 	if err != nil || targetIdentity.App != "core" || targetIdentity.Entity != "user" {

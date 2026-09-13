@@ -285,17 +285,11 @@ func writeGenerateHookResult(stdout io.Writer, root string, result hookgen.Resul
 }
 
 func hookFileResultStatus(result hookgen.Result) string {
-	if result.HookFileStatus != "" {
-		return result.HookFileStatus
-	}
-	return createdStatus(result.HookFileCreated)
+	return result.HookFileStatus
 }
 
 func runnerResultStatus(result hookgen.Result) string {
-	if result.RunnerFileStatus != "" {
-		return result.RunnerFileStatus
-	}
-	return writtenStatus(result.RunnerFileWritten)
+	return result.RunnerFileStatus
 }
 
 func writeGenerateJobResult(stdout io.Writer, root string, result jobgen.Result) error {

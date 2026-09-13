@@ -638,11 +638,6 @@ func parseYAMLFile(path string) (yaml.Node, error) {
 	return node, nil
 }
 
-// Validate checks role references, Entity targets, and duplicate policy resolution.
-func Validate(plan *Plan, entities []catalog.LoadedEntity, existingRoles []string) error {
-	return ValidateWithPages(plan, entities, nil, existingRoles)
-}
-
 // ValidateWithPages checks role references, Entity/Page targets, and duplicate policy resolution.
 func ValidateWithPages(plan *Plan, entities []catalog.LoadedEntity, loadedPages []pages.LoadedPage, existingRoles []string) error {
 	knownRoles := map[string]bool{}

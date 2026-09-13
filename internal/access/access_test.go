@@ -39,8 +39,8 @@ func TestValidatePagePolicy(t *testing.T) {
 			Items:          []PolicyItem{{Role: "studio-member", Can: []permissions.Action{permissions.ActionRead}}},
 		}},
 	}
-	if err := Validate(&plan, nil, nil); err != nil {
-		t.Fatalf("Validate() error = %v, want nil for page policy", err)
+	if err := ValidateWithPages(&plan, nil, nil, nil); err != nil {
+		t.Fatalf("ValidateWithPages() error = %v, want nil for page policy", err)
 	}
 	if len(plan.Grants) != 1 || plan.Grants[0].Entity != "" || plan.Grants[0].Page != "home" {
 		t.Fatalf("page grants = %+v, want one home page grant", plan.Grants)
@@ -58,8 +58,8 @@ func TestValidatePolicyOverrideResolution(t *testing.T) {
 			policyFile("sales.access.yml", "sales", "sales", "invoice", PolicyItem{Role: "sales-manager", Can: []permissions.Action{permissions.ActionUpdate}}),
 		},
 	}
-	if err := Validate(&duplicate, entities, nil); err == nil || !strings.Contains(err.Error(), "duplicate policy") {
-		t.Fatalf("Validate(duplicate) error = %v, want duplicate policy error", err)
+	if err := ValidateWithPages(&duplicate, entities, nil, nil); err == nil || !strings.Contains(err.Error(), "duplicate policy") {
+		t.Fatalf("ValidateWithPages(duplicate) error = %v, want duplicate policy error", err)
 	}
 
 	override := Plan{
@@ -69,8 +69,8 @@ func TestValidatePolicyOverrideResolution(t *testing.T) {
 			policyFile("sales.access.yml", "sales", "sales", "invoice", PolicyItem{Role: "sales-manager", Can: []permissions.Action{permissions.ActionUpdate}, Override: true}),
 		},
 	}
-	if err := Validate(&override, entities, nil); err != nil {
-		t.Fatalf("Validate(override) error = %v, want nil", err)
+	if err := ValidateWithPages(&override, entities, nil, nil); err != nil {
+		t.Fatalf("ValidateWithPages(override) error = %v, want nil", err)
 	}
 	if len(override.Grants) != 1 || len(override.Grants[0].Can) != 1 || override.Grants[0].Can[0] != permissions.ActionUpdate {
 		t.Fatalf("override grants = %+v, want update grant", override.Grants)

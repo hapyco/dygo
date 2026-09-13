@@ -157,7 +157,6 @@ Primitives wrap behavior libraries:
 
 ```txt
 Dialog
-DropdownMenu
 Select
 Tabs
 Tooltip
@@ -182,11 +181,9 @@ Molecules:
 
 ```txt
 Field
-FormSection
 Toolbar
 EmptyState
 ErrorState
-SearchBox
 DataCell
 ```
 

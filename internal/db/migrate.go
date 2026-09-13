@@ -116,11 +116,6 @@ func (m Migrator) Prune(ctx context.Context, root string, databaseURL string) (S
 	return result, nil
 }
 
-// DumpSchema writes db/schema.sql using the configured snapshotter.
-func (m Migrator) DumpSchema(ctx context.Context, root string, databaseURL string) error {
-	return m.dumpSchema(ctx, root, databaseURL)
-}
-
 // CheckSchemaSnapshot verifies db/schema.sql matches a fresh live schema dump.
 func (m Migrator) CheckSchemaSnapshot(ctx context.Context, root string, databaseURL string) error {
 	schemaPath := filepath.Join(root, filepath.FromSlash(SchemaPath))

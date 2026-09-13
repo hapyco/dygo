@@ -38,15 +38,6 @@ func MetadataFieldStored(field MetadataField) bool {
 	return ok && definition.Behavior.Stored
 }
 
-// LinkFieldTarget returns the target Entity key for a link field.
-func LinkFieldTarget(field MetadataField) (string, error) {
-	target, err := LinkFieldTargetIdentity(field, "")
-	if err != nil {
-		return "", err
-	}
-	return target.Entity, nil
-}
-
 // EntityIdentity identifies one Entity within an App.
 type EntityIdentity struct {
 	App    string

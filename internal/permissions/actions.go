@@ -1,10 +1,8 @@
 package permissions
 
 import (
-	"fmt"
 	"strings"
 
-	"github.com/hapyco/dygo/internal/db"
 	"github.com/hapyco/dygo/internal/shape"
 )
 
@@ -53,42 +51,4 @@ func actionColumn(action Action) (string, bool) {
 func IsBuiltInAction(action Action) bool {
 	_, ok := actionColumn(action)
 	return ok
-}
-
-// ValidateMetadata verifies that core.permission metadata supports the runtime action catalog.
-func ValidateMetadata(meta db.MetadataEntityMeta) error {
-	fields := db.MetadataFieldsByName(meta)
-	for _, spec := range actionSpecs {
-		field, ok := db.RecordAddressableFieldByName(fields, string(spec.Action))
-		if !ok {
-			return fmt.Errorf("permission action field %q is missing", spec.Action)
-		}
-		if field.Type != "boolean" {
-			return fmt.Errorf("permission action field %q must be boolean", spec.Action)
-		}
-	}
-	retired, ok := db.RecordAddressableFieldByName(fields, "retired")
-	if !ok {
-		return fmt.Errorf("permission retired field is missing")
-	}
-	if retired.Type != "boolean" {
-		return fmt.Errorf("permission retired field must be boolean")
-	}
-	actions, ok := db.RecordAddressableFieldByName(fields, "actions")
-	if !ok {
-		return fmt.Errorf("permission actions field is missing")
-	}
-	if actions.Type != "json" {
-		return fmt.Errorf("permission actions field must be json")
-	}
-	for _, name := range []string{"when", "field-rules"} {
-		field, ok := db.RecordAddressableFieldByName(fields, name)
-		if !ok {
-			return fmt.Errorf("permission %s field is missing", name)
-		}
-		if field.Type != "json" {
-			return fmt.Errorf("permission %s field must be json", name)
-		}
-	}
-	return nil
 }

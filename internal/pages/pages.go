@@ -139,9 +139,6 @@ func (c Catalog) discoverApp(app manifest.LoadedApp) ([]LoadedPage, error) {
 			if child.Name() != expected {
 				return nil, fmt.Errorf("%s is not a valid Page bundle file; Page metadata must be %s", path, filepath.Join(pageDir, expected))
 			}
-			if metadataPath != "" {
-				return nil, fmt.Errorf("Page %q is defined twice. Use either %s or %s.", entry.Name(), metadataPath, path)
-			}
 			metadataPath = path
 		}
 		if metadataPath == "" {

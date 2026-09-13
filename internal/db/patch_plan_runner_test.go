@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -94,7 +95,8 @@ func TestBuildPatchPlanRejectsChecksumMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("BuildPatchPlan() error = nil, want checksum mismatch")
 	}
-	if !IsPatchRunChecksumMismatch(err) {
+	var mismatch PatchRunChecksumMismatchError
+	if !errors.As(err, &mismatch) {
 		t.Fatalf("BuildPatchPlan() error = %T %v, want checksum mismatch", err, err)
 	}
 	if !strings.Contains(err.Error(), "patch run sales/0001_rename_email checksum mismatch") {
