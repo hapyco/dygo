@@ -75,6 +75,8 @@ Use `pre-sync` when the patch needs the old database shape to still exist, for e
 - backfill values before a field becomes required
 - deduplicate Records before a unique constraint is declared
 
+`pre-sync` patches also run on a fresh database where schema sync has not created any tables yet. SQL operations must tolerate missing objects: use `ALTER TABLE IF EXISTS` and `DROP ... IF EXISTS` for tables, constraints, and indexes that may not exist.
+
 `post-sync` patches run after metadata schema sync.
 
 Use `post-sync` when the patch needs the new metadata-backed shape, for example:

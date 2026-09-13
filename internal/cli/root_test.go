@@ -3023,6 +3023,10 @@ type fakeSchemaSyncRunner struct {
 	planCalls             int
 	pruneCalls            int
 	prunePlanCalls        int
+
+	recordPatchRunsDatabaseURL string
+	recordPatchRuns            []db.PatchRun
+	recordPatchRunsErr         error
 }
 
 func (r *fakeSchemaSyncRunner) ApplyPatches(_ context.Context, root string, databaseURL string, phase string, dygoVersion string) (db.PatchApplyResult, error) {
@@ -3061,6 +3065,12 @@ func (r *fakeSchemaSyncRunner) PrunePlan(_ context.Context, root string, databas
 	r.prunePlanRoot = root
 	r.prunePlanDatabaseURL = databaseURL
 	return r.prunePlan, r.prunePlanErr
+}
+
+func (r *fakeSchemaSyncRunner) RecordPatchRuns(_ context.Context, databaseURL string, runs []db.PatchRun) error {
+	r.recordPatchRunsDatabaseURL = databaseURL
+	r.recordPatchRuns = append(r.recordPatchRuns, runs...)
+	return r.recordPatchRunsErr
 }
 
 func (r *fakeSchemaSyncRunner) Sync(_ context.Context, root string, databaseURL string) (db.SchemaSyncResult, error) {

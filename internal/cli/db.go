@@ -496,6 +496,9 @@ func applyDBMigration(ctx context.Context, sync schemaSyncRunner, root string, d
 	if err != nil {
 		return dbMigrationResult{}, fmt.Errorf("sync metadata schema: %w", err)
 	}
+	if err := sync.RecordPatchRuns(ctx, databaseURL, preSync.Deferred); err != nil {
+		return dbMigrationResult{}, fmt.Errorf("record pre-sync patches: %w", err)
+	}
 	postSync, err := sync.ApplyPatches(ctx, root, databaseURL, db.PatchPhasePostSync, currentVersion())
 	if err != nil {
 		return dbMigrationResult{}, fmt.Errorf("apply post-sync patches: %w", err)
@@ -638,6 +641,11 @@ func writeDBMigrationResult(stdout io.Writer, env secrets.Environment, title str
 	}
 	if _, err := fmt.Fprintf(stdout, "pre-sync patches applied: %d\n", len(result.PreSync.Applied)); err != nil {
 		return err
+	}
+	if len(result.PreSync.Deferred) > 0 {
+		if _, err := fmt.Fprintf(stdout, "pre-sync patches recorded on fresh database: %d\n", len(result.PreSync.Deferred)); err != nil {
+			return err
+		}
 	}
 	if _, err := fmt.Fprintln(stdout, migrateResultLine(result.Schema, env)); err != nil {
 		return err

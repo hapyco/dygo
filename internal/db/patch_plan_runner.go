@@ -14,9 +14,10 @@ import (
 
 // PatchPlan is a read-only view of patch files against the applied patch ledger.
 type PatchPlan struct {
-	Phase   string
-	Pending []PlannedPatch
-	Applied []AppliedPatch
+	Phase         string
+	Pending       []PlannedPatch
+	Applied       []AppliedPatch
+	FreshDatabase bool
 }
 
 // PlannedPatch is one discovered patch that has not been applied yet.
@@ -44,9 +45,12 @@ type AppliedPatch struct {
 }
 
 // PatchApplyResult reports patches successfully applied by one apply command.
+// Deferred lists patches skipped because the database was fresh; they must be
+// recorded after schema sync creates the patch ledger.
 type PatchApplyResult struct {
-	Phase   string
-	Applied []PatchRun
+	Phase    string
+	Applied  []PatchRun
+	Deferred []PatchRun
 }
 
 // PatchPlan compares discovered patch files with the patch ledger without writing to the database.
@@ -129,11 +133,24 @@ func patchLedgerTablesAvailable(live LiveSchema) bool {
 }
 
 // ApplyPatchPlan applies planned pending patches using one transaction per patch.
+// On a fresh database there is no old shape for pre-sync patches to change, and
+// the patch ledger does not exist yet, so pending patches are deferred until
+// after schema sync.
 func ApplyPatchPlan(ctx context.Context, beginner recordBeginner, plan PatchPlan, root string, dygoVersion string) (PatchApplyResult, error) {
 	if beginner == nil {
 		return PatchApplyResult{}, fmt.Errorf("patch transaction beginner is required")
 	}
 	result := PatchApplyResult{Phase: plan.Phase}
+	if plan.FreshDatabase {
+		for _, patch := range plan.Pending {
+			run, err := patchRunFor(root, patch, dygoVersion)
+			if err != nil {
+				return result, err
+			}
+			result.Deferred = append(result.Deferred, run)
+		}
+		return result, nil
+	}
 	for _, patch := range plan.Pending {
 		run, err := applyOnePatch(ctx, beginner, patch, root, dygoVersion)
 		if err != nil {
@@ -142,6 +159,42 @@ func ApplyPatchPlan(ctx context.Context, beginner recordBeginner, plan PatchPlan
 		result.Applied = append(result.Applied, run)
 	}
 	return result, nil
+}
+
+// RecordPatchRuns records deferred patches after schema sync created the patch ledger.
+func (m Migrator) RecordPatchRuns(ctx context.Context, databaseURL string, runs []PatchRun) error {
+	if len(runs) == 0 {
+		return nil
+	}
+	pool, err := connectMetadataPool(ctx, databaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	ledger := NewPatchLedger(pool)
+	for _, run := range runs {
+		if err := ledger.RecordPatchRun(ctx, run); err != nil {
+			return fmt.Errorf("record patch %s/%s: %w", run.AppName, run.PatchID, err)
+		}
+	}
+	return nil
+}
+
+func patchRunFor(root string, patch PlannedPatch, dygoVersion string) (PatchRun, error) {
+	path, err := patchLedgerPath(root, patch)
+	if err != nil {
+		return PatchRun{}, err
+	}
+	return PatchRun{
+		AppName:     patch.AppName,
+		PatchID:     patch.PatchID,
+		Path:        path,
+		Phase:       patch.Phase,
+		Checksum:    patch.Checksum,
+		AppliedAt:   time.Now().UTC(),
+		DygoVersion: dygoVersion,
+	}, nil
 }
 
 func applyOnePatch(ctx context.Context, beginner recordBeginner, patch PlannedPatch, root string, dygoVersion string) (PatchRun, error) {
@@ -162,18 +215,9 @@ func applyOnePatch(ctx context.Context, beginner recordBeginner, patch PlannedPa
 		}
 	}
 
-	path, err := patchLedgerPath(root, patch)
+	run, err := patchRunFor(root, patch, dygoVersion)
 	if err != nil {
 		return PatchRun{}, err
-	}
-	run := PatchRun{
-		AppName:     patch.AppName,
-		PatchID:     patch.PatchID,
-		Path:        path,
-		Phase:       patch.Phase,
-		Checksum:    patch.Checksum,
-		AppliedAt:   time.Now().UTC(),
-		DygoVersion: dygoVersion,
 	}
 	if err := NewPatchLedger(tx).RecordPatchRun(ctx, run); err != nil {
 		return PatchRun{}, fmt.Errorf("record patch %s/%s: %w", patch.AppName, patch.PatchID, err)
@@ -198,7 +242,7 @@ func BuildPatchPlan(loaded []patches.LoadedPatch, entities []catalog.LoadedEntit
 
 	pendingLoaded := []patches.LoadedPatch{}
 	pendingByPatch := map[string]int{}
-	plan := PatchPlan{Phase: phase}
+	plan := PatchPlan{Phase: phase, FreshDatabase: !patchLedgerTablesAvailable(live)}
 	for _, patch := range loaded {
 		if patch.Patch.Phase != phase {
 			continue
@@ -223,6 +267,12 @@ func BuildPatchPlan(loaded []patches.LoadedPatch, entities []catalog.LoadedEntit
 	}
 
 	if len(pendingLoaded) == 0 {
+		return plan, nil
+	}
+	if plan.FreshDatabase {
+		// A fresh database has no old shape for pre-sync patches to change and
+		// no ledger to read, so pending patches are deferred without planning
+		// operations against tables that schema sync has not created yet.
 		return plan, nil
 	}
 	operationPlan, err := BuildPatchOperationPlan(pendingLoaded, entities, live)

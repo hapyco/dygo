@@ -270,7 +270,7 @@ func TestPatchRunnerPreSyncRenameWorkflow(t *testing.T) {
     from: customer-email
     to: email
 `)
-	patchPlan, err := BuildPatchPlan([]patches.LoadedPatch{patch}, desired, oldLive, nil, PatchPhasePreSync)
+	patchPlan, err := BuildPatchPlan([]patches.LoadedPatch{patch}, desired, withPatchLedger(oldLive), nil, PatchPhasePreSync)
 	if err != nil {
 		t.Fatalf("BuildPatchPlan() error = %v, want nil", err)
 	}
@@ -318,7 +318,7 @@ func TestPatchRunnerPostSyncBackfillWorkflow(t *testing.T) {
       field-is-null: true
 `)
 	patch.Patch.Phase = PatchPhasePostSync
-	patchPlan, err := BuildPatchPlan([]patches.LoadedPatch{patch}, desired, afterSync, nil, PatchPhasePostSync)
+	patchPlan, err := BuildPatchPlan([]patches.LoadedPatch{patch}, desired, withPatchLedger(afterSync), nil, PatchPhasePostSync)
 	if err != nil {
 		t.Fatalf("BuildPatchPlan() error = %v, want nil", err)
 	}
@@ -328,6 +328,35 @@ func TestPatchRunnerPostSyncBackfillWorkflow(t *testing.T) {
 	}
 	if len(beginner.txs) != 1 || beginner.txs[0].execSQL[0] != `UPDATE "sales_deal" SET "status" = 'open' WHERE "status" IS NULL` {
 		t.Fatalf("patch SQL = %+v, want backfill SQL", beginner.txs)
+	}
+}
+
+func TestPatchRunnerDefersPendingPatchesOnFreshDatabase(t *testing.T) {
+	desired := []catalog.LoadedEntity{
+		testEntity("sales", "customer", schema.Field{Name: "email", Type: "email"}),
+	}
+	patch := testLoadedPatch(t, "sales", "0001_rename_email", `  - type: rename-field
+    entity: customer
+    from: customer-email
+    to: email
+`)
+	plan, err := BuildPatchPlan([]patches.LoadedPatch{patch}, desired, LiveSchema{Tables: map[string]liveTable{}}, nil, PatchPhasePreSync)
+	if err != nil {
+		t.Fatalf("BuildPatchPlan() error = %v, want nil", err)
+	}
+	if !plan.FreshDatabase {
+		t.Fatal("BuildPatchPlan() FreshDatabase = false, want true")
+	}
+	beginner := &fakePatchApplyBeginner{}
+	result, err := ApplyPatchPlan(context.Background(), beginner, plan, "", "dev")
+	if err != nil {
+		t.Fatalf("ApplyPatchPlan() error = %v, want nil", err)
+	}
+	if len(result.Applied) != 0 || len(result.Deferred) != 1 {
+		t.Fatalf("ApplyPatchPlan() result = %+v, want one deferred patch", result)
+	}
+	if len(beginner.txs) != 0 {
+		t.Fatalf("ApplyPatchPlan() transactions = %d, want none on fresh database", len(beginner.txs))
 	}
 }
 

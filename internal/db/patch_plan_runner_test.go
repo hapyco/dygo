@@ -27,9 +27,9 @@ func TestBuildPatchPlanSplitsPendingAndApplied(t *testing.T) {
 	plan, err := BuildPatchPlan(
 		[]patches.LoadedPatch{applied, pending},
 		[]catalog.LoadedEntity{testEntity("sales", "customer", schema.Field{Name: "email", Type: "email"})},
-		liveWithTables("sales_customer", map[string]liveColumn{
+		withPatchLedger(liveWithTables("sales_customer", map[string]liveColumn{
 			"customer_email": {Name: "customer_email", Type: "text", Nullable: true},
-		}),
+		})),
 		[]PatchRun{{
 			AppName:     "sales",
 			PatchID:     "0000_applied",

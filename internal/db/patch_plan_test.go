@@ -524,6 +524,16 @@ func liveWithTables(table string, columns map[string]liveColumn) LiveSchema {
 	}}
 }
 
+func withPatchLedger(live LiveSchema) LiveSchema {
+	tables := make(map[string]liveTable, len(live.Tables)+2)
+	for name, table := range live.Tables {
+		tables[name] = table
+	}
+	tables["app"] = liveTable{}
+	tables["patch_run"] = liveTable{}
+	return LiveSchema{Tables: tables}
+}
+
 func columnsWithSystem(columns map[string]liveColumn) map[string]liveColumn {
 	all := systemColumns()
 	for name, column := range columns {

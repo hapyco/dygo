@@ -7,9 +7,9 @@ operations:
   - type: sql
     name: drop-activity-kind-check
     reason: Metadata must recreate the check with the action value.
-    statement: ALTER TABLE "activity" DROP CONSTRAINT IF EXISTS "activity_kind_check";
+    statement: ALTER TABLE IF EXISTS "activity" DROP CONSTRAINT IF EXISTS "activity_kind_check";
 
   - type: sql
     name: drop-activity-operation-check
     reason: Metadata must recreate the check with the action value.
-    statement: ALTER TABLE "activity" DROP CONSTRAINT IF EXISTS "activity_operation_check";
+    statement: ALTER TABLE IF EXISTS "activity" DROP CONSTRAINT IF EXISTS "activity_operation_check";

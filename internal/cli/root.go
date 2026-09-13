@@ -68,6 +68,7 @@ type schemaSyncRunner interface {
 	Plan(context.Context, string, string) (db.SchemaPlan, error)
 	Prune(context.Context, string, string) (db.SchemaPruneResult, error)
 	PrunePlan(context.Context, string, string) (db.SchemaPrunePlan, error)
+	RecordPatchRuns(context.Context, string, []db.PatchRun) error
 	Sync(context.Context, string, string) (db.SchemaSyncResult, error)
 }
 
