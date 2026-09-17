@@ -21,6 +21,10 @@
       "default": "default",
       "description": "Registered queue name. Omitted Jobs use default."
     },
+    "cron": {
+      "type": "string",
+      "description": "Optional standard five-field UTC cron expression."
+    },
     "timeout": {
       "$ref": "#/$defs/duration",
       "description": "Required handler deadline and worker lease duration."

@@ -16,6 +16,7 @@ import (
 	"github.com/hapyco/dygo/internal/queues"
 	"github.com/hapyco/dygo/internal/shape"
 	"github.com/hapyco/dygo/internal/yamlmeta"
+	"github.com/robfig/cron/v3"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,6 +24,8 @@ const (
 	defaultRetryInitialDelay = "10s"
 	defaultRetryMaxDelay     = "5m"
 )
+
+var jobCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 const (
 	// JobSourceFile marks Jobs synced from apps/<app>/jobs/<job>/job.yml.
@@ -55,6 +58,7 @@ type Job struct {
 	Label       string `yaml:"label"`
 	Description string `yaml:"description,omitempty"`
 	Queue       string `yaml:"queue,omitempty"`
+	Cron        string `yaml:"cron,omitempty"`
 	Timeout     string `yaml:"timeout"`
 	Retry       *Retry `yaml:"retry,omitempty"`
 }
@@ -226,6 +230,11 @@ func (j Job) Validate() error {
 	}
 	if queue := strings.TrimSpace(j.Queue); queue != "" && !fieldtype.IsName(queue) {
 		problems = append(problems, fmt.Sprintf("queue %q must be kebab-case", j.Queue))
+	}
+	if cronExpr := strings.TrimSpace(j.Cron); cronExpr != "" {
+		if _, err := jobCronParser.Parse(cronExpr); err != nil {
+			problems = append(problems, fmt.Sprintf("cron %q is invalid: %v", j.Cron, err))
+		}
 	}
 	if _, err := positiveDuration(j.Timeout, "timeout"); err != nil {
 		problems = append(problems, err.Error())

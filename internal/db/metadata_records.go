@@ -87,6 +87,7 @@ type jobRecord struct {
 	Label       string
 	Description string
 	Queue       string
+	Cron        string
 	Timeout     string
 	Retry       []byte
 	Enabled     bool
@@ -354,20 +355,21 @@ func persistJobRecord(ctx context.Context, tx pgx.Tx, appID int64, job jobRecord
 	}
 	var id int64
 	err := tx.QueryRow(ctx, `
-INSERT INTO "job" (name, app_id, key, source, label, description, queue, timeout, retry, enabled, retired)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-ON CONFLICT (app_id, key) DO UPDATE
+	INSERT INTO "job" (name, app_id, key, source, label, description, queue, cron, timeout, retry, enabled, retired)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	ON CONFLICT (app_id, key) DO UPDATE
 SET name = EXCLUDED.name,
 	source = EXCLUDED.source,
 	label = EXCLUDED.label,
 	description = EXCLUDED.description,
 	queue = EXCLUDED.queue,
+	cron = EXCLUDED.cron,
 	timeout = EXCLUDED.timeout,
 	retry = EXCLUDED.retry,
 	retired = false,
 	updated_at = now()
-WHERE "job"."source" = $12
-RETURNING id`, job.Name, appID, job.Key, source, job.Label, nullIfEmpty(job.Description), job.Queue, job.Timeout, job.Retry, job.Enabled, job.Retired, jobs.JobSourceFile).Scan(&id)
+	WHERE "job"."source" = $13
+	RETURNING id`, job.Name, appID, job.Key, source, job.Label, nullIfEmpty(job.Description), job.Queue, nullIfEmpty(job.Cron), job.Timeout, job.Retry, job.Enabled, job.Retired, jobs.JobSourceFile).Scan(&id)
 	if err != nil && err != pgx.ErrNoRows {
 		return 0, fmt.Errorf("persist job metadata %s/%s: %w", job.AppName, job.Key, err)
 	}
@@ -711,11 +713,33 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			Label:       loaded.Job.Label,
 			Description: loaded.Job.Description,
 			Queue:       loaded.Job.EffectiveQueue(),
+			Cron:        loaded.Job.Cron,
 			Timeout:     loaded.Job.Timeout,
 			Retry:       retryJSON,
 			Enabled:     true,
 			Retired:     false,
 		})
+		if strings.TrimSpace(loaded.Job.Cron) != "" {
+			nextRunAt, err := schedules.NextRunAt(loaded.Job.Cron, "UTC", time.Now().UTC())
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build Job schedule metadata %s/%s: %w", loaded.AppName, loaded.Job.Name, err)
+			}
+			scheduleKey := "job-" + loaded.Job.Name
+			scheduleName, err := deterministicRecordNameFromValues("schedule", namings.Schedule, map[string]string{
+				"app": loaded.AppName, "key": scheduleKey, "label": loaded.Job.Label,
+				"cron": loaded.Job.Cron, "timezone": "UTC", "job": loaded.AppName + "/" + loaded.Job.Name,
+			})
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build Job schedule metadata %s/%s name: %w", loaded.AppName, loaded.Job.Name, err)
+			}
+			records.Schedules = append(records.Schedules, scheduleRecord{
+				AppName: loaded.AppName, Name: scheduleName, Key: scheduleKey,
+				Source: schedules.ScheduleSourceFile, Label: loaded.Job.Label,
+				Description: "Schedule for Job " + loaded.AppName + "/" + loaded.Job.Name,
+				Cron:        loaded.Job.Cron, Timezone: "UTC", JobAppName: loaded.AppName,
+				JobName: loaded.Job.Name, Enabled: true, NextRunAt: nextRunAt,
+			})
+		}
 	}
 	for _, loaded := range metadata.Schedules {
 		jobRef, err := loaded.Schedule.JobRef()

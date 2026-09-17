@@ -171,6 +171,16 @@ dygo job execution list
 
 `dygo worker --once` checks due Schedules, claims one available Job Execution batch, persists the result, and exits.
 
+## Job Cron Shortcut
+
+For the common case where one Job has one UTC schedule, put the cron expression directly in that Job's `job.yml`:
+
+```yaml
+cron: "0 9 * * MON"
+```
+
+Metadata sync materializes that field as the Job's managed Schedule. The worker then uses the same durable Schedule and Job Execution path described above. Use `_schedules.yml` when a Job needs a timezone other than UTC or more than one schedule.
+
 ## Coming Soon
 
 - Studio UI for creating and editing Schedules.
