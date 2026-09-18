@@ -75,7 +75,26 @@ export type MetadataLinkOptions = {
   filters: MetadataLinkFilter[]
 }
 
+export type MetadataFormItem = {
+  kind: 'field' | 'column' | 'section'
+  name?: string
+  label?: string
+  description?: string
+}
+
+export type MetadataFormTab = {
+  key: string
+  label: string
+  icon?: string
+  items: MetadataFormItem[]
+}
+
+export type MetadataFormLayout = {
+  tabs: MetadataFormTab[]
+}
+
 export type MetadataEntityMeta = MetadataEntity & {
+  form?: MetadataFormLayout
   fields: MetadataField[]
   'system-fields': MetadataField[]
   indexes: unknown[]

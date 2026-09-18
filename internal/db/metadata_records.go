@@ -63,6 +63,7 @@ type entityRecord struct {
 	PrivateOwnerField string
 	Naming            []byte
 	Tree              []byte
+	Form              []byte
 }
 
 type pageRecord struct {
@@ -186,8 +187,8 @@ RETURNING id`, app.Name, app.Label, app.Version, app.Status).Scan(&id); err != n
 		}
 		var id int64
 		if err := tx.QueryRow(ctx, `
-INSERT INTO "entity" (app_id, name, key, slug, label, description, icon, is_single, is_system, is_collection, is_private, private_owner_field, naming, tree)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+INSERT INTO "entity" (app_id, name, key, slug, label, description, icon, is_single, is_system, is_collection, is_private, private_owner_field, naming, tree, form)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 ON CONFLICT (name) DO UPDATE
 SET app_id = EXCLUDED.app_id,
 	name = EXCLUDED.name,
@@ -203,9 +204,10 @@ SET app_id = EXCLUDED.app_id,
 	private_owner_field = EXCLUDED.private_owner_field,
 	naming = EXCLUDED.naming,
 	tree = EXCLUDED.tree,
+	form = EXCLUDED.form,
 	retired = false,
 	updated_at = now()
-RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity.Description, entity.Icon, entity.IsSingle, entity.IsSystem, entity.IsCollection, entity.IsPrivate, nullIfEmpty(entity.PrivateOwnerField), entity.Naming, entity.Tree).Scan(&id); err != nil {
+RETURNING id`, appID, entity.Name, entity.Key, entity.Slug, entity.Label, entity.Description, entity.Icon, entity.IsSingle, entity.IsSystem, entity.IsCollection, entity.IsPrivate, nullIfEmpty(entity.PrivateOwnerField), entity.Naming, entity.Tree, entity.Form).Scan(&id); err != nil {
 			return metadataPersistResult{}, fmt.Errorf("persist entity metadata %s/%s: %w", entity.AppName, entity.Key, err)
 		}
 		entityIDs[entityKey(entity.AppName, entity.Key)] = id
@@ -549,6 +551,13 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 				return metadataRecordSet{}, err
 			}
 		}
+		var formJSON []byte
+		if loaded.Entity.Form != nil && len(loaded.Entity.Form.Tabs) > 0 {
+			formJSON, err = json.Marshal(loaded.Entity.Form)
+			if err != nil {
+				return metadataRecordSet{}, fmt.Errorf("build entity metadata %s/%s form: %w", loaded.AppName, loaded.Entity.Name, err)
+			}
+		}
 		records.Entities = append(records.Entities, entityRecord{
 			AppName:           loaded.AppName,
 			Name:              entityName,
@@ -564,6 +573,7 @@ func buildMetadataRecords(metadata metadataCatalog) (metadataRecordSet, error) {
 			PrivateOwnerField: strings.TrimSpace(loaded.Entity.PrivateOwnerField),
 			Naming:            namingJSON,
 			Tree:              treeJSON,
+			Form:              formJSON,
 		})
 		for index, field := range loaded.Entity.Fields {
 			defaultJSON, err := fieldDefaultJSON(field.Default)

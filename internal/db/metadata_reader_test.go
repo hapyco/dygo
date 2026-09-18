@@ -76,7 +76,7 @@ func TestMetadataReaderListEntities(t *testing.T) {
 
 func TestMetadataReaderGetEntityMeta(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", true, true, false, false, "", []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core", nil),
+		row: newFakeRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", true, true, false, false, "", []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core", nil, nil),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{int64(1), "email", "Email", "email", true, true, true, nil, nil, []byte(`{"from":"profile.email"}`), 1, []byte(`{"entity":"user"}`)},
@@ -124,9 +124,9 @@ func TestMetadataReaderGetEntityMeta(t *testing.T) {
 
 func TestMetadataReaderEmbedsCollectionMetadata(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(20), "crm.lead", "lead", "lead", "Lead", "Sales lead", "contact", false, false, false, false, "", []byte(`{"strategy":"random","length":16}`), "crm", "CRM", nil),
+		row: newFakeRow(int64(20), "crm.lead", "lead", "lead", "Lead", "Sales lead", "contact", false, false, false, false, "", []byte(`{"strategy":"random","length":16}`), "crm", "CRM", nil, nil),
 		identityRows: map[string]pgx.Row{
-			"crm/lead-contact": newFakeRow(int64(21), "crm.lead-contact", "lead-contact", "", "Lead Contact", "Child row", "contact", false, false, true, false, "", nil, "crm", "CRM", nil),
+			"crm/lead-contact": newFakeRow(int64(21), "crm.lead-contact", "lead-contact", "", "Lead Contact", "Child row", "contact", false, false, true, false, "", nil, "crm", "CRM", nil, nil),
 		},
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
@@ -161,7 +161,7 @@ func TestMetadataReaderEmbedsCollectionMetadata(t *testing.T) {
 
 func TestMetadataReaderGetEntityMetaByIdentity(t *testing.T) {
 	queryer := &fakeMetadataQueryer{
-		row: newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, false, false, "", []byte(`{"strategy":"random","length":16}`), "crm", "CRM", nil),
+		row: newFakeRow(int64(20), "crm.lead", "lead", "crm-lead", "Lead", "Sales lead", "contact", false, false, false, false, "", []byte(`{"strategy":"random","length":16}`), "crm", "CRM", nil, nil),
 		rows: []pgx.Rows{
 			newFakeRows([][]any{
 				{int64(1), "status", "Status", "select", true, false, false, nil, nil, nil, 1, []byte(`{"values":["New"]}`)},

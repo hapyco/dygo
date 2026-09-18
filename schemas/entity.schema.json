@@ -5,7 +5,7 @@
   "description": "Schema for dygo Entity YAML files. Runtime validation in Go remains authoritative.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["label", "fields"],
+  "required": ["label"],
   "properties": {
     "tree": {
       "type": "object",
@@ -49,6 +49,26 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/field" }
+    },
+    "tabs": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Optional form tabs. When set, storage fields are authored under each tab instead of top-level fields.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tab", "name", "fields"],
+        "properties": {
+          "tab": { "type": "string", "minLength": 1 },
+          "name": { "$ref": "#/$defs/kebabName" },
+          "icon": { "$ref": "#/$defs/icon" },
+          "fields": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/field" }
+          }
+        }
+      }
     },
     "indexes": {
       "type": "array",
@@ -177,6 +197,9 @@
           "minLength": 1
         },
         "type": { "$ref": "#/$defs/fieldType" },
+        "description": {
+          "type": "string"
+        },
         "required": {
           "type": "boolean",
           "default": false

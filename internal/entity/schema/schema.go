@@ -29,7 +29,9 @@ type Entity struct {
 	Route             Route        `yaml:"route,omitempty"`
 	Naming            Naming       `yaml:"name,omitempty"`
 	Tree              *Tree        `yaml:"tree,omitempty"`
-	Fields            []Field      `yaml:"fields"`
+	Fields            []Field      `yaml:"fields,omitempty"`
+	Tabs              []Tab        `yaml:"tabs,omitempty"`
+	Form              *FormLayout  `yaml:"-"`
 	Indexes           []Index      `yaml:"indexes,omitempty"`
 	Constraints       []Constraint `yaml:"constraints,omitempty"`
 }
@@ -96,17 +98,18 @@ func SupportedConstraintTypes() []string {
 
 // Field describes one field inside an Entity.
 type Field struct {
-	Line     int               `yaml:"-"`
-	Name     string            `yaml:"name"`
-	Label    string            `yaml:"label"`
-	Type     string            `yaml:"type"`
-	Required bool              `yaml:"required,omitempty"`
-	Unique   bool              `yaml:"unique,omitempty"`
-	Index    bool              `yaml:"index,omitempty"`
-	Default  yaml.Node         `yaml:"default,omitempty"`
-	Check    *Check            `yaml:"check,omitempty"`
-	Fetch    *Fetch            `yaml:"fetch,omitempty"`
-	Options  fieldtype.Options `yaml:"options,omitempty"`
+	Line        int               `yaml:"-"`
+	Name        string            `yaml:"name"`
+	Label       string            `yaml:"label"`
+	Type        string            `yaml:"type"`
+	Description string            `yaml:"description,omitempty"`
+	Required    bool              `yaml:"required,omitempty"`
+	Unique      bool              `yaml:"unique,omitempty"`
+	Index       bool              `yaml:"index,omitempty"`
+	Default     yaml.Node         `yaml:"default,omitempty"`
+	Check       *Check            `yaml:"check,omitempty"`
+	Fetch       *Fetch            `yaml:"fetch,omitempty"`
+	Options     fieldtype.Options `yaml:"options,omitempty"`
 }
 
 // Check describes one single-field structured value check.
@@ -233,6 +236,9 @@ func DecodeWithOptions(data []byte, registry fieldtype.Registry, options DecodeO
 	}
 	source.apply(&entity)
 	entity.IsCollection = options.IsCollection
+	if err := normalizeFormLayout(&entity); err != nil {
+		return Entity{}, fmt.Errorf("normalize entity form layout: %w", err)
+	}
 	if err := entity.Validate(registry); err != nil {
 		return Entity{}, err
 	}
