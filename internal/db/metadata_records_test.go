@@ -63,6 +63,9 @@ func TestBuildMetadataRecords(t *testing.T) {
 	if len(records.Entities) != 1 || records.Entities[0].Name != "core.user" || records.Entities[0].Key != "user" || records.Entities[0].Slug == nil || *records.Entities[0].Slug != "user" || records.Entities[0].Icon != "user" || records.Entities[0].AppName != "core" || !records.Entities[0].IsSingle || !records.Entities[0].IsSystem {
 		t.Fatalf("entity records = %+v, want core/user", records.Entities)
 	}
+	if records.Entities[0].Form != nil {
+		t.Fatalf("flat entity form metadata = %s, want nil", records.Entities[0].Form)
+	}
 	if records.Entities[0].Naming != nil {
 		t.Fatalf("single entity naming metadata = %s, want nil", records.Entities[0].Naming)
 	}
@@ -419,5 +422,45 @@ func TestFieldDefaultJSONRejectsNonScalar(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "default must be a scalar value") {
 		t.Fatalf("fieldDefaultJSON() error = %q, want scalar context", err.Error())
+	}
+}
+
+func TestBuildMetadataRecordsStoresAuthoredForm(t *testing.T) {
+	entity, err := schema.Decode([]byte(`label: Contact
+name: {strategy: random}
+tabs:
+  - tab: Identity
+    name: identity
+    icon: user
+    fields:
+      - {name: email, label: Email, type: email}
+      - {type: column}
+      - {type: section, label: Settings, description: Account settings}
+      - {name: enabled, label: Enabled, type: boolean}
+`), fieldtype.DefaultRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	entity.Name = "contact"
+	records, err := buildMetadataRecords(metadataCatalog{
+		Apps:     []manifest.LoadedApp{{Manifest: manifest.Manifest{Name: "crm", Label: "CRM", Version: "0.1.0"}}},
+		Entities: []catalog.LoadedEntity{{AppName: "crm", Path: testEntityPath("crm", "contact"), Entity: entity}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records.Fields) != 2 || records.Fields[0].Name != "email" || records.Fields[1].Name != "enabled" || records.Fields[0].Position != 1 || records.Fields[1].Position != 2 {
+		t.Fatalf("storage fields = %+v, want only email and enabled in order", records.Fields)
+	}
+	var form schema.FormLayout
+	if err := json.Unmarshal(records.Entities[0].Form, &form); err != nil {
+		t.Fatal(err)
+	}
+	if len(form.Tabs) != 1 {
+		t.Fatalf("form = %+v, want one tab", form)
+	}
+	tab := form.Tabs[0]
+	if tab.Key != "identity" || tab.Label != "Identity" || tab.Icon != "user" || len(tab.Items) != 4 || tab.Items[0].Name != "email" || tab.Items[1].Kind != "column" || tab.Items[2].Kind != "section" || tab.Items[2].Label != "Settings" || tab.Items[2].Description != "Account settings" || tab.Items[3].Name != "enabled" {
+		t.Fatalf("form tab = %+v, want authored field and marker order", tab)
 	}
 }

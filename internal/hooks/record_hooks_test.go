@@ -491,7 +491,7 @@ type recordDataMutationQueryer struct {
 
 func newUserRecordDataMutationQueryer(recordRows ...[]any) *recordDataMutationQueryer {
 	queryer := &recordDataMutationQueryer{
-		row: newRecordDataMutationRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, false, false, "", []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core", nil),
+		row: newRecordDataMutationRow(int64(10), "core.user", "user", "user", "User", "User identity", "user", false, false, false, false, "", []byte(`{"strategy":"format","format":"{email}"}`), "core", "Core", nil, nil),
 		rows: []pgx.Rows{
 			newRecordDataMutationRows([][]any{
 				{int64(101), "email", "Email", "email", true, true, false, nil, nil, nil, 1, nil},
@@ -511,7 +511,7 @@ func newUserRecordDataMutationQueryer(recordRows ...[]any) *recordDataMutationQu
 
 func newLogRecordDataMutationQueryer() *recordDataMutationQueryer {
 	return &recordDataMutationQueryer{
-		row: newRecordDataMutationRow(int64(2), "core.log", "log", "log", "Log", "Diagnostic log", "file-text", false, false, false, false, "", []byte(`{"strategy":"random","length":16}`), "core", "Core", nil),
+		row: newRecordDataMutationRow(int64(2), "core.log", "log", "log", "Log", "Diagnostic log", "file-text", false, false, false, false, "", []byte(`{"strategy":"random","length":16}`), "core", "Core", nil, nil),
 		rows: []pgx.Rows{
 			newRecordDataMutationRows(hookLogFieldRows()),
 			newRecordDataMutationRows(nil),
@@ -556,10 +556,10 @@ func (q *recordDataMutationQueryer) QueryRow(_ context.Context, sql string, args
 	q.rowSQL = append(q.rowSQL, sql)
 	q.rowArgs = append(q.rowArgs, args)
 	if isHookActivityMetadataQuery(sql, args...) {
-		return newRecordDataMutationRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, false, false, "", []byte(`{"strategy":"random","length":16}`), "core", "Core", nil)
+		return newRecordDataMutationRow(int64(1), "core.activity", "activity", "activity", "Activity", "Timeline entry", "activity", false, false, false, false, "", []byte(`{"strategy":"random","length":16}`), "core", "Core", nil, nil)
 	}
 	if isHookLogMetadataQuery(sql, args...) {
-		return newRecordDataMutationRow(int64(2), "core.log", "log", "log", "Log", "Diagnostic log", "file-text", false, false, false, false, "", []byte(`{"strategy":"random","length":16}`), "core", "Core", nil)
+		return newRecordDataMutationRow(int64(2), "core.log", "log", "log", "Log", "Diagnostic log", "file-text", false, false, false, false, "", []byte(`{"strategy":"random","length":16}`), "core", "Core", nil, nil)
 	}
 	if strings.Contains(sql, `SELECT "id" FROM "app"`) && len(args) == 1 && args[0] == "sales" {
 		return newRecordDataMutationRow(int64(20))

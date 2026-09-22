@@ -427,3 +427,34 @@ Both commands discover the dygo project root before loading apps, so they can be
 `link` and `collection` targets use `{app, entity}` identity when `options.app` is set. Without `options.app`, dygo resolves same-app targets first, then a single globally unambiguous target. If no Entity matches or multiple external apps match, validation fails. Collection targets must resolve to collection Entities.
 
 Validation errors include the app name, Entity key, field name when relevant, file path, and a best-effort YAML line number.
+
+## Form tabs
+
+Use either top-level `fields` or `tabs`. Each tab needs a label in `tab`, a unique kebab-case `name`, and a non-empty `fields` list. Set `icon` to add an optional Lucide icon. An explicit tab remains visible even when it is the only tab.
+
+```yaml
+label: Contact
+name:
+  strategy: random
+tabs:
+  - tab: Details
+    name: details
+    fields:
+      - name: full-name
+        label: Full Name
+        type: text
+      - type: column
+      - name: email
+        label: Email
+        type: email
+      - type: section
+        label: Notes
+        description: Additional contact information
+      - name: notes
+        label: Notes
+        type: text
+```
+
+`type: column` starts the next column. `type: section` starts a new section and requires a label. Its description is optional. These markers control the form layout only. Do not add required, unique, index, default, check, fetch, or options settings to a marker.
+
+Storage field names must be unique across all tabs. Markers do not create database columns or Record fields. Indexes, constraints, permissions, and Record APIs use storage fields only. Metadata sync saves the ordered layout in `entity.form` for Studio.

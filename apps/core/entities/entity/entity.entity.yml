@@ -78,6 +78,10 @@ fields:
     label: Naming
     type: json
 
+  - name: form
+    label: Form
+    type: json
+
   - name: retired
     label: Retired
     type: boolean

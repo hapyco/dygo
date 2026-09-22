@@ -5,7 +5,8 @@
   "description": "Schema for dygo Entity YAML files. Runtime validation in Go remains authoritative.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["label", "fields"],
+  "required": ["label"],
+  "oneOf": [{ "required": ["fields"] }, { "required": ["tabs"] }],
   "properties": {
     "tree": {
       "type": "object",
@@ -50,6 +51,26 @@
       "minItems": 1,
       "items": { "$ref": "#/$defs/field" }
     },
+    "tabs": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Optional form tabs. When set, storage fields are authored under each tab instead of top-level fields.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tab", "name", "fields"],
+        "properties": {
+          "tab": { "type": "string", "minLength": 1 },
+          "name": { "$ref": "#/$defs/kebabName" },
+          "icon": { "$ref": "#/$defs/icon" },
+          "fields": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/formItem" }
+          }
+        }
+      }
+    },
     "indexes": {
       "type": "array",
       "items": { "$ref": "#/$defs/index" }
@@ -60,6 +81,33 @@
     }
   },
   "$defs": {
+    "formItem": {
+      "oneOf": [
+        { "$ref": "#/$defs/field" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "column" },
+            "name": { "type": "string" },
+            "label": { "type": "string" },
+            "description": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "label"],
+          "properties": {
+            "type": { "const": "section" },
+            "name": { "type": "string" },
+            "label": { "type": "string", "minLength": 1 },
+            "description": { "type": "string" }
+          }
+        }
+      ]
+    },
     "kebabName": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
@@ -177,6 +225,9 @@
           "minLength": 1
         },
         "type": { "$ref": "#/$defs/fieldType" },
+        "description": {
+          "type": "string"
+        },
         "required": {
           "type": "boolean",
           "default": false

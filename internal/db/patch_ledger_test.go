@@ -235,7 +235,7 @@ func (q *fakePatchLedgerQueryer) QueryRow(_ context.Context, sql string, args ..
 	q.rowSQL = append(q.rowSQL, sql)
 	q.rowArgs = append(q.rowArgs, args)
 	if isPatchRunMetadataQuery(sql, args...) {
-		return newFakeRow(int64(2), "core.patch-run", "patch-run", "patch-run", "Patch Run", "Ledger entry", "git-pull-request-arrow", false, true, false, false, "", []byte(`{"strategy":"format","format":"{app}.{patch-id}"}`), "core", "Core", nil)
+		return newFakeRow(int64(2), "core.patch-run", "patch-run", "patch-run", "Patch Run", "Ledger entry", "git-pull-request-arrow", false, true, false, false, "", []byte(`{"strategy":"format","format":"{app}.{patch-id}"}`), "core", "Core", nil, nil)
 	}
 	if strings.Contains(sql, `SELECT "id" FROM "app"`) && len(args) == 1 && args[0] == "crm" {
 		return newFakeRow(int64(10))
