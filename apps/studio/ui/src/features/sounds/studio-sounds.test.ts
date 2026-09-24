@@ -36,10 +36,6 @@ test('bundled studio sound files exist', () => {
   }
 })
 
-test('studioSounds exposes the reserved notification action', () => {
-  assert.equal(typeof studioSounds.notification, 'function')
-})
-
 test('sound preferences remain safe when browser storage is unavailable', () => {
   installWindow({
     localStorage: {

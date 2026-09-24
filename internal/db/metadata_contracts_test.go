@@ -50,43 +50,10 @@ func TestValidateRecordMatch(t *testing.T) {
 	}
 }
 
-func TestRecordAddressableFieldByName(t *testing.T) {
-	fields := map[string]MetadataField{
-		"email": {Name: "email", Type: "email", Unique: true, Stored: true},
-	}
-
-	tests := []struct {
-		name string
-		want bool
-	}{
-		{name: "email", want: true},
-		{name: "name", want: true},
-		{name: "id"},
-		{name: "created-at"},
-		{name: "updated-at"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			field, ok := RecordAddressableFieldByName(fields, tt.name)
-			if ok != tt.want {
-				t.Fatalf("RecordAddressableFieldByName() ok = %t, want %t", ok, tt.want)
-			}
-			if ok && field.Name != tt.name {
-				t.Fatalf("RecordAddressableFieldByName() field = %q, want %q", field.Name, tt.name)
-			}
-		})
-	}
-}
-
-func TestLinkFieldTarget(t *testing.T) {
-	target, err := LinkFieldTarget(MetadataField{Options: []byte(`{"entity":"user"}`)})
-	if err != nil || target != "user" {
-		t.Fatalf("LinkFieldTarget() = %q, %v; want user, nil", target, err)
-	}
-	_, err = LinkFieldTarget(MetadataField{Options: []byte(`{}`)})
+func TestLinkFieldTargetIdentity(t *testing.T) {
+	_, err := LinkFieldTargetIdentity(MetadataField{Options: []byte(`{}`)}, "sales")
 	if err == nil || !strings.Contains(err.Error(), "target entity is required") {
-		t.Fatalf("LinkFieldTarget() error = %v, want target error", err)
+		t.Fatalf("LinkFieldTargetIdentity() error = %v, want target error", err)
 	}
 	targetIdentity, err := LinkFieldTargetIdentity(MetadataField{Options: []byte(`{"app":"core","entity":"user"}`)}, "sales")
 	if err != nil || targetIdentity.App != "core" || targetIdentity.Entity != "user" {

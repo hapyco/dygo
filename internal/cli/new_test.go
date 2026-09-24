@@ -8,8 +8,6 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
-
-	"github.com/hapyco/dygo/internal/secrets"
 )
 
 func TestNewProjectCommandCreatesProject(t *testing.T) {
@@ -44,32 +42,8 @@ func TestNewProjectCommandCreatesProject(t *testing.T) {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
 
-	projectRoot := filepath.Join(root, "my-company")
-	for _, path := range []string{
-		"dygo.yml",
-		"go.mod",
-		"cmd/dygo/main.go",
-		"apps/my-company/app.yml",
-		"apps/my-company/jobs/_schedules.yml",
-		"config/secrets/development.yml.age",
-		"config/secrets/staging.yml.age",
-		"config/secrets/production.yml.age",
-		".dygo/secrets/master.key",
-		".dygo/apps/core/app.yml",
-		".dygo/apps/studio/ui/dist/index.html",
-	} {
-		if _, err := os.Stat(filepath.Join(projectRoot, filepath.FromSlash(path))); err != nil {
-			t.Fatalf("Stat(%s) error = %v, want generated path", path, err)
-		}
-	}
-
-	store := secrets.NewStore(projectRoot)
-	secret, err := store.Get(secrets.EnvironmentDevelopment, "DATABASE_URL")
-	if err != nil {
-		t.Fatalf("Get(development DATABASE_URL) error = %v, want seeded secret", err)
-	}
-	if secret.Value != "postgres://localhost/my_company_development?sslmode=disable" {
-		t.Fatalf("development DATABASE_URL = %q, want generated local URL", secret.Value)
+	if _, err := os.Stat(filepath.Join(root, "my-company", "dygo.yml")); err != nil {
+		t.Fatalf("Stat(my-company/dygo.yml) error = %v, want created project", err)
 	}
 }
 

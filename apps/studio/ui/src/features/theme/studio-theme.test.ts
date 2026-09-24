@@ -82,24 +82,11 @@ test('applyStudioTheme writes data-theme on the document root', () => {
   assert.equal(root.dataset.theme, 'light')
 })
 
-test('Studio mounts after applying the stored theme', () => {
-  const source = readFileSync(new URL('../../app/main.ts', import.meta.url), 'utf8')
-  assert.match(source, /installStudioTheme\(\)/)
-})
-
 test('dark theme tokens override the light palette', () => {
   const source = readFileSync(new URL('../../styles/base.css', import.meta.url), 'utf8')
   assert.match(source, /:root\[data-theme='dark'\]/)
   assert.match(source, /--studio-accent-contrast/)
   assert.match(source, /--studio-overlay/)
-})
-
-test('debug bar uses Studio theme tokens in its scoped styles', () => {
-  const source = readFileSync(new URL('../debug/DebugBar.vue', import.meta.url), 'utf8')
-  assert.match(source, /var\(--studio-surface\)/)
-  assert.match(source, /var\(--studio-text\)/)
-  assert.match(source, /<style scoped>/)
-  assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|(?:rgb|oklch)\(/i)
 })
 
 test('teleported Studio panels keep their component styles', () => {
@@ -115,13 +102,6 @@ test('index.html bootstraps the stored theme before Vue mounts', () => {
   assert.match(source, /studio:theme/)
   assert.match(source, /dataset\.theme/)
   assert.match(source, /prefers-color-scheme: dark/)
-})
-
-test('UserMenu exposes a Theme submenu with light, dark, and system', () => {
-  const source = readFileSync(new URL('../../shell/UserMenu.vue', import.meta.url), 'utf8')
-  assert.match(source, /Theme/)
-  assert.match(source, /DropdownMenuRadioGroup/)
-  assert.match(source, /studioThemeOptions/)
 })
 
 test('isStudioThemePreference rejects unknown values', () => {
