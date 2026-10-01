@@ -56,6 +56,7 @@ const activeItemId = ref('')
 const runningAppAction = ref(false)
 let returnFocus: HTMLElement | null = null
 let afterClose: (() => void | Promise<void>) | null = null
+let restoreTriggerAfterClose = false
 const searchingRecords = ref(false)
 const searchEntity = ref('')
 const recordSearch = ref('')
@@ -313,6 +314,8 @@ async function runCommand(item: CommandItem) {
   const current = studioCommands.value.find(command => command.id === item.id) ?? item
   if (unavailable(current)) return
   if (item.id === 'records:search') { await executeCommand(current); return }
+  // Help needs a stable return target after its own dialog closes.
+  restoreTriggerAfterClose = item.id === 'app:shortcuts'
   afterClose = studioCommands.value.some(command => command.id === item.id)
     ? () => runStudioCommand(item.id)
     : () => executeCommand(item)
@@ -325,9 +328,11 @@ async function restoreFocus(event: Event) {
   afterClose = null
   const target = returnFocus
   returnFocus = null
+  const restoreTrigger = restoreTriggerAfterClose
+  restoreTriggerAfterClose = false
   // Keep prior page focus for dismiss/Esc. After a selection, do not return
   // focus to the Search trigger or it keeps a stuck focus ring.
-  if (!action || (target && target !== triggerButton.value)) {
+  if (!action || restoreTrigger || (target && target !== triggerButton.value)) {
     target?.focus()
   }
   if (!action) return
