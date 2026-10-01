@@ -7,7 +7,13 @@ import { ArrowDown, ArrowUp, Check, Download, Play, Settings2, X } from '@lucide
 
 import { Button, Checkbox, IconButton, Input, Popover } from '@/design'
 import DataTable from '@/design/organisms/DataTable.vue'
-import type { DataTableRowKey, DataTableSort, DataTableState } from '@/design/types'
+import type { DataTableRow, DataTableRowKey, DataTableSort, DataTableState } from '@/design/types'
+import {
+  copyText,
+  recordDetailHref,
+  recordRowContextMenuItems,
+  type RecordRowContextMenuKey,
+} from '@/features/records/record-row-context-menu'
 import type { EntityActionDefinition, MetadataField, MetadataFilterOperator } from '@/features/metadata/metadata.api'
 import type { RecordListPolicy } from '@/features/platform/platform.api'
 import { usePlatformConfigQuery } from '@/features/platform/platform.query'
@@ -95,6 +101,36 @@ const importOpen = ref(false)
 const actionMutation = useExecuteRecordActionMutation()
 const dialog = useDialog()
 const toast = useToast()
+
+function recordListContextMenuItems(row: DataTableRow, _rowKey: DataTableRowKey) {
+  return recordRowContextMenuItems(row)
+}
+
+async function handleRecordListContextMenuSelect(payload: { key: string, row: DataTableRow }) {
+  const key = payload.key as RecordRowContextMenuKey
+  const row = payload.row
+  const recordName = row.name
+  if (typeof recordName !== 'string' || recordName.length === 0) {
+    return
+  }
+
+  if (key === 'open') {
+    emit('open-record', row)
+    return
+  }
+
+  if (key === 'copy-name') {
+    if (await copyText(recordName)) {
+      toast.success('Copied Record name')
+    }
+    return
+  }
+
+  if (key === 'copy-link' && await copyText(recordDetailHref(router, props.entity, recordName))) {
+    toast.success('Copied link')
+  }
+}
+
 const savedFilters = useQuery({
   queryKey: computed(() => ['studio', 'saved-filters', auth.currentUser?.id, auth.sessionVersion, canonicalEntity.value]),
   queryFn: ({ signal }) => savedFilterRequest<SavedFilter[]>(`?entity=${encodeURIComponent(canonicalEntity.value)}`, 'GET', undefined, signal),
@@ -1092,10 +1128,12 @@ async function exportCSV() {
       :selected-row-keys="selectedRowKeys"
       :empty-action-label="readOnly ? '' : 'Add first record'"
       row-activatable
+      :context-menu-items="recordListContextMenuItems"
       @update:page-size="updatePageSize"
       @update:selected-row-keys="updateSelectedRowKeys"
       @update:sort="updateSort"
       @row-activate="(row) => emit('open-record', row)"
+      @context-menu-select="handleRecordListContextMenuSelect"
       @load-more="recordsQuery.fetchNextPage()"
       @empty-action="createRecord"
     />

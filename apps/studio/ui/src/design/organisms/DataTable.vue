@@ -6,6 +6,7 @@ import Button from '@/design/atoms/Button.vue'
 import Checkbox from '@/design/atoms/Checkbox.vue'
 import Spinner from '@/design/atoms/Spinner.vue'
 import SegmentedControl from '@/design/molecules/SegmentedControl.vue'
+import ContextMenu from '@/design/primitives/ContextMenu.vue'
 import type {
   DataTableColumn,
   DataTableRow,
@@ -13,6 +14,7 @@ import type {
   DataTableSort,
   DataTableSortDirection,
   DataTableState,
+  DropdownMenuItemModel,
   SegmentedControlOption,
   SegmentedControlValue,
 } from '@/design/types'
@@ -44,6 +46,7 @@ const props = withDefaults(defineProps<{
   selectable?: boolean
   selectedRowKeys?: DataTableRowKey[]
   rowActivatable?: boolean
+  contextMenuItems?: (row: DataTableRow, key: DataTableRowKey) => DropdownMenuItemModel[]
 }>(), {
   rowKey: 'id',
   state: undefined,
@@ -69,6 +72,7 @@ const emit = defineEmits<{
   'update:selectedRowKeys': [value: DataTableRowKey[]]
   'update:sort': [value: DataTableSort | null]
   'row-activate': [row: DataTableRow, key: DataTableRowKey]
+  'context-menu-select': [payload: { key: string, row: DataTableRow, rowKey: DataTableRowKey }]
   loadMore: []
   emptyAction: []
 }>()
@@ -374,37 +378,76 @@ function activateRow(row: DataTableRow, index: number, event: MouseEvent | Keybo
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="(row, index) in rows"
-              :key="rowIdentifier(row, index)"
-              :class="{
-                'data-table__row--activatable': rowActivatable,
-                'data-table__row--selected': selectable && selectedRowKeySet.has(rowIdentifier(row, index)),
-              }"
-              :aria-selected="selectable ? selectedRowKeySet.has(rowIdentifier(row, index)) : undefined"
-              :tabindex="rowActivatable && !controlsDisabled ? 0 : undefined"
-              @click="(event) => activateRow(row, index, event)"
-              @keydown.enter.prevent="(event) => activateRow(row, index, event)"
-              @keydown.space.prevent="(event) => activateRow(row, index, event)"
-            >
-              <td
-                v-if="selectable"
-                class="data-table__select-cell"
-                data-row-control
-                @click.stop
-                @keydown.stop
+            <template v-for="(row, index) in rows" :key="rowIdentifier(row, index)">
+              <ContextMenu
+                v-if="contextMenuItems"
+                :items="contextMenuItems(row, rowIdentifier(row, index))"
+                @select="(key) => emit('context-menu-select', { key, row, rowKey: rowIdentifier(row, index) })"
               >
-                <Checkbox
-                  :model-value="selectedRowKeySet.has(rowIdentifier(row, index))"
-                  :disabled="controlsDisabled"
-                  :aria-label="`Select record ${index + 1}`"
-                  @update:model-value="(selected) => updateRowSelection(rowIdentifier(row, index), selected)"
-                />
-              </td>
-              <td v-for="column in columns" :key="column.key">
-                {{ cellText(row[column.key], column) }}
-              </td>
-            </tr>
+                <template #trigger>
+                  <tr
+                    :class="{
+                      'data-table__row--activatable': rowActivatable,
+                      'data-table__row--selected': selectable && selectedRowKeySet.has(rowIdentifier(row, index)),
+                    }"
+                    :aria-selected="selectable ? selectedRowKeySet.has(rowIdentifier(row, index)) : undefined"
+                    :tabindex="rowActivatable && !controlsDisabled ? 0 : undefined"
+                    @click="(event) => activateRow(row, index, event)"
+                    @keydown.enter.prevent="(event) => activateRow(row, index, event)"
+                    @keydown.space.prevent="(event) => activateRow(row, index, event)"
+                  >
+                    <td
+                      v-if="selectable"
+                      class="data-table__select-cell"
+                      data-row-control
+                      @click.stop
+                      @keydown.stop
+                    >
+                      <Checkbox
+                        :model-value="selectedRowKeySet.has(rowIdentifier(row, index))"
+                        :disabled="controlsDisabled"
+                        :aria-label="`Select record ${index + 1}`"
+                        @update:model-value="(selected) => updateRowSelection(rowIdentifier(row, index), selected)"
+                      />
+                    </td>
+                    <td v-for="column in columns" :key="column.key">
+                      {{ cellText(row[column.key], column) }}
+                    </td>
+                  </tr>
+                </template>
+              </ContextMenu>
+
+              <tr
+                v-else
+                :class="{
+                  'data-table__row--activatable': rowActivatable,
+                  'data-table__row--selected': selectable && selectedRowKeySet.has(rowIdentifier(row, index)),
+                }"
+                :aria-selected="selectable ? selectedRowKeySet.has(rowIdentifier(row, index)) : undefined"
+                :tabindex="rowActivatable && !controlsDisabled ? 0 : undefined"
+                @click="(event) => activateRow(row, index, event)"
+                @keydown.enter.prevent="(event) => activateRow(row, index, event)"
+                @keydown.space.prevent="(event) => activateRow(row, index, event)"
+              >
+                <td
+                  v-if="selectable"
+                  class="data-table__select-cell"
+                  data-row-control
+                  @click.stop
+                  @keydown.stop
+                >
+                  <Checkbox
+                    :model-value="selectedRowKeySet.has(rowIdentifier(row, index))"
+                    :disabled="controlsDisabled"
+                    :aria-label="`Select record ${index + 1}`"
+                    @update:model-value="(selected) => updateRowSelection(rowIdentifier(row, index), selected)"
+                  />
+                </td>
+                <td v-for="column in columns" :key="column.key">
+                  {{ cellText(row[column.key], column) }}
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
 
