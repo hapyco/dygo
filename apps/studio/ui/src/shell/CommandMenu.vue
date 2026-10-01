@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
 import {
+  ArrowLeft,
   Clock,
   Command,
   FilePlus2,
@@ -15,7 +16,7 @@ import {
 import { Dialog } from '@/design'
 import { queryClient } from '@/app/query'
 import { pageCommands, studioCommands, globalCommands, runStudioCommand } from '@/features/commands/context'
-import { bindings, commandBinding, executeCommand, unavailable, shortcutLabel, ariaShortcut, type StudioCommand } from '@/features/commands/shortcuts'
+import { bindings, commandBinding, executeCommand, nextAvailableCommandId, unavailable, shortcutLabel, ariaShortcut, type StudioCommand } from '@/features/commands/shortcuts'
 import { listRecords } from '@/features/records/records.api'
 import { reloadStudioApp } from '@/app/reload'
 import { iconForEntity } from '@/features/metadata/entity-icons'
@@ -49,6 +50,7 @@ const route = useRoute()
 const router = useRouter()
 const { commandMenuOpen, recentPages } = storeToRefs(navigationStore)
 const searchInput = ref<HTMLInputElement | null>(null)
+const triggerButton = ref<HTMLButtonElement | null>(null)
 const query = ref('')
 const activeItemId = ref('')
 const runningAppAction = ref(false)
@@ -236,11 +238,12 @@ watch(
 watch(
   visibleItems,
   (items) => {
-    if (items.some((item) => item.id === activeItemId.value)) {
+    const activeItem = items.find((item) => item.id === activeItemId.value)
+    if (activeItem && !unavailable(activeItem)) {
       return
     }
 
-    activeItemId.value = items[0]?.id ?? ''
+    activeItemId.value = items.find((item) => !unavailable(item))?.id ?? ''
   },
   { immediate: true },
 )
@@ -303,15 +306,7 @@ function handleInputKeydown(event: KeyboardEvent) {
 }
 
 function moveActiveItem(direction: 1 | -1) {
-  const items = visibleItems.value
-  if (items.length === 0) {
-    activeItemId.value = ''
-    return
-  }
-
-  const currentIndex = Math.max(0, items.findIndex((item) => item.id === activeItemId.value))
-  const nextIndex = (currentIndex + direction + items.length) % items.length
-  activeItemId.value = items[nextIndex].id
+  activeItemId.value = nextAvailableCommandId(visibleItems.value, activeItemId.value, direction)
 }
 
 async function runCommand(item: CommandItem) {
@@ -326,11 +321,21 @@ async function runCommand(item: CommandItem) {
 
 async function restoreFocus(event: Event) {
   event.preventDefault()
-  returnFocus?.focus()
   const action = afterClose
   afterClose = null
+  const target = returnFocus
+  returnFocus = null
+  // In-place commands and dialogs need a stable return target.
+  target?.focus()
+  if (!action) return
   await nextTick()
-  await action?.()
+  const previousPath = route.fullPath
+  await action()
+  // Successful navigation should not leave a focus ring on Search. Keep
+  // focus for cancelled navigation and let explicit focus commands own it.
+  if (route.fullPath !== previousPath && target === triggerButton.value && document.activeElement === target) {
+    target?.blur()
+  }
 }
 
 async function navigateTo(to: string | { name: string, params?: Record<string, string> }) {
@@ -431,13 +436,14 @@ function itemDomId(item: CommandItem): string {
       description="Search pages, actions, and Records."
       description-class="sr-only"
       :panel-attrs="{ 'data-studio-command-menu': true }"
-      panel-class="studio-command-menu__dialog"
+      :panel-class="searchingRecords ? 'studio-command-menu__dialog studio-command-menu__dialog--palette studio-command-menu__dialog--records' : 'studio-command-menu__dialog studio-command-menu__dialog--palette'"
       overlay-class="studio-command-menu__overlay"
       @update:open="updateMenuOpen"
       @close-auto-focus="restoreFocus"
     >
       <template #trigger>
         <button
+          ref="triggerButton"
           class="studio-command-menu__trigger"
           type="button"
           aria-haspopup="dialog"
@@ -454,8 +460,11 @@ function itemDomId(item: CommandItem): string {
         </button>
       </template>
       <div v-if="searchingRecords" class="studio-command-menu__input-wrap">
-        <button type="button" @click="searchingRecords = false; query = ''">Back</button>
-        <select v-model="searchEntity" aria-label="Search Entity" class="studio-command-menu__input">
+        <button class="studio-command-menu__back" type="button" aria-label="Back to commands" @click="searchingRecords = false; query = ''; searchInput?.focus()">
+          <ArrowLeft :size="16" aria-hidden="true" />
+          Back
+        </button>
+        <select v-model="searchEntity" aria-label="Search Entity" class="studio-command-menu__entity-select">
           <option value="">Select an Entity</option>
           <option v-for="entity in recordEntities" :key="entity.name" :value="entity.slug">{{ entityLabel(entity) }}</option>
         </select>
@@ -468,6 +477,10 @@ function itemDomId(item: CommandItem): string {
           class="studio-command-menu__input"
           type="search"
           :placeholder="searchingRecords ? 'Search Record IDs' : 'Search or type a command'"
+          :aria-label="searchingRecords ? 'Search Record IDs' : 'Search commands'"
+          aria-autocomplete="list"
+          autocomplete="off"
+          spellcheck="false"
           role="combobox"
           aria-controls="studio-command-menu-list"
           :aria-expanded="commandMenuOpen"
@@ -503,7 +516,8 @@ function itemDomId(item: CommandItem): string {
               role="option"
               :aria-selected="item.id === activeItemId"
               :disabled="unavailable(item)"
-              @mouseenter="activeItemId = item.id"
+              tabindex="-1"
+              @mouseenter="!unavailable(item) && (activeItemId = item.id)"
               @click="runCommand(item)"
             >
               <component
@@ -515,9 +529,9 @@ function itemDomId(item: CommandItem): string {
               />
               <span class="studio-command-menu__item-copy">
                 <span class="studio-command-menu__item-label">{{ item.label }}</span>
-                <span class="studio-command-menu__item-detail">{{ item.disabledReason || item.detail }}</span>
+                <span v-if="item.disabledReason || item.detail" class="studio-command-menu__item-detail">{{ item.disabledReason || item.detail }}</span>
               </span>
-              <kbd v-if="commandBinding(item).shortcut">{{ shortcutLabel(commandBinding(item).shortcut) }}</kbd>
+              <kbd v-if="commandBinding(item).shortcut" class="studio-command-menu__item-shortcut">{{ shortcutLabel(commandBinding(item).shortcut) }}</kbd>
             </button>
           </section>
         </template>
@@ -529,19 +543,13 @@ function itemDomId(item: CommandItem): string {
 
       <div class="studio-command-menu__footer" aria-hidden="true">
         <span class="studio-command-menu__hint">
-          <kbd>Up</kbd>
-          <kbd>Down</kbd>
+          <kbd>↑</kbd>
+          <kbd>↓</kbd>
           <span>navigate</span>
         </span>
         <span class="studio-command-menu__hint">
           <kbd>Enter</kbd>
           <span>select</span>
-        </span>
-        <span class="studio-command-menu__hint">
-          <span class="studio-command-menu__hint-shortcut">
-            <kbd>{{ shortcutLabel(paletteShortcut) }}</kbd>
-          </span>
-          <span>close</span>
         </span>
         <span class="studio-command-menu__hint">
           <kbd>Esc</kbd>
@@ -646,7 +654,7 @@ function itemDomId(item: CommandItem): string {
 
 .studio-command-menu__dialog {
   display: grid;
-  width: min(640px, 100%);
+  width: min(640px, calc(100vw - 32px));
   max-height: min(620px, calc(100vh - 120px));
   overflow: hidden;
   border: 1px solid var(--studio-border);
@@ -658,6 +666,10 @@ function itemDomId(item: CommandItem): string {
   top: 86px;
   left: 50%;
   transform: translateX(-50%);
+}
+
+.studio-command-menu__dialog--palette {
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .studio-command-menu__input-wrap {
@@ -693,7 +705,9 @@ function itemDomId(item: CommandItem): string {
   display: grid;
   align-content: start;
   gap: 10px;
-  min-height: 220px;
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   max-height: 480px;
   overflow-y: auto;
   padding: 10px;
@@ -715,7 +729,7 @@ function itemDomId(item: CommandItem): string {
 
 .studio-command-menu__item {
   display: grid;
-  min-height: 42px;
+  min-height: 48px;
   grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
@@ -728,9 +742,9 @@ function itemDomId(item: CommandItem): string {
   text-align: left;
 }
 
-.studio-command-menu__item:hover,
+.studio-command-menu__item:not(:disabled):hover,
 .studio-command-menu__item:focus-visible,
-.studio-command-menu__item--active {
+.studio-command-menu__item--active:not(:disabled) {
   background: var(--studio-surface-raised);
   color: var(--studio-text);
   outline: none;
@@ -748,8 +762,9 @@ function itemDomId(item: CommandItem): string {
 .studio-command-menu__item-copy {
   display: flex;
   min-width: 0;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
 }
 
 .studio-command-menu__item-label {
@@ -764,11 +779,14 @@ function itemDomId(item: CommandItem): string {
 }
 
 .studio-command-menu__item-detail {
-  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--studio-text-subtle);
   font-size: 12px;
-  font-weight: 600;
-  line-height: 1.2;
+  font-weight: 400;
+  line-height: 1.4;
 }
 
 .studio-command-menu__empty {
@@ -817,11 +835,8 @@ function itemDomId(item: CommandItem): string {
 
 @media (max-width: 720px) {
   .studio-command-menu__dialog {
-    max-height: calc(100vh - 72px);
-  }
-
-  .studio-command-menu__overlay {
-    padding-top: 54px;
+    top: 16px;
+    max-height: calc(100dvh - 32px);
   }
 
   .studio-command-menu__item-copy {
@@ -835,5 +850,61 @@ function itemDomId(item: CommandItem): string {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
+
+.studio-command-menu__dialog--records {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.studio-command-menu__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--studio-radius-control);
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--studio-text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.studio-command-menu__back:hover {
+  background: var(--studio-surface-raised);
+  color: var(--studio-text);
+}
+
+.studio-command-menu__back:focus-visible,
+.studio-command-menu__entity-select:focus-visible {
+  outline: 2px solid var(--studio-focus);
+  outline-offset: 2px;
+}
+
+.studio-command-menu__entity-select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-control-bg);
+  color: var(--studio-text);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.studio-command-menu__item-shortcut {
+  border: 1px solid var(--studio-border);
+  border-radius: 5px;
+  background: var(--studio-neutral-soft);
+  color: var(--studio-text-subtle);
+  padding: 3px 5px;
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.studio-command-menu__item--active:not(:disabled) {
+  box-shadow: inset 2px 0 var(--studio-focus);
 }
 </style>
