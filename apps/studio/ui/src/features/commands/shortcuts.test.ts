@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { computed, effectScope, nextTick, ref } from 'vue'
-import { bindingConflicts, executeCommand, matchShortcut, shortcutLabel, ariaShortcut, type StudioCommand } from './shortcuts.ts'
+import { bindingConflicts, executeCommand, matchShortcut, nextAvailableCommandId, shortcutLabel, ariaShortcut, type StudioCommand } from './shortcuts.ts'
 import { pageCommands, usePageCommands } from './context.ts'
 
 const save: StudioCommand = { id: 'record:save', label: 'Save', run() {} }
@@ -43,6 +43,18 @@ test('all invocation paths share disabled and duplicate-submit checks', async ()
   command.run = async () => { calls++ }
   await executeCommand(command)
   assert.equal(calls, 2)
+})
+test('palette arrow navigation skips unavailable commands and wraps', () => {
+  const open = { id: 'open', label: 'Open', run() {} }
+  const blocked = { id: 'blocked', label: 'Blocked', disabledReason: 'Unavailable', run() {} }
+  const next = { id: 'next', label: 'Next', run() {} }
+  const items = [open, blocked, next]
+  assert.equal(nextAvailableCommandId(items, open.id, 1), next.id)
+  assert.equal(nextAvailableCommandId(items, next.id, 1), open.id)
+  assert.equal(nextAvailableCommandId(items, next.id, -1), open.id)
+  assert.equal(nextAvailableCommandId(items, blocked.id, 1), open.id)
+  assert.equal(nextAvailableCommandId(items, '', -1), next.id)
+  assert.equal(nextAvailableCommandId([blocked], blocked.id, 1), '')
 })
 test('background page updates cannot reclaim commands; disposal restores the parent', async () => {
   const label = ref('List')

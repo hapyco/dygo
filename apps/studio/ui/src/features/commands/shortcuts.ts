@@ -25,6 +25,20 @@ export function shortcutLabel(key?: string, mac = isMac) { return key ? `${mac ?
 export function ariaShortcut(key?: string, mac = isMac) { return key ? `${mac ? 'Meta' : 'Control'}+${key}` : undefined }
 export function unavailable(command: StudioCommand) { return !!(command.disabled || command.disabledReason) }
 
+export function nextAvailableCommandId(
+  items: StudioCommand[],
+  currentId: string,
+  direction: 1 | -1,
+): string {
+  const available = items.filter((item) => !unavailable(item))
+  if (available.length === 0) return ''
+  const currentIndex = available.findIndex((item) => item.id === currentId)
+  if (currentIndex === -1) {
+    return available[direction === 1 ? 0 : available.length - 1]!.id
+  }
+  return available[(currentIndex + direction + available.length) % available.length]!.id
+}
+
 // One execution gate covers palette, shortcut and button calls, including the
 // interval before reactive mutation state has updated.
 const pending = new Set<string>()
