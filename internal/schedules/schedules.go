@@ -114,6 +114,24 @@ func (c Catalog) Discover() ([]LoadedSchedule, error) {
 		}
 		schedules = append(schedules, discovered...)
 	}
+	for _, loaded := range c.jobs {
+		if strings.TrimSpace(loaded.Job.Cron) == "" {
+			continue
+		}
+		schedules = append(schedules, LoadedSchedule{
+			AppName: loaded.AppName,
+			AppDir:  loaded.AppDir,
+			Path:    loaded.Path,
+			Schedule: Schedule{
+				Name:        "job-" + loaded.Job.Name,
+				Label:       loaded.Job.Label,
+				Description: "Schedule for Job " + loaded.AppName + "/" + loaded.Job.Name,
+				Cron:        loaded.Job.Cron,
+				Timezone:    "UTC",
+				Job:         loaded.AppName + "/" + loaded.Job.Name,
+			},
+		})
+	}
 	sortSchedules(schedules)
 	return schedules, nil
 }

@@ -68,6 +68,7 @@ func (e MetadataEntity) RouteSlug() string {
 // MetadataEntityMeta is the complete persisted metadata for one Entity.
 type MetadataEntityMeta struct {
 	MetadataEntity
+	Form         *schema.FormLayout            `json:"form,omitempty"`
 	Fields       []MetadataField               `json:"fields"`
 	SystemFields []MetadataField               `json:"system-fields"`
 	Indexes      []MetadataIndex               `json:"indexes"`
@@ -240,7 +241,7 @@ ORDER BY a.name, e.key`, args...)
 // GetEntityMeta returns complete persisted metadata for one Entity slug.
 func (r MetadataReader) GetEntityMeta(ctx context.Context, slug string) (MetadataEntityMeta, error) {
 	return r.getEntityMeta(ctx, slug, `
-SELECT e.id, e.name, e.key, COALESCE(e.slug, ''), e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_system, false), COALESCE(e.is_collection, false), COALESCE(e.is_private, false), COALESCE(e.private_owner_field, ''), e.naming, a.name, a.label, to_jsonb(e)->'tree'
+SELECT e.id, e.name, e.key, COALESCE(e.slug, ''), e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_system, false), COALESCE(e.is_collection, false), COALESCE(e.is_private, false), COALESCE(e.private_owner_field, ''), e.naming, a.name, a.label, to_jsonb(e)->'tree', to_jsonb(e)->'form'
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
 WHERE e.slug = $1 AND NOT e.retired`, slug)
@@ -249,7 +250,7 @@ WHERE e.slug = $1 AND NOT e.retired`, slug)
 // GetEntityMetaByIdentity returns complete persisted metadata for one app-scoped Entity identity.
 func (r MetadataReader) GetEntityMetaByIdentity(ctx context.Context, appName string, entity string) (MetadataEntityMeta, error) {
 	return r.getEntityMeta(ctx, appName+"/"+entity, `
-SELECT e.id, e.name, e.key, COALESCE(e.slug, ''), e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_system, false), COALESCE(e.is_collection, false), COALESCE(e.is_private, false), COALESCE(e.private_owner_field, ''), e.naming, a.name, a.label, to_jsonb(e)->'tree'
+SELECT e.id, e.name, e.key, COALESCE(e.slug, ''), e.label, COALESCE(e.description, ''), COALESCE(e.icon, ''), COALESCE(e.is_single, false), COALESCE(e.is_system, false), COALESCE(e.is_collection, false), COALESCE(e.is_private, false), COALESCE(e.private_owner_field, ''), e.naming, a.name, a.label, to_jsonb(e)->'tree', to_jsonb(e)->'form'
 FROM "entity" e
 JOIN "app" a ON a.id = e.app_id
 WHERE a.name = $1 AND e.key = $2 AND NOT e.retired`, appName, entity)
@@ -264,7 +265,8 @@ func (r MetadataReader) getEntityMeta(ctx context.Context, name string, sql stri
 	var meta MetadataEntityMeta
 	var naming []byte
 	var slug string
-	err := r.queryer.QueryRow(ctx, sql, args...).Scan(&meta.ID, &meta.Name, &meta.Key, &slug, &meta.Label, &meta.Description, &meta.Icon, &meta.IsSingle, &meta.IsSystem, &meta.IsCollection, &meta.IsPrivate, &meta.PrivateOwnerField, &naming, &meta.App.Name, &meta.App.Label, &meta.Tree)
+	var formJSON []byte
+	err := r.queryer.QueryRow(ctx, sql, args...).Scan(&meta.ID, &meta.Name, &meta.Key, &slug, &meta.Label, &meta.Description, &meta.Icon, &meta.IsSingle, &meta.IsSystem, &meta.IsCollection, &meta.IsPrivate, &meta.PrivateOwnerField, &naming, &meta.App.Name, &meta.App.Label, &meta.Tree, &formJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return MetadataEntityMeta{}, MetadataNotFoundError{Kind: "entity", Name: name}
 	}
@@ -273,6 +275,15 @@ func (r MetadataReader) getEntityMeta(ctx context.Context, name string, sql stri
 	}
 	meta.Slug = stringPointerOrNil(slug)
 	meta.Naming = rawJSONOrNil(naming)
+	if len(formJSON) > 0 && string(formJSON) != "null" {
+		var form schema.FormLayout
+		if err := json.Unmarshal(formJSON, &form); err != nil {
+			return MetadataEntityMeta{}, fmt.Errorf("decode entity form %q: %w", name, err)
+		}
+		if len(form.Tabs) > 0 {
+			meta.Form = &form
+		}
+	}
 
 	fields, err := r.entityFields(ctx, meta.ID)
 	if err != nil {

@@ -2,9 +2,12 @@
 label: {{ .Label }}
 name:
   strategy: random
-fields:
-  - name: title
-    label: Title
-    type: text
-    required: true
-    unique: true
+tabs:
+  - tab: {{ .Label }}
+    name: general
+    fields:
+      - name: title
+        label: Title
+        type: text
+        required: true
+        unique: true

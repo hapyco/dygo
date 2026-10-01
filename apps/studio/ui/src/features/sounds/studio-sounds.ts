@@ -1,7 +1,5 @@
 export type StudioSoundName = 'save' | 'error' | 'delete'
 
-export type StudioSystemSoundName = StudioSoundName | 'notification'
-
 export const studioSoundPaths: Record<StudioSoundName, string> = {
   save: '/sounds/save.mp3',
   error: '/sounds/error.mp3',
@@ -72,5 +70,4 @@ export const studioSounds = {
   save: () => playConfiguredSound('save'),
   error: () => playConfiguredSound('error'),
   delete: () => playConfiguredSound('delete'),
-  notification: () => {},
 } as const

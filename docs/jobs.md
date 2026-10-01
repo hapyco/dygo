@@ -63,6 +63,7 @@ The Job key comes from the bundle folder name. There is no `name` field in `job.
 label: Send Welcome Email
 description: Sends the first welcome email to a new contact.
 queue: default
+cron: "0 9 * * MON"
 timeout: 30s
 retry:
   attempts: 3
@@ -73,6 +74,7 @@ retry:
 | `label` | yes | Human-facing Job label. |
 | `description` | no | Human-facing explanation of the Job. |
 | `queue` | no | Registered queue name. Missing `queue` uses `default`. |
+| `cron` | no | Standard 5-field UTC cron expression. When set, the Job runs on that schedule. |
 | `timeout` | yes | Positive Go duration string used for the handler deadline and worker lease. |
 | `retry` | no | Retry settings. Missing `retry` means one attempt only. |
 | `retry.attempts` | yes when `retry` exists | Total attempts, including the first try. Must be at least `2`. |
@@ -83,6 +85,7 @@ Rules:
 
 - Job keys and queue names use kebab-case.
 - Durations use Go duration syntax, such as `30s`, `5m`, or `1h30m`.
+- `cron` uses standard 5-field syntax in UTC, such as `0 9 * * MON`. It is optional; omit it for manually enqueued Jobs.
 - `retry.max-delay` must be greater than or equal to `retry.initial-delay`.
 - Retry strategy is exponential and is not configurable in `job.yml`.
 - Payloads are JSON. dygo stores them as JSON and handler code validates the business shape.

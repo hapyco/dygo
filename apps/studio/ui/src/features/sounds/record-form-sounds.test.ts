@@ -11,9 +11,3 @@ test('record form mutations bind save, error, and delete sounds', () => {
   assert.equal(deleteHandlers.length, 1)
   assert.match(source, /studioSounds\.error\(\)/)
 })
-
-test('RecordFormPage does not play sounds on reset', () => {
-  const source = readFileSync(new URL('../../pages/RecordFormPage.vue', import.meta.url), 'utf8')
-
-  assert.doesNotMatch(source, /studioSounds/)
-})

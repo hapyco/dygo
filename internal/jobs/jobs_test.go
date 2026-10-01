@@ -94,3 +94,28 @@ func writeJobTestFile(t *testing.T, path string, body string) {
 		t.Fatalf("WriteFile(%s) error = %v", path, err)
 	}
 }
+
+func TestDecodeJobCron(t *testing.T) {
+	for _, test := range []struct {
+		cron  string
+		valid bool
+	}{
+		{"", true},
+		{"0 9 * * MON", true},
+		{"CRON_TZ=UTC 0 9 * * MON", false},
+		{"TZ=Asia/Karachi 0 9 * * MON", false},
+		{"* * * * * *", false},
+		{"@every 1h", false},
+		{"0 25 * * *", false},
+	} {
+		t.Run(test.cron, func(t *testing.T) {
+			job, err := Decode([]byte("label: Report\ntimeout: 30s\ncron: \"" + test.cron + "\"\n"))
+			if (err == nil) != test.valid {
+				t.Fatalf("Decode() error = %v, want valid=%v", err, test.valid)
+			}
+			if err == nil && job.Cron != test.cron {
+				t.Fatalf("Cron = %q, want %q", job.Cron, test.cron)
+			}
+		})
+	}
+}

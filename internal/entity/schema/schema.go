@@ -29,7 +29,9 @@ type Entity struct {
 	Route             Route        `yaml:"route,omitempty"`
 	Naming            Naming       `yaml:"name,omitempty"`
 	Tree              *Tree        `yaml:"tree,omitempty"`
-	Fields            []Field      `yaml:"fields"`
+	Fields            []Field      `yaml:"fields,omitempty"`
+	Tabs              []Tab        `yaml:"tabs,omitempty"`
+	Form              *FormLayout  `yaml:"-"`
 	Indexes           []Index      `yaml:"indexes,omitempty"`
 	Constraints       []Constraint `yaml:"constraints,omitempty"`
 }
@@ -96,17 +98,18 @@ func SupportedConstraintTypes() []string {
 
 // Field describes one field inside an Entity.
 type Field struct {
-	Line     int               `yaml:"-"`
-	Name     string            `yaml:"name"`
-	Label    string            `yaml:"label"`
-	Type     string            `yaml:"type"`
-	Required bool              `yaml:"required,omitempty"`
-	Unique   bool              `yaml:"unique,omitempty"`
-	Index    bool              `yaml:"index,omitempty"`
-	Default  yaml.Node         `yaml:"default,omitempty"`
-	Check    *Check            `yaml:"check,omitempty"`
-	Fetch    *Fetch            `yaml:"fetch,omitempty"`
-	Options  fieldtype.Options `yaml:"options,omitempty"`
+	Line        int               `yaml:"-"`
+	Name        string            `yaml:"name"`
+	Label       string            `yaml:"label"`
+	Type        string            `yaml:"type"`
+	Description string            `yaml:"description,omitempty"`
+	Required    bool              `yaml:"required,omitempty"`
+	Unique      bool              `yaml:"unique,omitempty"`
+	Index       bool              `yaml:"index,omitempty"`
+	Default     yaml.Node         `yaml:"default,omitempty"`
+	Check       *Check            `yaml:"check,omitempty"`
+	Fetch       *Fetch            `yaml:"fetch,omitempty"`
+	Options     fieldtype.Options `yaml:"options,omitempty"`
 }
 
 // Check describes one single-field structured value check.
@@ -232,7 +235,13 @@ func DecodeWithOptions(data []byte, registry fieldtype.Registry, options DecodeO
 		return Entity{}, fmt.Errorf("decode entity schema: %w", err)
 	}
 	source.apply(&entity)
+	if source.hasFields && source.hasTabs {
+		return Entity{}, fmt.Errorf("entity cannot define both fields and tabs")
+	}
 	entity.IsCollection = options.IsCollection
+	if err := normalizeFormLayout(&entity); err != nil {
+		return Entity{}, fmt.Errorf("normalize entity form layout: %w", err)
+	}
 	if err := entity.Validate(registry); err != nil {
 		return Entity{}, err
 	}
@@ -860,6 +869,10 @@ func validateFetch(field Field, problems *[]string) {
 
 type sourceMap struct {
 	entityLine      int
+	hasFields       bool
+	hasTabs         bool
+	tabLines        []int
+	tabFieldLines   [][]int
 	routeLine       int
 	namingLine      int
 	fieldLines      []int
@@ -876,6 +889,17 @@ func (m sourceMap) apply(entity *Entity) {
 			break
 		}
 		entity.Fields[i].Line = m.fieldLines[i]
+	}
+	for i := range entity.Tabs {
+		if i >= len(m.tabLines) {
+			break
+		}
+		entity.Tabs[i].Line = m.tabLines[i]
+		for j := range entity.Tabs[i].Fields {
+			if j < len(m.tabFieldLines[i]) {
+				entity.Tabs[i].Fields[j].Line = m.tabFieldLines[i][j]
+			}
+		}
 	}
 	for i := range entity.Indexes {
 		if i >= len(m.indexLines) {
@@ -942,7 +966,25 @@ func buildSourceMap(root *yaml.Node) sourceMap {
 			}
 		case "name":
 			source.namingLine = value.Line
+		case "tabs":
+			source.hasTabs = true
+			if value.Kind != yaml.SequenceNode {
+				continue
+			}
+			for _, tab := range value.Content {
+				source.tabLines = append(source.tabLines, tab.Line)
+				var lines []int
+				for j := 0; j+1 < len(tab.Content); j += 2 {
+					if tab.Content[j].Value == "fields" && tab.Content[j+1].Kind == yaml.SequenceNode {
+						for _, field := range tab.Content[j+1].Content {
+							lines = append(lines, field.Line)
+						}
+					}
+				}
+				source.tabFieldLines = append(source.tabFieldLines, lines)
+			}
 		case "fields":
+			source.hasFields = true
 			if value.Kind != yaml.SequenceNode {
 				continue
 			}

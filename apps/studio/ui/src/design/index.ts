@@ -51,3 +51,5 @@ export { default as SwitchField } from './molecules/SwitchField.vue'
 export { default as TextareaField } from './molecules/TextareaField.vue'
 export { default as TextField } from './molecules/TextField.vue'
 export { default as DataTable } from './organisms/DataTable.vue'
+
+export { TabsRoot as Tabs, TabsList, TabsTrigger, TabsContent } from 'reka-ui'

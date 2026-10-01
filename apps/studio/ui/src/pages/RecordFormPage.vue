@@ -926,6 +926,7 @@ function draftValuesEqual(left: unknown, right: unknown): boolean {
       :entity-key="entityMeta?.key ?? ''"
           :entity-label="entityLabel"
           :fields="fields"
+          :form="entityMeta?.form"
           :system-fields="systemFields"
           :collections="entityMeta.collections"
           :record="record"

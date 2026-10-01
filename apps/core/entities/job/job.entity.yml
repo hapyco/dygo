@@ -48,6 +48,10 @@ fields:
     default: default
     index: true
 
+  - name: cron
+    label: Cron
+    type: text
+
   - name: timeout
     label: Timeout
     type: text

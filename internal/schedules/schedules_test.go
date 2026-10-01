@@ -1,6 +1,9 @@
 package schedules
 
 import (
+	"github.com/hapyco/dygo/internal/app/manifest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -145,5 +148,42 @@ func TestCatalogSortsSchedules(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("sorted schedules = %v, want %v", got, want)
 		}
+	}
+}
+
+func TestCatalogValidatesJobCronSchedules(t *testing.T) {
+	appDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(appDir, "jobs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	apps := []manifest.LoadedApp{{Dir: appDir, Manifest: manifest.Manifest{Name: "sales"}}}
+	loadedJobs := []jobs.LoadedJob{{AppName: "sales", Path: "jobs/report/job.yml", Job: jobs.Job{
+		Name: "report", Label: "Report", Cron: "0 9 * * MON",
+	}}}
+	catalog := New(apps, loadedJobs)
+	loaded, err := catalog.Validate()
+	if err != nil || len(loaded) != 1 {
+		t.Fatalf("Validate() = %v, %v, want one Schedule", loaded, err)
+	}
+	schedule := loaded[0].Schedule
+	if schedule.Name != "job-report" || schedule.Timezone != "UTC" || schedule.Job != "sales/report" || schedule.Cron != "0 9 * * MON" || !schedule.EffectiveEnabled() {
+		t.Fatalf("generated Schedule = %+v", schedule)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "jobs", "_schedules.yml"), []byte(`schedules:
+  - name: job-report
+    label: Conflicting Report
+    cron: "0 10 * * MON"
+    timezone: UTC
+    job: sales/report
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.Validate(); err == nil || !strings.Contains(err.Error(), "duplicates Schedule identity") {
+		t.Fatalf("Validate() error = %v, want duplicate Schedule rejection", err)
+	}
+	loadedJobs[0].Job.Cron = ""
+	loaded, err = New(apps, loadedJobs).Validate()
+	if err != nil || len(loaded) != 1 || loaded[0].Schedule.Cron != "0 10 * * MON" {
+		t.Fatalf("Validate() after removing Job cron = %v, %v, want only explicit Schedule", loaded, err)
 	}
 }
