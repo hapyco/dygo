@@ -78,9 +78,6 @@ jobs:
 
   verify-windows-installer:
     runs-on: windows-latest
-    strategy:
-      matrix:
-        shell: [pwsh, powershell]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,8 +88,12 @@ jobs:
           go-version: "1.26.2"
           cache: true
 
-      - name: Test PowerShell installer lifecycle
-        shell: ${{ matrix.shell }}
+      - name: Test PowerShell 7 installer lifecycle
+        shell: pwsh
+        run: scripts/test-install.ps1
+
+      - name: Test Windows PowerShell 5.1 installer lifecycle
+        shell: powershell
         run: scripts/test-install.ps1
 
   verify-macos-installer:
