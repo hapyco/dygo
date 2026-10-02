@@ -596,6 +596,7 @@ function buildSubmitPayload(): RecordData {
     const namingInput = entityMeta.value?.naming?.strategy === 'format'
       && entityMeta.value.naming.format?.includes(`{${field.name}}`)
     if (isNew.value && field.name !== 'name' && field.stored && field.default !== undefined
+      && !(field.required && field.default === null)
       && field.type !== 'collection' && !namingInput
       && draftValuesEqual(draft.value[field.name], baseline.value[field.name])) {
       return

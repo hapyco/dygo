@@ -198,3 +198,32 @@ test('new payload omits only untouched database defaults and preserves explicit 
   scope.buildSubmitPayload()
   assert.equal(scope.fieldErrors.value.name, 'Enter a value.')
 })
+
+test('required null defaults are validated before create while nullable null and false/zero defaults stay omitted', async () => {
+  for (const [kind, type, required, value, expectedPosts] of [
+    ['integer', 'int', true, null, 0],
+    ['string', 'text', true, null, 0],
+    ['integer', 'int', false, null, 1],
+    ['integer', 'int', true, 0, 1],
+    ['boolean', 'boolean', true, false, 1],
+  ] as const) {
+    const posts: unknown[] = []
+    const field = { name: 'value', type, 'value-kind': kind, required, stored: true, default: value, studio: { editor: type } }
+    const { scope } = setupFunctions(formPath, [...valueFunctions, 'saveRecord', 'buildSubmitPayload', 'convertSubmitValue', 'draftValuesEqual'], {
+      fields: { value: [field] }, systemFields: { value: [] }, entityMeta: { value: {} },
+      draft: { value: { value } }, baseline: { value: { value } }, isNew: { value: true }, isSingle: { value: false },
+      canSave: { value: true }, fieldErrors: { value: {} }, localError: { value: '' }, createdRecord: { value: null },
+      props: { entity: 'sample' }, isHiddenRecordSubmitField: () => false, resetRecordActionErrors() {}, resetToRecord() {},
+      toast: { success() {} }, openCreatedRecord: async () => {},
+      createRecordMutation: { mutateAsync: async (input: unknown) => { posts.push(input); return { name: 'SAMPLE-1' } } },
+    })
+    await scope.saveRecord()
+    assert.equal(posts.length, expectedPosts, `${type} required=${required} default=${value}`)
+    if (expectedPosts === 0) {
+      assert.ok(scope.fieldErrors.value.value, 'required value must have an actionable field error')
+    } else {
+      assert.deepEqual(plain(posts), [{ entity: 'sample', data: {} }])
+      assert.deepEqual(plain(scope.fieldErrors.value), {})
+    }
+  }
+})
