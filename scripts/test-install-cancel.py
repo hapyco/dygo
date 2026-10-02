@@ -61,7 +61,7 @@ class InstallerCancellationTest(unittest.TestCase):
         server_thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.02})
         server_thread.start()
         proc = unrelated = None
-        terminal = None
+        terminal = slave = None
         with tempfile.TemporaryDirectory(prefix="dygo-cancel-test-") as directory:
             root = Path(directory)
             install_dir = root / "install"
@@ -100,7 +100,8 @@ class InstallerCancellationTest(unittest.TestCase):
             if interactive:
                 env.pop("CI", None)
                 env["TERM"] = "xterm"
-                terminal, stderr = pty.openpty()
+                terminal, slave = pty.openpty()
+                stderr = slave
             else:
                 env["CI"] = "true"
             try:
@@ -109,8 +110,6 @@ class InstallerCancellationTest(unittest.TestCase):
                 self.assertTrue(unrelated_arrived.wait(3), "unrelated curl did not reach server")
                 proc = subprocess.Popen(["/bin/sh", str(INSTALLER)], env=env,
                                         stdout=subprocess.PIPE, stderr=stderr, start_new_session=True)
-                if interactive:
-                    os.close(stderr)
                 self.assertTrue(arrived.wait(3), "installer did not reach stalled HTTP request")
                 if interactive:
                     deadline = time.monotonic() + 3
@@ -145,6 +144,12 @@ class InstallerCancellationTest(unittest.TestCase):
                             if not chunk:
                                 break
                             captured += chunk
+                        elif slave is not None:
+                            # Darwin can discard queued PTY output when its last slave closes.
+                            # Drain the exited installer's output before closing our slave, then
+                            # require EOF to prove no progress process keeps the terminal open.
+                            os.close(slave)
+                            slave = None
                     else:
                         self.fail("progress process kept stderr open after cancellation")
                     # Native shells may append a termination diagnostic after clearing the line.
@@ -164,6 +169,8 @@ class InstallerCancellationTest(unittest.TestCase):
                 if unrelated is not None:
                     unrelated.terminate()
                     unrelated.wait(timeout=3)
+                if slave is not None:
+                    os.close(slave)
                 if terminal is not None:
                     os.close(terminal)
                 server.shutdown()
