@@ -147,7 +147,14 @@ class InstallerCancellationTest(unittest.TestCase):
                             captured += chunk
                     else:
                         self.fail("progress process kept stderr open after cancellation")
-                    self.assertTrue(captured.endswith(b"\r\x1b[2K"), "spinner line was not cleared")
+                    # Native shells may append a termination diagnostic after clearing the line.
+                    # Every spinner frame must precede the final clear, regardless of that suffix.
+                    message = b"Downloading dygo"
+                    self.assertIn(message, captured, f"spinner output was not captured: {captured!r}")
+                    final_clear = captured.rfind(b"\r\x1b[2K")
+                    last_frame_end = captured.rfind(message) + len(message)
+                    self.assertGreaterEqual(final_clear, last_frame_end,
+                                            f"spinner line was not cleared after its last frame: {captured!r}")
             finally:
                 release.set()
                 if proc is not None and proc.poll() is None:
