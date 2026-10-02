@@ -28,9 +28,23 @@ func newUpgradeCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 			}
 			options.CurrentVersion = currentVersion()
 			options.WorkingDir = wd
-			options.Confirm = streamConfirmer(stdin, stderr)
+			label := "Upgrading project and resolving Go dependencies"
+			if options.Check || options.DryRun {
+				label = "Checking project upgrade"
+			}
+			stop := startProgress(ctx, stderr, label)
+			defer func() { stop() }()
+			options.Confirm = func(ctx context.Context, message string) (bool, error) {
+				stop()
+				confirmed, err := streamConfirmer(stdin, stderr)(ctx, message)
+				if err == nil && confirmed {
+					stop = startProgress(ctx, stderr, label)
+				}
+				return confirmed, err
+			}
 
 			result, err := runUpgrade(ctx, options)
+			stop()
 			if err != nil {
 				return fmt.Errorf("upgrade dygo: %w", err)
 			}

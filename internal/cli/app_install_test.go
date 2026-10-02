@@ -3,11 +3,15 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAppInstallClonesValidatesAndInstallsRepository(t *testing.T) {
@@ -173,5 +177,68 @@ func runGit(t *testing.T, repository string, args ...string) {
 	commandArgs := append([]string{"-C", repository}, args...)
 	if output, err := exec.Command("git", commandArgs...).CombinedOutput(); err != nil {
 		t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, output)
+	}
+}
+
+func TestAppInstallCancelsRunningCloneAndCleansUp(t *testing.T) {
+	root := t.TempDir()
+	writeCLIProjectRoot(t, root)
+	writeCLIGoModule(t, root, "example.com/acme")
+	t.Chdir(root)
+	checkoutDir := t.TempDir()
+	t.Setenv("TMPDIR", checkoutDir)
+	t.Setenv("TMP", checkoutDir)
+
+	requested := make(chan struct{}, 1)
+	releaseResponse := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case requested <- struct{}{}:
+		default:
+		}
+		select {
+		case <-r.Context().Done():
+		case <-releaseResponse:
+		}
+	}))
+	defer server.Close()
+	defer close(releaseResponse)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var stdout bytes.Buffer
+	stderr := newProgressBuffer()
+	finished := make(chan error, 1)
+	go func() {
+		finished <- Run(ctx, []string{"app", "install", server.URL + "/app.git", "--yes"}, strings.NewReader(""), &stdout, stderr)
+	}()
+	select {
+	case <-requested:
+	case err := <-finished:
+		t.Fatalf("clone stopped before contacting repository: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("clone did not contact repository")
+	}
+	stderr.wait(t)
+	cancel()
+	select {
+	case err := <-finished:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("clone error = %v, want cancellation", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("app install ignored command cancellation")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want no plan/result for cancelled clone", stdout.String())
+	}
+	if got := stderr.String(); got != "Cloning and validating App repository...\n" {
+		t.Fatalf("stderr = %q, want bounded plain clone status", got)
+	}
+	entries, err := os.ReadDir(checkoutDir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("temporary checkouts = %v, error = %v, want cleanup", entries, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "apps")); !os.IsNotExist(err) {
+		t.Fatalf("apps directory stat = %v, want no installation after cancellation", err)
 	}
 }

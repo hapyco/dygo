@@ -42,7 +42,9 @@ func newAppInstallCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 				return fmt.Errorf("app install requires a generated dygo project: %w", err)
 			}
 
-			checkout, err := cloneAppRepository(cmd.Context(), args[0])
+			checkout, err := withProgress(cmd.Context(), stderr, "Cloning and validating App repository", func() (appRepositoryCheckout, error) {
+				return cloneAppRepository(cmd.Context(), args[0])
+			})
 			if err != nil {
 				return err
 			}
@@ -98,6 +100,11 @@ func newAppInstallCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 				}
 			}
 
+			stop := startProgress(cmd.Context(), stderr, "Installing App and preparing project runner")
+			defer stop()
+			if err := cmd.Context().Err(); err != nil {
+				return err
+			}
 			if err := installCheckout(root, checkout); err != nil {
 				return err
 			}
@@ -139,6 +146,7 @@ func newAppInstallCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 				return err
 			}
 			keepTarget = true
+			stop()
 			_, err = fmt.Fprintf(stdout, "App installed: %s %s\nApps prepared: %s\nNext: build the project runner, then run dygo db migrate.\n", checkout.App.Manifest.Name, checkout.App.Manifest.Version, strings.Join(order, ", "))
 			return err
 		},
@@ -159,6 +167,9 @@ func cloneAppRepository(ctx context.Context, source string) (appRepositoryChecko
 	checkout := filepath.Join(root, "source")
 	if err := exec.CommandContext(ctx, "git", "clone", "--quiet", "--depth", "1", "--", source, checkout).Run(); err != nil {
 		_ = os.RemoveAll(root)
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
 		return appRepositoryCheckout{}, fmt.Errorf("clone App repository: %w", err)
 	}
 	app, err := manifest.LoadAppDir(checkout)

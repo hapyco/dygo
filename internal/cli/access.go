@@ -192,7 +192,9 @@ func newAccessExportCommand(ctx context.Context, stdin io.Reader, stdout, stderr
 			if err != nil {
 				return err
 			}
-			plan, err := runner.ExportPlan(ctx, root, databaseURL, target, destinationApp)
+			plan, err := withProgress(ctx, stderr, "Planning access export", func() (access.ExportPlan, error) {
+				return runner.ExportPlan(ctx, root, databaseURL, target, destinationApp)
+			})
 			if err != nil {
 				return fmt.Errorf("plan access export: %w", err)
 			}
@@ -223,7 +225,9 @@ func newAccessExportCommand(ctx context.Context, stdin io.Reader, stdout, stderr
 					return nil
 				}
 			}
-			result, err := runner.WriteExportPlan(ctx, plan)
+			result, err := withProgress(ctx, stderr, "Exporting access metadata", func() (access.ExportResult, error) {
+				return runner.WriteExportPlan(ctx, plan)
+			})
 			if err != nil {
 				return fmt.Errorf("write access export: %w", err)
 			}

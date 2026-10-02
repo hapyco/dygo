@@ -578,6 +578,113 @@ func TestWorkerRunContinuousPassesShutdownCancellationToHandler(t *testing.T) {
 	}
 }
 
+func TestWorkerRunContinuousDrainsHandlersAfterStoreFailure(t *testing.T) {
+	for _, operation := range []string{"next-run", "claim"} {
+		for _, ignoreCancellation := range []bool{false, true} {
+			name := operation + "/cooperative"
+			if ignoreCancellation {
+				name = operation + "/ignores-cancellation"
+			}
+			t.Run(name, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				started := make(chan struct{})
+				cancelled := make(chan struct{})
+				release := make(chan struct{})
+				handlerDone := make(chan struct{})
+				defer close(release)
+				store := &failingWorkerStore{
+					fakeStore: &fakeStore{claimed: []jobstore.Execution{{
+						ID: 52, AppName: "crm", JobName: "slow-import", Queue: "default", Attempts: 1, Timeout: time.Hour,
+					}}},
+					operation: operation,
+					started:   started,
+					err:       errors.New("injected database failure"),
+				}
+				registry, err := NewRegistry([]dygo.JobRegistrar{func(registry dygo.JobRegistry) error {
+					return registry.RegisterJob("crm", "slow-import", func(ctx context.Context, _ dygo.JobExecution) error {
+						defer close(handlerDone)
+						close(started)
+						<-ctx.Done()
+						close(cancelled)
+						if ignoreCancellation {
+							<-release
+						}
+						return ctx.Err()
+					})
+				}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				done := make(chan error, 1)
+				go func() {
+					_, err := (Worker{Store: store, Registry: registry}).Run(ctx, Options{
+						Queues: []Queue{{Name: "default", Concurrency: 2}}, WorkerID: "test-worker",
+						PollInterval: time.Hour, ShutdownTimeout: 20 * time.Millisecond,
+					})
+					done <- err
+				}()
+				select {
+				case err := <-done:
+					if !errors.Is(err, store.err) {
+						t.Fatalf("Run() error = %v, want original store failure", err)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("worker did not finish within its bounded shutdown")
+				}
+				select {
+				case <-cancelled:
+				default:
+					t.Fatal("worker returned without cancelling its handler")
+				}
+				store.mu.Lock()
+				defer store.mu.Unlock()
+				if ignoreCancellation {
+					if len(store.expired) != 1 || store.expired[0] != 52 {
+						t.Fatalf("expired = %v, want active execution 52 released", store.expired)
+					}
+				} else {
+					select {
+					case <-handlerDone:
+					default:
+						t.Fatal("worker returned before cooperative handler completed")
+					}
+					if len(store.expired) != 0 || len(store.failures) != 1 || store.failures[0].id != 52 {
+						t.Fatalf("expired = %v, failures = %+v, want completed cancellation", store.expired, store.failures)
+					}
+				}
+			})
+		}
+	}
+}
+
+type failingWorkerStore struct {
+	*fakeStore
+	operation string
+	started   <-chan struct{}
+	err       error
+	claims    int
+}
+
+func (s *failingWorkerStore) Claim(ctx context.Context, queues []string, limit int, worker string, now time.Time) ([]jobstore.Execution, error) {
+	s.claims++
+	if s.operation == "claim" && s.claims > 1 {
+		<-s.started
+		return nil, s.err
+	}
+	return s.fakeStore.Claim(ctx, queues, limit, worker, now)
+}
+
+func (s *failingWorkerStore) NextRunAfter(context.Context, []string, time.Time) (*time.Time, error) {
+	<-s.started
+	if s.operation == "next-run" {
+		return nil, s.err
+	}
+	// Wake immediately to exercise the next claim while the first handler runs.
+	due := time.Time{}
+	return &due, nil
+}
+
 type fakeStore struct {
 	mu                sync.Mutex
 	claimed           []jobstore.Execution

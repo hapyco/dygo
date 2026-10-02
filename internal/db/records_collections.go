@@ -219,7 +219,10 @@ func (s RecordStore) insertCollectionRow(ctx context.Context, collection recordC
 		mutation.Values = append(mutation.Values, row.Ordinal)
 
 		sql := insertRecordSQL(*collection.Layout, mutation, false)
-		if _, err := s.queryer.Exec(ctx, sql, mutation.Values...); err == nil {
+		if err := s.withRecordNameAttempt(ctx, *collection.Layout, func(queryer RecordQueryer) error {
+			_, err := queryer.Exec(ctx, sql, mutation.Values...)
+			return err
+		}); err == nil {
 			return nil
 		} else {
 			err = classifyRecordDBError(err, collection.Layout.Entity)

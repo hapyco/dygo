@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newProjectCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
+func newProjectCommand(ctx context.Context, stdout, stderr io.Writer) *cobra.Command {
 	modulePath := ""
 	skipTidy := false
 
@@ -24,12 +24,18 @@ func newProjectCommand(ctx context.Context, stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("detect working directory: %w", err)
 			}
-			result, err := projectgen.Generate(ctx, projectgen.Options{
-				Name:        args[0],
-				ModulePath:  modulePath,
-				WorkingDir:  wd,
-				DygoVersion: dygoVersionForNew(),
-				SkipTidy:    skipTidy,
+			label := "Creating project"
+			if !skipTidy {
+				label += " and resolving Go dependencies"
+			}
+			result, err := withProgress(ctx, stderr, label, func() (projectgen.Result, error) {
+				return projectgen.Generate(ctx, projectgen.Options{
+					Name:        args[0],
+					ModulePath:  modulePath,
+					WorkingDir:  wd,
+					DygoVersion: dygoVersionForNew(),
+					SkipTidy:    skipTidy,
+				})
 			})
 			if err != nil {
 				return fmt.Errorf("create project: %w", err)

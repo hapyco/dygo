@@ -16,8 +16,8 @@ import (
 func newDBCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, database databaseRunner, sync schemaSyncRunner, fixture fixtureRunner, accessRunner accessRunner) *cobra.Command {
 	cmd := newCommandGroup("db", "Manage dygo database lifecycle")
 
-	cmd.AddCommand(newDBCheckCommand(ctx, stdout, database))
-	cmd.AddCommand(newDBCreateCommand(ctx, stdout, database))
+	cmd.AddCommand(newDBCheckCommand(ctx, stdout, stderr, database))
+	cmd.AddCommand(newDBCreateCommand(ctx, stdout, stderr, database))
 	cmd.AddCommand(newDBDropCommand(ctx, stdin, stdout, stderr, database))
 	cmd.AddCommand(newDBMigrateCommand(ctx, stdin, stdout, stderr, database, sync))
 	cmd.AddCommand(newDBPrepareCommand(ctx, stdin, stdout, stderr, database, sync, fixture, accessRunner))
@@ -27,7 +27,7 @@ func newDBCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	return cmd
 }
 
-func newDBCheckCommand(ctx context.Context, stdout io.Writer, database databaseRunner) *cobra.Command {
+func newDBCheckCommand(ctx context.Context, stdout, stderr io.Writer, database databaseRunner) *cobra.Command {
 	var envName string
 
 	cmd := &cobra.Command{
@@ -39,7 +39,10 @@ func newDBCheckCommand(ctx context.Context, stdout io.Writer, database databaseR
 			if err != nil {
 				return err
 			}
-			if err := database.Check(ctx, databaseURL); err != nil {
+			stop := startProgress(ctx, stderr, "Checking database connectivity")
+			err = database.Check(ctx, databaseURL)
+			stop()
+			if err != nil {
 				return fmt.Errorf("check database: %w", err)
 			}
 			if _, err := fmt.Fprintf(stdout, "database connected (%s)\n", env); err != nil {
@@ -54,7 +57,7 @@ func newDBCheckCommand(ctx context.Context, stdout io.Writer, database databaseR
 	return cmd
 }
 
-func newDBCreateCommand(ctx context.Context, stdout io.Writer, database databaseRunner) *cobra.Command {
+func newDBCreateCommand(ctx context.Context, stdout, stderr io.Writer, database databaseRunner) *cobra.Command {
 	envName := string(secrets.EnvironmentDevelopment)
 
 	cmd := &cobra.Command{
@@ -66,7 +69,9 @@ func newDBCreateCommand(ctx context.Context, stdout io.Writer, database database
 			if err != nil {
 				return err
 			}
-			result, err := database.Create(ctx, databaseURL)
+			result, err := withProgress(ctx, stderr, "Creating database", func() (db.DatabaseResult, error) {
+				return database.Create(ctx, databaseURL)
+			})
 			if err != nil {
 				return fmt.Errorf("create database: %w", err)
 			}
@@ -118,7 +123,9 @@ func newDBDropCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Wr
 					return nil
 				}
 			}
-			result, err := database.Drop(ctx, target.DatabaseURL)
+			result, err := withProgress(ctx, stderr, "Dropping database", func() (db.DatabaseResult, error) {
+				return database.Drop(ctx, target.DatabaseURL)
+			})
 			if err != nil {
 				return fmt.Errorf("drop database: %w", err)
 			}
@@ -154,14 +161,18 @@ func newDBMigrateCommand(ctx context.Context, stdin io.Reader, stdout, stderr io
 			if err != nil {
 				return err
 			}
-			status, err := database.Exists(ctx, databaseURL)
+			status, err := withProgress(ctx, stderr, "Checking database", func() (db.DatabaseStatus, error) {
+				return database.Exists(ctx, databaseURL)
+			})
 			if err != nil {
 				return db.SanitizeDatabaseError("check db migrate database", databaseURL, err)
 			}
 			if !status.Exists {
 				return fmt.Errorf("database %s does not exist (%s); run dygo db prepare or dygo db create", status.Name, env)
 			}
-			plan, err := planDBMigration(ctx, sync, root, databaseURL)
+			plan, err := withProgress(ctx, stderr, "Planning database migration", func() (dbMigrationPlan, error) {
+				return planDBMigration(ctx, sync, root, databaseURL)
+			})
 			if err != nil {
 				return db.SanitizeDatabaseError("plan db migrate", databaseURL, err)
 			}
@@ -188,7 +199,9 @@ func newDBMigrateCommand(ctx context.Context, stdin io.Reader, stdout, stderr io
 					return nil
 				}
 			}
-			result, err := applyDBMigration(ctx, sync, root, databaseURL, plan)
+			result, err := withProgress(ctx, stderr, "Applying database migration", func() (dbMigrationResult, error) {
+				return applyDBMigration(ctx, sync, root, databaseURL, plan)
+			})
 			if err != nil {
 				return db.SanitizeDatabaseError("apply db migrate", databaseURL, err)
 			}
@@ -224,7 +237,9 @@ func newDBPruneCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 			if err := requireProtectedDestructiveEnv("db prune", target.Env, force); err != nil {
 				return err
 			}
-			plan, err := sync.PrunePlan(ctx, target.Root, target.DatabaseURL)
+			plan, err := withProgress(ctx, stderr, "Planning schema cleanup", func() (db.SchemaPrunePlan, error) {
+				return sync.PrunePlan(ctx, target.Root, target.DatabaseURL)
+			})
 			if err != nil {
 				return db.SanitizeDatabaseError("plan db prune", target.DatabaseURL, err)
 			}
@@ -252,7 +267,9 @@ func newDBPruneCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 					return nil
 				}
 			}
-			result, err := sync.Prune(ctx, target.Root, target.DatabaseURL)
+			result, err := withProgress(ctx, stderr, "Pruning database schema", func() (db.SchemaPruneResult, error) {
+				return sync.Prune(ctx, target.Root, target.DatabaseURL)
+			})
 			if err != nil {
 				return db.SanitizeDatabaseError("apply db prune", target.DatabaseURL, err)
 			}
@@ -291,7 +308,9 @@ func newDBPrepareCommand(ctx context.Context, stdin io.Reader, stdout, stderr io
 			if err != nil {
 				return err
 			}
-			status, err := database.Exists(ctx, databaseURL)
+			status, err := withProgress(ctx, stderr, "Checking database", func() (db.DatabaseStatus, error) {
+				return database.Exists(ctx, databaseURL)
+			})
 			if err != nil {
 				return db.SanitizeDatabaseError("check db prepare database", databaseURL, err)
 			}
@@ -317,7 +336,9 @@ func newDBPrepareCommand(ctx context.Context, stdin io.Reader, stdout, stderr io
 						return nil
 					}
 				}
-				result, err := database.Create(ctx, databaseURL)
+				result, err := withProgress(ctx, stderr, "Creating database", func() (db.DatabaseResult, error) {
+					return database.Create(ctx, databaseURL)
+				})
 				if err != nil {
 					return db.SanitizeDatabaseError("create db prepare database", databaseURL, err)
 				}
@@ -325,7 +346,9 @@ func newDBPrepareCommand(ctx context.Context, stdin io.Reader, stdout, stderr io
 					return fmt.Errorf("write db prepare create output: %w", err)
 				}
 			}
-			plan, err := planDBPreparation(ctx, sync, fixture, accessRunner, root, databaseURL)
+			plan, err := withProgress(ctx, stderr, "Planning database preparation", func() (dbPreparationPlan, error) {
+				return planDBPreparation(ctx, sync, fixture, accessRunner, root, databaseURL)
+			})
 			if err != nil {
 				return db.SanitizeDatabaseError("plan db prepare", databaseURL, err)
 			}
@@ -352,7 +375,9 @@ func newDBPrepareCommand(ctx context.Context, stdin io.Reader, stdout, stderr io
 					return nil
 				}
 			}
-			result, err := applyDBPreparation(ctx, sync, fixture, accessRunner, root, databaseURL, plan.Migration)
+			result, err := withProgress(ctx, stderr, "Preparing database", func() (dbPreparationResult, error) {
+				return applyDBPreparation(ctx, sync, fixture, accessRunner, root, databaseURL, plan.Migration)
+			})
 			if err != nil {
 				return db.SanitizeDatabaseError("apply db prepare", databaseURL, err)
 			}
@@ -403,20 +428,28 @@ func newDBResetCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.W
 					return nil
 				}
 			}
-			if _, err := database.Drop(ctx, target.DatabaseURL); err != nil {
+			if _, err := withProgress(ctx, stderr, "Dropping database", func() (db.DatabaseResult, error) {
+				return database.Drop(ctx, target.DatabaseURL)
+			}); err != nil {
 				return fmt.Errorf("drop database for reset: %w", err)
 			}
-			if _, err := database.Create(ctx, target.DatabaseURL); err != nil {
+			if _, err := withProgress(ctx, stderr, "Creating database", func() (db.DatabaseResult, error) {
+				return database.Create(ctx, target.DatabaseURL)
+			}); err != nil {
 				return fmt.Errorf("create database for reset: %w", err)
 			}
-			plan, err := planDBMigration(ctx, sync, target.Root, target.DatabaseURL)
+			plan, err := withProgress(ctx, stderr, "Planning database migration", func() (dbMigrationPlan, error) {
+				return planDBMigration(ctx, sync, target.Root, target.DatabaseURL)
+			})
 			if err != nil {
 				return err
 			}
 			if err := writeDBMigratePlan(stdout, target.Env, plan); err != nil {
 				return err
 			}
-			result, err := applyDBPreparation(ctx, sync, fixture, accessRunner, target.Root, target.DatabaseURL, plan)
+			result, err := withProgress(ctx, stderr, "Preparing database", func() (dbPreparationResult, error) {
+				return applyDBPreparation(ctx, sync, fixture, accessRunner, target.Root, target.DatabaseURL, plan)
+			})
 			if err != nil {
 				return db.SanitizeDatabaseError("prepare reset database", target.DatabaseURL, err)
 			}

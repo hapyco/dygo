@@ -2,6 +2,8 @@
 
 This document describes the dygo CLI command surface. Commands that are intentionally not part of the current surface are listed under [Coming Soon](#coming-soon).
 
+Project creation and upgrades, App installation, database operations, setup, and exports report slow phases on stderr after a short delay. Interactive terminals show a spinner. Redirected stderr, CI, and `TERM=dumb` receive one plain status line per slow phase. Fast phases show no progress output. Spinners stop before prompts, results, or errors, and clear on cancellation. Progress does not change stdout output.
+
 ## Root
 
 - `dygo` - Shows the root help for the metadata-driven dygo platform CLI.

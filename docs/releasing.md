@@ -16,7 +16,7 @@ This command:
 2. Tests and builds Studio.
 3. Verifies the bundled Core App.
 4. Runs Go tests and vet.
-5. Tests the POSIX installer.
+5. Tests the POSIX installer lifecycle, including replacement and failure recovery.
 6. Builds all release archives and checksums.
 7. Smokes the archive for the current operating system and architecture.
 8. Creates an annotated local tag.
@@ -62,6 +62,12 @@ Each release contains:
 
 ## Installation Verification
 
-The installers select the archive for the host, verify its SHA-256 checksum, extract the binary, and confirm that `dygo version` matches the requested release. They then replace the managed binary atomically.
+The installers select the archive for the host, verify its SHA-256 checksum, extract the binary, and require `dygo version` to exit successfully and match the requested release. They then replace the managed binary atomically. A failed download, verification, or replacement must preserve an existing installation.
 
 Use the release-hosted installers documented in [Installation](installation.md). Do not use a moving source-branch installer for a versioned production installation.
+
+Pull-request CI runs the shell installer lifecycle tests on Linux and macOS. Windows runs `scripts/test-install.ps1` with PowerShell 7 and Windows PowerShell 5.1. The native macOS and Windows jobs install the actual v0.0.6 release and replace it with a binary built from the candidate commit. Windows also tests downgrade and recovery when the destination executable is locked. Shell regressions cover downgrade, corrupted or missing downloads, incorrect or failing version probes, failed replacement, and INT/TERM cancellation.
+
+Linux CI and the release workflow provision PostgreSQL 17 for database regressions. For local release checks, set `DYGO_TEST_DATABASE_URL` to a disposable PostgreSQL service whose user can create databases. Tests create and remove isolated databases; without this variable, PostgreSQL tests are skipped and that limitation must be reported.
+
+Before publishing, verify those native CI jobs for the exact release commit. A Linux build of a Windows or macOS archive does not prove installation on those hosts. After publication, download the release-hosted installer and assets, verify checksums, install the release in an isolated directory, and verify its reported version. Also test replacement of an actual prior release and run a generated-project smoke check. Record which operating systems and architectures were exercised and disclose any untested paths.
