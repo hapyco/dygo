@@ -230,11 +230,16 @@ func (w Worker) runContinuous(ctx context.Context, options Options) (Result, err
 }
 
 func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, total *safeResult, wakeup <-chan struct{}) error {
+	ctx, cancel := context.WithCancel(ctx)
 	slots := make(chan struct{}, queue.Concurrency)
 	var inFlight sync.WaitGroup
 	errs := make(chan error, 1)
 	slotReleased := make(chan struct{}, 1)
 	active := newActiveExecutions()
+	defer func() {
+		cancel()
+		w.shutdownActiveExecutions(ctx, &inFlight, active, options)
+	}()
 
 	for {
 		available := queue.Concurrency - len(slots)
@@ -294,11 +299,9 @@ func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, 
 		select {
 		case <-ctx.Done():
 			stopTimer(timer)
-			w.shutdownActiveExecutions(ctx, &inFlight, active, options)
 			return ctx.Err()
 		case err := <-errs:
 			stopTimer(timer)
-			w.shutdownActiveExecutions(ctx, &inFlight, active, options)
 			return err
 		case <-slotReleased:
 			stopTimer(timer)

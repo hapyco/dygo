@@ -252,7 +252,10 @@ func process(ctx context.Context, job dygo.JobExecution) error {
 	}
 	payload.Actor.Email = stringValue(user["email"])
 	payload.Actor.Administrator, _ = user["administrator"].(bool)
-	if _, err := system.Update(ctx, coreApp, importEntity, payload.ImportID, dygoRecordInput(map[string]any{"status": "running"})); err != nil {
+	// Import bookkeeping belongs to Core's system Entities. Target Records below
+	// still use the current actor's permissions through the ordinary Record API.
+	bookkeeping := system.System("process import " + payload.ImportName)
+	if _, err := bookkeeping.Update(ctx, importEntity, payload.ImportID, dygoRecordInput(map[string]any{"status": "running"})); err != nil {
 		return err
 	}
 	actorRecords := job.Records.AsActor(payload.Actor)
@@ -310,7 +313,7 @@ func process(ctx context.Context, job dygo.JobExecution) error {
 					rowUpdate["record-id"] = createdID
 				}
 			}
-			if _, err := system.Update(ctx, coreApp, rowEntity, rowID, dygoRecordInput(rowUpdate)); err != nil {
+			if _, err := bookkeeping.Update(ctx, rowEntity, rowID, dygoRecordInput(rowUpdate)); err != nil {
 				return err
 			}
 		}
@@ -323,7 +326,7 @@ func process(ctx context.Context, job dygo.JobExecution) error {
 	if failed > 0 {
 		status = "failed"
 	}
-	_, err = system.Update(ctx, coreApp, importEntity, payload.ImportID, dygoRecordInput(map[string]any{"status": status, "processed-rows": processed, "succeeded-rows": succeeded, "failed-rows": failed}))
+	_, err = bookkeeping.Update(ctx, importEntity, payload.ImportID, dygoRecordInput(map[string]any{"status": status, "processed-rows": processed, "succeeded-rows": succeeded, "failed-rows": failed}))
 	return err
 }
 
@@ -357,6 +360,8 @@ func integer(value any) (int64, bool) {
 	switch number := value.(type) {
 	case int64:
 		return number, true
+	case int32:
+		return int64(number), true
 	case int:
 		return int64(number), true
 	case float64:
