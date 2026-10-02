@@ -117,6 +117,18 @@ Use Command K on macOS or Control K elsewhere. The menu shows current-page actio
 
 Choose Search records, select an Entity, and type part of a Record ID. On an Entity page, that Entity is selected first. Results respect Record permissions and are limited to 20. Use the arrow keys and Enter to open a result. Current list actions include New Record, Clear filters, and Apply saved filter.
 
+## Context menus
+
+Right-click a Record row in the global list renderer to open a Studio context menu.
+
+Available actions:
+
+- Open — same navigation as activating the row
+- Copy Record name
+- Copy link — absolute URL to the Record form
+
+Entity actions, Delete, and bulk selection actions stay on the list and form action bars for now.
+
 ## Keyboard Shortcuts
 
 `Mod` means Command on macOS and Control on Windows or Linux.

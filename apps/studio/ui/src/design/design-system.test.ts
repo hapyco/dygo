@@ -25,7 +25,7 @@ test('only the design system imports reka-ui', () => {
 
 test('design system exports the shared primitives', () => {
   const index = readFileSync(join(designRoot, 'index.ts'), 'utf8')
-  for (const name of ['Popover', 'Dialog', 'Combobox', 'Tree', 'DropdownMenu', 'DropdownMenuItem', 'Select', 'Switch', 'RadioGroup']) {
+  for (const name of ['Popover', 'Dialog', 'ContextMenu', 'Combobox', 'Tree', 'DropdownMenu', 'DropdownMenuItem', 'Select', 'Switch', 'RadioGroup']) {
     assert.match(index, new RegExp(`export \\{ default as ${name} \\}`), `design/index.ts must export ${name}`)
   }
 })
