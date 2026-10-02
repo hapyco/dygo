@@ -168,4 +168,6 @@ for signal in INT TERM; do
   assert_preserved
 done
 
+python3 "$repo_root/scripts/test-install-cancel.py" "$repo_root/scripts/install.sh"
+
 echo "installer lifecycle passed: fresh install, upgrade, downgrade, verification, replacement failure, cancellation"

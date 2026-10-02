@@ -7,6 +7,7 @@ install_dir="${DYGO_INSTALL_DIR:-$HOME/.dygo/bin}"
 download_base_url="${DYGO_DOWNLOAD_BASE_URL:-}"
 spinner_pid=""
 spinner_message=""
+download_pid=""
 tmp_dir=""
 staged_binary=""
 
@@ -14,7 +15,7 @@ start_spinner() {
   spinner_message="$1"
   if [ ! -t 2 ] || [ -n "${CI:-}" ] || [ "${TERM:-}" = dumb ]; then
     printf '%s...\n' "$spinner_message" >&2
-    return
+    return 0
   fi
   (
     sleep 0.3
@@ -31,7 +32,7 @@ start_spinner() {
 
 stop_spinner() {
   if [ -z "$spinner_pid" ]; then
-    return
+    return 0
   fi
   kill "$spinner_pid" 2>/dev/null || true
   wait "$spinner_pid" 2>/dev/null || true
@@ -40,6 +41,12 @@ stop_spinner() {
 }
 
 cleanup() {
+  trap '' INT TERM
+  if [ -n "$download_pid" ]; then
+    kill -TERM "$download_pid" 2>/dev/null || true
+    wait "$download_pid" 2>/dev/null || true
+    download_pid=""
+  fi
   stop_spinner
   if [ -n "$tmp_dir" ]; then
     rm -rf "$tmp_dir"
@@ -56,6 +63,17 @@ fail() {
   stop_spinner
   printf '%s\n' "$1" >&2
   exit 1
+}
+
+# Waiting on an asynchronous child lets signal traps interrupt a stalled request.
+# Cleanup terminates and reaps only the curl process started by this installer.
+download() {
+  curl "$@" &
+  download_pid=$!
+  download_status=0
+  wait "$download_pid" || download_status=$?
+  download_pid=""
+  return "$download_status"
 }
 
 require_command() {
@@ -81,9 +99,12 @@ case "$arch" in
   *) echo "unsupported architecture: $arch" >&2; exit 1 ;;
 esac
 
+tmp_dir="$(mktemp -d)"
+
 if [ "$version" = "latest" ]; then
   start_spinner "Resolving latest dygo release"
-  version="$(curl -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: dygo-installer" "https://api.github.com/repos/$repo/releases/latest" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+  download -fsSL -H "Accept: application/vnd.github+json" -H "User-Agent: dygo-installer" "https://api.github.com/repos/$repo/releases/latest" -o "$tmp_dir/latest.json"
+  version="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp_dir/latest.json" | head -n 1)"
   stop_spinner
 elif [ "${version#v}" = "$version" ]; then
   version="v$version"
@@ -97,11 +118,10 @@ fi
 
 asset="dygo_${version}_${goos}_${goarch}.tar.gz"
 base_url="${download_base_url:-https://github.com/$repo/releases/download/$version}"
-tmp_dir="$(mktemp -d)"
 
 start_spinner "Downloading dygo $version"
-curl -fsSL "$base_url/$asset" -o "$tmp_dir/$asset"
-curl -fsSL "$base_url/checksums.txt" -o "$tmp_dir/checksums.txt"
+download -fsSL "$base_url/$asset" -o "$tmp_dir/$asset"
+download -fsSL "$base_url/checksums.txt" -o "$tmp_dir/checksums.txt"
 stop_spinner
 
 start_spinner "Installing dygo $version"

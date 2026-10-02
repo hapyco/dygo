@@ -63,6 +63,8 @@ const draft = ref<RecordData>({})
 const baseline = ref<RecordData>({})
 const fieldErrors = ref<Record<string, string>>({})
 const localError = ref('')
+const createdRecord = ref<{ entity: string; name: string } | null>(null)
+const openingCreatedRecord = ref(false)
 const entityMeta = computed(() => entityMetaQuery.data.value ?? null)
 const entityMetaError = computed(() => (
   entityMetaQuery.error.value
@@ -233,9 +235,9 @@ const blockingError = computed(() => entityMetaError.value?.message ?? recordErr
 const saveError = computed(() => localError.value || recordActionError.value?.message || '')
 const showForm = computed(() => Boolean(entityMeta.value) && (isNew.value || Boolean(record.value)))
 const dirty = computed(() => fields.value.some((field) => !draftValuesEqual(draft.value[field.name], baseline.value[field.name])))
-const canSave = computed(() => showForm.value && (isNew.value || dirty.value) && !loading.value && !saving.value && !isSystem.value)
+const canSave = computed(() => showForm.value && (isNew.value || dirty.value) && !loading.value && !saving.value && !isSystem.value && !createdRecord.value)
 const confirmDiscard = useDraftGuard(() => dirty.value, () => saving.value)
-const saveDisabledReason = computed(() => isSystem.value ? 'Read-only Record' : loading.value ? 'Loading Record' : saving.value ? 'Saving Record' : !showForm.value ? 'Record unavailable' : !isNew.value && !dirty.value ? 'No changes' : undefined)
+const saveDisabledReason = computed(() => createdRecord.value ? 'Record already created' : isSystem.value ? 'Read-only Record' : loading.value ? 'Loading Record' : saving.value ? 'Saving Record' : !showForm.value ? 'Record unavailable' : !isNew.value && !dirty.value ? 'No changes' : undefined)
 usePageCommands(computed(() => [
   { id: 'record:save', label: isNew.value ? 'Create Record' : 'Save Record', disabledReason: entityActionMutation.isPending.value ? 'Action is running' : saveDisabledReason.value, run: saveRecord },
   { id: 'record:reset', label: 'Reset changes', disabledReason: !dirty.value ? 'No changes' : loading.value || saving.value || entityActionMutation.isPending.value ? 'Record is busy' : isSystem.value ? 'Read-only Record' : undefined, run: resetDraft },
@@ -244,6 +246,16 @@ usePageCommands(computed(() => [
 const entityActions = computed(() => recordEntityActions(entityMeta.value?.actions))
 const actions = computed<PageHeaderAction[]>(() => {
   const next: PageHeaderAction[] = []
+  if (createdRecord.value?.name) {
+    next.push({
+      label: 'Open created record',
+      icon: ExternalLink,
+      variant: 'primary',
+      loading: openingCreatedRecord.value,
+      disabled: openingCreatedRecord.value,
+      onSelect: openCreatedRecord,
+    })
+  }
   if (pageOpenPath.value) {
     const path = pageOpenPath.value
     next.push({
@@ -310,6 +322,7 @@ watch(
   () => {
     fieldErrors.value = {}
     localError.value = ''
+    createdRecord.value = null
     resetRecordActionErrors()
   },
   { immediate: true },
@@ -480,14 +493,39 @@ async function saveRecord() {
             data: payload,
           })
 
+    const nextName = typeof record.name === 'string' ? record.name : ''
+    if (isNew.value) createdRecord.value = { entity: props.entity, name: nextName }
     resetToRecord(record)
     toast.success(isSingle.value ? 'Settings saved' : isNew.value ? 'Record created' : 'Record saved')
-    const nextName = typeof record.name === 'string' ? record.name : ''
-    if (!isSingle.value && nextName && (isNew.value || nextName !== props.recordName)) {
+    if (createdRecord.value) {
+      await openCreatedRecord()
+    } else if (!isSingle.value && nextName && nextName !== props.recordName) {
       await router.replace({ name: RouteName.RecordDetail, params: { entity: props.entity, recordName: nextName } })
     }
   } catch {
     // TanStack owns the mutation error for display.
+  }
+}
+
+async function openCreatedRecord() {
+  const created = createdRecord.value
+  if (!created || openingCreatedRecord.value) return
+  if (!created.name) {
+    localError.value = 'Record created, but its address is unavailable. Open the Entity list to find it.'
+    return
+  }
+  openingCreatedRecord.value = true
+  localError.value = ''
+  const target = { name: RouteName.RecordDetail, params: { entity: created.entity, recordName: created.name } }
+  try {
+    const failure = await router.replace(target)
+    if (failure || router.currentRoute.value.path !== router.resolve(target).path) {
+      localError.value = 'Record created, but Studio could not open it. Use Open created record to try again.'
+    }
+  } catch {
+    localError.value = 'Record created, but Studio could not open it. Use Open created record to try again.'
+  } finally {
+    openingCreatedRecord.value = false
   }
 }
 
@@ -550,6 +588,17 @@ function buildSubmitPayload(): RecordData {
     }
 
     if (!isNew.value && draftValuesEqual(draft.value[field.name], baseline.value[field.name])) {
+      return
+    }
+
+    // Match empty-create API semantics: the database supplies untouched defaults.
+    // Format naming resolves tokens before insertion and still needs their input.
+    const namingInput = entityMeta.value?.naming?.strategy === 'format'
+      && entityMeta.value.naming.format?.includes(`{${field.name}}`)
+    if (isNew.value && field.name !== 'name' && field.stored && field.default !== undefined
+      && !(field.required && field.default === null)
+      && field.type !== 'collection' && !namingInput
+      && draftValuesEqual(draft.value[field.name], baseline.value[field.name])) {
       return
     }
 
@@ -924,7 +973,7 @@ function draftValuesEqual(left: unknown, right: unknown): boolean {
       <template v-else-if="entityMeta">
         <ErrorState
           v-if="saveError"
-          title="Action failed"
+          :title="createdRecord ? 'Record created' : 'Action failed'"
           :message="saveError"
         />
 
@@ -944,7 +993,7 @@ function draftValuesEqual(left: unknown, right: unknown): boolean {
           :mode="props.mode"
           :model-value="draft"
           :field-errors="fieldErrors"
-          :disabled="saving || isSystem"
+          :disabled="saving || isSystem || Boolean(createdRecord)"
           @update:model-value="updateDraft"
         />
         <RecordTimeline
