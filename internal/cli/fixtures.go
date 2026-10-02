@@ -39,7 +39,9 @@ func newFixtureExportCommand(ctx context.Context, stdin io.Reader, stdout, stder
 			if err != nil {
 				return err
 			}
-			plan, err := runner.ExportPlan(ctx, root, databaseURL, target, includeLinks)
+			plan, err := withProgress(ctx, stderr, "Planning fixture export", func() (fixtures.ExportPlan, error) {
+				return runner.ExportPlan(ctx, root, databaseURL, target, includeLinks)
+			})
 			if err != nil {
 				return fmt.Errorf("plan fixture export: %w", err)
 			}
@@ -61,7 +63,9 @@ func newFixtureExportCommand(ctx context.Context, stdin io.Reader, stdout, stder
 					return fmt.Errorf("fixture export canceled")
 				}
 			}
-			result, err := runner.WriteExportPlan(ctx, plan)
+			result, err := withProgress(ctx, stderr, "Exporting fixtures", func() (fixtures.ExportResult, error) {
+				return runner.WriteExportPlan(ctx, plan)
+			})
 			if err != nil {
 				return fmt.Errorf("export fixture records: %w", err)
 			}

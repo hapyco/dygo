@@ -57,10 +57,12 @@ func newSetupCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Wri
 				return err
 			}
 
-			user, err := setup.SetupAdmin(ctx, databaseURL, auth.SetupAdminInput{
-				Email:    inputEmail,
-				FullName: inputFullName,
-				Password: password,
+			user, err := withProgress(ctx, stderr, "Setting up administrator account", func() (auth.User, error) {
+				return setup.SetupAdmin(ctx, databaseURL, auth.SetupAdminInput{
+					Email:    inputEmail,
+					FullName: inputFullName,
+					Password: password,
+				})
 			})
 			if err != nil {
 				return fmt.Errorf("setup administrator account: %w", err)

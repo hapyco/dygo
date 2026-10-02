@@ -235,10 +235,11 @@ func newRootCommand(ctx context.Context, stdin io.Reader, stdout, stderr io.Writ
 		},
 	}
 
+	root.SetContext(ctx)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 
-	root.AddCommand(newProjectCommand(ctx, stdout))
+	root.AddCommand(newProjectCommand(ctx, stdout, stderr))
 	root.AddCommand(newUpgradeCommand(ctx, stdin, stdout, stderr))
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDoctorCommand(ctx, stdout))
