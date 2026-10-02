@@ -3,6 +3,10 @@ $ErrorActionPreference = "Stop"
 $Repo = "hapyco/dygo"
 $Version = if ($env:DYGO_VERSION) { $env:DYGO_VERSION } else { "latest" }
 $InstallDir = if ($env:DYGO_INSTALL_DIR) { $env:DYGO_INSTALL_DIR } else { Join-Path $HOME ".dygo\bin" }
+function Write-InstallProgress([string] $Message) {
+  [Console]::Error.WriteLine("$Message...")
+}
+
 $DownloadBaseURL = if ($env:DYGO_DOWNLOAD_BASE_URL) { $env:DYGO_DOWNLOAD_BASE_URL } else { $null }
 
 $ArchName = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
@@ -13,6 +17,7 @@ switch ($ArchName) {
 }
 
 if ($Version -eq "latest") {
+  Write-InstallProgress "Resolving latest dygo release"
   $Headers = @{ Accept = "application/vnd.github+json"; "User-Agent" = "dygo-installer" }
   $Latest = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers $Headers
   $Version = $Latest.tag_name
@@ -37,9 +42,11 @@ New-Item -ItemType Directory -Path $TempDir | Out-Null
 try {
   $ArchivePath = Join-Path $TempDir $Asset
   $ChecksumsPath = Join-Path $TempDir "checksums.txt"
-  Invoke-WebRequest -Uri "$BaseURL/$Asset" -OutFile $ArchivePath
-  Invoke-WebRequest -Uri "$BaseURL/checksums.txt" -OutFile $ChecksumsPath
+  Write-InstallProgress "Downloading dygo $Version"
+  Invoke-WebRequest -UseBasicParsing -Uri "$BaseURL/$Asset" -OutFile $ArchivePath
+  Invoke-WebRequest -UseBasicParsing -Uri "$BaseURL/checksums.txt" -OutFile $ChecksumsPath
 
+  Write-InstallProgress "Installing dygo $Version"
   $Expected = (Get-Content $ChecksumsPath | Where-Object { $_ -match "\s$([regex]::Escape($Asset))$" } | ForEach-Object { ($_ -split "\s+")[0] } | Select-Object -First 1)
   if (-not $Expected) {
     throw "checksums.txt does not contain $Asset"
@@ -55,6 +62,9 @@ try {
     throw "release archive does not contain dygo.exe"
   }
   $ReportedVersion = (& $ExtractedBinary version | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0) {
+    throw "downloaded binary could not report its version"
+  }
   if ($ReportedVersion -ne "dygo $Version") {
     throw "downloaded binary version does not match $Version"
   }

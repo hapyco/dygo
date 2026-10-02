@@ -12,6 +12,22 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dygo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DYGO_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/dygo_test?sslmode=disable
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,6 +78,9 @@ jobs:
 
   verify-windows-installer:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        shell: [pwsh, powershell]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -72,64 +91,39 @@ jobs:
           go-version: "1.26.2"
           cache: true
 
-      - name: Test PowerShell installer
-        shell: pwsh
+      - name: Test PowerShell installer lifecycle
+        shell: ${{ matrix.shell }}
+        run: scripts/test-install.ps1
+
+  verify-macos-installer:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.2"
+          cache: true
+
+      - name: Test shell installer lifecycle
+        run: scripts/test-install.sh
+
+      - name: Upgrade an actual released binary to the candidate
+        shell: bash
         run: |
-          $ErrorActionPreference = "Stop"
-          $Version = "v0.0.0-ci"
-          $TestRoot = Join-Path $env:RUNNER_TEMP "dygo-installer-test"
-          $ReleaseDir = Join-Path $TestRoot "release"
-          $InstallDir = Join-Path $TestRoot "install"
-          $Asset = "dygo_${Version}_windows_amd64.zip"
-          New-Item -ItemType Directory -Path $ReleaseDir -Force | Out-Null
-
-          go build -trimpath -ldflags "-s -w -X github.com/hapyco/dygo/internal/cli.version=$Version" -o (Join-Path $ReleaseDir "dygo.exe") ./cmd/dygo
-          Compress-Archive -Path (Join-Path $ReleaseDir "dygo.exe") -DestinationPath (Join-Path $ReleaseDir $Asset)
-          Remove-Item (Join-Path $ReleaseDir "dygo.exe")
-          $Hash = (Get-FileHash -Algorithm SHA256 (Join-Path $ReleaseDir $Asset)).Hash.ToLowerInvariant()
-          "$Hash  $Asset" | Set-Content -Path (Join-Path $ReleaseDir "checksums.txt") -Encoding ascii
-
-          $Listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
-          $Listener.Start()
-          $Port = ([System.Net.IPEndPoint]$Listener.LocalEndpoint).Port
-          $Listener.Stop()
-          $Server = Start-Process python -ArgumentList @("-m", "http.server", "$Port", "--bind", "127.0.0.1", "--directory", $ReleaseDir) -PassThru
-          try {
-            $env:DYGO_VERSION = $Version
-            $env:DYGO_INSTALL_DIR = $InstallDir
-            $env:DYGO_DOWNLOAD_BASE_URL = "http://127.0.0.1:$Port"
-            for ($Attempt = 0; $Attempt -lt 20; $Attempt++) {
-              try {
-                Invoke-WebRequest -Uri "$env:DYGO_DOWNLOAD_BASE_URL/checksums.txt" -OutFile (Join-Path $TestRoot "probe.txt")
-                break
-              }
-              catch {
-                if ($Attempt -eq 19) { throw }
-                Start-Sleep -Milliseconds 250
-              }
-            }
-
-            & ./scripts/install.ps1
-            if ((& (Join-Path $InstallDir "dygo.exe") version) -ne "dygo $Version") {
-              throw "installed Windows binary version is incorrect"
-            }
-
-            Add-Content -Path (Join-Path $ReleaseDir $Asset) -Value "corrupt" -NoNewline
-            $Rejected = $false
-            try {
-              $env:DYGO_INSTALL_DIR = Join-Path $TestRoot "corrupt-install"
-              & ./scripts/install.ps1
-            }
-            catch {
-              $Rejected = $true
-            }
-            if (-not $Rejected) {
-              throw "PowerShell installer accepted a corrupted archive"
-            }
-          }
-          finally {
-            Remove-Item Env:DYGO_VERSION -ErrorAction SilentlyContinue
-            Remove-Item Env:DYGO_INSTALL_DIR -ErrorAction SilentlyContinue
-            Remove-Item Env:DYGO_DOWNLOAD_BASE_URL -ErrorAction SilentlyContinue
-            Stop-Process -Id $Server.Id -Force -ErrorAction SilentlyContinue
-          }
+          set -euo pipefail
+          version=v0.0.0-ci
+          case "$(uname -m)" in arm64) arch=arm64 ;; *) arch=amd64 ;; esac
+          release_dir="$RUNNER_TEMP/dygo-release"
+          mkdir -p "$release_dir"
+          go build -trimpath -ldflags "-s -w -X github.com/hapyco/dygo/internal/cli.version=$version" -o "$release_dir/dygo" ./cmd/dygo
+          asset="dygo_${version}_darwin_${arch}.tar.gz"
+          tar -C "$release_dir" -czf "$release_dir/$asset" dygo
+          (cd "$release_dir" && shasum -a 256 "$asset" >checksums.txt)
+          export DYGO_INSTALL_DIR="$RUNNER_TEMP/dygo-install"
+          DYGO_VERSION=v0.0.6 scripts/install.sh
+          test "$("$DYGO_INSTALL_DIR/dygo" version)" = "dygo v0.0.6"
+          DYGO_VERSION="$version" DYGO_DOWNLOAD_BASE_URL="file://$release_dir" scripts/install.sh
+          test "$("$DYGO_INSTALL_DIR/dygo" version)" = "dygo $version"
