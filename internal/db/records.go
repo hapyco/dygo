@@ -520,7 +520,13 @@ func (s RecordStore) insertRecordWithLayout(ctx context.Context, layout recordLa
 		sql := insertRecordSQL(layout, mutation, true)
 		unscoped := s
 		unscoped.scope = nil
-		record, err := unscoped.queryReturningRecord(ctx, layout, sql, mutation.Values, false)
+		var record Record
+		err = s.withRecordNameAttempt(ctx, layout, func(queryer RecordQueryer) error {
+			unscoped.queryer = queryer
+			var queryErr error
+			record, queryErr = unscoped.queryReturningRecord(ctx, layout, sql, mutation.Values, false)
+			return queryErr
+		})
 		if err == nil {
 			if s.scope != nil {
 				recordID, idErr := activityRecordID(record)
@@ -536,6 +542,30 @@ func (s RecordStore) insertRecordWithLayout(ctx context.Context, layout recordLa
 		}
 	}
 	return nil, recordError(RecordErrorInternal, "record insert failed", map[string]any{"entity": layout.Entity}, nil)
+}
+
+// withRecordNameAttempt isolates a random-name INSERT in a PostgreSQL savepoint.
+// A uniqueness error must be rolled back before retrying in the outer mutation.
+func (s RecordStore) withRecordNameAttempt(ctx context.Context, layout recordLayout, insert func(RecordQueryer) error) error {
+	tx, transactional := s.queryer.(pgx.Tx)
+	if layout.Naming.Strategy != schema.NamingStrategyRandom || !transactional {
+		return insert(s.queryer)
+	}
+	attempt, err := tx.Begin(ctx)
+	if err != nil {
+		return classifyRecordDBError(err, layout.Entity)
+	}
+	defer attempt.Rollback(ctx)
+	if err := insert(attempt); err != nil {
+		if rollbackErr := attempt.Rollback(ctx); rollbackErr != nil {
+			return recordError(RecordErrorInternal, "rollback record name attempt failed", map[string]any{"entity": layout.Entity}, errors.Join(err, rollbackErr))
+		}
+		return err
+	}
+	if err := attempt.Commit(ctx); err != nil {
+		return classifyRecordDBError(err, layout.Entity)
+	}
+	return nil
 }
 
 func insertRecordSQL(layout recordLayout, mutation recordMutation, returning bool) string {
@@ -614,7 +644,7 @@ func (s RecordStore) updateRecordWithLayout(ctx context.Context, layout recordLa
 		return nil, err
 	}
 	input = cloneRecordInput(input)
-	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
+	oldRecord, err := s.getRecordWithLayoutLock(ctx, layout, id, true)
 	if err != nil {
 		return nil, err
 	}
@@ -751,7 +781,7 @@ func (s RecordStore) deleteRecordWithLayout(ctx context.Context, layout recordLa
 	if err := s.rejectSystemMutation(layout, "delete"); err != nil {
 		return err
 	}
-	oldRecord, err := s.getRecordWithLayout(ctx, layout, id)
+	oldRecord, err := s.getRecordWithLayoutLock(ctx, layout, id, true)
 	if err != nil {
 		return err
 	}
@@ -817,6 +847,10 @@ func (s RecordStore) getSingleRecordWithLayout(ctx context.Context, layout recor
 }
 
 func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayout, id int64) (Record, error) {
+	return s.getRecordWithLayoutLock(ctx, layout, id, false)
+}
+
+func (s RecordStore) getRecordWithLayoutLock(ctx context.Context, layout recordLayout, id int64, lock bool) (Record, error) {
 	if layout.IsCollection {
 		return nil, collectionRecordOperationError(layout, "read")
 	}
@@ -826,6 +860,11 @@ func (s RecordStore) getRecordWithLayout(ctx context.Context, layout recordLayou
 		scopeOffset -= len(s.scope.Args)
 	}
 	sql := fmt.Sprintf("SELECT %s FROM %s AS %s WHERE %s", s.selectList(layout, scopeOffset), quoteIdent(layout.Table), quoteIdent(recordSelectSourceAlias), where)
+	if lock {
+		// Lock the target before hooks and collection reads so validation and
+		// Activity use the exact predecessor of this mutation.
+		sql += " FOR UPDATE OF " + quoteIdent(recordSelectSourceAlias)
+	}
 	record, err := s.queryOneRecord(ctx, layout, sql, args...)
 	if err != nil {
 		var recordErr RecordError
