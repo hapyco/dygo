@@ -117,7 +117,7 @@ function updateField(field: MetadataField, value: unknown) {
 
 function attachmentUpload(field: MetadataField) {
   const id = Number(props.record?.id)
-  if (props.mode !== 'record' || !Number.isInteger(id) || id <= 0) return undefined
+  if (props.mode === 'new' || !Number.isInteger(id) || id <= 0) return undefined
   return async (file: File) => String((await uploadRecordFile(props.appName, props.entityKey, id, field.name, file)).id)
 }
 

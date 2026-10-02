@@ -233,9 +233,9 @@ const blockingError = computed(() => entityMetaError.value?.message ?? recordErr
 const saveError = computed(() => localError.value || recordActionError.value?.message || '')
 const showForm = computed(() => Boolean(entityMeta.value) && (isNew.value || Boolean(record.value)))
 const dirty = computed(() => fields.value.some((field) => !draftValuesEqual(draft.value[field.name], baseline.value[field.name])))
-const canSave = computed(() => showForm.value && dirty.value && !loading.value && !saving.value && !isSystem.value)
+const canSave = computed(() => showForm.value && (isNew.value || dirty.value) && !loading.value && !saving.value && !isSystem.value)
 const confirmDiscard = useDraftGuard(() => dirty.value, () => saving.value)
-const saveDisabledReason = computed(() => isSystem.value ? 'Read-only Record' : loading.value ? 'Loading Record' : saving.value ? 'Saving Record' : !showForm.value ? 'Record unavailable' : !dirty.value ? 'No changes' : undefined)
+const saveDisabledReason = computed(() => isSystem.value ? 'Read-only Record' : loading.value ? 'Loading Record' : saving.value ? 'Saving Record' : !showForm.value ? 'Record unavailable' : !isNew.value && !dirty.value ? 'No changes' : undefined)
 usePageCommands(computed(() => [
   { id: 'record:save', label: isNew.value ? 'Create Record' : 'Save Record', disabledReason: entityActionMutation.isPending.value ? 'Action is running' : saveDisabledReason.value, run: saveRecord },
   { id: 'record:reset', label: 'Reset changes', disabledReason: !dirty.value ? 'No changes' : loading.value || saving.value || entityActionMutation.isPending.value ? 'Record is busy' : isSystem.value ? 'Read-only Record' : undefined, run: resetDraft },
@@ -464,7 +464,7 @@ async function saveRecord() {
     return
   }
 
-  if (Object.keys(payload).length === 0) {
+  if (!isNew.value && Object.keys(payload).length === 0) {
     return
   }
 
@@ -684,8 +684,9 @@ function collectionCellSubmitValue(parentField: MetadataField, field: MetadataFi
       setCollectionError(errors, parentField, rowIndex, `${recordFieldLabel(field)} is required.`)
       return { skip: true }
     }
-    if (existing && ['string', 'date', 'datetime', 'time'].includes(field['value-kind'])) {
-      return { value: '' }
+    if (existing) {
+      if (field['value-kind'] === 'password') return { skip: true }
+      return { value: blankSubmitValue(field) }
     }
     return { skip: true }
   }
@@ -752,15 +753,21 @@ function stringSubmitValue(field: MetadataField, value: unknown, errors: Record<
     return { skip: true }
   }
 
-  return { value: text }
+  return { value: text === '' ? blankSubmitValue(field) : text }
+}
+
+// Text fields keep their empty-string contract; nullable typed fields clear with null.
+function blankSubmitValue(field: MetadataField): '' | null {
+  return field['value-kind'] === 'string' && field.type !== 'select' ? '' : null
 }
 
 function integerSubmitValue(field: MetadataField, value: unknown, errors: Record<string, string>): ConvertedValue {
   if (value === null || value === undefined || value === '') {
     if (field.required) {
       errors[field.name] = 'Enter an integer.'
+      return { skip: true }
     }
-    return { skip: true }
+    return isNew.value ? { skip: true } : { value: null }
   }
 
   const number = Number(value)
@@ -776,8 +783,9 @@ function numberSubmitValue(field: MetadataField, value: unknown, errors: Record<
   if (value === null || value === undefined || value === '') {
     if (field.required) {
       errors[field.name] = 'Enter a number.'
+      return { skip: true }
     }
-    return { skip: true }
+    return isNew.value ? { skip: true } : { value: null }
   }
 
   const number = Number(value)
@@ -793,8 +801,9 @@ function jsonSubmitValue(field: MetadataField, value: unknown, errors: Record<st
   if (value === null || value === undefined || value === '') {
     if (field.required) {
       errors[field.name] = 'Enter valid JSON.'
+      return { skip: true }
     }
-    return { skip: true }
+    return isNew.value ? { skip: true } : { value: null }
   }
 
   if (typeof value !== 'string') {
@@ -837,7 +846,7 @@ function initialFieldValue(field: MetadataField, record: RecordData | null): unk
     return field['value-kind'] === 'json' ? displayJSON(recordValue) : recordValue
   }
 
-  if (field.default !== undefined) {
+  if (!record && field.default !== undefined) {
     return field['value-kind'] === 'json' ? displayJSON(field.default) : field.default
   }
 
