@@ -70,7 +70,8 @@ test('untouched valid new forms can create defaults-only or empty Records', asyn
     const calls: unknown[] = []
     const { scope, source } = setupFunctions(formPath, ['saveRecord'], {
       computed: (get: () => unknown) => ({ get value() { return get() } }),
-      showForm: { value: true }, dirty: { value: false }, loading: { value: false },
+      showForm: { value: true }, dirty: { value: false }, loading: { value: false }, createdRecord: { value: null },
+      openCreatedRecord: async () => {},
       saving: { value: false }, isSystem: { value: false }, isNew: { value: true }, isSingle: { value: false },
       fieldErrors: { value: {} }, localError: { value: '' }, props: { entity: 'sample' },
       resetRecordActionErrors() {}, buildSubmitPayload: () => payload,
@@ -103,4 +104,97 @@ test('attachment upload uses saved normal and Single Record identities, never un
     scope.props.record = null
     assert.equal(scope.attachmentUpload({ name: 'logo' }), undefined)
   }
+})
+
+function createScope(replace: (target: unknown) => Promise<unknown>, mutate: () => Promise<unknown>) {
+  const { scope, source } = setupFunctions(formPath, ['saveRecord', 'openCreatedRecord'], {
+    computed: (get: () => unknown) => ({ get value() { return get() } }),
+    showForm: { value: true }, dirty: { value: false }, loading: { value: false }, saving: { value: false },
+    isSystem: { value: false }, isNew: { value: true }, isSingle: { value: false },
+    createdRecord: { value: null }, openingCreatedRecord: { value: false },
+    fieldErrors: { value: {} }, localError: { value: '' }, props: { entity: 'sample' },
+    resetRecordActionErrors() {}, buildSubmitPayload: () => ({}), resetToRecord() {}, toast: { success() {} },
+    createRecordMutation: { mutateAsync: mutate }, RouteName: { RecordDetail: 'record' },
+    router: { currentRoute: { value: { path: '/sample/new' } }, resolve: () => ({ path: '/sample/SAMPLE-1' }), replace },
+  })
+  const canSave = source.statements.find(statement => ts.isVariableStatement(statement)
+    && statement.declarationList.declarations.some(declaration => declaration.name.getText(source) === 'canSave'))
+  assert.ok(canSave)
+  vm.runInContext(canSave.getText(source), scope)
+  return scope
+}
+
+test('committed creates survive aborted or rejected navigation without another POST', async () => {
+  for (const navigation of ['aborted', 'rejected', 'redirected', 'success']) {
+    let posts = 0
+    let navigations = 0
+    let recover = false
+    const scope = createScope(async () => {
+      navigations++
+      if (recover || navigation === 'success') { scope.router.currentRoute.value.path = '/sample/SAMPLE-1'; return }
+      if (navigation === 'aborted') return { type: 4 }
+      if (navigation === 'rejected') throw new Error('navigation failed')
+    }, async () => { posts++; return { id: 1, name: 'SAMPLE-1' } })
+    await scope.saveRecord()
+    assert.equal(posts, 1)
+    assert.equal(vm.runInContext('canSave.value', scope), false)
+    await scope.saveRecord()
+    assert.equal(posts, 1)
+    if (navigation !== 'success') {
+      assert.match(scope.localError.value, /Record created.*Open created record/)
+      recover = true
+      await scope.openCreatedRecord()
+      assert.equal(navigations, 2)
+      assert.equal(posts, 1)
+      assert.equal(scope.localError.value, '')
+    }
+  }
+})
+
+test('failed create mutations remain retryable', async () => {
+  let posts = 0
+  const scope = createScope(async () => {}, async () => {
+    posts++
+    if (posts === 1) throw new Error('temporary failure')
+    return { id: 1, name: 'SAMPLE-1' }
+  })
+  await scope.saveRecord()
+  assert.equal(scope.createdRecord.value, null)
+  assert.equal(vm.runInContext('canSave.value', scope), true)
+  await scope.saveRecord()
+  assert.equal(posts, 2)
+  assert.equal(vm.runInContext('canSave.value', scope), false)
+})
+
+test('new payload omits only untouched database defaults and preserves explicit inputs', () => {
+  const makeField = (name: string, kind: string, type: string, extra: Record<string, unknown> = {}) => ({
+    name, label: name, 'value-kind': kind, type, stored: true, required: false, studio: { editor: type }, ...extra,
+  })
+  const fields = [
+    makeField('status', 'string', 'text', { default: 'draft', required: true }),
+    makeField('amount', 'integer', 'int', { default: 5 }),
+    makeField('enabled', 'boolean', 'boolean', { default: true }),
+    makeField('count', 'integer', 'int', { default: 0 }),
+    makeField('active', 'boolean', 'boolean', { default: false }),
+    makeField('prefix', 'string', 'text', { default: 'INV' }),
+    makeField('name', 'string', 'text', { required: true }),
+    makeField('rows', 'json', 'collection', { stored: false }),
+  ]
+  const baseline = { status: 'draft', amount: 5, enabled: true, count: 0, active: false, prefix: 'INV', name: '', rows: [] }
+  const { scope } = setupFunctions(formPath, [...valueFunctions, 'buildSubmitPayload', 'convertSubmitValue', 'draftValuesEqual'], {
+    fields: { value: fields }, systemFields: { value: [] },
+    entityMeta: { value: { naming: { strategy: 'format', format: '{prefix}-{count}' } } },
+    isNew: { value: true }, baseline: { value: baseline },
+    draft: { value: { ...baseline, amount: 0, enabled: false, name: 'explicit-name', rows: [{ quantity: 0 }] } },
+    fieldErrors: { value: {} }, isHiddenRecordSubmitField: () => false,
+    collectionSubmitValue: (_field: unknown, value: unknown) => ({ value }),
+  })
+  assert.deepEqual(plain(scope.buildSubmitPayload()), {
+    amount: 0, enabled: false, prefix: 'INV', count: 0, name: 'explicit-name', rows: [{ quantity: 0 }],
+  })
+  assert.deepEqual(plain(scope.fieldErrors.value), {})
+  scope.entityMeta.value.naming = { strategy: 'manual' }
+  scope.draft.value.name = ''
+  scope.buildSubmitPayload()
+  assert.equal(scope.fieldErrors.value.name, 'Enter a value.')
 })

@@ -208,7 +208,12 @@ func (w Worker) runContinuous(ctx context.Context, options Options) (Result, err
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- w.runQueueLoop(runCtx, queue, options, &total, wakeups.channel(queue.Name))
+			w.runQueueLoop(runCtx, queue, options, &total, wakeups.channel(queue.Name), func(err error) {
+				// Publish before cancellation so a sibling's cancellation cannot
+				// replace the originating error while this queue drains.
+				errs <- err
+				cancel()
+			})
 		}()
 	}
 
@@ -229,7 +234,7 @@ func (w Worker) runContinuous(ctx context.Context, options Options) (Result, err
 	}
 }
 
-func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, total *safeResult, wakeup <-chan struct{}) error {
+func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, total *safeResult, wakeup <-chan struct{}, reportExit func(error)) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	slots := make(chan struct{}, queue.Concurrency)
 	var inFlight sync.WaitGroup
@@ -237,6 +242,7 @@ func (w Worker) runQueueLoop(ctx context.Context, queue Queue, options Options, 
 	slotReleased := make(chan struct{}, 1)
 	active := newActiveExecutions()
 	defer func() {
+		reportExit(err)
 		cancel()
 		w.shutdownActiveExecutions(ctx, &inFlight, active, options)
 	}()

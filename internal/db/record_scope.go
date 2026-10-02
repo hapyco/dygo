@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // RecordScope is compiled from one access policy AST for a Record operation.
@@ -118,6 +120,12 @@ func (s RecordStore) validateProposedScope(ctx context.Context, layout recordLay
 	for index, column := range mutation.Columns {
 		values[column] = mutation.Placeholders[index]
 	}
+	// PostgreSQL supplies omitted defaults without making them explicit Field
+	// writes. Use catalog defaults: JSON metadata can lose numeric precision,
+	// and PostgreSQL may resolve date literals when the schema is created.
+	if err := s.proposedRecordDefaults(ctx, layout, values); err != nil {
+		return recordError(RecordErrorInternal, "evaluate record defaults failed", map[string]any{"entity": layout.Entity}, err)
+	}
 	columns := append([]string{systemColumnName, systemColumnOwnerID}, storedLayoutColumns(layout)...)
 	selects := make([]string, 0, len(columns))
 	for _, column := range columns {
@@ -146,6 +154,55 @@ func (s RecordStore) validateProposedScope(ctx context.Context, layout recordLay
 	}
 	if !allowed {
 		return recordError(RecordErrorPermissionDenied, "permission denied", map[string]any{"entity": layout.Entity}, nil)
+	}
+	return nil
+}
+
+func (s RecordStore) proposedRecordDefaults(ctx context.Context, layout recordLayout, values map[string]string) error {
+	columns := []string{}
+	for _, field := range layout.Fields {
+		if field.Storage && !field.SystemName && len(field.Default) > 0 && values[field.Column] == "" {
+			columns = append(columns, field.Column)
+		}
+	}
+	if len(columns) == 0 {
+		return nil
+	}
+	if _, ok := s.queryer.(pgx.Tx); !ok {
+		return fmt.Errorf("record default authorization requires a database transaction")
+	}
+	// Keep ALTER DEFAULT from changing the value between authorization and
+	// INSERT. This is the relation lock INSERT itself takes, held to tx end.
+	if _, err := s.queryer.Exec(ctx, "LOCK TABLE "+quoteIdent(layout.Table)+" IN ROW EXCLUSIVE MODE"); err != nil {
+		return err
+	}
+	rows, err := s.queryer.Query(ctx, `
+SELECT a.attname, COALESCE(pg_get_expr(d.adbin, d.adrelid), 'NULL'), format_type(a.atttypid, a.atttypmod)
+FROM pg_attribute a
+LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+WHERE a.attrelid = to_regclass($1) AND a.attname = ANY($2::text[]) AND NOT a.attisdropped`, quoteIdent(layout.Table), columns)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	seen := map[string]bool{}
+	for rows.Next() {
+		var column, expression, sqlType string
+		if err := rows.Scan(&column, &expression, &sqlType); err != nil {
+			return err
+		}
+		// Expressions and types come only from PostgreSQL's own schema catalog.
+		// Managed defaults are scalar literals; explicit inputs keep precedence.
+		values[column] = "(" + expression + ")::" + sqlType
+		seen[column] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, column := range columns {
+		if !seen[column] {
+			return fmt.Errorf("default column %q is missing from table %q; run dygo db migrate", column, layout.Table)
+		}
 	}
 	return nil
 }
