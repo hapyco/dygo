@@ -245,22 +245,6 @@ func newAccessExportCommand(ctx context.Context, stdin io.Reader, stdout, stderr
 	return cmd
 }
 
-func writeAccessPlan(stdout io.Writer, title string, env secrets.Environment, plan access.Plan) error {
-	if _, err := fmt.Fprintf(stdout, "%s (%s)\n", title, env); err != nil {
-		return fmt.Errorf("write access plan output: %w", err)
-	}
-	if _, err := fmt.Fprintf(stdout, "roles: %d\n", len(plan.Roles)); err != nil {
-		return fmt.Errorf("write access plan output: %w", err)
-	}
-	if _, err := fmt.Fprintf(stdout, "policy files: %d\n", len(plan.Policies)); err != nil {
-		return fmt.Errorf("write access plan output: %w", err)
-	}
-	if _, err := fmt.Fprintf(stdout, "permissions: %d\n", len(plan.Grants)); err != nil {
-		return fmt.Errorf("write access plan output: %w", err)
-	}
-	return nil
-}
-
 func writeAccessExportPlan(stdout io.Writer, env secrets.Environment, plan access.ExportPlan) error {
 	if _, err := fmt.Fprintf(stdout, "access export plan (%s)\n", env); err != nil {
 		return fmt.Errorf("write access export output: %w", err)

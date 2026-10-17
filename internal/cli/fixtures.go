@@ -108,19 +108,6 @@ func newFixtureValidateCommand(ctx context.Context, stdout io.Writer, runner fix
 	return cmd
 }
 
-func writeFixturePlan(stdout io.Writer, title string, env secrets.Environment, plan fixtures.Plan) error {
-	if _, err := fmt.Fprintf(stdout, "%s (%s)\n", title, env); err != nil {
-		return fmt.Errorf("write fixture plan output: %w", err)
-	}
-	if _, err := fmt.Fprintf(stdout, "files: %d\n", plan.FileCount()); err != nil {
-		return fmt.Errorf("write fixture plan output: %w", err)
-	}
-	if _, err := fmt.Fprintf(stdout, "records: %d\n", plan.RecordCount()); err != nil {
-		return fmt.Errorf("write fixture plan output: %w", err)
-	}
-	return nil
-}
-
 func writeFixtureExportPlan(stdout io.Writer, env secrets.Environment, plan fixtures.ExportPlan) error {
 	if _, err := fmt.Fprintf(stdout, "fixture export plan (%s)\n", env); err != nil {
 		return fmt.Errorf("write fixture export plan output: %w", err)

@@ -43,3 +43,39 @@ func TestLegacySeriesKeyPreservesExistingCounterIdentity(t *testing.T) {
 		t.Fatalf("legacySeriesKey() = %q, want legacy Entity key", got)
 	}
 }
+
+func TestPostgresNamingSeriesAdoptsLegacyCounter(t *testing.T) {
+	pool, metadata := auditDatabase(t)
+	invoice := auditEntity("invoice")
+	invoice.Entity.Naming = schema.Naming{Strategy: schema.NamingStrategySeries, Pattern: "INV-{####}"}
+	metadata.Entities = append(metadata.Entities, invoice)
+	syncAuditMetadata(t, pool, metadata)
+	ctx := context.Background()
+	store := NewRecordStoreWithHookPolicy(pool, RecordMutationHooksNone)
+	layout, err := store.recordLayoutByIdentity(ctx, "audit", "invoice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyKey := "invoice:INV-{####}"
+	if _, err := pool.Exec(ctx, `INSERT INTO naming_series (name, entity_id, key, pattern, current) VALUES ($1, $2, $1, $3, 41)`, legacyKey, layout.EntityID, "INV-{####}"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"INV-0042", "INV-0043"} {
+		record, err := store.CreateRecordByIdentity(ctx, "audit", "invoice", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if record["name"] != want {
+			t.Fatalf("created Record name = %v, want %s", record["name"], want)
+		}
+	}
+	for key, want := range map[string]int64{legacyKey: 41, "audit/invoice:INV-{####}": 43} {
+		var current int64
+		if err := pool.QueryRow(ctx, `SELECT current FROM naming_series WHERE key = $1`, key).Scan(&current); err != nil {
+			t.Fatal(err)
+		}
+		if current != want {
+			t.Fatalf("naming series %q current = %d, want %d", key, current, want)
+		}
+	}
+}
