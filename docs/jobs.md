@@ -8,7 +8,7 @@ dygo Jobs run durable background work through PostgreSQL-backed Job Executions. 
 
 `Job Execution` is one durable queued occurrence of a Job.
 
-`Attempt` is one try inside a Job Execution. Retries create more attempts on the same Job Execution, not a new Job Execution.
+`Attempt` is one try inside a Job Execution. Automatic retries add attempts to the same Job Execution. A manual retry can create a new Job Execution.
 
 `Worker` is a long-running dygo process that claims and runs Job Executions.
 
@@ -78,8 +78,8 @@ retry:
 | `timeout` | yes | Positive Go duration string used for the handler deadline and worker lease. |
 | `retry` | no | Retry settings. Missing `retry` means one attempt only. |
 | `retry.attempts` | yes when `retry` exists | Total attempts, including the first try. Must be at least `2`. |
-| `retry.initial-delay` | no | First retry delay. Defaults to `10s`. |
-| `retry.max-delay` | no | Exponential retry cap. Defaults to `5m`. |
+| `retry.initial-delay` | no | First automatic retry interval before jitter. Defaults to `10s`. |
+| `retry.max-delay` | no | Maximum automatic retry delay. Defaults to `5m`. |
 
 Rules:
 
@@ -87,7 +87,7 @@ Rules:
 - Durations use Go duration syntax, such as `30s`, `5m`, or `1h30m`.
 - `cron` uses standard 5-field syntax in UTC, such as `0 9 * * MON`. It is optional; omit it for manually enqueued Jobs.
 - `retry.max-delay` must be greater than or equal to `retry.initial-delay`.
-- Retry strategy is exponential and is not configurable in `job.yml`.
+- Automatic retries use exponential backoff with jitter. The strategy is not configurable in `job.yml`.
 - Payloads are JSON. dygo stores them as JSON and handler code validates the business shape.
 - `source`, `enabled`, and `retired` are Core `job` fields, not `job.yml` keys.
 
@@ -157,7 +157,7 @@ dygo job execution cancel <id-or-name>
 dygo job execution retry <id-or-name> --idempotency-key <key>
 ```
 
-`list`, `show`, `cancel`, and `retry` read the selected environment database. `cancel` only works for queued executions. `retry` only works for failed executions, copies the failed execution payload, and requires a new caller-provided idempotency key.
+`list`, `show`, `cancel`, and `retry` read the selected environment database. `cancel` only works for queued executions. Manual `retry` only works for failed executions. It copies the failed payload and requires a caller-provided idempotency key. A key that already exists for the Job returns the existing execution instead of creating another one. Use a different key when you intend to create a new execution.
 
 Studio exposes the same cancel and retry operations as Job Execution Entity actions. See [Studio](#studio).
 
@@ -213,16 +213,14 @@ Stale business work is the handler's responsibility. A first-class `stale-after`
 
 Missing `retry` means one attempt only.
 
-When retry is configured:
+When automatic retry is configured, dygo calculates the capped interval and chooses a random delay in its upper half:
 
 ```txt
-delay = retry.initial-delay * 2^(failed attempt - 1)
-delay = min(delay, retry.max-delay)
+interval = min(retry.initial-delay * 2^(failed attempt - 1), retry.max-delay)
+delay = random value from interval / 2 to interval
 ```
 
-`attempts` increments when a worker claims an execution. An execution with `attempts == max-attempts` after failure becomes terminal `failed`. Retried executions return to `queued` with a future `run-after`; there is no separate `retrying` status.
-
-Jitter is coming soon if retry contention becomes a problem.
+`attempts` increments when a worker claims an execution. After a failure or an expired worker lease, an automatic retry returns the same execution to `queued` with a future `run-after`. There is no separate `retrying` status. An execution with `attempts == max-attempts` after failure becomes terminal `failed`.
 
 ## SDK
 
@@ -265,13 +263,13 @@ type JobData interface {
 }
 ```
 
-App identity for SDK calls is `<app>, <job>`, not route, label, or display name. Enqueue options are intentionally small: idempotency key, priority, and `run-after`. Queue, timeout, and retry settings come from `job.yml`. `CancelQueued` accepts a Job Execution id or name and only succeeds for `queued` executions. `Retry` copies a `failed` execution payload into a new queued execution. Retry requires an idempotency key.
+App identity for SDK calls is `<app>, <job>`, not route, label, or display name. Enqueue options are intentionally small: idempotency key, priority, and `run-after`. Queue, timeout, and retry settings come from `job.yml`. `CancelQueued` accepts a Job Execution id or name and only succeeds for `queued` executions. `Retry` copies a `failed` execution payload and requires an idempotency key. As with enqueue, an existing key returns its existing execution.
 
 ## Studio
 
 Studio operators cancel queued Job Executions and retry failed ones from the Job Execution Record list and detail pages. These are Core Entity actions on `job-execution`, not a separate Jobs Space.
 
-Cancel is available while status is `queued`. Retry is available while status is `failed`. Retry queues a new Job Execution with the same payload. The retry action generates an idempotency key when the request does not include one.
+Cancel is available while status is `queued`. Retry is available while status is `failed`. Retry queues a Job Execution with the same payload unless its idempotency key already identifies an execution. When the request omits the key, Studio uses the stable key `manual-retry:<old-id>`, so repeating the action returns the same execution.
 
 `system-manager` can read Job and Job Execution Records and run `cancel` and `retry`. Apply Core access metadata after upgrade:
 

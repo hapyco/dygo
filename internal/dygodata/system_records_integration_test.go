@@ -211,6 +211,10 @@ type systemTestJobStore struct {
 	failure string
 }
 
+func (*systemTestJobStore) PruneTerminal(context.Context, []string, time.Time, int) (int, error) {
+	return 0, nil
+}
+
 func (*systemTestJobStore) RecoverExpired(context.Context, time.Time) (int, error) { return 0, nil }
 func (*systemTestJobStore) RunDueSchedules(context.Context, []string, string, time.Time, int) (int, error) {
 	return 0, nil

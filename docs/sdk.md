@@ -138,6 +138,33 @@ execution, err := job.Jobs.Enqueue(ctx, "crm", "send-welcome-email", payload, dy
 
 Inside a Record hook, use `hook.Jobs.Enqueue` with the same arguments.
 
+For a shared, compile-time payload type, define a `TypedJob` in the Job package:
+
+```go
+type WelcomePayload struct {
+	ContactID string `json:"contact_id"`
+}
+
+var WelcomeJob = dygo.NewTypedJob[WelcomePayload]("crm", "send-welcome-email")
+
+var handleWelcome = WelcomeJob.Handler(func(ctx context.Context, execution dygo.JobExecution, payload WelcomePayload) error {
+	if payload.ContactID == "" {
+		return fmt.Errorf("contact ID is required")
+	}
+	// Perform the work using execution services and payload.ContactID.
+	return nil
+})
+
+// The generated runner discovers this Run function as usual.
+func Run(ctx context.Context, execution dygo.JobExecution) error {
+	return handleWelcome(ctx, execution)
+}
+```
+
+Call `jobpkg.WelcomeJob.Enqueue(ctx, jobs, jobpkg.WelcomePayload{ContactID: "42"}, options)` from app code to enqueue that same Job with the typed payload. Custom runners can instead call `WelcomeJob.Register(registry, handler)`. Both paths use the existing Job registry and `JobData` interface; raw JSON handlers and enqueue calls continue to work.
+
+The wrapper encodes and decodes standard JSON. A missing payload is decoded as JSON `null`; decode errors are returned as handler errors and follow the normal retry policy. Typed enqueueing catches Go type mismatches at compile time, but CLI, Schedule, Studio, and raw SDK inputs can still supply different JSON. Handlers must validate business requirements and account for payload changes across versions.
+
 `JobData` can also cancel a queued Job Execution or retry a failed one by numeric id or execution name:
 
 ```go

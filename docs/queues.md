@@ -31,7 +31,32 @@ Rules:
 - Unknown queue flags fail worker startup.
 - `dygo worker --concurrency <n>` overrides configured concurrency for the current worker process.
 
-Rate limits, retention, and dead-letter policy are coming soon.
+Rate limits and dead-letter policy are coming soon.
+
+## Job Execution Retention
+
+Retention is disabled by default. To opt in, add a positive number of days to
+`config/queues.yml`:
+
+```yaml
+retention-days: 30
+queues:
+  - name: default
+    concurrency: 4
+```
+
+Workers remove executions in their selected queues whose status is `succeeded`,
+`failed`, or `cancelled` and whose `finished-at` is older than the configured
+number of days. A value of `0` disables pruning; the maximum is `36500`. Each
+worker checks at startup and then hourly, removing at most 500 rows per check.
+`--once` performs one check. Pruning errors are logged and do not stop work.
+
+Executions with an idempotency key are retained indefinitely, including Schedule
+executions and manual retries, so duplicate submissions continue to return the
+original execution. Pruning removes eligible execution history and its payload,
+result, and error; it does not delete business Records or Logs. Once an unkeyed
+failed execution is pruned, it is no longer available for manual retry. Choose a
+retention period that meets your operational and audit needs.
 
 ## Worker Command
 

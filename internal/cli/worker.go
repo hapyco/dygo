@@ -102,6 +102,7 @@ func newWorkerCommand(ctx context.Context, stdout, stderr io.Writer, recordHooks
 				WorkerID:             workerID,
 				PollInterval:         pollInterval,
 				ShutdownTimeout:      shutdownTimeout,
+				RetentionDays:        queueConfig.RetentionDays,
 				Once:                 once,
 				PollOnly:             pollOnly,
 				NotificationListener: listener,

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"time"
@@ -1007,17 +1008,26 @@ func retryDelay(retry *jobs.Retry, attempt int) (time.Duration, error) {
 	if err != nil {
 		return 0, err
 	}
+	if initial <= 0 || maxDelay <= 0 {
+		return 0, fmt.Errorf("retry delays must be positive")
+	}
 	delay := initial
 	for i := 1; i < attempt; i++ {
-		delay *= 2
-		if delay >= maxDelay {
-			return maxDelay, nil
+		if delay >= maxDelay || delay > maxDelay/2 {
+			delay = maxDelay
+			break
 		}
+		delay *= 2
 	}
 	if delay > maxDelay {
-		return maxDelay, nil
+		delay = maxDelay
 	}
-	return delay, nil
+	// Equal jitter spreads retries over the upper half of the capped interval.
+	half := delay / 2
+	if half == 0 {
+		half = 1
+	}
+	return half + time.Duration(rand.Int64N(int64(delay-half)+1)), nil
 }
 
 func decodeRetry(raw []byte) (*jobs.Retry, error) {

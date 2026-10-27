@@ -25,7 +25,8 @@ const (
 
 // Config is a project's queue registry.
 type Config struct {
-	Queues []Queue `yaml:"queues"`
+	Queues        []Queue `yaml:"queues"`
+	RetentionDays int     `yaml:"retention-days,omitempty"`
 }
 
 // Queue describes one registered queue.
@@ -81,6 +82,9 @@ func Decode(data []byte) (Config, error) {
 // Validate checks queue names and concurrency.
 func (c Config) Validate() error {
 	var problems []string
+	if c.RetentionDays < 0 || c.RetentionDays > 36500 {
+		problems = append(problems, "retention-days must be between 0 and 36500")
+	}
 
 	seen := map[string]struct{}{}
 	hasDefault := false

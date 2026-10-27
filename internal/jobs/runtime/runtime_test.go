@@ -705,6 +705,10 @@ type fakeFailure struct {
 	message string
 }
 
+func (s *fakeStore) PruneTerminal(context.Context, []string, time.Time, int) (int, error) {
+	return 0, nil
+}
+
 func (s *fakeStore) RecoverExpired(context.Context, time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

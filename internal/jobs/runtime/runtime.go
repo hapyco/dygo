@@ -24,6 +24,8 @@ const (
 	// DefaultPollInterval is the worker fallback interval when notifications are unavailable.
 	DefaultPollInterval    = 60 * time.Second
 	defaultShutdownTimeout = 30 * time.Second
+	retentionInterval      = time.Hour
+	retentionBatchSize     = 500
 )
 
 // Registry stores compiled Job handlers.
@@ -48,6 +50,7 @@ type Worker struct {
 
 // Store is the durable queue behavior the worker needs.
 type Store interface {
+	PruneTerminal(context.Context, []string, time.Time, int) (int, error)
 	RecoverExpired(context.Context, time.Time) (int, error)
 	RunDueSchedules(context.Context, []string, string, time.Time, int) (int, error)
 	Claim(context.Context, []string, int, string, time.Time) ([]jobstore.Execution, error)
@@ -74,6 +77,7 @@ type Options struct {
 	WorkerID             string
 	PollInterval         time.Duration
 	ShutdownTimeout      time.Duration
+	RetentionDays        int
 	Once                 bool
 	PollOnly             bool
 	NotificationListener NotificationListener
@@ -168,7 +172,13 @@ func (w Worker) Run(ctx context.Context, options Options) (Result, error) {
 			return Result{}, fmt.Errorf("worker queue %q concurrency must be greater than 0", queue.Name)
 		}
 	}
+	if options.RetentionDays < 0 || options.RetentionDays > 36500 {
+		return Result{}, fmt.Errorf("retention days must be between 0 and 36500")
+	}
 	options = normalizeOptions(options)
+	if options.RetentionDays > 0 {
+		w.pruneTerminal(ctx, options)
+	}
 	if options.Once {
 		return w.runOnce(ctx, options)
 	}
@@ -194,6 +204,22 @@ func (w Worker) runContinuous(ctx context.Context, options Options) (Result, err
 	var listenerWG sync.WaitGroup
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if options.RetentionDays > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ticker := time.NewTicker(retentionInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-runCtx.Done():
+					return
+				case <-ticker.C:
+					w.pruneTerminal(runCtx, options)
+				}
+			}
+		}()
+	}
 	wakeups := newQueueWakeups(options.Queues)
 	defer wakeups.close()
 	if options.NotificationListener != nil && !options.PollOnly {
@@ -231,6 +257,24 @@ func (w Worker) runContinuous(ctx context.Context, options Options) (Result, err
 		wg.Wait()
 		waitForGroup(&listenerWG, options.ShutdownTimeout)
 		return total.snapshot(), nil
+	}
+}
+
+func (w Worker) pruneTerminal(ctx context.Context, options Options) {
+	queueNames := make([]string, 0, len(options.Queues))
+	for _, queue := range options.Queues {
+		queueNames = append(queueNames, queue.Name)
+	}
+	cutoff := options.Now().Add(-time.Duration(options.RetentionDays) * 24 * time.Hour)
+	count, err := w.Store.PruneTerminal(ctx, queueNames, cutoff, retentionBatchSize)
+	if err != nil {
+		if !errorsIsContext(err) {
+			w.log("prune terminal job executions: %v", err)
+		}
+		return
+	}
+	if count > 0 {
+		w.log("pruned %d terminal job executions", count)
 	}
 }
 

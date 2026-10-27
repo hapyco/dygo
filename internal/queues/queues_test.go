@@ -39,3 +39,22 @@ func TestDecodeQueueConfigRejectsInvalidRegistry(t *testing.T) {
 		}
 	}
 }
+
+func TestRetentionConfig(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  int
+		valid bool
+	}{
+		{"", 0, true},
+		{"retention-days: 30\n", 30, true},
+		{"retention-days: 0\n", 0, true},
+		{"retention-days: -1\n", 0, false},
+		{"retention-days: 36501\n", 0, false},
+	} {
+		cfg, err := Decode([]byte(tc.value + "queues:\n  - name: default\n    concurrency: 1\n"))
+		if (err == nil) != tc.valid || (err == nil && cfg.RetentionDays != tc.want) {
+			t.Errorf("retention config %q: days=%d err=%v", tc.value, cfg.RetentionDays, err)
+		}
+	}
+}
